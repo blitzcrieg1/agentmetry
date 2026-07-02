@@ -78,16 +78,18 @@ async def _post_with_retry(
     params: dict[str, str],
     json_body: dict[str, Any],
     timeout: float,
+    throttle: Any = None,
 ) -> httpx.Response | None:
     for attempt in range(_MAX_RETRIES):
-        await throttle_flash()
+        if throttle is not None:
+            await throttle()
         resp = await client.post(url, params=params, json=json_body, timeout=timeout)
         if resp.status_code == 200:
             llm_degraded.clear()
             return resp
         if resp.status_code == 429:
             wait = _retry_after(resp) * (attempt + 1)
-            llm_degraded.set_degraded(f"Gemini rate limited (HTTP 429)", retry_after=wait)
+            llm_degraded.set_degraded("Gemini rate limited (HTTP 429)", retry_after=wait)
             logger.warning("Gemini 429 — retry %d/%d in %ds", attempt + 1, _MAX_RETRIES, wait)
             if attempt < _MAX_RETRIES - 1:
                 await asyncio.sleep(wait)
@@ -126,6 +128,7 @@ async def call_gemini(
                 params={"key": api_key},
                 json_body=payload,
                 timeout=120.0,
+                throttle=throttle_flash,
             )
             if resp is None or resp.status_code != 200:
                 return None
@@ -151,6 +154,7 @@ async def _stream_generate(
     try:
         async with httpx.AsyncClient() as client:
             for attempt in range(_MAX_RETRIES):
+                await throttle_flash()
                 async with client.stream(
                     "POST",
                     f"{GEMINI_BASE}/models/{model}:streamGenerateContent",
@@ -218,7 +222,6 @@ async def embed_gemini(
     }
 
     try:
-        await throttle_embed()
         async with httpx.AsyncClient() as client:
             resp = await _post_with_retry(
                 client,
@@ -226,6 +229,7 @@ async def embed_gemini(
                 params={"key": api_key},
                 json_body=payload,
                 timeout=30.0,
+                throttle=throttle_embed,
             )
             if resp is None or resp.status_code != 200:
                 return None
