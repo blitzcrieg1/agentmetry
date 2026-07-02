@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from core.config import settings
 from core.llm.gemini import call_gemini
-from core.llm.ollama import call_ollama
 from core.llm.mock import call_mock
+from core.llm.ollama import call_ollama
+from core.llm.types import LLMResult
 
 
 async def call_llm(
@@ -14,7 +15,7 @@ async def call_llm(
     *,
     session_id: str = "",
     node: str = "",
-) -> str:
+) -> LLMResult:
     provider = settings.llm_provider.lower()
 
     if provider == "gemini" and settings.gemini_api_key:
@@ -27,7 +28,6 @@ async def call_llm(
         if result is not None:
             return result
 
-    # Auto-fallback: try Gemini if key exists but provider wasn't set
     if settings.gemini_api_key and provider != "gemini":
         result = await call_gemini(prompt, system, session_id=session_id, node=node)
         if result is not None:

@@ -27,7 +27,10 @@ export function useWebSocket() {
       cost: metrics.cost ?? 0,
       inputTokens,
       outputTokens,
-      contextUsagePercent: Math.min(Math.round((inputTokens / 8192) * 100), 100),
+      contextUsagePercent: Math.min(
+        Math.round((inputTokens / 1_048_576) * 100),
+        100
+      ),
     });
   };
 

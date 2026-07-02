@@ -17,6 +17,9 @@ const NODE_LABELS: Record<string, string> = {
   ingest: "Ingest",
   extract: "Extract",
   summarize: "Summarize",
+  collect: "Collect",
+  analyze: "Analyze",
+  prioritize: "Prioritize",
 };
 
 export function buildGraphNodes(nodeIds: string[]): GraphNodeState[] {
@@ -28,22 +31,20 @@ export function buildGraphNodes(nodeIds: string[]): GraphNodeState[] {
   }));
 }
 
-export const LEAD_GEN_NODES = buildGraphNodes([
-  "planner",
-  "researcher",
-  "writer",
-  "critic",
-  "human_approval",
-  "finalize",
-]);
+export function defaultInputForSkill(skill: { id?: string; name?: string; default_input?: string }): string {
+  if (skill.default_input) return skill.default_input;
+  const id = skill.id || skill.name || "";
+  if (id === "lead_gen") return "Generate outreach for AI infrastructure prospects from vault context";
+  if (id === "summarize_meeting") return "Summarize the latest meeting notes from the inbox and extract action items";
+  if (id === "weekly_review") return "Review this week's vault activity and produce a prioritized plan for next week";
+  return "Describe what the agent should do...";
+}
 
-export const SKILL_DEFAULTS: Record<string, { input: string; nodes: string[] }> = {
-  lead_gen: {
-    input: "Generate outreach for AI infrastructure prospects from vault context",
-    nodes: ["planner", "researcher", "writer", "critic", "human_approval", "finalize"],
-  },
-  summarize_meeting: {
-    input: "Summarize the latest meeting notes from the inbox and extract action items",
-    nodes: ["ingest", "extract", "summarize", "finalize"],
-  },
-};
+export function nodesForSkill(skill: { nodes?: string[]; id?: string; name?: string }): string[] {
+  if (skill.nodes?.length) return skill.nodes;
+  const id = skill.id || skill.name || "";
+  if (id === "lead_gen") return ["planner", "researcher", "writer", "critic", "human_approval", "finalize"];
+  if (id === "summarize_meeting") return ["ingest", "extract", "summarize", "finalize"];
+  if (id === "weekly_review") return ["collect", "analyze", "prioritize", "finalize"];
+  return [];
+}

@@ -8,6 +8,7 @@ from langgraph.graph.message import add_messages
 
 from core.graphs.checkpointer import checkpointer
 from core.graphs.node_events import emit_node
+from core.graphs.usage_helpers import merge_llm_usage
 from core.llm.client import call_llm
 
 
@@ -27,10 +28,6 @@ class MeetingState(TypedDict):
     session_id: str
 
 
-def _estimate_tokens(text: str) -> int:
-    return len(text.split())
-
-
 def _metrics(state: MeetingState) -> dict[str, Any]:
     return {
         "input_tokens": state.get("input_tokens", 0),
@@ -44,12 +41,10 @@ async def ingest_node(state: MeetingState) -> dict[str, Any]:
     await emit_node(session_id, "ingest", "running")
 
     combined = f"{state['user_input']}\n\nVault context:\n{state['system_context']}"
-    tokens_in = _estimate_tokens(combined)
 
     result = {
         "raw_notes": combined,
         "messages": [AIMessage(content=f"[Ingest] Loaded {len(combined)} chars of context")],
-        "input_tokens": state.get("input_tokens", 0) + tokens_in,
     }
     await emit_node(session_id, "ingest", "completed", output="Context ingested", metrics=_metrics({**state, **result}))
     await emit_node(session_id, "extract", "running")
@@ -68,18 +63,14 @@ async def extract_node(state: MeetingState) -> dict[str, Any]:
 Notes:
 {state['raw_notes']}"""
 
-    extracted = await call_llm(prompt, system, session_id=session_id, node="extract")
-    tokens_in = _estimate_tokens(prompt + system)
-    tokens_out = _estimate_tokens(extracted)
+    llm = await call_llm(prompt, system, session_id=session_id, node="extract")
 
     result = {
-        "extracted": extracted,
-        "messages": [AIMessage(content=f"[Extract]\n{extracted}")],
-        "input_tokens": state["input_tokens"] + tokens_in,
-        "output_tokens": state.get("output_tokens", 0) + tokens_out,
-        "cost": state.get("cost", 0) + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        "extracted": llm.text,
+        "messages": [AIMessage(content=f"[Extract]\n{llm.text}")],
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "extract", "completed", output=extracted, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "extract", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, "summarize", "running")
     return result
 
@@ -94,18 +85,14 @@ Use markdown with sections: Executive Summary, Decisions, Action Items, Next Ste
 Extraction:
 {state['extracted']}"""
 
-    summary = await call_llm(prompt, session_id=session_id, node="summarize")
-    tokens_in = _estimate_tokens(prompt)
-    tokens_out = _estimate_tokens(summary)
+    llm = await call_llm(prompt, session_id=session_id, node="summarize")
 
     result = {
-        "summary": summary,
-        "messages": [AIMessage(content=f"[Summarize]\n{summary}")],
-        "input_tokens": state["input_tokens"] + tokens_in,
-        "output_tokens": state["output_tokens"] + tokens_out,
-        "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        "summary": llm.text,
+        "messages": [AIMessage(content=f"[Summarize]\n{llm.text}")],
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "summarize", "completed", output=summary, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "summarize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, "finalize", "running")
     return result
 

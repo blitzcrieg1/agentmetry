@@ -9,6 +9,8 @@ import httpx
 
 from api.websocket import ws_manager
 from core.config import settings
+from core.llm.pricing import cost_from_usage, fallback_token_estimate
+from core.llm.types import LLMResult, LLMUsage
 
 
 def _api_key() -> str:
@@ -40,13 +42,27 @@ def _extract_text(data: dict[str, Any]) -> str:
     return "".join(p.get("text", "") for p in parts if "text" in p)
 
 
+def _usage_from_response(data: dict[str, Any], prompt: str, text: str) -> LLMUsage:
+    meta = data.get("usageMetadata") or {}
+    input_tokens = int(meta.get("promptTokenCount") or 0)
+    output_tokens = int(meta.get("candidatesTokenCount") or 0)
+    if input_tokens == 0 and output_tokens == 0:
+        input_tokens = fallback_token_estimate(f"{prompt}")
+        output_tokens = fallback_token_estimate(text)
+    return LLMUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=cost_from_usage(input_tokens, output_tokens),
+    )
+
+
 async def call_gemini(
     prompt: str,
     system: str = "",
     *,
     session_id: str = "",
     node: str = "",
-) -> str | None:
+) -> LLMResult | None:
     """Call Gemini API. Returns None on failure so caller can fallback."""
     api_key = _api_key()
     if not api_key:
@@ -57,7 +73,7 @@ async def call_gemini(
 
     try:
         if session_id and node:
-            streamed = await _stream_generate(model, payload, api_key, session_id, node)
+            streamed = await _stream_generate(model, payload, api_key, session_id, node, prompt)
             if streamed is not None:
                 return streamed
 
@@ -70,8 +86,11 @@ async def call_gemini(
             )
             if resp.status_code != 200:
                 return None
-            text = _extract_text(resp.json())
-            return text or None
+            data = resp.json()
+            text = _extract_text(data)
+            if not text:
+                return None
+            return LLMResult(text=text, usage=_usage_from_response(data, prompt, text))
     except Exception:
         return None
 
@@ -82,8 +101,10 @@ async def _stream_generate(
     api_key: str,
     session_id: str,
     node: str,
-) -> str | None:
+    prompt: str,
+) -> LLMResult | None:
     parts: list[str] = []
+    usage = LLMUsage()
     try:
         async with httpx.AsyncClient() as client:
             async with client.stream(
@@ -107,6 +128,9 @@ async def _stream_generate(
                     except json.JSONDecodeError:
                         continue
 
+                    if chunk.get("usageMetadata"):
+                        usage = _usage_from_response(chunk, prompt, "".join(parts))
+
                     token = _extract_text(chunk)
                     if token:
                         parts.append(token)
@@ -116,7 +140,11 @@ async def _stream_generate(
 
     if not parts:
         return None
-    return "".join(parts)
+
+    text = "".join(parts)
+    if usage.input_tokens == 0 and usage.output_tokens == 0:
+        usage = _usage_from_response({}, prompt, text)
+    return LLMResult(text=text, usage=usage)
 
 
 async def embed_gemini(

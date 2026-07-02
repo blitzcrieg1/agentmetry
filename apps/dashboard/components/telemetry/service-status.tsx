@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { apiPost } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ServiceStatus {
@@ -22,24 +24,50 @@ interface HealthResponse {
   gemini?: ServiceStatus & { model?: string; provider?: string };
   llm_provider?: string;
   postgres?: ServiceStatus;
-  modes: { rag: string; llm: string; telemetry?: string };
+  modes: {
+    rag: string;
+    llm: string;
+    telemetry?: string;
+    context_window_tokens?: number;
+  };
 }
 
 export function ServiceStatusPanel() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [adminMsg, setAdminMsg] = useState<string | null>(null);
+  const [adminBusy, setAdminBusy] = useState(false);
+
+  const fetchHealth = () => {
+    fetch(`${ORCHESTRATOR_URL}/api/v1/health`)
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => setHealth(null));
+  };
 
   useEffect(() => {
-    const fetchHealth = () => {
-      fetch(`${ORCHESTRATOR_URL}/api/v1/health`)
-        .then((r) => r.json())
-        .then(setHealth)
-        .catch(() => setHealth(null));
-    };
-
     fetchHealth();
     const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const runAdmin = async (action: "reload" | "reindex") => {
+    setAdminBusy(true);
+    setAdminMsg(null);
+    try {
+      if (action === "reload") {
+        const data = await apiPost("/api/v1/skills/reload");
+        setAdminMsg(`Reloaded ${data.registered?.length ?? 0} skills`);
+      } else {
+        const data = await apiPost("/api/v1/vault/reindex");
+        setAdminMsg(`Indexed ${data.indexed_chunks ?? 0} chunks`);
+      }
+      fetchHealth();
+    } catch (err) {
+      setAdminMsg(String(err));
+    } finally {
+      setAdminBusy(false);
+    }
+  };
 
   const overall = health?.status ?? "unknown";
 
@@ -124,6 +152,32 @@ export function ServiceStatusPanel() {
             )}
           </div>
         )}
+        <div className="pt-2 border-t border-border space-y-2">
+          <p className="text-xs text-muted-foreground">Admin</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 text-xs"
+              disabled={adminBusy}
+              onClick={() => runAdmin("reload")}
+            >
+              Reload Skills
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 text-xs"
+              disabled={adminBusy}
+              onClick={() => runAdmin("reindex")}
+            >
+              Reindex Vault
+            </Button>
+          </div>
+          {adminMsg && (
+            <p className="text-xs text-muted-foreground font-mono truncate">{adminMsg}</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -4,10 +4,20 @@ import { useEffect, useState } from "react";
 import { Zap } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
-import { buildGraphNodes, SKILL_DEFAULTS } from "@/lib/graph-utils";
+import { apiPost } from "@/lib/api";
+import { buildGraphNodes, defaultInputForSkill, nodesForSkill } from "@/lib/graph-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MemoryNavigator } from "@/components/memory-navigator";
+
+interface SkillDefinition {
+  id: string;
+  name: string;
+  display_name?: string;
+  description?: string;
+  nodes?: string[];
+  default_input?: string;
+}
 
 export function SkillDeck() {
   const skills = useAgentStore((s) => s.skills);
@@ -21,36 +31,29 @@ export function SkillDeck() {
   const reset = useAgentStore((s) => s.reset);
   const appendTerminal = useAgentStore((s) => s.appendTerminal);
 
-  const [userInput, setUserInput] = useState(SKILL_DEFAULTS.lead_gen.input);
+  const [userInput, setUserInput] = useState("");
 
   useEffect(() => {
     fetch(`${ORCHESTRATOR_URL}/api/v1/skills/`)
       .then((r) => r.json())
-      .then((data) => setSkills(data.skills || []))
-      .catch(() => {
-        setSkills([
-          {
-            id: "lead_gen",
-            name: "lead_gen",
-            display_name: "Lead Gen Outbound",
-            description: "Identify prospects and draft personalized outreach emails",
-            nodes: SKILL_DEFAULTS.lead_gen.nodes,
-          },
-          {
-            id: "summarize_meeting",
-            name: "summarize_meeting",
-            display_name: "Meeting Summarizer",
-            description: "Summarize meeting notes and extract action items",
-            nodes: SKILL_DEFAULTS.summarize_meeting.nodes,
-          },
-        ]);
-      });
-  }, [setSkills]);
+      .then((data) => {
+        const loaded: SkillDefinition[] = (data.skills || []).map((s: SkillDefinition) => ({
+          ...s,
+          id: s.id || s.name,
+        }));
+        setSkills(loaded);
+        if (loaded.length > 0) {
+          setActiveSkill(loaded[0].id);
+          setUserInput(defaultInputForSkill(loaded[0]));
+        }
+      })
+      .catch(() => appendTerminal("⚠ Could not load skills from orchestrator"));
+  }, [setSkills, setActiveSkill, appendTerminal]);
 
   const runSkill = async (skillId: string) => {
-    const defaults = SKILL_DEFAULTS[skillId] ?? SKILL_DEFAULTS.lead_gen;
-    const input = userInput.trim() || defaults.input;
-    const nodes = buildGraphNodes(defaults.nodes);
+    const skill = skills.find((s) => s.id === skillId);
+    const input = userInput.trim() || defaultInputForSkill(skill || { id: skillId });
+    const nodes = buildGraphNodes(nodesForSkill(skill || { id: skillId }));
 
     setActiveSkill(skillId);
     reset(nodes);
@@ -60,16 +63,11 @@ export function SkillDeck() {
     appendTerminal(`Task: ${input}`);
 
     try {
-      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/skills/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          skill_name: skillId,
-          user_input: input,
-          session_id: sessionId,
-        }),
+      const data = await apiPost("/api/v1/skills/execute", {
+        skill_name: skillId,
+        user_input: input,
+        session_id: sessionId,
       });
-      const data = await res.json();
 
       if (data.status === "waiting_for_input") {
         setExecutionStatus("waiting_for_input");
@@ -87,8 +85,8 @@ export function SkillDeck() {
 
   const selectSkill = (skillId: string) => {
     setActiveSkill(skillId);
-    const defaults = SKILL_DEFAULTS[skillId];
-    if (defaults) setUserInput(defaults.input);
+    const skill = skills.find((s) => s.id === skillId);
+    if (skill) setUserInput(defaultInputForSkill(skill));
   };
 
   const isRunning = executionStatus === "running";

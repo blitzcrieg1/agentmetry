@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { LEAD_GEN_NODES, type GraphNodeState, type NodeStatus } from "@/lib/graph-utils";
+import { type GraphNodeState, type NodeStatus } from "@/lib/graph-utils";
 
 export type { GraphNodeState, NodeStatus };
 
@@ -17,6 +17,7 @@ export interface Skill {
   display_name: string;
   description: string;
   nodes?: string[];
+  default_input?: string;
 }
 
 interface AgentStore {
@@ -56,7 +57,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   activeSkill: null,
   threadId: null,
   executionStatus: "idle",
-  graphNodes: LEAD_GEN_NODES,
+  graphNodes: [] as GraphNodeState[],
   terminalOutput: [],
   metrics: {
     inputTokens: 0,

@@ -20,6 +20,7 @@ dependencies = [
     "websockets>=14.0",
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -35,3 +36,7 @@ packages = ["core", "api"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

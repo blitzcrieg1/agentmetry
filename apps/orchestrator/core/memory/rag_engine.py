@@ -184,6 +184,73 @@ class RAGEngine:
       key = f"{settings.collection_name}:{vault}"
       return len(cls._shared_memory.get(key, []))
 
+  async def index_file(self, file_path: Path) -> int:
+      """Index or re-index a single markdown file."""
+      if not file_path.exists() or file_path.suffix != ".md":
+          return 0
+      if ".system" in file_path.parts:
+          return 0
+
+      rel_path = str(file_path.relative_to(self.obsidian.vault_path))
+      await self.remove_file(rel_path)
+
+      content = file_path.read_text(encoding="utf-8")
+      meta, body = self.obsidian.parse_frontmatter(content)
+      tags = meta.get("tags", [])
+      if isinstance(tags, str):
+          tags = [tags]
+
+      points: list[PointStruct] = []
+      memory_points: list[_MemoryPoint] = []
+      indexed = 0
+
+      for idx, chunk in enumerate(self._chunk_text(body)):
+          embedding = await self.embed_text(chunk)
+          payload = {
+              "text": chunk,
+              "source_path": rel_path,
+              "tags": tags,
+              "chunk_index": idx,
+          }
+          points.append(
+              PointStruct(
+                  id=self._point_id(rel_path, idx),
+                  vector=embedding,
+                  payload=payload,
+              )
+          )
+          memory_points.append(_MemoryPoint(vector=embedding, payload=payload))
+          indexed += 1
+
+      key = self._memory_key()
+      existing = self._shared_memory.get(key, [])
+      self._shared_memory[key] = existing + memory_points
+
+      if points:
+          try:
+              self.client.upsert(collection_name=self.collection_name, points=points)
+          except Exception:
+              pass
+      return indexed
+
+  async def remove_file(self, rel_path: str) -> None:
+      """Remove all indexed chunks for a vault-relative file path."""
+      key = self._memory_key()
+      self._shared_memory[key] = [
+          point
+          for point in self._shared_memory.get(key, [])
+          if point.payload.get("source_path") != rel_path
+      ]
+      try:
+          self.client.delete(
+              collection_name=self.collection_name,
+              points_selector=Filter(
+                  must=[FieldCondition(key="source_path", match=MatchValue(value=rel_path))]
+              ),
+          )
+      except Exception:
+          pass
+
   async def index_vault(self) -> int:
       """Index all markdown files in the vault into Qdrant and in-memory store."""
       files = self.obsidian.list_markdown_files()

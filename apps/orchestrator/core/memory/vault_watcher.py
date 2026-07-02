@@ -16,26 +16,28 @@ logger = logging.getLogger(__name__)
 
 
 class VaultSyncHandler(FileSystemEventHandler):
-    def __init__(self, rag: RAGEngine, loop: asyncio.AbstractEventLoop):
+    def __init__(self, rag: RAGEngine, loop: asyncio.AbstractEventLoop, vault_path: Path):
         self.rag = rag
         self.loop = loop
+        self.vault_path = vault_path
         self._debounce: dict[str, asyncio.TimerHandle] = {}
 
     def _schedule_reindex(self, path: str) -> None:
         if not path.endswith(".md"):
             return
-        if ".system" in path:
+        if ".system" in path.replace("\\", "/"):
             return
 
         if path in self._debounce:
             self._debounce[path].cancel()
 
         def _do_index():
-            asyncio.run_coroutine_threadsafe(self.rag.index_vault(), self.loop)
+            file_path = Path(path)
+            asyncio.run_coroutine_threadsafe(self.rag.index_file(file_path), self.loop)
 
         handle = self.loop.call_later(2.0, _do_index)
         self._debounce[path] = handle
-        logger.info("Vault change detected: %s — scheduling reindex", path)
+        logger.info("Vault change detected: %s — scheduling incremental index", path)
 
     def on_modified(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
@@ -44,6 +46,20 @@ class VaultSyncHandler(FileSystemEventHandler):
     def on_created(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
             self._schedule_reindex(event.src_path)
+
+    def on_deleted(self, event: FileSystemEvent) -> None:
+        if event.is_directory or not event.src_path.endswith(".md"):
+            return
+        file_path = Path(event.src_path)
+        try:
+            rel_path = str(file_path.relative_to(self.vault_path))
+        except ValueError:
+            return
+
+        async def _remove():
+            await self.rag.remove_file(rel_path)
+
+        asyncio.run_coroutine_threadsafe(_remove(), self.loop)
 
 
 class VaultWatcher:
@@ -54,13 +70,12 @@ class VaultWatcher:
 
     async def start(self) -> None:
         loop = asyncio.get_event_loop()
-        handler = VaultSyncHandler(self.rag, loop)
+        handler = VaultSyncHandler(self.rag, loop, Path(self.vault_path))
         self.observer = Observer()
         self.observer.schedule(handler, str(self.vault_path), recursive=True)
         self.observer.start()
         logger.info("Vault watcher started on %s", self.vault_path)
 
-        # Index in background — don't block API startup
         asyncio.create_task(self._initial_index())
 
     async def _initial_index(self) -> None:

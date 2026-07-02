@@ -1,28 +1,57 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.websocket import ws_manager
+from core.auth import require_api_key
 from core.config import settings
 from core.graphs.registry import SkillRegistry
 from core.graphs.node_events import emit_node
 from core.memory.obsidian_client import ObsidianClient
 from core.memory.rag_engine import RAGEngine
+from core.telemetry.pending_store import PendingThreadStore
 from core.telemetry.store import TelemetryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
 obsidian = ObsidianClient(settings.vault_path)
 rag = RAGEngine(vault_path=settings.vault_path)
 telemetry = TelemetryStore()
+pending_store = PendingThreadStore()
 skill_registry = SkillRegistry(obsidian)
 
 pending_threads: dict[str, dict[str, Any]] = {}
+
+
+async def recover_pending_threads() -> int:
+    """Reload pending approval threads from durable storage after restart."""
+    pending_threads.clear()
+    recovered = 0
+    for row in pending_store.list_all():
+        graph = skill_registry.get(row["skill_name"])
+        if not graph:
+            pending_store.delete(row["thread_id"])
+            continue
+        try:
+            snapshot = await graph.aget_state(row["config"])
+            if snapshot.next and "human_approval" in snapshot.next:
+                pending_threads[row["thread_id"]] = row
+                recovered += 1
+            else:
+                pending_store.delete(row["thread_id"])
+        except Exception:
+            pending_store.delete(row["thread_id"])
+    if recovered:
+        logger.info("Recovered %d pending approval thread(s)", recovered)
+    return recovered
 
 
 async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) -> tuple[str, list[str]]:
@@ -74,7 +103,7 @@ def _extract_result_content(final_state: dict[str, Any]) -> str:
     if final_state.get("messages"):
         last_msg = final_state["messages"][-1]
         return getattr(last_msg, "content", str(last_msg))
-    return final_state.get("draft", "")
+    return final_state.get("draft", "") or final_state.get("summary", "")
 
 
 async def _finalize_execution(
@@ -157,10 +186,16 @@ async def list_skills():
         "skills": obsidian.list_skills(),
         "registered_graphs": skill_registry.list_registered(),
         "available_graph_types": SkillRegistry.available_graph_types(),
+        "pending_approvals": list(pending_threads.keys()),
     }
 
 
-@router.post("/reload")
+@router.get("/pending")
+async def list_pending():
+    return {"pending": list(pending_threads.keys())}
+
+
+@router.post("/reload", dependencies=[Depends(require_api_key)])
 async def reload_skills():
     """Re-scan vault skill definitions and refresh graph registry."""
     skill_registry.reload()
@@ -170,7 +205,7 @@ async def reload_skills():
     }
 
 
-@router.post("/execute")
+@router.post("/execute", dependencies=[Depends(require_api_key)])
 async def execute_skill(request: SkillRequest):
     start = time.monotonic()
     thread_id = str(uuid.uuid4())
@@ -185,7 +220,10 @@ async def execute_skill(request: SkillRequest):
     )
 
     active_loop_path = obsidian.write_active_loop(
-        thread_id, request.skill_name, request.user_input
+        thread_id,
+        request.skill_name,
+        request.user_input,
+        nodes=skill_config.get("nodes"),
     )
 
     initial_state: dict[str, Any] = {
@@ -226,15 +264,23 @@ async def execute_skill(request: SkillRequest):
         snapshot = await active_graph.aget_state(config)
         state_values = dict(snapshot.values) if snapshot.values else final_state
 
-        # Graph paused before human_approval — finalize has NOT run
         if snapshot.next and "human_approval" in snapshot.next:
-            pending_threads[thread_id] = {
+            pending_meta = {
                 "config": config,
                 "session_id": request.session_id,
                 "skill_name": request.skill_name,
                 "active_loop_path": str(active_loop_path),
                 "start": start,
             }
+            pending_threads[thread_id] = pending_meta
+            pending_store.save(
+                thread_id,
+                skill_name=request.skill_name,
+                session_id=request.session_id,
+                active_loop_path=str(active_loop_path),
+                config=config,
+                start=start,
+            )
             obsidian.resolve_active_loop(
                 active_loop_path,
                 "awaiting_approval",
@@ -282,9 +328,11 @@ async def execute_skill(request: SkillRequest):
         return {"status": "failed", "thread_id": thread_id, "error": str(e)}
 
 
-@router.post("/approve")
+@router.post("/approve", dependencies=[Depends(require_api_key)])
 async def approve_skill(request: ApprovalRequest):
     pending = pending_threads.get(request.thread_id)
+    if not pending:
+        pending = pending_store.get(request.thread_id)
     if not pending:
         raise HTTPException(status_code=404, detail="Thread not found or already resolved")
 
@@ -297,7 +345,8 @@ async def approve_skill(request: ApprovalRequest):
         obsidian.write_crash_report(
             request.thread_id, "Terminated by user", pending["skill_name"]
         )
-        del pending_threads[request.thread_id]
+        pending_threads.pop(request.thread_id, None)
+        pending_store.delete(request.thread_id)
         await ws_manager.broadcast(pending["session_id"], {
             "type": "execution_terminated",
             "thread_id": request.thread_id,
@@ -328,5 +377,6 @@ async def approve_skill(request: ApprovalRequest):
         status_label="approved",
     )
 
-    del pending_threads[request.thread_id]
+    pending_threads.pop(request.thread_id, None)
+    pending_store.delete(request.thread_id)
     return result

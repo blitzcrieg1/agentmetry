@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAgentStore } from "@/lib/store";
-import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { apiPost } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -26,16 +26,11 @@ export function ApprovalModal() {
     if (!threadId) return;
 
     try {
-      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/skills/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          thread_id: threadId,
-          approved,
-          modified_input: modified || null,
-        }),
+      const data = await apiPost("/api/v1/skills/approve", {
+        thread_id: threadId,
+        approved,
+        modified_input: modified || null,
       });
-      const data = await res.json();
 
       if (data.status === "approved" || data.status === "completed") {
         setExecutionStatus("completed");

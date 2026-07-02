@@ -8,6 +8,8 @@ import httpx
 
 from api.websocket import ws_manager
 from core.config import settings
+from core.llm.pricing import cost_from_usage, fallback_token_estimate
+from core.llm.types import LLMResult, LLMUsage
 
 
 async def call_ollama(
@@ -16,7 +18,7 @@ async def call_ollama(
     *,
     session_id: str = "",
     node: str = "",
-) -> str | None:
+) -> LLMResult | None:
     """Call Ollama. Returns None on failure."""
     messages: list[dict[str, str]] = []
     if system:
@@ -25,7 +27,7 @@ async def call_ollama(
 
     try:
         if session_id and node:
-            streamed = await _stream_chat(messages, session_id, node)
+            streamed = await _stream_chat(messages, prompt, system, session_id, node)
             if streamed is not None:
                 return streamed
 
@@ -40,7 +42,17 @@ async def call_ollama(
                 timeout=120.0,
             )
             if resp.status_code == 200:
-                return resp.json()["message"]["content"]
+                text = resp.json()["message"]["content"]
+                input_tokens = fallback_token_estimate(f"{system}\n{prompt}")
+                output_tokens = fallback_token_estimate(text)
+                return LLMResult(
+                    text=text,
+                    usage=LLMUsage(
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost=cost_from_usage(input_tokens, output_tokens),
+                    ),
+                )
     except Exception:
         pass
     return None
@@ -48,9 +60,11 @@ async def call_ollama(
 
 async def _stream_chat(
     messages: list[dict[str, str]],
+    prompt: str,
+    system: str,
     session_id: str,
     node: str,
-) -> str | None:
+) -> LLMResult | None:
     parts: list[str] = []
     try:
         async with httpx.AsyncClient() as client:
@@ -87,4 +101,15 @@ async def _stream_chat(
 
     if not parts:
         return None
-    return "".join(parts)
+
+    text = "".join(parts)
+    input_tokens = fallback_token_estimate(f"{system}\n{prompt}")
+    output_tokens = fallback_token_estimate(text)
+    return LLMResult(
+        text=text,
+        usage=LLMUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost_from_usage(input_tokens, output_tokens),
+        ),
+    )

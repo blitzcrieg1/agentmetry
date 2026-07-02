@@ -17,3 +17,4 @@ nodes:
   - extract
   - summarize
   - finalize
+default_input: Summarize the latest meeting notes from the inbox and extract action items

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated, Any, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.config import settings
 from core.graphs.checkpointer import checkpointer
 from core.graphs.node_events import emit_node
+from core.graphs.usage_helpers import merge_llm_usage
 from core.llm.client import call_llm
 
 
@@ -34,10 +35,6 @@ class LeadGenState(TypedDict):
     session_id: str
 
 
-def _estimate_tokens(text: str) -> int:
-    return len(text.split())
-
-
 async def planner_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
     await emit_node(session_id, "planner", "running")
@@ -54,18 +51,14 @@ Available context:
 
 Output a numbered plan with: research targets, personalization angles, and email structure."""
 
-    plan = await call_llm(prompt, system, session_id=session_id, node="planner")
-    tokens_in = _estimate_tokens(prompt + system)
-    tokens_out = _estimate_tokens(plan)
+    llm = await call_llm(prompt, system, session_id=session_id, node="planner")
 
     result = {
-        "plan": plan,
-        "messages": [AIMessage(content=f"[Planner]\n{plan}")],
-        "input_tokens": state.get("input_tokens", 0) + tokens_in,
-        "output_tokens": state.get("output_tokens", 0) + tokens_out,
-        "cost": state.get("cost", 0) + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        "plan": llm.text,
+        "messages": [AIMessage(content=f"[Planner]\n{llm.text}")],
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "planner", "completed", output=plan, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "planner", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, "researcher", "running")
     return result
 
@@ -83,9 +76,7 @@ Context from vault:
 
 Identify top prospects, their recent news, and personalization hooks."""
 
-    research = await call_llm(prompt, session_id=session_id, node="researcher")
-    tokens_in = _estimate_tokens(prompt)
-    tokens_out = _estimate_tokens(research)
+    llm = await call_llm(prompt, session_id=session_id, node="researcher")
 
     sources = [
         line.split("]")[0].replace("[Source: ", "")
@@ -94,14 +85,12 @@ Identify top prospects, their recent news, and personalization hooks."""
     ]
 
     result = {
-        "research": research,
-        "messages": [AIMessage(content=f"[Researcher]\n{research}")],
+        "research": llm.text,
+        "messages": [AIMessage(content=f"[Researcher]\n{llm.text}")],
         "context_sources": sources[:5],
-        "input_tokens": state["input_tokens"] + tokens_in,
-        "output_tokens": state["output_tokens"] + tokens_out,
-        "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "researcher", "completed", output=research, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "researcher", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, "writer", "running")
     return result
 
@@ -119,18 +108,14 @@ Brand context:
 
 Write a concise email (under 150 words) with subject line. Use technical peer tone."""
 
-    draft = await call_llm(prompt, session_id=session_id, node="writer")
-    tokens_in = _estimate_tokens(prompt)
-    tokens_out = _estimate_tokens(draft)
+    llm = await call_llm(prompt, session_id=session_id, node="writer")
 
     result = {
-        "draft": draft,
-        "messages": [AIMessage(content=f"[Writer]\n{draft}")],
-        "input_tokens": state["input_tokens"] + tokens_in,
-        "output_tokens": state["output_tokens"] + tokens_out,
-        "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        "draft": llm.text,
+        "messages": [AIMessage(content=f"[Writer]\n{llm.text}")],
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "writer", "completed", output=draft, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "writer", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, "critic", "running")
     return result
 
@@ -154,12 +139,10 @@ CONFIDENCE: <score>
 ISSUES: <list or "none">
 DECISIONS: <key decisions made>"""
 
-    critique = await call_llm(prompt, session_id=session_id, node="critic")
-    tokens_in = _estimate_tokens(prompt)
-    tokens_out = _estimate_tokens(critique)
+    llm = await call_llm(prompt, session_id=session_id, node="critic")
 
     confidence = 0.85
-    for line in critique.split("\n"):
+    for line in llm.text.split("\n"):
         if line.startswith("CONFIDENCE:"):
             try:
                 confidence = float(line.split(":")[1].strip())
@@ -168,7 +151,7 @@ DECISIONS: <key decisions made>"""
 
     decisions = []
     capture = False
-    for line in critique.split("\n"):
+    for line in llm.text.split("\n"):
         if line.startswith("DECISIONS:"):
             capture = True
             rest = line.split(":", 1)[1].strip()
@@ -180,16 +163,14 @@ DECISIONS: <key decisions made>"""
     requires_approval = confidence < threshold
 
     result = {
-        "critique": critique,
+        "critique": llm.text,
         "confidence_score": confidence,
         "requires_approval": requires_approval,
         "key_decisions": decisions,
-        "messages": [AIMessage(content=f"[Critic]\n{critique}")],
-        "input_tokens": state["input_tokens"] + tokens_in,
-        "output_tokens": state["output_tokens"] + tokens_out,
-        "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
+        "messages": [AIMessage(content=f"[Critic]\n{llm.text}")],
+        **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "critic", "completed", output=critique, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "critic", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     return result
 
 

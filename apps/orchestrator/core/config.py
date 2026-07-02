@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     use_postgres: bool = False
     approval_threshold: float = 0.9
     cost_alert_threshold: float = 1.0
+    api_key: str = ""
+    context_window_tokens: int = 1_048_576
 
 
 settings = Settings()

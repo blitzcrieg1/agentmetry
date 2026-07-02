@@ -152,5 +152,6 @@ async def get_system_health() -> dict[str, Any]:
             "rag": rag_mode,
             "llm": llm_mode,
             "telemetry": postgres.get("backend", "sqlite"),
+            "context_window_tokens": settings.context_window_tokens,
         },
     }

@@ -41,10 +41,21 @@ class ObsidianClient:
                 skills.append(config)
         return skills
 
+    def _resolve_safe_path(self, relative_path: str) -> Path | None:
+        """Resolve a vault-relative path, rejecting traversal outside the vault."""
+        rel = Path(relative_path)
+        if rel.is_absolute() or ".." in rel.parts:
+            return None
+        resolved = (self.vault_path / rel).resolve()
+        vault_root = self.vault_path.resolve()
+        if resolved != vault_root and vault_root not in resolved.parents:
+            return None
+        return resolved
+
     def read_note(self, relative_path: str) -> str | None:
         """Read a markdown note by vault-relative path."""
-        file = self.vault_path / relative_path
-        if not file.exists():
+        file = self._resolve_safe_path(relative_path)
+        if file is None or not file.exists() or not file.is_file():
             return None
         return file.read_text(encoding="utf-8")
 
@@ -157,6 +168,7 @@ class ObsidianClient:
         thread_id: str,
         skill_name: str,
         user_input: str,
+        nodes: list[str] | None = None,
     ) -> Path:
         """Write a running task note to 20-Active-Loops/."""
         timestamp = datetime.now(timezone.utc)
@@ -170,6 +182,10 @@ class ObsidianClient:
             "created": timestamp.isoformat(),
         }
 
+        pipeline_nodes = nodes or []
+        pipeline_lines = "\n".join(f"- [ ] {n.replace('_', ' ').title()}" for n in pipeline_nodes)
+        pipeline_section = f"## Pipeline\n{pipeline_lines}" if pipeline_lines else ""
+
         body = f"""# Active Task
 
 **Status:** Running  
@@ -178,13 +194,7 @@ class ObsidianClient:
 ## User Input
 {user_input}
 
-## Pipeline
-- [ ] Planner
-- [ ] Researcher
-- [ ] Writer
-- [ ] Critic
-- [ ] Approval Gate
-- [ ] Finalize
+{pipeline_section}
 """
 
         yaml_block = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
@@ -202,6 +212,11 @@ class ObsidianClient:
     ) -> None:
         """Update an active-loop note when a thread completes or terminates."""
         file = Path(path)
+        if not file.is_absolute():
+            resolved = self._resolve_safe_path(str(file))
+            if resolved is None:
+                return
+            file = resolved
         if not file.exists():
             return
 

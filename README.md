@@ -2,48 +2,53 @@
 
 A state machine execution environment where Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
 
-## Quick Start (Docker — full stack)
+## Quick Start (Local — Gemini, no Docker)
 
-Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), then:
+Recommended setup. Uses Google Gemini for LLM + embeddings and in-memory semantic RAG.
 
-```bash
-docker compose up -d --build
-docker exec -it agentic-os-ollama-1 ollama pull llama3.2
-docker exec -it agentic-os-ollama-1 ollama pull nomic-embed-text
+```powershell
+# 1. Configure
+copy .env.example apps\orchestrator\.env
+# Edit apps\orchestrator\.env — set GEMINI_API_KEY
+
+# 2. Orchestrator
+cd apps\orchestrator
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev]"
+uvicorn api.main:app --reload --port 8000
+
+# 3. Dashboard (new terminal)
+cd apps\dashboard
+npm install
+npm run dev
 ```
 
 Open http://localhost:3000
 
-This starts Qdrant, PostgreSQL, Ollama, the orchestrator, and the dashboard.
+System Status should show **Gemini: up** and **RAG: semantic memory**.
 
-## Quick Start (Local dev)
+## Quick Start (Docker — full stack)
+
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ```bash
 cp .env.example .env
+# Set GEMINI_API_KEY in .env for the orchestrator service
 
-# Infrastructure only
-docker compose up -d qdrant postgres ollama
-
-# Orchestrator
-cd apps/orchestrator
-python -m venv .venv && .venv\Scripts\activate
-pip install -e .
-uvicorn api.main:app --reload --port 8000
-
-# Dashboard
-cd apps/dashboard && npm install && npm run dev
+docker compose up -d --build
 ```
 
-Without Docker, the system runs in dev mode with keyword RAG fallback and mock LLM responses.
+Open http://localhost:3000
 
-## Adding a New Skill
+Docker starts Qdrant, PostgreSQL, Ollama, orchestrator, and dashboard. Pass `GEMINI_API_KEY` via compose env or a `.env` file at repo root.
 
-1. Create a YAML definition in `vault/.system/skill-definitions/my_skill.yaml`
-2. Implement a graph builder in `apps/orchestrator/core/graphs/`
-3. Register the builder in `core/graphs/registry.py` under `_GRAPH_BUILDERS`
-4. Call `POST /api/v1/skills/reload` or restart the orchestrator
+Optional Ollama models (if not using Gemini):
 
-The skill auto-appears in The Armory on next dashboard load.
+```bash
+docker exec -it agentic-os-ollama-1 ollama pull llama3.2
+docker exec -it agentic-os-ollama-1 ollama pull nomic-embed-text
+```
 
 ## Skills
 
@@ -51,6 +56,16 @@ The skill auto-appears in The Armory on next dashboard load.
 |-------|-------|-------------|
 | `lead_gen` | Planner → Researcher → Writer → Critic → Approval → Finalize | B2B outreach with human approval gate |
 | `summarize_meeting` | Ingest → Extract → Summarize → Finalize | Meeting notes → action items |
+| `weekly_review` | Collect → Analyze → Prioritize → Finalize | Weekly vault review and priorities |
+
+## Adding a New Skill
+
+1. Create a YAML definition in `vault/.system/skill-definitions/my_skill.yaml`
+2. Implement a graph builder in `apps/orchestrator/core/graphs/`
+3. Register the builder in `core/graphs/registry.py` under `_GRAPH_BUILDERS`
+4. Click **Reload Skills** in the dashboard or `POST /api/v1/skills/reload`
+
+The skill auto-appears in The Armory on next load.
 
 ## Architecture
 
@@ -60,17 +75,20 @@ The skill auto-appears in The Armory on next dashboard load.
 
 ## API Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/v1/health` | System status (vault, Qdrant, Ollama, Postgres) |
-| `GET /api/v1/telemetry` | Historical execution stats |
-| `GET /api/v1/vault/tree` | Vault folder/file listing |
-| `GET /api/v1/vault/notes/{path}` | Read a vault note |
-| `GET /api/v1/skills/` | List skills + registered graphs |
-| `POST /api/v1/skills/reload` | Re-scan vault skill definitions |
-| `POST /api/v1/skills/execute` | Run a skill |
-| `POST /api/v1/skills/approve` | Approve/reject paused skill |
-| `WS /ws/{session_id}` | Real-time telemetry stream |
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /api/v1/health` | Open | System status (vault, Qdrant, Gemini, Postgres) |
+| `GET /api/v1/telemetry` | Open | Historical execution stats |
+| `GET /api/v1/vault/tree` | Open | Vault folder/file listing |
+| `GET /api/v1/vault/notes/{path}` | Open | Read a vault note (path-jailed) |
+| `GET /api/v1/skills/` | Open | List skills + registered graphs |
+| `POST /api/v1/skills/reload` | API key | Re-scan vault skill definitions |
+| `POST /api/v1/skills/execute` | API key | Run a skill |
+| `POST /api/v1/skills/approve` | API key | Approve/reject paused skill |
+| `POST /api/v1/vault/reindex` | API key | Full vault reindex |
+| `WS /ws/{session_id}` | Open | Real-time telemetry stream |
+
+Set `BLACKBOX_API_KEY` in orchestrator `.env` and `NEXT_PUBLIC_BLACKBOX_API_KEY` in dashboard env to enable auth. Leave empty for open local dev.
 
 ## Environment
 
@@ -78,6 +96,27 @@ See `.env.example` for all configuration options. Key variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BLACKBOX_USE_POSTGRES` | `false` | Use PostgreSQL for telemetry (auto `true` in Docker) |
+| `BLACKBOX_LLM_PROVIDER` | `gemini` | LLM backend: `gemini`, `ollama`, or `mock` |
+| `GEMINI_API_KEY` | — | Google AI Studio API key |
+| `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash` | Generation model |
+| `BLACKBOX_GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | RAG embedding model |
+| `BLACKBOX_API_KEY` | empty | Optional API key for mutating endpoints |
+| `BLACKBOX_USE_POSTGRES` | `false` | Use PostgreSQL for telemetry + checkpoints |
 | `BLACKBOX_VAULT_PATH` | `./vault` | Obsidian vault location |
 | `BLACKBOX_COST_ALERT_THRESHOLD` | `1.0` | Session cost alert in USD |
+
+## Production Features
+
+- **Durable checkpoints** — LangGraph state persisted to SQLite (`data/checkpoints.db`) or Postgres
+- **Pending approval recovery** — Paused threads survive orchestrator restarts
+- **Gemini token/cost tracking** — Real usage metadata from API responses
+- **Incremental vault indexing** — File watcher re-indexes only changed notes
+- **Path-jailed vault reads** — Prevents directory traversal outside vault root
+
+## Tests
+
+```bash
+cd apps/orchestrator
+pip install -e ".[dev]"
+pytest
+```
