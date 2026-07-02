@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Next.js
+apps/dashboard/.next/
+apps/dashboard/out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Vault system state (git ignored per blueprint)
+vault/.system/agent-state/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+data/
+
+# Logs
+*.log
