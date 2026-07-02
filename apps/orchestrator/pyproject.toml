@@ -19,7 +19,7 @@ dependencies = [
     "httpx>=0.28.0",
     "websockets>=14.0",
     "sqlalchemy>=2.0.0",
-    "aiosqlite>=0.20.0",
+    "psycopg2-binary>=2.9.0",
 ]
 
 [project.optional-dependencies]

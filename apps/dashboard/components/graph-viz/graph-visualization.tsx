@@ -61,11 +61,11 @@ export function GraphVisualization() {
   );
 
   const edges: Edge[] = useMemo(() => {
-    const chain = ["planner", "researcher", "writer", "critic", "human_approval", "finalize"];
-    return chain.slice(0, -1).map((src, i) => ({
-      id: `${src}-${chain[i + 1]}`,
+    const ids = graphNodes.map((n) => n.id);
+    return ids.slice(0, -1).map((src, i) => ({
+      id: `${src}-${ids[i + 1]}`,
       source: src,
-      target: chain[i + 1],
+      target: ids[i + 1],
       animated: graphNodes.find((n) => n.id === src)?.status === "running",
       style: { stroke: "#475569" },
     }));

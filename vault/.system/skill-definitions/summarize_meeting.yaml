@@ -1,0 +1,19 @@
+name: summarize_meeting
+display_name: Meeting Summarizer
+description: Summarize meeting notes and extract action items from the vault
+required_tags:
+  - meeting
+  - inbox
+knowledge_tags:
+  - brand
+  - guidelines
+system_prompt: |
+  You are a meeting intelligence agent. Extract clear summaries, decisions,
+  and action items from meeting notes. Use concise bullet points.
+graph: summarize_meeting
+approval_threshold: 1.0
+nodes:
+  - ingest
+  - extract
+  - summarize
+  - finalize

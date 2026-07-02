@@ -57,6 +57,30 @@ class ObsidianClient:
                 files.append(path)
         return files
 
+    def list_vault_entries(self) -> list[dict[str, Any]]:
+        """Return folders and markdown files for the Memory Navigator."""
+        entries: list[dict[str, Any]] = []
+        skip = {".system", ".git"}
+
+        for item in sorted(self.vault_path.iterdir()):
+            if item.name in skip or item.name.startswith("."):
+                continue
+            if item.is_dir():
+                entries.append({
+                    "type": "folder",
+                    "path": item.name,
+                    "name": item.name,
+                })
+                for md in sorted(item.rglob("*.md")):
+                    rel = md.relative_to(self.vault_path).as_posix()
+                    entries.append({
+                        "type": "file",
+                        "path": rel,
+                        "name": md.name,
+                        "folder": md.parent.as_posix(),
+                    })
+        return entries
+
     def parse_frontmatter(self, content: str) -> tuple[dict[str, Any], str]:
         """Split YAML frontmatter from markdown body."""
         match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
@@ -127,6 +151,70 @@ class ObsidianClient:
         target_file = self.archive_path / filename
         target_file.write_text(content, encoding="utf-8")
         return target_file
+
+    def write_active_loop(
+        self,
+        thread_id: str,
+        skill_name: str,
+        user_input: str,
+    ) -> Path:
+        """Write a running task note to 20-Active-Loops/."""
+        timestamp = datetime.now(timezone.utc)
+        filename = f"{timestamp.strftime('%Y-%m-%d-%H%M')}-{skill_name}-{thread_id[:8]}.md"
+
+        frontmatter: dict[str, Any] = {
+            "type": "active-loop",
+            "skill": skill_name,
+            "thread_id": thread_id,
+            "status": "running",
+            "created": timestamp.isoformat(),
+        }
+
+        body = f"""# Active Task
+
+**Status:** Running  
+**Thread:** `{thread_id}`
+
+## User Input
+{user_input}
+
+## Pipeline
+- [ ] Planner
+- [ ] Researcher
+- [ ] Writer
+- [ ] Critic
+- [ ] Approval Gate
+- [ ] Finalize
+"""
+
+        yaml_block = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+        content = f"---\n{yaml_block}---\n\n{body}"
+
+        target_file = self.active_path / filename
+        target_file.write_text(content, encoding="utf-8")
+        return target_file
+
+    def resolve_active_loop(
+        self,
+        path: Path | str,
+        status: str,
+        note: str = "",
+    ) -> None:
+        """Update an active-loop note when a thread completes or terminates."""
+        file = Path(path)
+        if not file.exists():
+            return
+
+        content = file.read_text(encoding="utf-8")
+        meta, body = self.parse_frontmatter(content)
+        meta["status"] = status
+        meta["resolved"] = datetime.now(timezone.utc).isoformat()
+
+        if note:
+            body = body.rstrip() + f"\n\n## Resolution\n{note}\n"
+
+        yaml_block = yaml.dump(meta, default_flow_style=False, allow_unicode=True)
+        file.write_text(f"---\n{yaml_block}---\n\n{body}", encoding="utf-8")
 
     def write_crash_report(self, thread_id: str, error: str, skill_name: str) -> Path:
         """Write a crash report when a thread is terminated."""

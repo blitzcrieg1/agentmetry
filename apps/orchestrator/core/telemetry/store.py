@@ -1,15 +1,16 @@
-"""Telemetry store — SQLite-backed agent performance metrics."""
+"""Telemetry store — PostgreSQL or SQLite agent performance metrics."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine, desc
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from core.config import settings
+from core.config import get_database_url
 
 
 class Base(DeclarativeBase):
@@ -34,14 +35,14 @@ class ExecutionLog(Base):
 
 class TelemetryStore:
     def __init__(self, database_url: str | None = None):
-        url = database_url or settings.database_url.replace("aiosqlite", "pysqlite")
+        url = database_url or get_database_url()
         if url.startswith("sqlite"):
-            from pathlib import Path
             db_path = url.split("///")[-1]
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(url, echo=False)
+        self.engine = create_engine(url, echo=False, pool_pre_ping=True)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
+        self.backend = "postgres" if url.startswith("postgresql") else "sqlite"
 
     def log_execution(
         self,
@@ -77,20 +78,39 @@ class TelemetryStore:
             logs = session.query(ExecutionLog).all()
             if not logs:
                 return {
+                    "backend": self.backend,
                     "total_runs": 0,
                     "success_rate": 0.0,
                     "total_cost": 0.0,
                     "avg_latency_ms": 0,
+                    "recent_runs": [],
                 }
 
             successes = sum(1 for l in logs if l.status in ("completed", "approved"))
+            recent = (
+                session.query(ExecutionLog)
+                .order_by(desc(ExecutionLog.created_at))
+                .limit(10)
+                .all()
+            )
             return {
+                "backend": self.backend,
                 "total_runs": len(logs),
                 "success_rate": successes / len(logs),
                 "total_cost": sum(l.cost for l in logs),
                 "avg_latency_ms": sum(l.latency_ms for l in logs) // len(logs),
                 "total_input_tokens": sum(l.input_tokens for l in logs),
                 "total_output_tokens": sum(l.output_tokens for l in logs),
+                "recent_runs": [
+                    {
+                        "skill": r.skill_name,
+                        "status": r.status,
+                        "cost": r.cost,
+                        "latency_ms": r.latency_ms,
+                        "created": r.created_at.isoformat() if r.created_at else None,
+                    }
+                    for r in recent
+                ],
             }
 
     def detect_drift(self, messages: list[str], threshold: float = 0.8) -> bool:

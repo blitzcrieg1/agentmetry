@@ -7,8 +7,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.skills import router as skills_router
+from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
 from core.config import settings
+from core.health import get_system_health
 from core.memory.vault_watcher import VaultWatcher
 from core.telemetry.store import TelemetryStore
 
@@ -38,22 +40,23 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://dashboard:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(skills_router, prefix="/api/v1")
+app.include_router(vault_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
 async def health():
-    return {
-        "status": "ok",
-        "vault": str(settings.vault_path),
-        "qdrant": settings.qdrant_url,
-    }
+    return await get_system_health()
 
 
 @app.get("/api/v1/telemetry")

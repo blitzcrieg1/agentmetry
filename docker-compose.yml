@@ -19,6 +19,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blackbox -d agentic_os"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -28,7 +33,45 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
 
+  orchestrator:
+    build:
+      context: ./apps/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      BLACKBOX_VAULT_PATH: /vault
+      BLACKBOX_QDRANT_URL: http://qdrant:6333
+      BLACKBOX_OLLAMA_BASE_URL: http://ollama:11434
+      BLACKBOX_USE_POSTGRES: "true"
+      BLACKBOX_POSTGRES_URL: postgresql://blackbox:blackbox@postgres:5432/agentic_os
+    volumes:
+      - ./vault:/vault
+      - orchestrator_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_ORCHESTRATOR_URL: http://localhost:8000
+        NEXT_PUBLIC_WS_URL: ws://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
   postgres_data:
   ollama_data:
+  orchestrator_data:

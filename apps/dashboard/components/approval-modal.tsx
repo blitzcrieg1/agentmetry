@@ -13,7 +13,6 @@ export function ApprovalModal() {
   const threadId = useAgentStore((s) => s.threadId);
   const setExecutionStatus = useAgentStore((s) => s.setExecutionStatus);
   const clearApproval = useAgentStore((s) => s.clearApproval);
-  const updateNode = useAgentStore((s) => s.updateNode);
   const appendTerminal = useAgentStore((s) => s.appendTerminal);
 
   const [editedDraft, setEditedDraft] = useState("");
@@ -38,11 +37,9 @@ export function ApprovalModal() {
       });
       const data = await res.json();
 
-      if (data.status === "approved") {
-        updateNode("human_approval", "completed");
-        updateNode("finalize", "completed");
+      if (data.status === "approved" || data.status === "completed") {
         setExecutionStatus("completed");
-        appendTerminal("✓ Approved and finalized");
+        appendTerminal(`✓ ${data.status === "approved" ? "Approved" : "Completed"} — archived`);
       } else if (data.status === "terminated") {
         setExecutionStatus("failed");
         appendTerminal("✗ Thread terminated");

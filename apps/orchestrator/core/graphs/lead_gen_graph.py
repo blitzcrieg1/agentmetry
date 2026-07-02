@@ -7,6 +7,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.config import settings
+from core.graphs.checkpointer import checkpointer
+from core.graphs.node_events import emit_node
+from core.llm.ollama import call_llm
 
 
 class LeadGenState(TypedDict):
@@ -28,41 +31,17 @@ class LeadGenState(TypedDict):
     context_sources: list[str]
     key_decisions: list[str]
     thread_id: str
+    session_id: str
 
 
 def _estimate_tokens(text: str) -> int:
     return len(text.split())
 
 
-async def _call_llm(prompt: str, system: str = "") -> str:
-    """Call Ollama LLM with fallback to structured mock response."""
-    try:
-        import httpx
-
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{settings.ollama_base_url}/api/chat",
-                json={
-                    "model": settings.ollama_model,
-                    "messages": messages,
-                    "stream": False,
-                },
-                timeout=120.0,
-            )
-            if resp.status_code == 200:
-                return resp.json()["message"]["content"]
-    except Exception:
-        pass
-
-    return f"[Mock LLM Response for: {prompt[:100]}...]"
-
-
 async def planner_node(state: LeadGenState) -> dict[str, Any]:
+    session_id = state.get("session_id", "")
+    await emit_node(session_id, "planner", "running")
+
     system = state["skill_config"].get("system_prompt", "")
     context = state["system_context"]
 
@@ -75,20 +54,25 @@ Available context:
 
 Output a numbered plan with: research targets, personalization angles, and email structure."""
 
-    plan = await _call_llm(prompt, system)
+    plan = await call_llm(prompt, system, session_id=session_id, node="planner")
     tokens_in = _estimate_tokens(prompt + system)
     tokens_out = _estimate_tokens(plan)
 
-    return {
+    result = {
         "plan": plan,
         "messages": [AIMessage(content=f"[Planner]\n{plan}")],
         "input_tokens": state.get("input_tokens", 0) + tokens_in,
         "output_tokens": state.get("output_tokens", 0) + tokens_out,
         "cost": state.get("cost", 0) + (tokens_in * 0.000001 + tokens_out * 0.000003),
     }
+    await emit_node(session_id, "planner", "completed", output=plan, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "researcher", "running")
+    return result
 
 
 async def researcher_node(state: LeadGenState) -> dict[str, Any]:
+    session_id = state.get("session_id", "")
+
     prompt = f"""You are the Researcher agent. Based on this plan, gather prospect intelligence.
 
 Plan:
@@ -99,7 +83,7 @@ Context from vault:
 
 Identify top prospects, their recent news, and personalization hooks."""
 
-    research = await _call_llm(prompt)
+    research = await call_llm(prompt, session_id=session_id, node="researcher")
     tokens_in = _estimate_tokens(prompt)
     tokens_out = _estimate_tokens(research)
 
@@ -109,7 +93,7 @@ Identify top prospects, their recent news, and personalization hooks."""
         if line.startswith("[Source:")
     ]
 
-    return {
+    result = {
         "research": research,
         "messages": [AIMessage(content=f"[Researcher]\n{research}")],
         "context_sources": sources[:5],
@@ -117,9 +101,14 @@ Identify top prospects, their recent news, and personalization hooks."""
         "output_tokens": state["output_tokens"] + tokens_out,
         "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
     }
+    await emit_node(session_id, "researcher", "completed", output=research, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "writer", "running")
+    return result
 
 
 async def writer_node(state: LeadGenState) -> dict[str, Any]:
+    session_id = state.get("session_id", "")
+
     prompt = f"""You are the Writer agent. Draft a personalized outreach email.
 
 Research:
@@ -130,20 +119,24 @@ Brand context:
 
 Write a concise email (under 150 words) with subject line. Use technical peer tone."""
 
-    draft = await _call_llm(prompt)
+    draft = await call_llm(prompt, session_id=session_id, node="writer")
     tokens_in = _estimate_tokens(prompt)
     tokens_out = _estimate_tokens(draft)
 
-    return {
+    result = {
         "draft": draft,
         "messages": [AIMessage(content=f"[Writer]\n{draft}")],
         "input_tokens": state["input_tokens"] + tokens_in,
         "output_tokens": state["output_tokens"] + tokens_out,
         "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
     }
+    await emit_node(session_id, "writer", "completed", output=draft, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, "critic", "running")
+    return result
 
 
 async def critic_node(state: LeadGenState) -> dict[str, Any]:
+    session_id = state.get("session_id", "")
     threshold = state["skill_config"].get(
         "approval_threshold", settings.approval_threshold
     )
@@ -161,7 +154,7 @@ CONFIDENCE: <score>
 ISSUES: <list or "none">
 DECISIONS: <key decisions made>"""
 
-    critique = await _call_llm(prompt)
+    critique = await call_llm(prompt, session_id=session_id, node="critic")
     tokens_in = _estimate_tokens(prompt)
     tokens_out = _estimate_tokens(critique)
 
@@ -186,7 +179,7 @@ DECISIONS: <key decisions made>"""
 
     requires_approval = confidence < threshold
 
-    return {
+    result = {
         "critique": critique,
         "confidence_score": confidence,
         "requires_approval": requires_approval,
@@ -195,6 +188,16 @@ DECISIONS: <key decisions made>"""
         "input_tokens": state["input_tokens"] + tokens_in,
         "output_tokens": state["output_tokens"] + tokens_out,
         "cost": state["cost"] + (tokens_in * 0.000001 + tokens_out * 0.000003),
+    }
+    await emit_node(session_id, "critic", "completed", output=critique, metrics=_metrics({**state, **result}))
+    return result
+
+
+def _metrics(state: LeadGenState) -> dict[str, Any]:
+    return {
+        "input_tokens": state.get("input_tokens", 0),
+        "output_tokens": state.get("output_tokens", 0),
+        "cost": state.get("cost", 0),
     }
 
 
@@ -205,26 +208,36 @@ def should_request_approval(state: LeadGenState) -> str:
 
 
 async def human_approval_node(state: LeadGenState) -> dict[str, Any]:
-    """Pause point — external approval injected via graph resume."""
+    """Runs after graph resume — records approval and continues to finalize."""
+    session_id = state.get("session_id", "")
+    if state.get("approved"):
+        await emit_node(session_id, "human_approval", "completed", output="Approved by human")
+    else:
+        await emit_node(session_id, "human_approval", "waiting", output=state.get("draft", ""))
     return {
         "messages": [
             AIMessage(
                 content=f"[Approval Gate] Confidence {state['confidence_score']:.2f} "
-                f"— waiting for human approval."
+                f"— {'approved' if state.get('approved') else 'waiting for human approval'}."
             )
         ],
     }
 
 
 async def finalize_node(state: LeadGenState) -> dict[str, Any]:
+    session_id = state.get("session_id", "")
+    await emit_node(session_id, "finalize", "running")
+
     final = state.get("modified_input") or state["draft"]
     status = "approved" if state.get("approved") else "auto-approved"
 
-    return {
+    result = {
         "messages": [
             AIMessage(content=f"[Final Output — {status}]\n{final}")
         ],
     }
+    await emit_node(session_id, "finalize", "completed", output=final, metrics=_metrics(state))
+    return result
 
 
 def build_lead_gen_graph() -> StateGraph:
@@ -248,4 +261,11 @@ def build_lead_gen_graph() -> StateGraph:
     return graph
 
 
-lead_gen_graph = build_lead_gen_graph().compile()
+def compile_lead_gen_graph():
+    return build_lead_gen_graph().compile(
+        checkpointer=checkpointer,
+        interrupt_before=["human_approval"],
+    )
+
+
+lead_gen_graph = compile_lead_gen_graph()

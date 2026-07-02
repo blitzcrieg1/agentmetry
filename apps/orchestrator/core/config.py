@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
     embedding_model: str = "nomic-embed-text"
     collection_name: str = "agent_memory"
-    database_url: str = "sqlite+aiosqlite:///./data/telemetry.db"
+    database_url: str = "sqlite:///./data/telemetry.db"
+    postgres_url: str = "postgresql://blackbox:blackbox@localhost:5432/agentic_os"
+    use_postgres: bool = False
     approval_threshold: float = 0.9
     cost_alert_threshold: float = 1.0
 
@@ -19,3 +21,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_database_url() -> str:
+    """Return PostgreSQL URL when enabled, otherwise SQLite."""
+    if settings.use_postgres:
+        return settings.postgres_url
+    return settings.database_url

@@ -1,13 +1,7 @@
 import { create } from "zustand";
+import { LEAD_GEN_NODES, type GraphNodeState, type NodeStatus } from "@/lib/graph-utils";
 
-export type NodeStatus = "idle" | "running" | "completed" | "error" | "waiting";
-
-export interface GraphNodeState {
-  id: string;
-  label: string;
-  status: NodeStatus;
-  output: string;
-}
+export type { GraphNodeState, NodeStatus };
 
 export interface TelemetryMetrics {
   inputTokens: number;
@@ -22,6 +16,7 @@ export interface Skill {
   name: string;
   display_name: string;
   description: string;
+  nodes?: string[];
 }
 
 interface AgentStore {
@@ -42,25 +37,18 @@ interface AgentStore {
   setActiveSkill: (skill: string) => void;
   setThreadId: (id: string) => void;
   setExecutionStatus: (status: AgentStore["executionStatus"]) => void;
+  setGraphNodes: (nodes: GraphNodeState[]) => void;
   updateNode: (id: string, status: NodeStatus, output?: string) => void;
   appendTerminal: (line: string) => void;
+  appendStreamToken: (node: string, token: string) => void;
   clearTerminal: () => void;
   updateMetrics: (partial: Partial<TelemetryMetrics>) => void;
   setApproval: (draft: string, confidence: number) => void;
   clearApproval: () => void;
   incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
-  reset: () => void;
+  reset: (nodes?: GraphNodeState[]) => void;
 }
-
-const DEFAULT_NODES: GraphNodeState[] = [
-  { id: "planner", label: "Planner", status: "idle", output: "" },
-  { id: "researcher", label: "Researcher", status: "idle", output: "" },
-  { id: "writer", label: "Writer", status: "idle", output: "" },
-  { id: "critic", label: "Critic", status: "idle", output: "" },
-  { id: "human_approval", label: "Approval Gate", status: "idle", output: "" },
-  { id: "finalize", label: "Finalize", status: "idle", output: "" },
-];
 
 export const useAgentStore = create<AgentStore>((set) => ({
   sessionId: `session-${Date.now()}`,
@@ -68,7 +56,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   activeSkill: null,
   threadId: null,
   executionStatus: "idle",
-  graphNodes: DEFAULT_NODES,
+  graphNodes: LEAD_GEN_NODES,
   terminalOutput: [],
   metrics: {
     inputTokens: 0,
@@ -86,6 +74,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setActiveSkill: (skill) => set({ activeSkill: skill }),
   setThreadId: (id) => set({ threadId: id }),
   setExecutionStatus: (status) => set({ executionStatus: status }),
+  setGraphNodes: (nodes) => set({ graphNodes: nodes }),
   updateNode: (id, status, output) =>
     set((state) => ({
       graphNodes: state.graphNodes.map((n) =>
@@ -94,6 +83,18 @@ export const useAgentStore = create<AgentStore>((set) => ({
     })),
   appendTerminal: (line) =>
     set((state) => ({ terminalOutput: [...state.terminalOutput, line] })),
+  appendStreamToken: (node, token) =>
+    set((state) => {
+      const prefix = `[${node}] `;
+      const lines = [...state.terminalOutput];
+      const last = lines.length - 1;
+      if (last >= 0 && lines[last].startsWith(prefix)) {
+        lines[last] += token;
+      } else {
+        lines.push(prefix + token);
+      }
+      return { terminalOutput: lines };
+    }),
   clearTerminal: () => set({ terminalOutput: [] }),
   updateMetrics: (partial) =>
     set((state) => ({ metrics: { ...state.metrics, ...partial } })),
@@ -108,14 +109,17 @@ export const useAgentStore = create<AgentStore>((set) => ({
       },
     })),
   setWsConnected: (connected) => set({ wsConnected: connected }),
-  reset: () =>
-    set({
-      threadId: null,
-      executionStatus: "idle",
-      graphNodes: DEFAULT_NODES.map((n) => ({ ...n, status: "idle", output: "" })),
-      terminalOutput: [],
-      metrics: { inputTokens: 0, outputTokens: 0, cost: 0, contextUsagePercent: 0, latencyMs: 0 },
-      approvalDraft: "",
-      approvalConfidence: 0,
+  reset: (nodes) =>
+    set((state) => {
+      const base = nodes ?? state.graphNodes;
+      return {
+        threadId: null,
+        executionStatus: "idle",
+        graphNodes: base.map((n) => ({ ...n, status: "idle", output: "" })),
+        terminalOutput: [],
+        metrics: { inputTokens: 0, outputTokens: 0, cost: 0, contextUsagePercent: 0, latencyMs: 0 },
+        approvalDraft: "",
+        approvalConfidence: 0,
+      };
     }),
 }));
