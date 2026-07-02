@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 import httpx
 
@@ -11,14 +10,14 @@ from api.websocket import ws_manager
 from core.config import settings
 
 
-async def call_llm(
+async def call_ollama(
     prompt: str,
     system: str = "",
     *,
     session_id: str = "",
     node: str = "",
-) -> str:
-    """Call Ollama with streaming when session_id is set, mock fallback otherwise."""
+) -> str | None:
+    """Call Ollama. Returns None on failure."""
     messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -44,12 +43,7 @@ async def call_llm(
                 return resp.json()["message"]["content"]
     except Exception:
         pass
-
-    mock = f"[Mock LLM Response for: {prompt[:100]}...]"
-    if session_id and node:
-        for word in mock.split(" "):
-            await ws_manager.send_token_stream(session_id, word + " ", node)
-    return mock
+    return None
 
 
 async def _stream_chat(
@@ -57,7 +51,6 @@ async def _stream_chat(
     session_id: str,
     node: str,
 ) -> str | None:
-    """Stream tokens from Ollama to the dashboard via WebSocket."""
     parts: list[str] = []
     try:
         async with httpx.AsyncClient() as client:

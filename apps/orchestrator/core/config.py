@@ -1,23 +1,42 @@
-from pydantic_settings import BaseSettings
 from pathlib import Path
+
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ORCHESTRATOR_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="BLACKBOX_",
+        env_file=_ORCHESTRATOR_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     vault_path: Path = Path(__file__).resolve().parents[3] / "vault"
     qdrant_url: str = "http://localhost:6333"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
     embedding_model: str = "nomic-embed-text"
+    llm_provider: str = "gemini"  # gemini | ollama | mock
+    gemini_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "BLACKBOX_GEMINI_API_KEY",
+        ),
+    )
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-2"
+    embedding_dimensions: int = 768
     collection_name: str = "agent_memory"
     database_url: str = "sqlite:///./data/telemetry.db"
     postgres_url: str = "postgresql://blackbox:blackbox@localhost:5432/agentic_os"
     use_postgres: bool = False
     approval_threshold: float = 0.9
     cost_alert_threshold: float = 1.0
-
-    class Config:
-        env_prefix = "BLACKBOX_"
-        env_file = ".env"
 
 
 settings = Settings()

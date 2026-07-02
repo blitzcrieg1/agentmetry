@@ -19,6 +19,8 @@ interface HealthResponse {
   vault: ServiceStatus & { path?: string };
   qdrant: ServiceStatus & { url?: string };
   ollama: ServiceStatus & { url?: string; model?: string };
+  gemini?: ServiceStatus & { model?: string; provider?: string };
+  llm_provider?: string;
   postgres?: ServiceStatus;
   modes: { rag: string; llm: string; telemetry?: string };
 }
@@ -81,16 +83,27 @@ export function ServiceStatusPanel() {
           }
         />
         <ServiceRow
-          label="Ollama"
-          status={health?.ollama.status}
+          label="Gemini"
+          status={health?.gemini?.status}
           detail={
-            health?.ollama.status === "up"
-              ? health.ollama.model_ready
-                ? health.ollama.model
-                : "model not pulled"
-              : health?.ollama.fallback
+            health?.gemini?.status === "up"
+              ? health.gemini.model
+              : health?.gemini?.fallback ?? health?.gemini?.detail
           }
         />
+        {health?.llm_provider !== "gemini" && (
+          <ServiceRow
+            label="Ollama"
+            status={health?.ollama.status}
+            detail={
+              health?.ollama.status === "up"
+                ? health.ollama.model_ready
+                  ? health.ollama.model
+                  : "model not pulled"
+                : health?.ollama.fallback
+            }
+          />
+        )}
         {health?.postgres && health.postgres.status !== "skipped" && (
           <ServiceRow
             label="Postgres"

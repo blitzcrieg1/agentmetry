@@ -9,7 +9,7 @@ from langgraph.graph.message import add_messages
 from core.config import settings
 from core.graphs.checkpointer import checkpointer
 from core.graphs.node_events import emit_node
-from core.llm.ollama import call_llm
+from core.llm.client import call_llm
 
 
 class LeadGenState(TypedDict):

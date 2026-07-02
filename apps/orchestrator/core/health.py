@@ -9,6 +9,8 @@ import httpx
 from qdrant_client import QdrantClient
 
 from core.config import get_database_url, settings
+from core.llm.gemini import check_gemini_health
+from core.memory.rag_engine import RAGEngine
 
 
 async def check_vault() -> dict[str, Any]:
@@ -96,24 +98,59 @@ async def get_system_health() -> dict[str, Any]:
     vault = await check_vault()
     qdrant = await check_qdrant()
     ollama = await check_ollama()
+    gemini = await check_gemini_health()
     postgres = await check_postgres()
 
-    services = [vault, qdrant, ollama]
+    provider = settings.llm_provider.lower()
+    if provider == "gemini":
+        llm_status = gemini
+        llm_mode = "gemini" if gemini["status"] == "up" else gemini.get("fallback", "mock")
+    elif provider == "ollama":
+        llm_status = ollama
+        llm_mode = "ollama" if ollama["status"] == "up" else "mock"
+    else:
+        llm_status = gemini if gemini["status"] == "up" else ollama
+        llm_mode = (
+            "gemini" if gemini["status"] == "up"
+            else "ollama" if ollama["status"] == "up"
+            else "mock"
+        )
+
+    services = [vault, qdrant]
+    if provider == "gemini" or gemini["status"] == "up":
+        services.append(gemini)
+    if provider == "ollama":
+        services.append(ollama)
     if postgres["status"] != "skipped":
         services.append(postgres)
 
-    all_up = all(s["status"] == "up" for s in services)
-    degraded = not all_up and vault["status"] == "up"
+    memory_chunks = RAGEngine.memory_chunk_count()
+    if qdrant["status"] == "up":
+        rag_mode = "vector"
+    elif memory_chunks > 0 and gemini["status"] == "up":
+        rag_mode = "semantic_memory"
+    elif memory_chunks > 0:
+        rag_mode = "memory"
+    else:
+        rag_mode = "keyword_fallback"
+
+    core_up = vault["status"] == "up" and (
+        gemini["status"] == "up" or ollama["status"] == "up"
+    )
+    all_up = all(s["status"] == "up" for s in services if s["status"] != "skipped")
+    degraded = not all_up and core_up
 
     return {
-        "status": "ok" if all_up else ("degraded" if degraded else "down"),
+        "status": "ok" if core_up else ("degraded" if degraded else "down"),
         "vault": vault,
         "qdrant": qdrant,
         "ollama": ollama,
+        "gemini": gemini,
+        "llm_provider": provider,
         "postgres": postgres,
         "modes": {
-            "rag": "vector" if qdrant["status"] == "up" else "keyword_fallback",
-            "llm": "live" if ollama["status"] == "up" else "mock",
+            "rag": rag_mode,
+            "llm": llm_mode,
             "telemetry": postgres.get("backend", "sqlite"),
         },
     }
