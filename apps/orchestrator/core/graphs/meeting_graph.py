@@ -6,7 +6,6 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
-from core.graphs.checkpointer import checkpointer
 from core.graphs.node_events import emit_node
 from core.graphs.usage_helpers import merge_llm_usage
 from core.llm.client import call_llm
@@ -125,4 +124,7 @@ def build_meeting_graph() -> StateGraph:
     return graph
 
 
-meeting_graph = build_meeting_graph().compile(checkpointer=checkpointer)
+def compile_meeting_graph():
+    from core.graphs.checkpointer import get_checkpointer
+
+    return build_meeting_graph().compile(checkpointer=get_checkpointer())

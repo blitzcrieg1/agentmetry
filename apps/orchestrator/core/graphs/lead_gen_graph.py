@@ -7,7 +7,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.config import settings
-from core.graphs.checkpointer import checkpointer
 from core.graphs.node_events import emit_node
 from core.graphs.usage_helpers import merge_llm_usage
 from core.llm.client import call_llm
@@ -243,10 +242,9 @@ def build_lead_gen_graph() -> StateGraph:
 
 
 def compile_lead_gen_graph():
+    from core.graphs.checkpointer import get_checkpointer
+
     return build_lead_gen_graph().compile(
-        checkpointer=checkpointer,
+        checkpointer=get_checkpointer(),
         interrupt_before=["human_approval"],
     )
-
-
-lead_gen_graph = compile_lead_gen_graph()

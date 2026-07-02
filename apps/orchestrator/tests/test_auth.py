@@ -11,7 +11,8 @@ def client(monkeypatch):
     monkeypatch.setattr(settings, "api_key", "test-secret")
     from api.main import app
 
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_execute_requires_api_key(client: TestClient):

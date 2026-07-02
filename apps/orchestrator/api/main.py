@@ -7,11 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes.skills import recover_pending_threads, router as skills_router
+from api.routes.skills import recover_pending_threads, router as skills_router, skill_registry
 from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
 from core.auth import require_api_key
 from core.config import settings
+from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
 from core.health import get_system_health
 from core.memory.vault_watcher import VaultWatcher
 from core.telemetry.store import TelemetryStore
@@ -25,6 +26,8 @@ telemetry = TelemetryStore()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global vault_watcher
+    await init_checkpointer()
+    skill_registry.reload()
     await recover_pending_threads()
     vault_watcher = VaultWatcher()
     try:
@@ -34,6 +37,7 @@ async def lifespan(app: FastAPI):
     yield
     if vault_watcher:
         vault_watcher.stop()
+    await shutdown_checkpointer()
 
 
 app = FastAPI(

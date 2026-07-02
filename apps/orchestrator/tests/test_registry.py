@@ -1,15 +1,17 @@
 """Tests for skill registry discovery."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
 
+from core.graphs.checkpointer import init_checkpointer
 from core.graphs.registry import SkillRegistry
 from core.memory.obsidian_client import ObsidianClient
 
 
 @pytest.fixture
-def registry(tmp_path: Path) -> SkillRegistry:
+def registry(tmp_path: Path):
     skill_dir = tmp_path / ".system" / "skill-definitions"
     skill_dir.mkdir(parents=True)
     (skill_dir / "weekly_review.yaml").write_text(
@@ -26,7 +28,10 @@ nodes:
 """.strip(),
         encoding="utf-8",
     )
-    return SkillRegistry(ObsidianClient(tmp_path))
+    reg = SkillRegistry(ObsidianClient(tmp_path))
+    asyncio.run(init_checkpointer())
+    reg.reload()
+    return reg
 
 
 def test_weekly_review_registered(registry: SkillRegistry):

@@ -5,16 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from core.graphs.lead_gen_graph import compile_lead_gen_graph
-from core.graphs.meeting_graph import build_meeting_graph
-from core.graphs.weekly_review_graph import build_weekly_review_graph
-from core.graphs.checkpointer import checkpointer
+from core.graphs.meeting_graph import compile_meeting_graph
+from core.graphs.weekly_review_graph import compile_weekly_review_graph
 from core.memory.obsidian_client import ObsidianClient
 
 
 _GRAPH_BUILDERS: dict[str, Any] = {
     "lead_gen": compile_lead_gen_graph,
-    "summarize_meeting": lambda: build_meeting_graph().compile(checkpointer=checkpointer),
-    "weekly_review": lambda: build_weekly_review_graph(),
+    "summarize_meeting": compile_meeting_graph,
+    "weekly_review": compile_weekly_review_graph,
 }
 
 
@@ -24,7 +23,6 @@ class SkillRegistry:
     def __init__(self, obsidian: ObsidianClient):
         self.obsidian = obsidian
         self._graphs: dict[str, Any] = {}
-        self._refresh()
 
     def _refresh(self) -> None:
         self._graphs.clear()
