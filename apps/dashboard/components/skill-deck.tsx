@@ -35,7 +35,10 @@ export function SkillDeck() {
 
   useEffect(() => {
     fetch(`${ORCHESTRATOR_URL}/api/v1/skills/`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         const loaded: SkillDefinition[] = (data.skills || []).map((s: SkillDefinition) => ({
           ...s,
