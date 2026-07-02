@@ -18,3 +18,4 @@ nodes:
   - summarize
   - finalize
 default_input: Summarize the latest meeting notes from the inbox and extract action items
+max_cost_per_run: 0.15

@@ -22,8 +22,11 @@ apps/dashboard/out/
 .env.local
 .env.*.local
 
-# Vault system state (git ignored per blueprint)
-vault/.system/agent-state/
+# Vault runtime artifacts (agent-generated)
+vault/20-Active-Loops/
+vault/30-Archive/
+vault/.system/run-log.md
+vault/.system/Approvals-Digest.md
 
 # IDE
 .idea/

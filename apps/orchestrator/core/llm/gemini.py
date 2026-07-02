@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 
 import httpx
 
 from api.websocket import ws_manager
 from core.config import settings
+from core.llm.degraded import llm_degraded
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
 from core.llm.types import LLMResult, LLMUsage
+
+logger = logging.getLogger(__name__)
+
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+_MAX_RETRIES = 3
 
 
 def _api_key() -> str:
@@ -21,8 +29,6 @@ def _api_key() -> str:
         or os.getenv("GEMINI_API_KEY", "")
         or os.getenv("GOOGLE_API_KEY", "")
     )
-
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 
 def _build_payload(prompt: str, system: str) -> dict[str, Any]:
@@ -56,6 +62,40 @@ def _usage_from_response(data: dict[str, Any], prompt: str, text: str) -> LLMUsa
     )
 
 
+def _retry_after(resp: httpx.Response) -> int:
+    header = resp.headers.get("Retry-After", "")
+    try:
+        return max(int(header), 5)
+    except ValueError:
+        return 30
+
+
+async def _post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: dict[str, str],
+    json_body: dict[str, Any],
+    timeout: float,
+) -> httpx.Response | None:
+    for attempt in range(_MAX_RETRIES):
+        resp = await client.post(url, params=params, json=json_body, timeout=timeout)
+        if resp.status_code == 200:
+            llm_degraded.clear()
+            return resp
+        if resp.status_code == 429:
+            wait = _retry_after(resp) * (attempt + 1)
+            llm_degraded.set_degraded(f"Gemini rate limited (HTTP 429)", retry_after=wait)
+            logger.warning("Gemini 429 — retry %d/%d in %ds", attempt + 1, _MAX_RETRIES, wait)
+            if attempt < _MAX_RETRIES - 1:
+                await asyncio.sleep(wait)
+                continue
+            return resp
+        logger.warning("Gemini HTTP %s: %s", resp.status_code, resp.text[:120])
+        return resp
+    return None
+
+
 async def call_gemini(
     prompt: str,
     system: str = "",
@@ -78,13 +118,14 @@ async def call_gemini(
                 return streamed
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
+            resp = await _post_with_retry(
+                client,
                 f"{GEMINI_BASE}/models/{model}:generateContent",
                 params={"key": api_key},
-                json=payload,
+                json_body=payload,
                 timeout=120.0,
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 return None
             data = resp.json()
             text = _extract_text(data)
@@ -107,34 +148,44 @@ async def _stream_generate(
     usage = LLMUsage()
     try:
         async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST",
-                f"{GEMINI_BASE}/models/{model}:streamGenerateContent",
-                params={"key": api_key, "alt": "sse"},
-                json=payload,
-                timeout=120.0,
-            ) as resp:
-                if resp.status_code != 200:
-                    return None
+            for attempt in range(_MAX_RETRIES):
+                async with client.stream(
+                    "POST",
+                    f"{GEMINI_BASE}/models/{model}:streamGenerateContent",
+                    params={"key": api_key, "alt": "sse"},
+                    json=payload,
+                    timeout=120.0,
+                ) as resp:
+                    if resp.status_code == 429:
+                        wait = _retry_after(resp) * (attempt + 1)
+                        llm_degraded.set_degraded("Gemini rate limited (HTTP 429)", retry_after=wait)
+                        if attempt < _MAX_RETRIES - 1:
+                            await asyncio.sleep(wait)
+                            continue
+                        return None
+                    if resp.status_code != 200:
+                        return None
 
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    raw = line[6:].strip()
-                    if not raw or raw == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+                    llm_degraded.clear()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        raw = line[6:].strip()
+                        if not raw or raw == "[DONE]":
+                            continue
+                        try:
+                            chunk = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
 
-                    if chunk.get("usageMetadata"):
-                        usage = _usage_from_response(chunk, prompt, "".join(parts))
+                        if chunk.get("usageMetadata"):
+                            usage = _usage_from_response(chunk, prompt, "".join(parts))
 
-                    token = _extract_text(chunk)
-                    if token:
-                        parts.append(token)
-                        await ws_manager.send_token_stream(session_id, token, node)
+                        token = _extract_text(chunk)
+                        if token:
+                            parts.append(token)
+                            await ws_manager.send_token_stream(session_id, token, node)
+                break
     except Exception:
         return None
 
@@ -166,13 +217,14 @@ async def embed_gemini(
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
+            resp = await _post_with_retry(
+                client,
                 f"{GEMINI_BASE}/models/{model}:embedContent",
                 params={"key": api_key},
-                json=payload,
+                json_body=payload,
                 timeout=30.0,
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 return None
             values = resp.json().get("embedding", {}).get("values")
             if not values:
@@ -184,6 +236,16 @@ async def embed_gemini(
 
 async def check_gemini_health() -> dict[str, Any]:
     """Verify Gemini API key and model access."""
+    if llm_degraded.active:
+        return {
+            "status": "degraded",
+            "model": settings.gemini_model,
+            "provider": "gemini",
+            "detail": llm_degraded.reason,
+            "retry_after_seconds": llm_degraded.retry_after_seconds,
+            "fallback": "none",
+        }
+
     api_key = _api_key()
     if not api_key:
         return {
@@ -204,10 +266,21 @@ async def check_gemini_health() -> dict[str, Any]:
                 timeout=15.0,
             )
             if resp.status_code == 200:
+                llm_degraded.clear()
                 return {
                     "status": "up",
                     "model": settings.gemini_model,
                     "provider": "gemini",
+                }
+            if resp.status_code == 429:
+                wait = _retry_after(resp)
+                llm_degraded.set_degraded("Gemini rate limited (HTTP 429)", retry_after=wait)
+                return {
+                    "status": "degraded",
+                    "model": settings.gemini_model,
+                    "detail": f"HTTP 429 — retry after ~{wait}s",
+                    "retry_after_seconds": wait,
+                    "fallback": "none",
                 }
             return {
                 "status": "down",

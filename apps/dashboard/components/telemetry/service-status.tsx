@@ -21,7 +21,16 @@ interface HealthResponse {
   vault: ServiceStatus & { path?: string };
   qdrant: ServiceStatus & { url?: string };
   ollama: ServiceStatus & { url?: string; model?: string };
-  gemini?: ServiceStatus & { model?: string; provider?: string };
+  gemini?: ServiceStatus & {
+    model?: string;
+    provider?: string;
+    retry_after_seconds?: number;
+  };
+  llm_degraded?: {
+    active: boolean;
+    reason: string;
+    retry_after_seconds: number;
+  };
   llm_provider?: string;
   postgres?: ServiceStatus;
   modes: {
@@ -90,6 +99,15 @@ export function ServiceStatusPanel() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
+        {(health?.llm_degraded?.active || health?.gemini?.status === "degraded") && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            LLM degraded — {health?.llm_degraded?.reason || health?.gemini?.detail || "rate limited"}.
+            {health?.llm_degraded?.retry_after_seconds
+              ? ` Retry in ~${health.llm_degraded.retry_after_seconds}s.`
+              : ""}
+            {" "}Autonomous runs paused; mock fallback disabled.
+          </div>
+        )}
         <ServiceRow
           label="Vault"
           status={health?.vault.status}
@@ -116,7 +134,9 @@ export function ServiceStatusPanel() {
           detail={
             health?.gemini?.status === "up"
               ? health.gemini.model
-              : health?.gemini?.fallback ?? health?.gemini?.detail
+              : health?.gemini?.status === "degraded"
+                ? "rate limited"
+                : health?.gemini?.fallback ?? health?.gemini?.detail
           }
         />
         {health?.llm_provider !== "gemini" && (
@@ -193,10 +213,15 @@ function ServiceRow({
   detail?: string;
 }) {
   const up = status === "up";
+  const degraded = status === "degraded";
   return (
     <div className="flex items-center justify-between text-sm">
       <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${up ? "bg-green-500" : "bg-red-500"}`} />
+        <span
+          className={`h-2 w-2 rounded-full ${
+            up ? "bg-green-500" : degraded ? "bg-amber-500" : "bg-red-500"
+          }`}
+        />
         <span className="text-muted-foreground">{label}</span>
       </div>
       <span className="text-xs font-mono text-muted-foreground truncate max-w-[120px]">

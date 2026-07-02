@@ -9,6 +9,7 @@ import httpx
 from qdrant_client import QdrantClient
 
 from core.config import get_database_url, settings
+from core.llm.degraded import llm_degraded
 from core.llm.gemini import check_gemini_health
 from core.memory.rag_engine import RAGEngine
 
@@ -104,7 +105,12 @@ async def get_system_health() -> dict[str, Any]:
     provider = settings.llm_provider.lower()
     if provider == "gemini":
         llm_status = gemini
-        llm_mode = "gemini" if gemini["status"] == "up" else gemini.get("fallback", "mock")
+        if gemini["status"] == "up":
+            llm_mode = "gemini"
+        elif gemini["status"] == "degraded":
+            llm_mode = "degraded"
+        else:
+            llm_mode = gemini.get("fallback", "mock")
     elif provider == "ollama":
         llm_status = ollama
         llm_mode = "ollama" if ollama["status"] == "up" else "mock"
@@ -135,17 +141,18 @@ async def get_system_health() -> dict[str, Any]:
         rag_mode = "keyword_fallback"
 
     core_up = vault["status"] == "up" and (
-        gemini["status"] == "up" or ollama["status"] == "up"
+        gemini["status"] in ("up", "degraded") or ollama["status"] == "up"
     )
     all_up = all(s["status"] == "up" for s in services if s["status"] != "skipped")
-    degraded = not all_up and core_up
+    degraded = llm_degraded.active or (not all_up and core_up)
 
     return {
-        "status": "ok" if core_up else ("degraded" if degraded else "down"),
+        "status": "ok" if core_up and not llm_degraded.active else ("degraded" if degraded else "down"),
         "vault": vault,
         "qdrant": qdrant,
         "ollama": ollama,
         "gemini": gemini,
+        "llm_degraded": llm_degraded.as_dict(),
         "llm_provider": provider,
         "postgres": postgres,
         "modes": {

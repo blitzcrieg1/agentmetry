@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from core.config import settings
+from core.llm.degraded import llm_degraded
+from core.llm.errors import LLMDegradedError
 from core.llm.gemini import call_gemini
 from core.llm.mock import call_mock
 from core.llm.ollama import call_ollama
@@ -22,6 +24,8 @@ async def call_llm(
         result = await call_gemini(prompt, system, session_id=session_id, node=node)
         if result is not None:
             return result
+        if llm_degraded.active:
+            raise LLMDegradedError(llm_degraded.reason, llm_degraded.retry_after_seconds)
 
     if provider == "ollama":
         result = await call_ollama(prompt, system, session_id=session_id, node=node)
@@ -32,5 +36,8 @@ async def call_llm(
         result = await call_gemini(prompt, system, session_id=session_id, node=node)
         if result is not None:
             return result
+
+    if provider == "gemini" and settings.gemini_api_key:
+        raise LLMDegradedError("Gemini unavailable", llm_degraded.retry_after_seconds or 60)
 
     return await call_mock(prompt, session_id=session_id, node=node)

@@ -1,4 +1,4 @@
-"""Vault file watcher — syncs Obsidian changes to Qdrant in real time."""
+"""Vault file watcher — syncs Obsidian changes to RAG and evaluates trigger rules."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from watchdog.observers import Observer
 
 from core.config import settings
 from core.memory.rag_engine import RAGEngine
+from core.scheduler.triggers import evaluate_vault_triggers
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,16 @@ class VaultSyncHandler(FileSystemEventHandler):
 
         def _do_index():
             file_path = Path(path)
-            asyncio.run_coroutine_threadsafe(self.rag.index_file(file_path), self.loop)
+
+            async def _work():
+                await self.rag.index_file(file_path)
+                await evaluate_vault_triggers(file_path, self.vault_path)
+
+            asyncio.run_coroutine_threadsafe(_work(), self.loop)
 
         handle = self.loop.call_later(2.0, _do_index)
         self._debounce[path] = handle
-        logger.info("Vault change detected: %s — scheduling incremental index", path)
+        logger.info("Vault change detected: %s — scheduling index + triggers", path)
 
     def on_modified(self, event: FileSystemEvent) -> None:
         if not event.is_directory:

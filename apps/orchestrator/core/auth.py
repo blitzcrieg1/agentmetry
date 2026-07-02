@@ -26,3 +26,17 @@ async def require_api_key(
 
     if token != settings.api_key:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def verify_ws_token(query_token: str | None, request: Request) -> bool:
+    """Validate WebSocket connection when BLACKBOX_API_KEY is set."""
+    if not settings.api_key:
+        return True
+    token = query_token
+    if not token:
+        token = request.headers.get("X-API-Key")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+    return token == settings.api_key

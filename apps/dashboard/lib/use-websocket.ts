@@ -5,6 +5,15 @@ import { useAgentStore } from "@/lib/store";
 import { WS_URL } from "@/lib/utils";
 import { buildGraphNodes } from "@/lib/graph-utils";
 
+function wsUrl(sessionId: string): string {
+  const base = `${WS_URL}/ws/${sessionId}`;
+  const apiKey = process.env.NEXT_PUBLIC_BLACKBOX_API_KEY;
+  if (apiKey) {
+    return `${base}?token=${encodeURIComponent(apiKey)}`;
+  }
+  return base;
+}
+
 export function useWebSocket() {
   const sessionId = useAgentStore((s) => s.sessionId);
   const setWsConnected = useAgentStore((s) => s.setWsConnected);
@@ -35,7 +44,7 @@ export function useWebSocket() {
   };
 
   useEffect(() => {
-    const ws = new WebSocket(`${WS_URL}/ws/${sessionId}`);
+    const ws = new WebSocket(wsUrl(sessionId));
     wsRef.current = ws;
 
     ws.onopen = () => setWsConnected(true);

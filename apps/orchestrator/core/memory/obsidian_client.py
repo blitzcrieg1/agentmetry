@@ -10,6 +10,14 @@ from typing import Any
 import yaml
 
 
+_WRITE_ALLOWED_PREFIXES = (
+    "20-Active-Loops/",
+    "30-Archive/",
+    ".system/run-log.md",
+    ".system/Approvals-Digest.md",
+)
+
+
 class ObsidianClient:
     def __init__(self, vault_path: str | Path):
         self.vault_path = Path(vault_path)
@@ -20,6 +28,32 @@ class ObsidianClient:
 
         for p in (self.archive_path, self.active_path, self.skill_path):
             p.mkdir(parents=True, exist_ok=True)
+
+    def _assert_writable(self, target: Path) -> None:
+        """Reject writes outside whitelisted vault directories."""
+        resolved = target.resolve()
+        vault_root = self.vault_path.resolve()
+        if resolved != vault_root and vault_root not in resolved.parents:
+            raise PermissionError(f"Write blocked — path escapes vault: {target}")
+
+        rel = resolved.relative_to(vault_root).as_posix()
+        if any(rel == prefix.rstrip("/") or rel.startswith(prefix) for prefix in _WRITE_ALLOWED_PREFIXES):
+            return
+        raise PermissionError(f"Write blocked — path not whitelisted: {rel}")
+
+    def _write_text(self, target: Path, content: str) -> Path:
+        self._assert_writable(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return target
+
+    def write_system_note(self, relative_name: str, content: str) -> Path:
+        """Write a note under .system/ (whitelisted filenames only)."""
+        rel = relative_name.replace("\\", "/").lstrip("/")
+        if not rel.startswith(".system/"):
+            rel = f".system/{rel}"
+        target = self.vault_path / rel
+        return self._write_text(target, content)
 
     def read_skill_config(self, skill_name: str) -> dict[str, Any] | None:
         """Read a YAML skill definition from .system/skill-definitions/."""
@@ -160,8 +194,7 @@ class ObsidianClient:
         content = f"---\n{yaml_block}---\n\n{body}"
 
         target_file = self.archive_path / filename
-        target_file.write_text(content, encoding="utf-8")
-        return target_file
+        return self._write_text(target_file, content)
 
     def write_active_loop(
         self,
@@ -201,8 +234,7 @@ class ObsidianClient:
         content = f"---\n{yaml_block}---\n\n{body}"
 
         target_file = self.active_path / filename
-        target_file.write_text(content, encoding="utf-8")
-        return target_file
+        return self._write_text(target_file, content)
 
     def resolve_active_loop(
         self,
@@ -229,7 +261,7 @@ class ObsidianClient:
             body = body.rstrip() + f"\n\n## Resolution\n{note}\n"
 
         yaml_block = yaml.dump(meta, default_flow_style=False, allow_unicode=True)
-        file.write_text(f"---\n{yaml_block}---\n\n{body}", encoding="utf-8")
+        self._write_text(file, f"---\n{yaml_block}---\n\n{body}")
 
     def write_crash_report(self, thread_id: str, error: str, skill_name: str) -> Path:
         """Write a crash report when a thread is terminated."""
@@ -253,5 +285,4 @@ Thread `{thread_id}` was terminated by user or system.
 ```
 """
         target_file = self.archive_path / filename
-        target_file.write_text(content, encoding="utf-8")
-        return target_file
+        return self._write_text(target_file, content)
