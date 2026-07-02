@@ -84,7 +84,7 @@ async def reindex_vault():
     from core.memory.rag_engine import RAGEngine
 
     engine = RAGEngine()
-    count = await engine.index_vault()
+    count = await engine.index_vault(force=True)
     return {"indexed_chunks": count}
 
 

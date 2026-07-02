@@ -184,6 +184,32 @@ class RAGEngine:
       key = f"{settings.collection_name}:{vault}"
       return len(cls._shared_memory.get(key, []))
 
+  def _file_in_memory(self, rel_path: str) -> bool:
+      key = self._memory_key()
+      return any(
+          point.payload.get("source_path") == rel_path
+          for point in self._shared_memory.get(key, [])
+      )
+
+  def _manifest_path(self) -> Path:
+      root = Path(__file__).resolve().parents[2] / "data"
+      root.mkdir(parents=True, exist_ok=True)
+      return root / "vault-index-manifest.json"
+
+  def _load_manifest(self) -> dict[str, int]:
+      path = self._manifest_path()
+      if not path.exists():
+          return {}
+      import json
+      try:
+          return json.loads(path.read_text(encoding="utf-8"))
+      except Exception:
+          return {}
+
+  def _save_manifest(self, manifest: dict[str, int]) -> None:
+      import json
+      self._manifest_path().write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
   async def index_file(self, file_path: Path) -> int:
       """Index or re-index a single markdown file."""
       if not file_path.exists() or file_path.suffix != ".md":
@@ -251,7 +277,42 @@ class RAGEngine:
       except Exception:
           pass
 
-  async def index_vault(self) -> int:
+  async def index_vault(self, *, force: bool = False) -> int:
+      """Index markdown files; skip unchanged files when manifest is current."""
+      if settings.startup_index_skip_unchanged and not force:
+          return await self.index_vault_incremental()
+      return await self._index_vault_full()
+
+  async def index_vault_incremental(self) -> int:
+      """Index only new or modified files using a persisted mtime manifest."""
+      import logging
+      logger = logging.getLogger(__name__)
+
+      manifest = self._load_manifest()
+      new_manifest: dict[str, int] = {}
+      indexed = 0
+      all_unchanged = True
+
+      for file_path in self.obsidian.list_markdown_files():
+          rel_path = str(file_path.relative_to(self.obsidian.vault_path))
+          mtime_ns = file_path.stat().st_mtime_ns
+          new_manifest[rel_path] = mtime_ns
+          if manifest.get(rel_path) != mtime_ns:
+              all_unchanged = False
+              indexed += await self.index_file(file_path)
+          elif not self._file_in_memory(rel_path):
+              continue
+
+      if indexed == 0 and all_unchanged and manifest:
+          logger.info(
+              "Vault unchanged — skipping embed burst on restart "
+              "(use Admin → Reindex to rebuild semantic memory)"
+          )
+
+      self._save_manifest(new_manifest)
+      return indexed
+
+  async def _index_vault_full(self) -> int:
       """Index all markdown files in the vault into Qdrant and in-memory store."""
       files = self.obsidian.list_markdown_files()
       points: list[PointStruct] = []
@@ -293,6 +354,12 @@ class RAGEngine:
               self.client.upsert(collection_name=self.collection_name, points=points)
           except Exception:
               pass
+
+      manifest = {
+          str(f.relative_to(self.obsidian.vault_path)): f.stat().st_mtime_ns
+          for f in files
+      }
+      self._save_manifest(manifest)
       return indexed
 
   async def query(

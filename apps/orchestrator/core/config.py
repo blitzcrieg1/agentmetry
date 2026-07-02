@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     cost_alert_threshold: float = 1.0
     api_key: str = ""
     context_window_tokens: int = 1_048_576
+    gemini_health_cache_seconds: int = 300
+    gemini_health_probe: bool = False
+    gemini_embed_min_interval_seconds: float = 0.7
+    gemini_flash_min_interval_seconds: float = 13.0
+    startup_vault_index: bool = True
+    startup_index_skip_unchanged: bool = True
 
 
 settings = Settings()

@@ -55,7 +55,7 @@ export function ServiceStatusPanel() {
 
   useEffect(() => {
     fetchHealth();
-    const interval = setInterval(fetchHealth, 30000);
+    const interval = setInterval(fetchHealth, 90000);
     return () => clearInterval(interval);
   }, []);
 

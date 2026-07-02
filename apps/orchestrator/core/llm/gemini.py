@@ -13,6 +13,7 @@ from api.websocket import ws_manager
 from core.config import settings
 from core.llm.degraded import llm_degraded
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
+from core.llm.quota import get_cached_health, set_cached_health, throttle_embed, throttle_flash
 from core.llm.types import LLMResult, LLMUsage
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ async def _post_with_retry(
     timeout: float,
 ) -> httpx.Response | None:
     for attempt in range(_MAX_RETRIES):
+        await throttle_flash()
         resp = await client.post(url, params=params, json=json_body, timeout=timeout)
         if resp.status_code == 200:
             llm_degraded.clear()
@@ -216,6 +218,7 @@ async def embed_gemini(
     }
 
     try:
+        await throttle_embed()
         async with httpx.AsyncClient() as client:
             resp = await _post_with_retry(
                 client,
@@ -237,7 +240,7 @@ async def embed_gemini(
 async def check_gemini_health() -> dict[str, Any]:
     """Verify Gemini API key and model access."""
     if llm_degraded.active:
-        return {
+        payload = {
             "status": "degraded",
             "model": settings.gemini_model,
             "provider": "gemini",
@@ -245,6 +248,12 @@ async def check_gemini_health() -> dict[str, Any]:
             "retry_after_seconds": llm_degraded.retry_after_seconds,
             "fallback": "none",
         }
+        set_cached_health(payload)
+        return payload
+
+    cached = get_cached_health()
+    if cached is not None:
+        return cached
 
     api_key = _api_key()
     if not api_key:
@@ -254,7 +263,18 @@ async def check_gemini_health() -> dict[str, Any]:
             "fallback": "mock_llm",
         }
 
+    if not settings.gemini_health_probe:
+        payload = {
+            "status": "up",
+            "model": settings.gemini_model,
+            "provider": "gemini",
+            "detail": "passive check (set BLACKBOX_GEMINI_HEALTH_PROBE=true to live-probe)",
+        }
+        set_cached_health(payload)
+        return payload
+
     try:
+        await throttle_flash()
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{GEMINI_BASE}/models/{settings.gemini_model}:generateContent",
@@ -267,31 +287,39 @@ async def check_gemini_health() -> dict[str, Any]:
             )
             if resp.status_code == 200:
                 llm_degraded.clear()
-                return {
+                payload = {
                     "status": "up",
                     "model": settings.gemini_model,
                     "provider": "gemini",
                 }
+                set_cached_health(payload)
+                return payload
             if resp.status_code == 429:
                 wait = _retry_after(resp)
                 llm_degraded.set_degraded("Gemini rate limited (HTTP 429)", retry_after=wait)
-                return {
+                payload = {
                     "status": "degraded",
                     "model": settings.gemini_model,
                     "detail": f"HTTP 429 — retry after ~{wait}s",
                     "retry_after_seconds": wait,
                     "fallback": "none",
                 }
-            return {
+                set_cached_health(payload)
+                return payload
+            payload = {
                 "status": "down",
                 "model": settings.gemini_model,
                 "detail": f"HTTP {resp.status_code}: {resp.text[:80]}",
                 "fallback": "mock_llm",
             }
+            set_cached_health(payload)
+            return payload
     except Exception as exc:
-        return {
+        payload = {
             "status": "down",
             "model": settings.gemini_model,
             "detail": str(exc)[:120],
             "fallback": "mock_llm",
         }
+        set_cached_health(payload)
+        return payload

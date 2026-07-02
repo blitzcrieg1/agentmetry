@@ -85,9 +85,12 @@ class VaultWatcher:
         asyncio.create_task(self._initial_index())
 
     async def _initial_index(self) -> None:
+        if not settings.startup_vault_index:
+            logger.info("Startup vault index skipped (BLACKBOX_STARTUP_VAULT_INDEX=false)")
+            return
         try:
             count = await self.rag.index_vault()
-            logger.info("Initial vault index: %d chunks", count)
+            logger.info("Startup vault index: %d chunks indexed", count)
         except Exception as e:
             logger.warning("Initial vault index skipped: %s", e)
 
