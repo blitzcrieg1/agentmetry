@@ -140,6 +140,7 @@ class ObsidianClient:
         result: str,
         metadata: dict[str, Any] | None = None,
         *,
+        thread_id: str = "",
         status: str = "success",
         confidence_score: float = 0.0,
         context_sources: list[str] | None = None,
@@ -148,7 +149,8 @@ class ObsidianClient:
     ) -> Path:
         """Write a structured memory closeout note to 30-Archive/."""
         timestamp = datetime.now(timezone.utc)
-        filename = f"{timestamp.strftime('%Y-%m-%d')}-{skill_name}-outreach-v1.md"
+        suffix = f"-{thread_id[:8]}" if thread_id else ""
+        filename = f"{timestamp.strftime('%Y-%m-%d-%H%M%S')}-{skill_name}{suffix}.md"
 
         frontmatter: dict[str, Any] = {
             "type": "agent-log",
@@ -158,6 +160,8 @@ class ObsidianClient:
             "created": timestamp.isoformat(),
             **(metadata or {}),
         }
+        if thread_id:
+            frontmatter["thread_id"] = thread_id
 
         sources_section = ""
         if context_sources:
@@ -184,16 +188,18 @@ class ObsidianClient:
 
 {decisions_section}
 
-# Generated Artifacts
-{result}
-
 {steps_section}
 """
 
         yaml_block = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
         content = f"---\n{yaml_block}---\n\n{body}"
 
+        # The archive is append-only: never overwrite an existing closeout note.
         target_file = self.archive_path / filename
+        counter = 2
+        while target_file.exists():
+            target_file = self.archive_path / f"{filename[:-3]}-{counter}.md"
+            counter += 1
         return self._write_text(target_file, content)
 
     def write_active_loop(

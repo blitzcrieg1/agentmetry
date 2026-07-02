@@ -117,10 +117,11 @@ async def _finalize_execution(
         skill_name=skill_name,
         result=result_content,
         metadata={"cost": final_state.get("cost", 0)},
+        thread_id=thread_id,
         confidence_score=final_state.get("confidence_score", 0.0),
         context_sources=final_state.get("context_sources", []),
         key_decisions=final_state.get("key_decisions", []),
-        next_steps=["Human approval required for final send."],
+        next_steps=final_state.get("next_steps", []),
     )
 
     obsidian.resolve_active_loop(
