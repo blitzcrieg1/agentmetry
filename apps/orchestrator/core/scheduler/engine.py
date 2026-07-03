@@ -6,9 +6,10 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from core.config import settings
-from core.execution.service import run_skill
+from core.execution.service import resume_deferred_interrupts, run_skill
 from core.llm.degraded import llm_degraded
 from core.scheduler.approval_digest import write_approval_digest
 from core.scheduler.rules import load_trigger_rules
@@ -50,6 +51,12 @@ def start_scheduler() -> AsyncIOScheduler:
         write_approval_digest,
         CronTrigger(minute=0),
         id="approval_digest",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        resume_deferred_interrupts,
+        IntervalTrigger(minutes=15),
+        id="resume_deferred_interrupts",
         replace_existing=True,
     )
 

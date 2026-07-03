@@ -12,6 +12,8 @@ from core.bus.bus import bus
 from core.bus.events import (
     ALERT_COST,
     ALERT_DRIFT,
+    INTERRUPT_RAISED,
+    INTERRUPT_RESOLVED,
     RUN_COMPLETED,
     RUN_FAILED,
     RUN_STARTED,
@@ -19,6 +21,7 @@ from core.bus.events import (
 )
 from core.config import settings
 from core.execution.context import (
+    interrupt_table,
     obsidian,
     pending_store,
     pending_threads,
@@ -27,6 +30,7 @@ from core.execution.context import (
     telemetry,
 )
 from core.graphs.node_events import emit_node
+from core.kernel.interrupts import InterruptVector
 from core.kernel.scheduler import Priority, run_priority
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
@@ -98,6 +102,62 @@ async def recover_pending_threads() -> int:
     if recovered:
         logger.info("Recovered %d pending approval thread(s)", recovered)
     return recovered
+
+
+async def resume_deferred_interrupts() -> dict[str, int]:
+    """Retry budget- and degradation-deferred autonomous runs when gates clear."""
+    counts = {"budget": 0, "degraded": 0}
+    ledger = get_budget_ledger()
+    budget_ok = ledger.autonomous_allowed()
+    degraded_ok = not llm_degraded.active
+
+    if not budget_ok and not degraded_ok:
+        return counts
+
+    vectors: list[tuple[InterruptVector, bool, str]] = [
+        (InterruptVector.BUDGET_DEFER, budget_ok, "budget"),
+        (InterruptVector.LLM_DEGRADED, degraded_ok, "degraded"),
+    ]
+    for vector, allowed, key in vectors:
+        if not allowed:
+            continue
+        for row in list(interrupt_table.list_pending(vector)):
+            interrupt_id = row["interrupt_id"]
+            interrupt_table.delete(interrupt_id)
+            bus.publish(INTERRUPT_RESOLVED, {
+                "type": "interrupt_resolved",
+                "interrupt_id": interrupt_id,
+                "vector": str(vector),
+                "skill": row["skill_name"],
+            }, session_id=row["session_id"])
+            result = await run_skill(
+                row["skill_name"],
+                row["user_input"],
+                row["session_id"],
+                triggered_by=row["triggered_by"],
+                trigger_rule_id=row.get("trigger_rule_id"),
+                trigger_file_path=row.get("trigger_file_path"),
+            )
+            if result.get("status") not in ("deferred_budget", "deferred_degraded"):
+                counts[key] += 1
+    if counts["budget"] or counts["degraded"]:
+        logger.info(
+            "Resumed deferred interrupts — budget: %d, degraded: %d",
+            counts["budget"],
+            counts["degraded"],
+        )
+    return counts
+
+
+async def recover_interrupts() -> dict[str, int]:
+    """Reload HITL threads and resume deferred autonomous work on startup."""
+    hitl = await recover_pending_threads()
+    deferred = await resume_deferred_interrupts()
+    return {
+        "hitl": hitl,
+        "budget_defer_resumed": deferred["budget"],
+        "llm_degraded_resumed": deferred["degraded"],
+    }
 
 
 async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) -> tuple[str, list[str]]:
@@ -252,6 +312,37 @@ async def run_skill(
 ) -> dict[str, Any]:
     """Execute a skill graph. Used by HTTP API and autonomous triggers."""
     if llm_degraded.active and settings.llm_provider.lower() == "gemini":
+        if triggered_by != "manual":
+            interrupt = interrupt_table.raise_llm_degraded(
+                skill_name=skill_name,
+                session_id=session_id,
+                user_input=user_input,
+                triggered_by=triggered_by,
+                trigger_rule_id=trigger_rule_id,
+                trigger_file_path=trigger_file_path,
+                reason=llm_degraded.reason,
+            )
+            bus.publish(INTERRUPT_RAISED, {
+                "type": "interrupt_raised",
+                "interrupt_id": interrupt["interrupt_id"],
+                "vector": InterruptVector.LLM_DEGRADED,
+                "skill": skill_name,
+            }, session_id=session_id)
+            log_run({
+                "skill": skill_name,
+                "status": "deferred_degraded",
+                "triggered_by": triggered_by,
+                "trigger_rule_id": trigger_rule_id,
+                "session_id": session_id,
+                "interrupt_id": interrupt["interrupt_id"],
+                "reason": llm_degraded.reason,
+            })
+            return {
+                "status": "deferred_degraded",
+                "interrupt_id": interrupt["interrupt_id"],
+                "resumable": True,
+                "reason": llm_degraded.reason,
+            }
         msg = f"LLM degraded: {llm_degraded.reason}"
         log_run({
             "skill": skill_name,
@@ -269,6 +360,22 @@ async def run_skill(
         ledger = get_budget_ledger()
         if not ledger.autonomous_allowed():
             snapshot = ledger.snapshot()
+            interrupt = interrupt_table.raise_budget_defer(
+                skill_name=skill_name,
+                session_id=session_id,
+                user_input=user_input,
+                triggered_by=triggered_by,
+                trigger_rule_id=trigger_rule_id,
+                trigger_file_path=trigger_file_path,
+                budget_snapshot=snapshot,
+            )
+            bus.publish(INTERRUPT_RAISED, {
+                "type": "interrupt_raised",
+                "interrupt_id": interrupt["interrupt_id"],
+                "vector": InterruptVector.BUDGET_DEFER,
+                "skill": skill_name,
+                "budget": snapshot,
+            }, session_id=session_id)
             logger.info(
                 "Deferring autonomous run of %s — %d/%d Flash calls used today",
                 skill_name, snapshot["flash_used"], snapshot["flash_limit"],
@@ -279,9 +386,15 @@ async def run_skill(
                 "triggered_by": triggered_by,
                 "trigger_rule_id": trigger_rule_id,
                 "session_id": session_id,
+                "interrupt_id": interrupt["interrupt_id"],
                 "budget": snapshot,
             })
-            return {"status": "deferred_budget", "budget": snapshot}
+            return {
+                "status": "deferred_budget",
+                "interrupt_id": interrupt["interrupt_id"],
+                "resumable": True,
+                "budget": snapshot,
+            }
 
     # Kernel priority for every LLM/embed grant in this run. Task-scoped
     # context: API handlers, cron jobs, and watcher work each run in their

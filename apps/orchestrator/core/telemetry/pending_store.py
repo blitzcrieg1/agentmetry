@@ -1,23 +1,26 @@
-"""Persist pending approval threads across orchestrator restarts."""
+"""Persist pending approval threads across orchestrator restarts.
+
+HITL rows live in the Interrupt Vector Table; this facade keeps the legacy API.
+"""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, String, Text, create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import Column, DateTime, Float, String, Text, inspect
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from core.config import get_database_url
+from core.kernel.interrupts import InterruptVector, InterruptVectorTable
 
 
-class Base(DeclarativeBase):
+class _LegacyBase(DeclarativeBase):
     pass
 
 
-class PendingThread(Base):
+class _LegacyPendingThread(_LegacyBase):
     __tablename__ = "pending_threads"
 
     thread_id = Column(String, primary_key=True)
@@ -25,7 +28,6 @@ class PendingThread(Base):
     session_id = Column(String, nullable=False)
     active_loop_path = Column(String, nullable=False)
     config_json = Column(Text, nullable=False)
-    # Wall-clock epoch seconds; keeps the legacy column name to avoid a migration.
     start_epoch = Column("start_monotonic", Float, default=0.0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -33,12 +35,27 @@ class PendingThread(Base):
 class PendingThreadStore:
     def __init__(self, database_url: str | None = None):
         url = database_url or get_database_url()
-        if url.startswith("sqlite"):
-            db_path = url.split("///")[-1]
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(url, echo=False, pool_pre_ping=True)
-        Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+        self._ivt = InterruptVectorTable(url)
+        self._migrate_legacy()
+
+    def _migrate_legacy(self) -> None:
+        insp = inspect(self._ivt.engine)
+        if "pending_threads" not in insp.get_table_names():
+            return
+        with Session(self._ivt.engine) as session:
+            rows = session.query(_LegacyPendingThread).all()
+            for row in rows:
+                self._ivt.raise_interrupt(
+                    row.thread_id,
+                    InterruptVector.HITL_APPROVAL,
+                    skill_name=row.skill_name,
+                    session_id=row.session_id,
+                    active_loop_path=row.active_loop_path,
+                    config=json.loads(row.config_json),
+                    start=row.start_epoch,
+                )
+                session.delete(row)
+            session.commit()
 
     def save(
         self,
@@ -50,49 +67,30 @@ class PendingThreadStore:
         config: dict[str, Any],
         start: float,
     ) -> None:
-        with Session(self.engine) as session:
-            row = PendingThread(
-                thread_id=thread_id,
-                skill_name=skill_name,
-                session_id=session_id,
-                active_loop_path=active_loop_path,
-                config_json=json.dumps(config),
-                start_epoch=start,
-            )
-            session.merge(row)
-            session.commit()
+        self._ivt.raise_interrupt(
+            thread_id,
+            InterruptVector.HITL_APPROVAL,
+            skill_name=skill_name,
+            session_id=session_id,
+            active_loop_path=active_loop_path,
+            config=config,
+            start=start,
+        )
 
     def get(self, thread_id: str) -> dict[str, Any] | None:
-        with Session(self.engine) as session:
-            row = session.get(PendingThread, thread_id)
-            if not row:
-                return None
-            return {
-                "config": json.loads(row.config_json),
-                "session_id": row.session_id,
-                "skill_name": row.skill_name,
-                "active_loop_path": row.active_loop_path,
-                "start": row.start_epoch,
-            }
+        row = self._ivt.get(thread_id)
+        if not row or row.get("vector") != InterruptVector.HITL_APPROVAL:
+            return None
+        return self._ivt.to_pending_meta(row)
 
     def delete(self, thread_id: str) -> None:
-        with Session(self.engine) as session:
-            row = session.get(PendingThread, thread_id)
-            if row:
-                session.delete(row)
-                session.commit()
+        self._ivt.delete(thread_id)
 
     def list_all(self) -> list[dict[str, Any]]:
-        with Session(self.engine) as session:
-            rows = session.query(PendingThread).all()
-            return [
-                {
-                    "thread_id": row.thread_id,
-                    "skill_name": row.skill_name,
-                    "session_id": row.session_id,
-                    "active_loop_path": row.active_loop_path,
-                    "config": json.loads(row.config_json),
-                    "start": row.start_epoch,
-                }
-                for row in rows
-            ]
+        return [
+            {
+                "thread_id": row["interrupt_id"],
+                **self._ivt.to_pending_meta(row),
+            }
+            for row in self._ivt.list_pending(InterruptVector.HITL_APPROVAL)
+        ]

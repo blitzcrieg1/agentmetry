@@ -7,6 +7,7 @@ from core.bus.bus import bus
 from core.bus.events import RUN_TERMINATED
 from core.auth import require_api_key
 from core.execution.context import (
+    interrupt_table,
     obsidian,
     pending_store,
     pending_threads,
@@ -46,7 +47,22 @@ async def list_skills():
 
 @router.get("/pending")
 async def list_pending():
-    return {"pending": list(pending_threads.keys())}
+    items = []
+    for thread_id, meta in pending_threads.items():
+        row = interrupt_table.get(thread_id)
+        items.append({
+            "thread_id": thread_id,
+            "skill_name": meta["skill_name"],
+            "session_id": meta["session_id"],
+            "vector": "hitl_approval",
+            "created_at": row.get("created_at") if row else None,
+        })
+    return {"pending": items}
+
+
+@router.get("/interrupts")
+async def list_interrupts():
+    return {"interrupts": interrupt_table.list_pending()}
 
 
 @router.post("/reload", dependencies=[Depends(require_api_key)])

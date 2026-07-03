@@ -22,6 +22,10 @@ LLM_TOKEN = "llm/token"
 # Vault
 VAULT_FILE_CHANGED = "vault/file_changed"
 
+# Interrupt vector table
+INTERRUPT_RAISED = "interrupt/raised"
+INTERRUPT_RESOLVED = "interrupt/resolved"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

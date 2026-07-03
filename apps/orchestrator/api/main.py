@@ -20,7 +20,7 @@ from core.bus.bridges import outbox_persister, trigger_bridge
 from core.bus.bus import bus
 from core.bus.outbox import get_outbox
 from core.execution.context import skill_registry
-from core.execution.service import recover_pending_threads
+from core.execution.service import recover_interrupts
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
 from core.health import get_system_health
 from core.kernel.scheduler import get_scheduler
@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     ]
     await init_checkpointer()
     skill_registry.reload()
-    await recover_pending_threads()
+    await recover_interrupts()
     vault_watcher = VaultWatcher()
     try:
         await vault_watcher.start()
