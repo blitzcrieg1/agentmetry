@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from core.memory.obsidian_client import ObsidianClient
-from core.scheduler.rules import load_trigger_rules, note_matches_rule, render_user_input
+from core.scheduler.rules import load_trigger_rules, note_matches_rule
 
 
 @pytest.fixture

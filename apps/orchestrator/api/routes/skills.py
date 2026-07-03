@@ -13,7 +13,6 @@ from core.execution.context import (
     telemetry,
 )
 from core.execution.service import (
-    recover_pending_threads,
     run_skill,
     _finalize_execution,
 )

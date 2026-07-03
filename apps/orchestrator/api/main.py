@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes.skills import recover_pending_threads, router as skills_router, skill_registry
+from api.routes.skills import router as skills_router
 from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
 from core.auth import require_api_key, verify_ws_token
-from core.config import settings
+from core.execution.context import skill_registry
+from core.execution.service import recover_pending_threads
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
 from core.health import get_system_health
 from core.memory.vault_watcher import VaultWatcher

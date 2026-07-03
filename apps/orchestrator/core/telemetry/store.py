@@ -86,7 +86,7 @@ class TelemetryStore:
                     "recent_runs": [],
                 }
 
-            successes = sum(1 for l in logs if l.status in ("completed", "approved"))
+            successes = sum(1 for log in logs if log.status in ("completed", "approved"))
             recent = (
                 session.query(ExecutionLog)
                 .order_by(desc(ExecutionLog.created_at))
@@ -97,10 +97,10 @@ class TelemetryStore:
                 "backend": self.backend,
                 "total_runs": len(logs),
                 "success_rate": successes / len(logs),
-                "total_cost": sum(l.cost for l in logs),
-                "avg_latency_ms": sum(l.latency_ms for l in logs) // len(logs),
-                "total_input_tokens": sum(l.input_tokens for l in logs),
-                "total_output_tokens": sum(l.output_tokens for l in logs),
+                "total_cost": sum(log.cost for log in logs),
+                "avg_latency_ms": sum(log.latency_ms for log in logs) // len(logs),
+                "total_input_tokens": sum(log.input_tokens for log in logs),
+                "total_output_tokens": sum(log.output_tokens for log in logs),
                 "recent_runs": [
                     {
                         "skill": r.skill_name,
