@@ -28,7 +28,14 @@ Open http://localhost:3000
 
 System Status should show **Gemini: up** and **RAG: semantic memory**.
 
-## Quick Start (Docker — full stack)
+After the first setup, `scripts\start-dev.bat` launches both processes in one step
+(no Docker required). Orchestrator logs persist to `apps\orchestrator\data\logs\orchestrator.log`.
+
+## Optional services (Docker)
+
+Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without
+them on in-memory RAG and SQLite. To start them, run `scripts\start-services.bat`
+or use the full compose stack below.
 
 Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
@@ -97,6 +104,7 @@ See `.env.example` for all configuration options. Key variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BLACKBOX_LLM_PROVIDER` | `gemini` | LLM backend: `gemini`, `ollama`, or `mock` |
+| `BLACKBOX_ALLOW_MOCK` | `false` | Permit mock fallback when no real provider is available (archived as `mock-dry-run`) |
 | `GEMINI_API_KEY` | — | Google AI Studio API key |
 | `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash` | Generation model |
 | `BLACKBOX_GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | RAG embedding model |
@@ -109,9 +117,21 @@ See `.env.example` for all configuration options. Key variables:
 
 - **Durable checkpoints** — LangGraph state persisted to SQLite (`data/checkpoints.db`) or Postgres
 - **Pending approval recovery** — Paused threads survive orchestrator restarts
+- **Persistent embedding cache** — Vectors cached in SQLite (`data/embeddings.db`); semantic
+  memory rehydrates on restart with zero Gemini calls, and batch embedding
+  (`batchEmbedContents`) indexes new content in one API call per ~100 chunks
+- **No silent mock output** — Runs fail visibly when no LLM provider is configured;
+  closeout notes record which provider produced them, and opted-in mock runs are
+  archived as `mock-dry-run`, never as success
+- **Append-only archive** — Closeout notes are timestamped per run with thread id;
+  they are never overwritten
 - **Gemini token/cost tracking** — Real usage metadata from API responses
-- **Incremental vault indexing** — File watcher re-indexes only changed notes
+- **Quota-aware throttling** — Flash and embedding calls are paced independently
+  for free-tier RPM limits
+- **Incremental vault indexing** — File watcher re-indexes only changed notes;
+  triggered skills receive the full content of the note that fired them
 - **Path-jailed vault reads** — Prevents directory traversal outside vault root
+- **Logs on disk** — Rotating orchestrator log at `data/logs/orchestrator.log`
 
 ## Tests
 
