@@ -97,6 +97,105 @@ async def test_explicit_priority_override(monkeypatch: pytest.MonkeyPatch):
     await sched.shutdown()
 
 
+async def test_background_runs_share_bounded_pool(monkeypatch: pytest.MonkeyPatch):
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "kernel_background_run_limit", 1)
+    sched = TokenScheduler(intervals={})
+    order: list[str] = []
+    release = asyncio.Event()
+
+    async def background(tag: str, hold: bool):
+        token = run_priority.set(Priority.AUTONOMOUS)
+        try:
+            async with sched.run_slot():
+                order.append(f"start-{tag}")
+                if hold:
+                    await release.wait()
+                order.append(f"end-{tag}")
+        finally:
+            run_priority.reset(token)
+
+    first = asyncio.create_task(background("a", hold=True))
+    await asyncio.sleep(0.02)
+    second = asyncio.create_task(background("b", hold=False))
+    await asyncio.sleep(0.02)
+
+    assert order == ["start-a"]  # pool of 1: b is queued, not running
+    release.set()
+    await asyncio.gather(first, second)
+    assert order == ["start-a", "end-a", "start-b", "end-b"]
+    await sched.shutdown()
+
+
+async def test_interactive_run_never_queued_behind_background(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "kernel_background_run_limit", 1)
+    sched = TokenScheduler(intervals={})
+    order: list[str] = []
+    release = asyncio.Event()
+
+    async def background():
+        token = run_priority.set(Priority.AUTONOMOUS)
+        try:
+            async with sched.run_slot():
+                order.append("bg-start")
+                await release.wait()
+        finally:
+            run_priority.reset(token)
+
+    async def interactive():
+        async with sched.run_slot(priority=Priority.INTERACTIVE):
+            order.append("interactive")
+
+    bg_task = asyncio.create_task(background())
+    await asyncio.sleep(0.02)
+
+    # Old _run_semaphore(2) behavior: a full pool made the human wait for a
+    # whole background run. The kernel admits interactive immediately.
+    await asyncio.wait_for(interactive(), timeout=1.0)
+    assert order == ["bg-start", "interactive"]
+
+    release.set()
+    await bg_task
+    await sched.shutdown()
+
+
+async def test_interactive_completes_while_background_load_queued(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "kernel_background_run_limit", 2)
+    sched = TokenScheduler(intervals={})
+    done: list[str] = []
+    release = asyncio.Event()
+
+    async def background(tag: str):
+        token = run_priority.set(Priority.AUTONOMOUS)
+        try:
+            async with sched.run_slot():
+                await release.wait()
+                done.append(tag)
+        finally:
+            run_priority.reset(token)
+
+    load = [asyncio.create_task(background(f"bg{i}")) for i in range(4)]
+    await asyncio.sleep(0.05)  # two hold slots, two queued
+
+    async with sched.run_slot(priority=Priority.INTERACTIVE):
+        done.append("interactive")
+
+    assert done == ["interactive"]  # human finished before any background run
+    release.set()
+    await asyncio.gather(*load)
+    assert len(done) == 5
+    await sched.shutdown()
+
+
 async def test_cancelled_waiter_does_not_burn_slot():
     sched = TokenScheduler(intervals={"flash": 0.10})
     order: list[str] = []

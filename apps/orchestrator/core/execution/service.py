@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
@@ -31,7 +30,7 @@ from core.execution.context import (
 )
 from core.graphs.node_events import emit_node
 from core.kernel.interrupts import InterruptVector
-from core.kernel.scheduler import Priority, run_priority
+from core.kernel.scheduler import Priority, get_scheduler, run_priority
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.errors import CostBudgetExceeded
@@ -39,8 +38,6 @@ from core.notifiers.audit import append_vault_run_log, log_run
 from core.notifiers.toast import notify
 
 logger = logging.getLogger(__name__)
-
-_run_semaphore = asyncio.Semaphore(2)
 
 # Guard against pathological trigger notes blowing up the prompt.
 _TRIGGER_NOTE_MAX_CHARS = 50_000
@@ -453,7 +450,9 @@ async def run_skill(
         Priority.INTERACTIVE if triggered_by == "manual" else Priority.AUTONOMOUS
     )
 
-    async with _run_semaphore:
+    # Run admission lives in the kernel: interactive runs start immediately,
+    # background runs share a bounded pool (kernel_background_run_limit).
+    async with get_scheduler().run_slot():
         start = time.time()
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}

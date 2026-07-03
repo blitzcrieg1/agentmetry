@@ -14,6 +14,7 @@ import asyncio
 import itertools
 import logging
 import time
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -57,6 +58,7 @@ class TokenScheduler:
         self._lanes: dict[str, _Lane] = {}
         self._seq = itertools.count()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._bg_slots: asyncio.Semaphore | None = None
 
     async def acquire(self, lane: str = "flash", *, priority: Priority | None = None) -> None:
         """Block until it is this caller's turn on the lane, pacing included."""
@@ -78,16 +80,43 @@ class TokenScheduler:
             future.cancel()  # worker skips cancelled grants without burning a slot
             raise
 
-    def _lane(self, lane: str) -> _Lane:
+    @asynccontextmanager
+    async def run_slot(self, priority: Priority | None = None):
+        """Admit a run into the system.
+
+        Interactive runs are admitted immediately — a human is never queued
+        behind background work at the run level (per-call lane priority
+        already orders the LLM grants). Background runs (triggers, cron,
+        resumes) share a small pool so a trigger storm cannot fan out into
+        unbounded concurrent graphs.
+        """
+        effective = priority if priority is not None else run_priority.get()
+        if effective == Priority.INTERACTIVE:
+            yield
+            return
+        self._ensure_loop()
+        if self._bg_slots is None:
+            self._bg_slots = asyncio.Semaphore(settings.kernel_background_run_limit)
+        async with self._bg_slots:
+            yield
+
+    def _ensure_loop(self) -> None:
         loop = asyncio.get_running_loop()
         if self._loop is not loop:
-            # Fresh event loop (process restart, tests): stale workers belong to
-            # a dead loop and cannot be cancelled from here — drop and rebuild.
+            # Fresh event loop (process restart, tests): stale workers and
+            # waiters belong to a dead loop and cannot be touched from here —
+            # drop and rebuild.
             self._lanes.clear()
+            self._bg_slots = None
             self._loop = loop
+
+    def _lane(self, lane: str) -> _Lane:
+        self._ensure_loop()
         if lane not in self._lanes:
             state = _Lane(interval=self._intervals.get(lane, 0.0))
-            state.worker = loop.create_task(self._grant_loop(lane, state))
+            state.worker = asyncio.get_running_loop().create_task(
+                self._grant_loop(lane, state)
+            )
             self._lanes[lane] = state
         return self._lanes[lane]
 
@@ -111,6 +140,7 @@ class TokenScheduler:
             if state.worker:
                 state.worker.cancel()
         self._lanes.clear()
+        self._bg_slots = None
         self._loop = None
 
 

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     gemini_flash_min_interval_seconds: float = 13.0
     gemini_flash_daily_limit: int = 20
     gemini_flash_interactive_reserve: int = 8
+    kernel_background_run_limit: int = 2
     startup_vault_index: bool = True
     startup_index_skip_unchanged: bool = True
 
