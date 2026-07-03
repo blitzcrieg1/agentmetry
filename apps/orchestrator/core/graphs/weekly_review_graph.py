@@ -23,6 +23,7 @@ class WeeklyReviewState(TypedDict):
     cost: float
     input_tokens: int
     output_tokens: int
+    llm_providers: list[str]
     context_sources: list[str]
     thread_id: str
     session_id: str

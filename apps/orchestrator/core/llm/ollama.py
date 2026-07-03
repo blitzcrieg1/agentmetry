@@ -52,6 +52,7 @@ async def call_ollama(
                         output_tokens=output_tokens,
                         cost=cost_from_usage(input_tokens, output_tokens),
                     ),
+                    provider="ollama",
                 )
     except Exception:
         pass
@@ -112,4 +113,5 @@ async def _stream_chat(
             output_tokens=output_tokens,
             cost=cost_from_usage(input_tokens, output_tokens),
         ),
+        provider="ollama",
     )

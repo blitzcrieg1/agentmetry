@@ -51,5 +51,6 @@ async def evaluate_vault_triggers(file_path: Path, vault_path: Path) -> None:
             session_id,
             triggered_by="vault_watch",
             trigger_rule_id=rule.id,
+            trigger_file_path=rel_path,
         )
         logger.info("Trigger %s result: %s", rule.id, result.get("status"))

@@ -16,3 +16,4 @@ class LLMUsage:
 class LLMResult:
     text: str
     usage: LLMUsage
+    provider: str = ""

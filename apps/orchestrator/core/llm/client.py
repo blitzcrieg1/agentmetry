@@ -40,4 +40,12 @@ async def call_llm(
     if provider == "gemini" and settings.gemini_api_key:
         raise LLMDegradedError("Gemini unavailable", llm_degraded.retry_after_seconds or 60)
 
+    # Never let mock output masquerade as a real run: mock requires explicit opt-in.
+    if provider != "mock" and not settings.allow_mock:
+        raise LLMDegradedError(
+            "No LLM provider available — set GEMINI_API_KEY, start Ollama, or opt in to "
+            "mock output with BLACKBOX_LLM_PROVIDER=mock / BLACKBOX_ALLOW_MOCK=true",
+            retry_after=0,
+        )
+
     return await call_mock(prompt, session_id=session_id, node=node)

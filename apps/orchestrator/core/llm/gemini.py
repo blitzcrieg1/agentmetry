@@ -22,6 +22,11 @@ GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _MAX_RETRIES = 3
 
 
+def _mock_fallback() -> str:
+    """Health-status hint: mock is only a real fallback when explicitly allowed."""
+    return "mock_llm" if settings.allow_mock else "none"
+
+
 def _api_key() -> str:
     import os
     return (
@@ -136,7 +141,11 @@ async def call_gemini(
             text = _extract_text(data)
             if not text:
                 return None
-            return LLMResult(text=text, usage=_usage_from_response(data, prompt, text))
+            return LLMResult(
+                text=text,
+                usage=_usage_from_response(data, prompt, text),
+                provider="gemini",
+            )
     except Exception:
         return None
 
@@ -201,7 +210,7 @@ async def _stream_generate(
     text = "".join(parts)
     if usage.input_tokens == 0 and usage.output_tokens == 0:
         usage = _usage_from_response({}, prompt, text)
-    return LLMResult(text=text, usage=usage)
+    return LLMResult(text=text, usage=usage, provider="gemini")
 
 
 async def embed_gemini(
@@ -264,7 +273,7 @@ async def check_gemini_health() -> dict[str, Any]:
         return {
             "status": "down",
             "detail": "GEMINI_API_KEY not set",
-            "fallback": "mock_llm",
+            "fallback": _mock_fallback(),
         }
 
     if not settings.gemini_health_probe:
@@ -314,7 +323,7 @@ async def check_gemini_health() -> dict[str, Any]:
                 "status": "down",
                 "model": settings.gemini_model,
                 "detail": f"HTTP {resp.status_code}: {resp.text[:80]}",
-                "fallback": "mock_llm",
+                "fallback": _mock_fallback(),
             }
             set_cached_health(payload)
             return payload
@@ -323,7 +332,7 @@ async def check_gemini_health() -> dict[str, Any]:
             "status": "down",
             "model": settings.gemini_model,
             "detail": str(exc)[:120],
-            "fallback": "mock_llm",
+            "fallback": _mock_fallback(),
         }
         set_cached_health(payload)
         return payload

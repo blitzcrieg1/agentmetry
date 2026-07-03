@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
     embedding_model: str = "nomic-embed-text"
     llm_provider: str = "gemini"  # gemini | ollama | mock
+    allow_mock: bool = False  # permit mock fallback when no real provider is available
     gemini_api_key: str = Field(
         default="",
         validation_alias=AliasChoices(

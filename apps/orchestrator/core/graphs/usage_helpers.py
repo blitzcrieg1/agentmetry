@@ -8,8 +8,12 @@ from core.llm.types import LLMResult
 
 
 def merge_llm_usage(state: dict[str, Any], llm: LLMResult) -> dict[str, Any]:
+    providers = list(state.get("llm_providers") or [])
+    if llm.provider and llm.provider not in providers:
+        providers.append(llm.provider)
     return {
         "input_tokens": state.get("input_tokens", 0) + llm.usage.input_tokens,
         "output_tokens": state.get("output_tokens", 0) + llm.usage.output_tokens,
         "cost": state.get("cost", 0.0) + llm.usage.cost,
+        "llm_providers": providers,
     }

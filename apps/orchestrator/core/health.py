@@ -67,10 +67,16 @@ async def check_ollama() -> dict[str, Any]:
                 "models": models[:5],
             }
     except Exception as exc:
+        if settings.gemini_api_key:
+            fallback = "gemini"
+        elif settings.allow_mock:
+            fallback = "mock_llm"
+        else:
+            fallback = "none"
         return {
             "status": "down",
             "url": settings.ollama_base_url,
-            "fallback": "mock_llm",
+            "fallback": fallback,
             "detail": str(exc)[:120],
         }
 
@@ -104,7 +110,6 @@ async def get_system_health() -> dict[str, Any]:
 
     provider = settings.llm_provider.lower()
     if provider == "gemini":
-        llm_status = gemini
         if gemini["status"] == "up":
             llm_mode = "gemini"
         elif gemini["status"] == "degraded":
@@ -112,10 +117,8 @@ async def get_system_health() -> dict[str, Any]:
         else:
             llm_mode = gemini.get("fallback", "mock")
     elif provider == "ollama":
-        llm_status = ollama
         llm_mode = "ollama" if ollama["status"] == "up" else "mock"
     else:
-        llm_status = gemini if gemini["status"] == "up" else ollama
         llm_mode = (
             "gemini" if gemini["status"] == "up"
             else "ollama" if ollama["status"] == "up"

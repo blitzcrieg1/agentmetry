@@ -26,4 +26,5 @@ async def call_mock(
             output_tokens=output_tokens,
             cost=cost_from_usage(input_tokens, output_tokens),
         ),
+        provider="mock",
     )

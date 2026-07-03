@@ -27,6 +27,33 @@ logger = logging.getLogger(__name__)
 
 _run_semaphore = asyncio.Semaphore(2)
 
+# Guard against pathological trigger notes blowing up the prompt.
+_TRIGGER_NOTE_MAX_CHARS = 50_000
+
+
+def _inject_trigger_note(
+    system_context: str,
+    context_sources: list[str],
+    trigger_file_path: str,
+    *,
+    client: Any = None,
+) -> tuple[str, list[str]]:
+    """Prepend the full content of the note that fired a trigger.
+
+    Triggered skills must act on the actual triggering note, not on whatever
+    RAG happens to retrieve for the rendered template text.
+    """
+    vault = client or obsidian
+    note = vault.read_note(trigger_file_path)
+    if note is None:
+        logger.warning("Trigger note not readable, skipping injection: %s", trigger_file_path)
+        return system_context, context_sources
+    header = f"[Source: {trigger_file_path}] (triggering note — full content)"
+    system_context = f"{header}\n{note[:_TRIGGER_NOTE_MAX_CHARS]}\n\n{system_context}"
+    if trigger_file_path not in context_sources:
+        context_sources = [trigger_file_path, *context_sources]
+    return system_context, context_sources
+
 
 async def recover_pending_threads() -> int:
     """Reload pending approval threads from durable storage after restart."""
@@ -113,11 +140,16 @@ async def _finalize_execution(
     trigger_rule_id: str | None = None,
 ) -> dict[str, Any]:
     result_content = _extract_result_content(final_state)
+    llm_providers = list(final_state.get("llm_providers") or [])
     archive_path = obsidian.write_closeout_note(
         skill_name=skill_name,
         result=result_content,
-        metadata={"cost": final_state.get("cost", 0)},
+        metadata={
+            "cost": final_state.get("cost", 0),
+            "llm_providers": llm_providers,
+        },
         thread_id=thread_id,
+        status="mock-dry-run" if "mock" in llm_providers else "success",
         confidence_score=final_state.get("confidence_score", 0.0),
         context_sources=final_state.get("context_sources", []),
         key_decisions=final_state.get("key_decisions", []),
@@ -193,6 +225,7 @@ async def run_skill(
     *,
     triggered_by: str = "manual",
     trigger_rule_id: str | None = None,
+    trigger_file_path: str | None = None,
 ) -> dict[str, Any]:
     """Execute a skill graph. Used by HTTP API and autonomous triggers."""
     if llm_degraded.active and settings.llm_provider.lower() == "gemini":
@@ -220,6 +253,10 @@ async def run_skill(
             return {"status": "failed", "error": "Invalid max_cost_per_run in skill config"}
 
         system_context, context_sources = await _fetch_skill_context(user_input, skill_config)
+        if trigger_file_path:
+            system_context, context_sources = _inject_trigger_note(
+                system_context, context_sources, trigger_file_path
+            )
 
         active_loop_path = obsidian.write_active_loop(
             thread_id,
@@ -239,6 +276,7 @@ async def run_skill(
             "cost": 0.0,
             "input_tokens": 0,
             "output_tokens": 0,
+            "llm_providers": [],
             "context_sources": context_sources,
             "key_decisions": [],
             "thread_id": thread_id,

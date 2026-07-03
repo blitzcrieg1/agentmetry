@@ -28,6 +28,7 @@ class LeadGenState(TypedDict):
     cost: float
     input_tokens: int
     output_tokens: int
+    llm_providers: list[str]
     context_sources: list[str]
     key_decisions: list[str]
     thread_id: str
