@@ -26,6 +26,7 @@ export function useWebSocket() {
   const setGraphNodes = useAgentStore((s) => s.setGraphNodes);
   const appendStreamToken = useAgentStore((s) => s.appendStreamToken);
   const incrementMemoryAccess = useAgentStore((s) => s.incrementMemoryAccess);
+  const bumpRunsRefresh = useAgentStore((s) => s.bumpRunsRefresh);
   const wsRef = useRef<WebSocket | null>(null);
 
   const applyMetrics = (metrics: Record<string, number>) => {
@@ -93,6 +94,7 @@ export function useWebSocket() {
           updateNode("finalize", "completed");
           if (data.metrics) applyMetrics(data.metrics);
           appendTerminal(`✓ Completed — archived to ${data.archive_path}`);
+          bumpRunsRefresh();
           break;
 
         case "execution_failed":
@@ -132,7 +134,43 @@ export function useWebSocket() {
     setGraphNodes,
     appendStreamToken,
     incrementMemoryAccess,
+    bumpRunsRefresh,
   ]);
+
+  // Global feed: surfaces autonomous runs (vault triggers, cron) that execute
+  // outside this dashboard session.
+  useEffect(() => {
+    const ws = new WebSocket(wsUrl("global"));
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const origin: string = data.origin_session || "";
+      if (!origin.startsWith("autonomous-")) return;
+
+      const rule = origin.replace("autonomous-", "");
+      switch (data.type) {
+        case "execution_started":
+          appendTerminal(`🤖 [${rule}] ${data.skill} started`);
+          break;
+        case "execution_completed":
+          appendTerminal(`🤖 [${rule}] completed — ${data.archive_path}`);
+          bumpRunsRefresh();
+          break;
+        case "execution_failed":
+          appendTerminal(`🤖 [${rule}] failed: ${data.error}`);
+          bumpRunsRefresh();
+          break;
+        case "approval_required":
+          appendTerminal(`🤖 [${rule}] ⚠ approval required (thread ${data.thread_id})`);
+          bumpRunsRefresh();
+          break;
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [appendTerminal, bumpRunsRefresh]);
 
   return wsRef;
 }

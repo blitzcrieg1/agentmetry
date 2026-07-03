@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RunHistory } from "@/components/telemetry/run-history";
 import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 
 interface HistoricalStats {
@@ -99,6 +100,8 @@ export function TelemetryPanel() {
           </CardContent>
         </Card>
       )}
+
+      <RunHistory />
 
       <Card className="flex-1">
         <CardHeader className="pb-2">

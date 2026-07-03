@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ServiceStatus {
-  status: "up" | "down" | "skipped";
+  status: "up" | "down" | "degraded" | "skipped";
   detail?: string;
   fallback?: string;
   backend?: string;

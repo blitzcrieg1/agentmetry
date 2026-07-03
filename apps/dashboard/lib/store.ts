@@ -1,7 +1,20 @@
 import { create } from "zustand";
 import { type GraphNodeState, type NodeStatus } from "@/lib/graph-utils";
+import { generateSessionId } from "@/lib/utils";
 
 export type { GraphNodeState, NodeStatus };
+
+const SESSION_STORAGE_KEY = "blackbox-session-id";
+
+function initialSessionId(): string {
+  // Stable across page reloads so a refresh mid-run keeps streaming events.
+  if (typeof window === "undefined") return "session-ssr";
+  const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (existing) return existing;
+  const id = generateSessionId();
+  window.localStorage.setItem(SESSION_STORAGE_KEY, id);
+  return id;
+}
 
 export interface TelemetryMetrics {
   inputTokens: number;
@@ -14,8 +27,8 @@ export interface TelemetryMetrics {
 export interface Skill {
   id: string;
   name: string;
-  display_name: string;
-  description: string;
+  display_name?: string;
+  description?: string;
   nodes?: string[];
   default_input?: string;
 }
@@ -33,6 +46,7 @@ interface AgentStore {
   approvalConfidence: number;
   memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
+  runsRefreshKey: number;
 
   setSkills: (skills: Skill[]) => void;
   setActiveSkill: (skill: string) => void;
@@ -48,11 +62,12 @@ interface AgentStore {
   clearApproval: () => void;
   incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
+  bumpRunsRefresh: () => void;
   reset: (nodes?: GraphNodeState[]) => void;
 }
 
 export const useAgentStore = create<AgentStore>((set) => ({
-  sessionId: `session-${Date.now()}`,
+  sessionId: initialSessionId(),
   skills: [],
   activeSkill: null,
   threadId: null,
@@ -70,6 +85,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   approvalConfidence: 0,
   memoryHeatmap: {},
   wsConnected: false,
+  runsRefreshKey: 0,
 
   setSkills: (skills) => set({ skills }),
   setActiveSkill: (skill) => set({ activeSkill: skill }),
@@ -110,6 +126,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
       },
     })),
   setWsConnected: (connected) => set({ wsConnected: connected }),
+  bumpRunsRefresh: () =>
+    set((state) => ({ runsRefreshKey: state.runsRefreshKey + 1 })),
   reset: (nodes) =>
     set((state) => {
       const base = nodes ?? state.graphNodes;
