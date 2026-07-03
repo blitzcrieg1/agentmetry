@@ -91,20 +91,63 @@ docker exec -it agentic-os-ollama-1 ollama pull nomic-embed-text
 
 ## Skills
 
-| Skill | Graph | Description |
-|-------|-------|-------------|
-| `lead_gen` | Planner → Researcher → Writer → Critic → Approval → Finalize | B2B outreach with human approval gate |
-| `summarize_meeting` | Ingest → Extract → Summarize → Finalize | Meeting notes → action items |
-| `weekly_review` | Collect → Analyze → Prioritize → Finalize | Weekly vault review and priorities |
+| Skill | Defined in | Description |
+|-------|-----------|-------------|
+| `summarize_note` | pure YAML (`graph: pipeline`) | Read any vault note via the `vault_fs` driver, archive a summary |
+| `inbox_triage` | pure YAML (`graph: pipeline`) | Classify a note — category, urgency, suggested action |
+| `lead_gen` | Python graph | B2B outreach with a human approval gate |
+| `summarize_meeting` | Python graph | Meeting notes → decisions and action items |
+| `weekly_review` | Python graph | Weekly vault review and priorities |
 
-## Adding a New Skill
+## Adding a New Skill (no Python)
 
-1. Create a YAML definition in `vault/.system/skill-definitions/my_skill.yaml`
-2. Implement a graph builder in `apps/orchestrator/core/graphs/`
-3. Register the builder in `core/graphs/registry.py` under `_GRAPH_BUILDERS`
-4. Click **Reload Skills** in the dashboard or `POST /api/v1/skills/reload`
+Drop a YAML file in `vault/.system/skill-definitions/` and click **Reload Skills**
+(or `POST /api/v1/skills/reload`):
 
-The skill auto-appears in The Armory on next load.
+```yaml
+name: my_skill
+graph: pipeline                 # compiled into a checkpointed LangGraph
+tools: [vault_fs.read_note]     # per-skill tool allowlist (closed by default)
+nodes: [research, draft, critic, human_approval, finalize]
+node_tools:                     # declarative tool calls; results usable in prompts
+  research:
+    - tool: vault_fs.read_note
+      args: {path: "{user_input}"}
+      output: note_text
+node_prompts:
+  draft: "Write a response based on:\n{note_text}"
+max_cost_per_run: 0.10          # pre-step gate stops the run before overspend
+```
+
+`critic` + `human_approval` are optional reserved steps: including them adds a
+confidence-scored approval interrupt. Complex branching graphs can still be
+written in Python and registered in `core/graphs/registry.py`.
+
+## Drivers (MCP tools)
+
+Tool capability comes from MCP servers mounted at boot from
+`vault/.system/drivers.json` (operator-owned; agents cannot write it):
+
+- Ships with `vault_fs` — a read-only server jailed to the vault, running on the
+  orchestrator's own Python (no Node needed). `fs`/`shell` npx examples included
+  but disabled.
+- Driver subprocess env is **allowlist-only**: secrets like `GEMINI_API_KEY`
+  never cross into a driver unless `env_allow` names them.
+- Skills opt in per tool (`tools:` allowlist, fnmatch patterns); drivers tagged
+  `exec` are denied with a recorded `tool_exec_approval` interrupt until a
+  sandbox tier exists.
+- Inspect with `GET /api/v1/drivers/`; remount after config edits with
+  `POST /api/v1/drivers/remount`.
+
+## Autonomy
+
+Drop any markdown note into `00-Inbox/` and the `inbox-note-summarize` trigger
+runs `summarize_note` on it automatically (meeting-tagged notes route to
+`summarize_meeting` instead). When only the interactive Flash reserve remains,
+autonomous runs park as `budget_defer` interrupts — visible in the dashboard's
+**Interrupts · Gate** panel — and resume unattended once the daily budget
+resets. Trigger rules live in `vault/.system/trigger-rules/` and support
+`path_glob`, frontmatter `tags`/`not_tags`, cron schedules, and cooldowns.
 
 ## Architecture
 
@@ -123,6 +166,10 @@ The skill auto-appears in The Armory on next load.
 | `GET /api/v1/skills/` | Open | List skills + registered graphs |
 | `GET /api/v1/runs/` | Open | Run history from the audit log (paged, newest first) |
 | `GET /api/v1/runs/{thread_id}/events` | Open | Per-run node execution trace |
+| `GET /api/v1/events/?since=N` | Open | Durable event outbox replay (dashboard reconnect) |
+| `GET /api/v1/skills/interrupts` | Open | Pending interrupts (approval, budget, degraded, exec) |
+| `GET /api/v1/drivers/` | Open | Mounted MCP drivers and their tool namespaces |
+| `POST /api/v1/drivers/remount` | API key | Re-read drivers.json and remount |
 | `POST /api/v1/skills/reload` | API key | Re-scan vault skill definitions |
 | `POST /api/v1/skills/execute` | API key | Run a skill |
 | `POST /api/v1/skills/approve` | API key | Approve/reject paused skill |
@@ -148,6 +195,7 @@ See `.env.example` for all configuration options. Key variables:
 | `BLACKBOX_COST_ALERT_THRESHOLD` | `1.0` | Session cost alert in USD |
 | `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget (free tier ~20 RPD) |
 | `BLACKBOX_GEMINI_FLASH_INTERACTIVE_RESERVE` | `8` | Calls kept for manual runs; autonomous runs pause below this |
+| `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT` | `2` | Concurrent background runs; interactive runs are never queued |
 
 ## Production Features
 
@@ -162,8 +210,15 @@ See `.env.example` for all configuration options. Key variables:
 - **Append-only archive** — Closeout notes are timestamped per run with thread id;
   they are never overwritten
 - **Gemini token/cost tracking** — Real usage metadata from API responses
-- **Quota-aware throttling** — Flash and embedding calls are paced independently
-  for free-tier RPM limits
+- **Kernel token scheduler** — Every LLM/embed call is a priority-ordered kernel
+  grant: interactive runs preempt queued background work at both the call and
+  run level; pacing respects free-tier RPM limits
+- **Interrupt Vector Table** — Budget- and degradation-deferred autonomous runs
+  queue durably and resume unattended when the gate clears; approvals, budget
+  defers, and exec denials all share one recovery surface
+- **Event bus with durable outbox** — Every runtime event flows through an
+  in-process bus into SQLite; reconnecting dashboards replay what they missed
+  instead of gapping
 - **Daily Flash budget** — Successful Gemini calls are counted per UTC day
   (`data/budget.db`); autonomous runs defer once only the interactive reserve
   remains, with a live meter in the dashboard and `/health`
