@@ -35,8 +35,12 @@ async def evaluate_vault_triggers(file_path: Path, vault_path: Path) -> None:
             continue
 
         key = (rule.id, rel_path)
-        last = _cooldowns.get(key, 0.0)
-        if now - last < rule.cooldown_seconds:
+        last = _cooldowns.get(key)
+        # A missing entry means "never fired" — no cooldown applies. Comparing
+        # against 0.0 wrongly suppressed all triggers for the first
+        # cooldown_seconds of machine uptime (monotonic starts near zero on a
+        # fresh boot — e.g. right after Task Scheduler autostart, or CI).
+        if last is not None and now - last < rule.cooldown_seconds:
             logger.debug("Trigger %s cooldown active for %s", rule.id, rel_path)
             continue
 

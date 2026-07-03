@@ -136,6 +136,9 @@ async def test_dispatch_passes_path_and_respects_exclusion(
     monkeypatch.setattr(triggers, "run_skill", fake_run_skill)
     monkeypatch.setattr(triggers, "obsidian", ObsidianClient(vault_tmp))
     triggers._cooldowns.clear()
+    # Fresh-boot regression guard: monotonic starts near zero after a reboot
+    # (or in CI); a never-fired rule must still fire even when now < cooldown.
+    monkeypatch.setattr(triggers.time, "monotonic", lambda: 5.0)
 
     await triggers.evaluate_vault_triggers(vault_tmp / "00-Inbox" / "idea.md", vault_tmp)
     await triggers.evaluate_vault_triggers(vault_tmp / "00-Inbox" / "meeting.md", vault_tmp)
