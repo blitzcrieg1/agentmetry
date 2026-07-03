@@ -89,6 +89,8 @@ The skill auto-appears in The Armory on next load.
 | `GET /api/v1/vault/tree` | Open | Vault folder/file listing |
 | `GET /api/v1/vault/notes/{path}` | Open | Read a vault note (path-jailed) |
 | `GET /api/v1/skills/` | Open | List skills + registered graphs |
+| `GET /api/v1/runs/` | Open | Run history from the audit log (paged, newest first) |
+| `GET /api/v1/runs/{thread_id}/events` | Open | Per-run node execution trace |
 | `POST /api/v1/skills/reload` | API key | Re-scan vault skill definitions |
 | `POST /api/v1/skills/execute` | API key | Run a skill |
 | `POST /api/v1/skills/approve` | API key | Approve/reject paused skill |
@@ -112,6 +114,8 @@ See `.env.example` for all configuration options. Key variables:
 | `BLACKBOX_USE_POSTGRES` | `false` | Use PostgreSQL for telemetry + checkpoints |
 | `BLACKBOX_VAULT_PATH` | `./vault` | Obsidian vault location |
 | `BLACKBOX_COST_ALERT_THRESHOLD` | `1.0` | Session cost alert in USD |
+| `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget (free tier ~20 RPD) |
+| `BLACKBOX_GEMINI_FLASH_INTERACTIVE_RESERVE` | `8` | Calls kept for manual runs; autonomous runs pause below this |
 
 ## Production Features
 
@@ -128,6 +132,13 @@ See `.env.example` for all configuration options. Key variables:
 - **Gemini token/cost tracking** — Real usage metadata from API responses
 - **Quota-aware throttling** — Flash and embedding calls are paced independently
   for free-tier RPM limits
+- **Daily Flash budget** — Successful Gemini calls are counted per UTC day
+  (`data/budget.db`); autonomous runs defer once only the interactive reserve
+  remains, with a live meter in the dashboard and `/health`
+- **Run history & node traces** — Every run and node event persists to JSONL,
+  surfaced via `/api/v1/runs/` and the dashboard Run History card
+- **Autonomous runs are visible** — A global event feed streams vault-trigger
+  and cron activity into mission control as it happens
 - **Incremental vault indexing** — File watcher re-indexes only changed notes;
   triggered skills receive the full content of the note that fired them
 - **Path-jailed vault reads** — Prevents directory traversal outside vault root
