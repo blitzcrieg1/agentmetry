@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +24,19 @@ async def check_vault() -> dict[str, Any]:
     return {"status": "up", "path": str(vault), "notes": md_count}
 
 
+def _probe_qdrant_sync() -> list[str]:
+    client = QdrantClient(
+        url=settings.qdrant_url,
+        timeout=2,
+        check_compatibility=False,
+    )
+    return [c.name for c in client.get_collections().collections]
+
+
 async def check_qdrant() -> dict[str, Any]:
     try:
-        client = QdrantClient(
-            url=settings.qdrant_url,
-            timeout=2,
-            check_compatibility=False,
-        )
-        collections = client.get_collections().collections
-        names = [c.name for c in collections]
+        # Off-loop with a hard cap: a black-holed port must not stall /health.
+        names = await asyncio.wait_for(asyncio.to_thread(_probe_qdrant_sync), timeout=3.0)
         indexed = settings.collection_name in names
         return {
             "status": "up",
@@ -103,11 +108,15 @@ async def check_postgres() -> dict[str, Any]:
 
 
 async def get_system_health() -> dict[str, Any]:
-    vault = await check_vault()
-    qdrant = await check_qdrant()
-    ollama = await check_ollama()
-    gemini = await check_gemini_health()
-    postgres = await check_postgres()
+    # Probes run concurrently: on machines where dead ports black-hole instead
+    # of refusing, sequential awaits add up past client timeouts.
+    vault, qdrant, ollama, gemini, postgres = await asyncio.gather(
+        check_vault(),
+        check_qdrant(),
+        check_ollama(),
+        check_gemini_health(),
+        check_postgres(),
+    )
 
     provider = settings.llm_provider.lower()
     if provider == "gemini":

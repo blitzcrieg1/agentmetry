@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -41,10 +43,17 @@ class _MemoryPoint:
     payload: dict[str, Any]
 
 
+class _QdrantUnavailable(Exception):
+    """Circuit breaker is open — skip Qdrant without touching the network."""
+
+
 class RAGEngine:
   CHUNK_SIZE = 512
   CHUNK_OVERLAP = 64
+  QDRANT_RETRY_SECONDS = 300
   _shared_memory: ClassVar[dict[str, list[_MemoryPoint]]] = {}
+  # Shared across engine instances: one failure pauses Qdrant use everywhere.
+  _qdrant_down_until: ClassVar[float] = 0.0
 
   def __init__(
       self,
@@ -61,24 +70,47 @@ class RAGEngine:
       self.collection_name = collection_name or settings.collection_name
       self.obsidian = ObsidianClient(vault_path or settings.vault_path)
       self.cache = embedding_cache or get_embedding_cache()
-      self._ensure_collection()
+      self._collection_ready = False
 
   def _memory_key(self) -> str:
       return f"{self.collection_name}:{self.obsidian.vault_path.resolve()}"
 
-  def _ensure_collection(self) -> None:
+  async def _qdrant_call(self, fn, *args, **kwargs):
+      """Run a blocking Qdrant op off the event loop, behind a circuit breaker.
+
+      Port 6333 can be black-holed (e.g. a stale port proxy) instead of
+      refused, so a synchronous call from async code can wedge the whole
+      server for the TCP retry window. Off-loop execution keeps the appliance
+      responsive; the breaker stops re-paying the timeout on every file.
+      """
+      if time.monotonic() < RAGEngine._qdrant_down_until:
+          raise _QdrantUnavailable
       try:
-          collections = [c.name for c in self.client.get_collections().collections]
-          if self.collection_name not in collections:
-              self.client.create_collection(
-                  collection_name=self.collection_name,
-                  vectors_config=VectorParams(
-                      size=settings.embedding_dimensions,
-                      distance=Distance.COSINE,
-                  ),
-              )
+          result = await asyncio.to_thread(fn, *args, **kwargs)
       except Exception:
-          pass  # Qdrant may not be running yet — index on demand
+          RAGEngine._qdrant_down_until = time.monotonic() + self.QDRANT_RETRY_SECONDS
+          raise
+      RAGEngine._qdrant_down_until = 0.0
+      return result
+
+  def _ensure_collection(self) -> None:
+      """Lazy, blocking — only ever called inside _qdrant_call."""
+      if self._collection_ready:
+          return
+      collections = [c.name for c in self.client.get_collections().collections]
+      if self.collection_name not in collections:
+          self.client.create_collection(
+              collection_name=self.collection_name,
+              vectors_config=VectorParams(
+                  size=settings.embedding_dimensions,
+                  distance=Distance.COSINE,
+              ),
+          )
+      self._collection_ready = True
+
+  def _upsert_sync(self, points: list[PointStruct]) -> None:
+      self._ensure_collection()
+      self.client.upsert(collection_name=self.collection_name, points=points)
 
   def _chunk_text(self, text: str) -> list[str]:
       """Split text into overlapping chunks."""
@@ -302,7 +334,7 @@ class RAGEngine:
 
       if points:
           try:
-              self.client.upsert(collection_name=self.collection_name, points=points)
+              await self._qdrant_call(self._upsert_sync, points)
           except Exception:
               pass
       return indexed
@@ -316,7 +348,8 @@ class RAGEngine:
           if point.payload.get("source_path") != rel_path
       ]
       try:
-          self.client.delete(
+          await self._qdrant_call(
+              self.client.delete,
               collection_name=self.collection_name,
               points_selector=Filter(
                   must=[FieldCondition(key="source_path", match=MatchValue(value=rel_path))]
@@ -404,7 +437,8 @@ class RAGEngine:
       query_filter = Filter(must=conditions) if conditions else None
 
       try:
-          results = self.client.search(
+          results = await self._qdrant_call(
+              self.client.search,
               collection_name=self.collection_name,
               query_vector=embedding,
               limit=top_k,
