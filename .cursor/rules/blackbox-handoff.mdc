@@ -1,0 +1,121 @@
+---
+description: BLACKBOX project context, roadmap, and session handoff (updated 2026-07-03)
+alwaysApply: true
+---
+
+# BLACKBOX — Session Handoff
+
+## Project
+- **Name:** BLACKBOX (Obsidian-Cortex Agentic OS)
+- **Repo:** https://github.com/blitzcrieg1/agentic-os (private), branch `master`
+- **Head:** `219242c` — IVT + deferred autonomous resume
+- **Wedge:** Governed autonomy — LangGraph state machines, approval gates, vault ledger, mission-control dashboard
+
+## Local-first (non-negotiable)
+- **Windows 11**, developer PC only — no cloud deploy
+- Orchestrator `localhost:8000`; dashboard dev `localhost:3000` (or 3001)
+- **No Docker** default; Gemini API = only cloud dependency
+- Secrets: `apps/orchestrator/.env` (gitignored)
+- **Preferred run:** `scripts\blackbox.bat start` or `scripts\serve.bat` (single process)
+
+## Run locally
+```powershell
+# Single process (recommended)
+scripts\serve.bat
+
+# Dev (two terminals)
+cd apps\orchestrator && uvicorn api.main:app --reload --port 8000
+cd apps\dashboard && npm run dev
+```
+
+## Stack
+- `apps/orchestrator/` — FastAPI, LangGraph, AsyncSqliteSaver, APScheduler, vault watcher, `blackbox` CLI
+- `apps/dashboard/` — Next.js 14, React Flow, Zustand, WebSocket
+- `vault/` — skills in `.system/skill-definitions/`, triggers in `.system/trigger-rules/`
+- **Skills (3):** lead_gen, summarize_meeting, weekly_review — hand-edited Python graphs + registry
+
+## AOS subsystem status (Fable blueprint)
+
+| ID | Subsystem | Status | Key path |
+|----|-----------|--------|----------|
+| s1 | Kernel token scheduler | ✅ `98cfc4a` | `core/kernel/scheduler.py` |
+| s2 | Event bus + outbox | ✅ `c9b3842` | `core/bus/` |
+| s3 | Interrupt Vector Table | ✅ `219242c` | `core/kernel/interrupts.py` |
+| s4 | Drivers (MCP) | 📋 Next | spec first — do not explore blind |
+| s5 | Sandbox | 📋 Planned | after drivers |
+
+**Ground rules:** kernel + user space in **one process**; keep `registry.py`; MCP replaces tools not graphs; no Docker/E2B default.
+
+## Shipped (do not re-implement)
+
+### Trust / P0 (done)
+- Append-only archive filenames (`{date}-{HHMM}-{skill}-{thread8}.md`)
+- Mock guard — `mock-dry-run` status, no silent mock into ledger
+- Trigger reads source note — `trigger_file_path` → `_inject_trigger_note()`
+- Embedding cache — `core/memory/embedding_cache.py`
+- Thread-safe vault watcher, disk logs (`data/logs/orchestrator.log`)
+- `blackbox` CLI — start/stop/status/logs/backup/restore/install
+
+### Phase 2 (mostly done)
+- Single-process dashboard serve (`34127c0`)
+- Run history API + dashboard panel
+- Flash budget ledger + IVT budget defer/resume
+- Event bus with durable outbox + WS bridge
+
+## Do not re-explore — start here
+
+| Task | File |
+|------|------|
+| Execute any skill | `core/execution/service.py` → `run_skill()` |
+| Autonomous triggers | `core/scheduler/triggers.py` |
+| Graph registration | `core/graphs/registry.py` |
+| Interrupts / defer resume | `core/kernel/interrupts.py`, `resume_deferred_interrupts()` |
+| LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
+| Vault I/O | `core/memory/obsidian_client.py` |
+| API lifespan | `api/main.py` |
+
+## Next work (priority order)
+
+1. ~~Handoff refresh~~ (this file)
+2. ~~Pre-step `max_cost_per_run`~~ — `graph_call_llm()` in `usage_helpers.py`
+3. ~~YAML pipeline compiler v1~~ — `core/graphs/pipeline_graph.py`; new skills use `graph: pipeline`
+4. **s4 Drivers spec** — MCP tool layer; do not replace `registry.py`
+5. Obsidian plugin (approvals, run-on-note, status bar)
+6. Mid-run crash recovery UX
+
+### Adding a skill without Python (pipeline v1)
+```yaml
+# vault/.system/skill-definitions/my_skill.yaml
+name: my_skill
+graph: pipeline
+system_prompt: |
+  You are ...
+nodes:
+  - plan
+  - draft
+  - critic          # optional
+  - human_approval  # optional — enables interrupt gate
+  - finalize
+node_prompts:        # optional — defaults generated from step id
+  plan: "Plan the work for: {user_input}"
+max_cost_per_run: 0.20
+```
+
+## Gemini free tier
+- Flash: ~5 RPM, **20 RPD** — daily limit is the real blocker
+- Autonomous runs defer via IVT when only interactive reserve remains
+- Do not health-probe Gemini every poll; embedding cache avoids re-embed on restart
+
+## API quick reference
+- `GET /api/v1/skills/interrupts` — pending IVT rows (budget, degraded, HITL)
+- `GET /api/v1/skills/pending` — enriched HITL approvals
+- `GET /api/v1/health` — includes budget snapshot + degraded flag
+
+## Tests
+- `cd apps/orchestrator && pytest -q` — expect ~79+ passing
+- CI: ruff + pytest (orchestrator), lint + build (dashboard)
+
+## User preferences
+- Solo dev, Windows local only
+- Do not commit unless explicitly asked
+- Minimize scope; match existing conventions

@@ -7,8 +7,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.graphs.node_events import emit_node
-from core.graphs.usage_helpers import merge_llm_usage
-from core.llm.client import call_llm
+from core.graphs.usage_helpers import graph_call_llm
 
 
 class WeeklyReviewState(TypedDict):
@@ -67,12 +66,12 @@ Identify:
 Context:
 {state['collected']}"""
 
-    llm = await call_llm(prompt, system, session_id=session_id, node="analyze")
+    llm, usage = await graph_call_llm(state, prompt, system=system, node="analyze")
 
     result = {
         "analysis": llm.text,
         "messages": [AIMessage(content=f"[Analyze]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "analyze", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "prioritize", "running")
@@ -90,12 +89,12 @@ Use markdown with: Top 3 Priorities, Quick Wins, Defer/Delegate, Open Loops to C
 Analysis:
 {state['analysis']}"""
 
-    llm = await call_llm(prompt, session_id=session_id, node="prioritize")
+    llm, usage = await graph_call_llm(state, prompt, node="prioritize")
 
     result = {
         "priorities": llm.text,
         "messages": [AIMessage(content=f"[Prioritize]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "prioritize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "finalize", "running")
@@ -114,12 +113,12 @@ Analysis:
 Priorities:
 {state['priorities']}"""
 
-    llm = await call_llm(prompt, session_id=session_id, node="finalize")
+    llm, usage = await graph_call_llm(state, prompt, node="finalize")
 
     result = {
         "summary": llm.text,
         "messages": [AIMessage(content=f"[Weekly Review]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "finalize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     return result

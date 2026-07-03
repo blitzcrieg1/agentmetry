@@ -8,8 +8,7 @@ from langgraph.graph.message import add_messages
 
 from core.config import settings
 from core.graphs.node_events import emit_node
-from core.graphs.usage_helpers import merge_llm_usage
-from core.llm.client import call_llm
+from core.graphs.usage_helpers import graph_call_llm
 
 
 class LeadGenState(TypedDict):
@@ -52,12 +51,12 @@ Available context:
 
 Output a numbered plan with: research targets, personalization angles, and email structure."""
 
-    llm = await call_llm(prompt, system, session_id=session_id, node="planner")
+    llm, usage = await graph_call_llm(state, prompt, system=system, node="planner")
 
     result = {
         "plan": llm.text,
         "messages": [AIMessage(content=f"[Planner]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "planner", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "researcher", "running")
@@ -78,7 +77,7 @@ Context from vault:
 
 Identify top prospects, their recent news, and personalization hooks."""
 
-    llm = await call_llm(prompt, session_id=session_id, node="researcher")
+    llm, usage = await graph_call_llm(state, prompt, node="researcher")
 
     sources = [
         line.split("]")[0].replace("[Source: ", "")
@@ -90,7 +89,7 @@ Identify top prospects, their recent news, and personalization hooks."""
         "research": llm.text,
         "messages": [AIMessage(content=f"[Researcher]\n{llm.text}")],
         "context_sources": sources[:5],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "researcher", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "writer", "running")
@@ -111,12 +110,12 @@ Brand context:
 
 Write a concise email (under 150 words) with subject line. Use technical peer tone."""
 
-    llm = await call_llm(prompt, session_id=session_id, node="writer")
+    llm, usage = await graph_call_llm(state, prompt, node="writer")
 
     result = {
         "draft": llm.text,
         "messages": [AIMessage(content=f"[Writer]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "writer", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "critic", "running")
@@ -143,7 +142,7 @@ CONFIDENCE: <score>
 ISSUES: <list or "none">
 DECISIONS: <key decisions made>"""
 
-    llm = await call_llm(prompt, session_id=session_id, node="critic")
+    llm, usage = await graph_call_llm(state, prompt, node="critic")
 
     confidence = 0.85
     for line in llm.text.split("\n"):
@@ -172,7 +171,7 @@ DECISIONS: <key decisions made>"""
         "requires_approval": requires_approval,
         "key_decisions": decisions,
         "messages": [AIMessage(content=f"[Critic]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "critic", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     return result

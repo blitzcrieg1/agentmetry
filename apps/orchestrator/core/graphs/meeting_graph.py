@@ -7,8 +7,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.graphs.node_events import emit_node
-from core.graphs.usage_helpers import merge_llm_usage
-from core.llm.client import call_llm
+from core.graphs.usage_helpers import graph_call_llm
 
 
 class MeetingState(TypedDict):
@@ -65,12 +64,12 @@ async def extract_node(state: MeetingState) -> dict[str, Any]:
 Notes:
 {state['raw_notes']}"""
 
-    llm = await call_llm(prompt, system, session_id=session_id, node="extract")
+    llm, usage = await graph_call_llm(state, prompt, system=system, node="extract")
 
     result = {
         "extracted": llm.text,
         "messages": [AIMessage(content=f"[Extract]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "extract", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "summarize", "running")
@@ -88,12 +87,12 @@ Use markdown with sections: Executive Summary, Decisions, Action Items, Next Ste
 Extraction:
 {state['extracted']}"""
 
-    llm = await call_llm(prompt, session_id=session_id, node="summarize")
+    llm, usage = await graph_call_llm(state, prompt, node="summarize")
 
     result = {
         "summary": llm.text,
         "messages": [AIMessage(content=f"[Summarize]\n{llm.text}")],
-        **merge_llm_usage(state, llm),
+        **usage,
     }
     await emit_node(session_id, thread_id, "summarize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     await emit_node(session_id, thread_id, "finalize", "running")

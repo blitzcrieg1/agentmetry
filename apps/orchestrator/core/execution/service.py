@@ -34,6 +34,7 @@ from core.kernel.interrupts import InterruptVector
 from core.kernel.scheduler import Priority, run_priority
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
+from core.llm.errors import CostBudgetExceeded
 from core.notifiers.audit import append_vault_run_log, log_run
 from core.notifiers.toast import notify
 
@@ -202,11 +203,60 @@ def _maybe_cost_alert(session_id: str, cost: float) -> None:
         }, session_id=session_id)
 
 
+def _budget_exceeded_result(
+    *,
+    thread_id: str,
+    skill_name: str,
+    session_id: str,
+    active_loop_path: str,
+    triggered_by: str,
+    trigger_rule_id: str | None,
+    cost: float,
+    max_cost: float,
+    start: float,
+) -> dict[str, Any]:
+    obsidian.resolve_active_loop(
+        active_loop_path,
+        "budget_exceeded",
+        note=f"Cost ${cost:.4f} exceeded max ${max_cost:.4f}",
+    )
+    latency = _latency_ms(start)
+    telemetry.log_execution(
+        thread_id, skill_name, "budget_exceeded", cost=cost, latency_ms=latency
+    )
+    log_run({
+        "thread_id": thread_id,
+        "skill": skill_name,
+        "status": "budget_exceeded",
+        "triggered_by": triggered_by,
+        "trigger_rule_id": trigger_rule_id,
+        "session_id": session_id,
+        "cost": cost,
+        "max_cost_per_run": max_cost,
+    })
+    bus.publish(RUN_FAILED, {
+        "type": "execution_failed",
+        "thread_id": thread_id,
+        "error": f"Cost ${cost:.4f} exceeded max ${max_cost:.4f}",
+        "status": "budget_exceeded",
+    }, session_id=session_id, thread_id=thread_id)
+    return {
+        "status": "budget_exceeded",
+        "thread_id": thread_id,
+        "cost": cost,
+        "max_cost_per_run": max_cost,
+    }
+
+
 def _extract_result_content(final_state: dict[str, Any]) -> str:
     if final_state.get("messages"):
         last_msg = final_state["messages"][-1]
         return getattr(last_msg, "content", str(last_msg))
-    return final_state.get("draft", "") or final_state.get("summary", "")
+    return (
+        final_state.get("draft", "")
+        or final_state.get("output", "")
+        or final_state.get("summary", "")
+    )
 
 
 async def _finalize_execution(
@@ -470,26 +520,17 @@ async def run_skill(
 
             run_cost = float(state_values.get("cost", 0.0))
             if max_cost is not None and run_cost > float(max_cost):
-                obsidian.resolve_active_loop(
-                    active_loop_path,
-                    "budget_exceeded",
-                    note=f"Cost ${run_cost:.4f} exceeded max ${float(max_cost):.4f}",
+                return _budget_exceeded_result(
+                    thread_id=thread_id,
+                    skill_name=skill_name,
+                    session_id=session_id,
+                    active_loop_path=str(active_loop_path),
+                    triggered_by=triggered_by,
+                    trigger_rule_id=trigger_rule_id,
+                    cost=run_cost,
+                    max_cost=float(max_cost),
+                    start=start,
                 )
-                log_run({
-                    "thread_id": thread_id,
-                    "skill": skill_name,
-                    "status": "budget_exceeded",
-                    "triggered_by": triggered_by,
-                    "session_id": session_id,
-                    "cost": run_cost,
-                    "max_cost_per_run": max_cost,
-                })
-                return {
-                    "status": "budget_exceeded",
-                    "thread_id": thread_id,
-                    "cost": run_cost,
-                    "max_cost_per_run": max_cost,
-                }
 
             if snapshot.next and "human_approval" in snapshot.next:
                 pending_meta = {
@@ -553,6 +594,18 @@ async def run_skill(
                 trigger_rule_id=trigger_rule_id,
             )
 
+        except CostBudgetExceeded as exc:
+            return _budget_exceeded_result(
+                thread_id=thread_id,
+                skill_name=skill_name,
+                session_id=session_id,
+                active_loop_path=str(active_loop_path),
+                triggered_by=triggered_by,
+                trigger_rule_id=trigger_rule_id,
+                cost=exc.cost,
+                max_cost=exc.max_cost,
+                start=start,
+            )
         except Exception as e:
             latency = _latency_ms(start)
             obsidian.resolve_active_loop(active_loop_path, "failed", note=str(e))

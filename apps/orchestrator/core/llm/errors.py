@@ -10,3 +10,12 @@ class LLMDegradedError(Exception):
         super().__init__(reason)
         self.reason = reason
         self.retry_after = retry_after
+
+
+class CostBudgetExceeded(Exception):
+    """Raised when a run exceeds skill max_cost_per_run."""
+
+    def __init__(self, cost: float, max_cost: float):
+        self.cost = cost
+        self.max_cost = max_cost
+        super().__init__(f"Cost ${cost:.4f} exceeded max ${max_cost:.4f}")
