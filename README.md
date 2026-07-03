@@ -31,6 +31,22 @@ System Status should show **Gemini: up** and **RAG: semantic memory**.
 After the first setup, `scripts\start-dev.bat` launches both processes in one step
 (no Docker required). Orchestrator logs persist to `apps\orchestrator\data\logs\orchestrator.log`.
 
+## Single-process mode (one port, no dev server)
+
+For always-on local use, serve the whole app from one process. `scripts\serve.bat`
+builds the dashboard into a static export and hosts both the UI and API from
+uvicorn on `http://localhost:8000`:
+
+```powershell
+scripts\serve.bat
+```
+
+Under the hood it runs `npm run build` (with `NEXT_PUBLIC_SAME_ORIGIN=true` so the
+UI calls the API on whatever origin served it — LAN and phone access just work)
+and the orchestrator mounts `apps/dashboard/out/` at `/`. No second terminal, no
+CORS or port juggling. Rebuild the export after changing dashboard code; the
+two-terminal `start-dev.bat` flow remains best for hot-reload development.
+
 ## Optional services (Docker)
 
 Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without

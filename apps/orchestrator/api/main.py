@@ -140,3 +140,32 @@ async def websocket_endpoint(
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket, session_id)
+
+
+_DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dashboard" / "out"
+
+
+def mount_dashboard(target: FastAPI, directory: Path = _DASHBOARD_DIR) -> bool:
+    """Serve the dashboard's static export when it has been built.
+
+    Single-process mode: `npm run build` in apps/dashboard emits `out/`, which
+    the orchestrator serves at the root. Mounted last so it only catches paths
+    not already claimed by the API or WebSocket. Dev uses the :3000 dev server
+    instead, so this is a no-op when the export is absent.
+    """
+    if not directory.is_dir():
+        logger.info(
+            "Dashboard export not found at %s — run 'npm run build' in "
+            "apps/dashboard for single-process serving",
+            directory,
+        )
+        return False
+
+    from fastapi.staticfiles import StaticFiles
+
+    target.mount("/", StaticFiles(directory=str(directory), html=True), name="dashboard")
+    logger.info("Serving dashboard from %s", directory)
+    return True
+
+
+mount_dashboard(app)

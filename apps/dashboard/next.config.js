@@ -1,14 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
-  async rewrites() {
-    return [
-      {
-        source: "/api/orchestrator/:path*",
-        destination: `${process.env.NEXT_PUBLIC_ORCHESTRATOR_URL || "http://localhost:8000"}/api/v1/:path*`,
-      },
-    ];
-  },
+  // Static export: `next build` emits a self-contained `out/` the orchestrator
+  // serves directly, collapsing BLACKBOX to a single process. Dev still runs
+  // via `next dev` on :3000 against the orchestrator on :8000.
+  output: "export",
+  images: { unoptimized: true },
 };
 
 module.exports = nextConfig;
