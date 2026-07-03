@@ -46,8 +46,11 @@ export function SkillDeck() {
         }));
         setSkills(loaded);
         if (loaded.length > 0) {
-          setActiveSkill(loaded[0].id);
-          setUserInput(defaultInputForSkill(loaded[0]));
+          // The tool-using YAML skill is the demo path — select it by default.
+          const preferred =
+            loaded.find((s) => s.id === "summarize_note") || loaded[0];
+          setActiveSkill(preferred.id);
+          setUserInput(defaultInputForSkill(preferred));
         }
       })
       .catch(() => appendTerminal("⚠ Could not load skills from orchestrator"));

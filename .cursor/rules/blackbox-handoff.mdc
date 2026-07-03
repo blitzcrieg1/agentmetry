@@ -32,7 +32,22 @@ cd apps\dashboard && npm run dev
 - `apps/orchestrator/` — FastAPI, LangGraph, AsyncSqliteSaver, APScheduler, vault watcher, `blackbox` CLI
 - `apps/dashboard/` — Next.js 14, React Flow, Zustand, WebSocket
 - `vault/` — skills in `.system/skill-definitions/`, triggers in `.system/trigger-rules/`
-- **Skills (4):** lead_gen, summarize_meeting, weekly_review (Python graphs) + summarize_note (pure YAML `graph: pipeline` with `node_tools`)
+- **Skills (5):** lead_gen, summarize_meeting, weekly_review (Python graphs) +
+  summarize_note, inbox_triage (pure YAML `graph: pipeline` with `node_tools`)
+- **Autonomy:** drop any note into `00-Inbox/` → `inbox-note-summarize` trigger runs
+  summarize_note (meeting-tagged notes go to the meeting rule via `not_tags` exclusion);
+  budget-deferred runs queue in the IVT and resume when the gate clears
+
+### Demo (drop file → archive appears)
+```powershell
+scripts\blackbox.bat start
+# drop a note:
+echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
+# within ~2s the watcher fires; watch the terminal/Board in the dashboard.
+# If the Flash budget is at the interactive reserve, the run parks in
+# Interrupts · Gate (budget_defer) and resumes automatically after UTC reset.
+# Result: vault\30-Archive\<date>-<time>-summarize_note-<thread>.md
+```
 
 ## AOS subsystem status (Fable blueprint)
 
