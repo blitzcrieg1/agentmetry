@@ -29,17 +29,20 @@ def assert_cost_budget(state: dict[str, Any]) -> None:
 
 
 def merge_llm_usage(state: dict[str, Any], llm: LLMResult) -> dict[str, Any]:
+    """Record usage truthfully — never raises.
+
+    Enforcement lives in the pre-step gate (assert_cost_budget): raising here
+    would discard a result that was already paid for and leave the overshoot
+    unrecorded in state. Either way the cap overshoots by at most one call;
+    this way the run keeps the output and the ledger keeps the truth.
+    """
     providers = list(state.get("llm_providers") or [])
     if llm.provider and llm.provider not in providers:
         providers.append(llm.provider)
-    new_cost = float(state.get("cost", 0.0)) + llm.usage.cost
-    max_cost = max_cost_for_state(state)
-    if max_cost is not None and new_cost > max_cost:
-        raise CostBudgetExceeded(new_cost, max_cost)
     return {
         "input_tokens": state.get("input_tokens", 0) + llm.usage.input_tokens,
         "output_tokens": state.get("output_tokens", 0) + llm.usage.output_tokens,
-        "cost": new_cost,
+        "cost": float(state.get("cost", 0.0)) + llm.usage.cost,
         "llm_providers": providers,
     }
 

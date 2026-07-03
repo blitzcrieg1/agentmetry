@@ -98,8 +98,9 @@ def _make_step_node(step_id: str):
             "messages": [AIMessage(content=f"[{step_id}]\n{llm.text}")],
             **usage,
         }
-        if step_id == "writer" or not state.get("draft"):
-            result["draft"] = llm.text
+        # Latest step wins: the critic reviews and finalize archives the most
+        # recent content, not whatever step happened to run first.
+        result["draft"] = llm.text
         await emit_node(
             session_id,
             thread_id,
@@ -245,7 +246,15 @@ def compile_pipeline_graph(skill_config: dict[str, Any]):
     graph.set_entry_point(ordered[0])
     for left, right in zip(ordered, ordered[1:]):
         if left == "critic" and has_approval:
-            graph.add_conditional_edges("critic", _should_request_approval)
+            graph.add_conditional_edges(
+                "critic",
+                _should_request_approval,
+                {
+                    "human_approval": "human_approval",
+                    # Without a finalize node, high confidence ends the run.
+                    "finalize": "finalize" if has_finalize else END,
+                },
+            )
         else:
             graph.add_edge(left, right)
 

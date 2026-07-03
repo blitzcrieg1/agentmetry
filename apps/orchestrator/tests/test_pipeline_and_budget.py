@@ -28,10 +28,14 @@ def test_assert_cost_budget_blocks_at_cap():
         assert_cost_budget(state)
 
 
-def test_merge_llm_usage_raises_when_step_would_exceed():
+def test_merge_records_overshoot_and_next_gate_blocks():
+    # Merge never raises — the result was already paid for; the overshoot is
+    # recorded truthfully and the next pre-step gate stops the run.
     state = {"skill_config": {"max_cost_per_run": 0.10}, "cost": 0.08}
+    merged = merge_llm_usage(state, _llm_result(0.03))
+    assert merged["cost"] == pytest.approx(0.11)
     with pytest.raises(CostBudgetExceeded):
-        merge_llm_usage(state, _llm_result(0.03))
+        assert_cost_budget({**state, **merged})
 
 
 async def test_graph_call_llm_blocks_before_next_step():
@@ -72,6 +76,62 @@ def test_registry_supports_pipeline_graph_type():
     from core.graphs.registry import SkillRegistry
 
     assert "pipeline" in SkillRegistry.available_graph_types()
+
+
+def test_malformed_skill_yaml_does_not_brick_reload(tmp_path: Path):
+    from core.graphs.registry import SkillRegistry
+    from core.memory.obsidian_client import ObsidianClient
+
+    skill_dir = tmp_path / ".system" / "skill-definitions"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "broken.yaml").write_text("just a string, not a mapping", encoding="utf-8")
+    (skill_dir / "empty_pipeline.yaml").write_text(
+        "name: empty_pipeline\ngraph: pipeline\nnodes: []\n", encoding="utf-8"
+    )
+
+    registry = SkillRegistry(ObsidianClient(tmp_path))
+    registry.reload()  # must not raise despite two bad definitions
+    assert registry.list_registered() == []
+
+
+async def test_pipeline_draft_follows_latest_step(monkeypatch: pytest.MonkeyPatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    monkeypatch.setattr(
+        "core.graphs.checkpointer.get_checkpointer",
+        lambda: InMemorySaver(),
+    )
+
+    outputs = iter(["THE PLAN", "THE DRAFT"])
+
+    async def fake_call(state, prompt, *, system="", node=""):
+        text = next(outputs)
+        llm = LLMResult(text=text, provider="mock", usage=LLMUsage(cost=0.0))
+        return llm, merge_llm_usage(state, llm)
+
+    monkeypatch.setattr("core.graphs.pipeline_graph.graph_call_llm", fake_call)
+    monkeypatch.setattr(
+        "core.graphs.pipeline_graph.emit_node", AsyncMock()
+    )
+
+    skill = {"name": "demo", "graph": "pipeline", "nodes": ["plan", "draft", "finalize"]}
+    graph = compile_pipeline_graph(skill)
+    final = await graph.ainvoke(
+        {
+            "user_input": "x",
+            "system_context": "",
+            "skill_config": skill,
+            "messages": [],
+            "step_outputs": {},
+            "cost": 0.0,
+            "session_id": "s",
+            "thread_id": "t",
+        },
+        {"configurable": {"thread_id": "t"}},
+    )
+    # The step named "draft" must own the draft — not the plan step.
+    assert final["draft"] == "THE DRAFT"
+    assert final["output"] == "THE DRAFT"
 
 
 async def test_run_skill_stops_mid_graph_on_budget(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

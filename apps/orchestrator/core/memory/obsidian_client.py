@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,15 +65,23 @@ class ObsidianClient:
             return yaml.safe_load(f)
 
     def list_skills(self) -> list[dict[str, Any]]:
-        """Return all available skill definitions."""
+        """Return all available skill definitions, skipping unparseable files."""
         skills = []
         if not self.skill_path.exists():
             return skills
         for file in self.skill_path.glob("*.yaml"):
-            with open(file, encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-                config["id"] = file.stem
-                skills.append(config)
+            try:
+                with open(file, encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                if not isinstance(config, dict):
+                    raise ValueError("skill definition is not a mapping")
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Skipping malformed skill definition %s: %s", file.name, exc
+                )
+                continue
+            config["id"] = file.stem
+            skills.append(config)
         return skills
 
     def _resolve_safe_path(self, relative_path: str) -> Path | None:

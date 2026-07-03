@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from core.graphs.lead_gen_graph import compile_lead_gen_graph
@@ -9,6 +10,8 @@ from core.graphs.meeting_graph import compile_meeting_graph
 from core.graphs.pipeline_graph import compile_pipeline_graph
 from core.graphs.weekly_review_graph import compile_weekly_review_graph
 from core.memory.obsidian_client import ObsidianClient
+
+logger = logging.getLogger(__name__)
 
 
 _GRAPH_BUILDERS: dict[str, Any] = {
@@ -40,7 +43,12 @@ class SkillRegistry:
         self._graphs.clear()
         for skill in self.obsidian.list_skills():
             skill_id = skill.get("id") or skill.get("name")
-            compiled = self._compile(skill)
+            try:
+                compiled = self._compile(skill)
+            except Exception:
+                # A vault-editable YAML must never brick boot or reload.
+                logger.warning("Skill %s failed to compile — skipped", skill_id, exc_info=True)
+                continue
             if compiled and skill_id:
                 self._graphs[skill_id] = compiled
 
