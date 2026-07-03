@@ -19,6 +19,7 @@ from core.execution.context import (
     telemetry,
 )
 from core.graphs.node_events import emit_node
+from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.notifiers.audit import append_vault_run_log, log_run
 from core.notifiers.toast import notify
@@ -252,6 +253,26 @@ async def run_skill(
             "error": msg,
         })
         return {"status": "rejected", "error": msg, "degraded": True}
+
+    # Autonomous runs pause once only the interactive Flash reserve is left;
+    # manual runs always proceed (a real 429 still trips degraded mode).
+    if triggered_by != "manual" and settings.llm_provider.lower() == "gemini":
+        ledger = get_budget_ledger()
+        if not ledger.autonomous_allowed():
+            snapshot = ledger.snapshot()
+            logger.info(
+                "Deferring autonomous run of %s — %d/%d Flash calls used today",
+                skill_name, snapshot["flash_used"], snapshot["flash_limit"],
+            )
+            log_run({
+                "skill": skill_name,
+                "status": "deferred_budget",
+                "triggered_by": triggered_by,
+                "trigger_rule_id": trigger_rule_id,
+                "session_id": session_id,
+                "budget": snapshot,
+            })
+            return {"status": "deferred_budget", "budget": snapshot}
 
     async with _run_semaphore:
         start = time.time()

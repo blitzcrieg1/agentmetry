@@ -9,6 +9,7 @@ import httpx
 from qdrant_client import QdrantClient
 
 from core.config import get_database_url, settings
+from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.gemini import check_gemini_health
 from core.memory.rag_engine import RAGEngine
@@ -157,6 +158,7 @@ async def get_system_health() -> dict[str, Any]:
         "gemini": gemini,
         "llm_degraded": llm_degraded.as_dict(),
         "llm_provider": provider,
+        "budget": get_budget_ledger().snapshot(),
         "postgres": postgres,
         "modes": {
             "rag": rag_mode,

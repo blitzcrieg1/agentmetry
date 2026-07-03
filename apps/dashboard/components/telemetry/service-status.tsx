@@ -32,6 +32,13 @@ interface HealthResponse {
     retry_after_seconds: number;
   };
   llm_provider?: string;
+  budget?: {
+    flash_used: number;
+    flash_limit: number;
+    flash_remaining: number;
+    interactive_reserve: number;
+    autonomous_allowed: boolean;
+  };
   postgres?: ServiceStatus;
   modes: {
     rag: string;
@@ -162,6 +169,34 @@ export function ServiceStatusPanel() {
                 : health.postgres.fallback
             }
           />
+        )}
+        {health?.budget && health.llm_provider === "gemini" && (
+          <div className="pt-2 border-t border-border space-y-1">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Flash today</span>
+              <span className="font-mono">
+                {health.budget.flash_used}/{health.budget.flash_limit}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  health.budget.autonomous_allowed ? "bg-primary" : "bg-amber-500"
+                }`}
+                style={{
+                  width: `${Math.min(
+                    (health.budget.flash_used / Math.max(health.budget.flash_limit, 1)) * 100,
+                    100
+                  )}%`,
+                }}
+              />
+            </div>
+            {!health.budget.autonomous_allowed && (
+              <p className="text-xs text-amber-400">
+                Autonomous runs paused — interactive reserve ({health.budget.interactive_reserve}) left
+              </p>
+            )}
+          </div>
         )}
         {health?.modes && (
           <div className="pt-2 border-t border-border text-xs text-muted-foreground space-y-1">

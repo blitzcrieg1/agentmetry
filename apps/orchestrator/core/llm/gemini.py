@@ -11,6 +11,7 @@ import httpx
 
 from api.websocket import ws_manager
 from core.config import settings
+from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
 from core.llm.quota import get_cached_health, set_cached_health, throttle_embed, throttle_flash
@@ -137,6 +138,7 @@ async def call_gemini(
             )
             if resp is None or resp.status_code != 200:
                 return None
+            get_budget_ledger().record_flash_call()
             data = resp.json()
             text = _extract_text(data)
             if not text:
@@ -182,6 +184,7 @@ async def _stream_generate(
                         return None
 
                     llm_degraded.clear()
+                    get_budget_ledger().record_flash_call()
                     async for line in resp.aiter_lines():
                         if not line.startswith("data: "):
                             continue
@@ -347,6 +350,7 @@ async def check_gemini_health() -> dict[str, Any]:
             )
             if resp.status_code == 200:
                 llm_degraded.clear()
+                get_budget_ledger().record_flash_call()
                 payload = {
                     "status": "up",
                     "model": settings.gemini_model,
