@@ -39,6 +39,21 @@ async def test_call_llm_mock_when_explicitly_allowed(monkeypatch: pytest.MonkeyP
     assert result.provider == "mock"
 
 
+async def test_mock_provider_never_calls_gemini(monkeypatch: pytest.MonkeyPatch):
+    """Explicit mock mode must not spend real quota, even with a key configured."""
+    import core.llm.client as client_module
+
+    async def exploding_gemini(*args, **kwargs):
+        raise AssertionError("call_gemini must not be invoked when provider is mock")
+
+    monkeypatch.setattr(client_module, "call_gemini", exploding_gemini)
+    monkeypatch.setattr(settings, "llm_provider", "mock")
+    monkeypatch.setattr(settings, "gemini_api_key", "real-looking-key")
+
+    result = await call_llm("hello")
+    assert result.provider == "mock"
+
+
 def test_merge_llm_usage_collects_providers():
     llm = LLMResult(text="x", usage=LLMUsage(input_tokens=5, output_tokens=3, cost=0.1), provider="gemini")
     state = {"input_tokens": 1, "output_tokens": 1, "cost": 0.05, "llm_providers": ["mock"]}

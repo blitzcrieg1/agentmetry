@@ -31,11 +31,12 @@ async def call_llm(
         result = await call_ollama(prompt, system, session_id=session_id, node=node)
         if result is not None:
             return result
-
-    if settings.gemini_api_key and provider != "gemini":
-        result = await call_gemini(prompt, system, session_id=session_id, node=node)
-        if result is not None:
-            return result
+        # Gemini backs up a down Ollama — but never an explicit mock provider,
+        # which must not spend real quota.
+        if settings.gemini_api_key:
+            result = await call_gemini(prompt, system, session_id=session_id, node=node)
+            if result is not None:
+                return result
 
     if provider == "gemini" and settings.gemini_api_key:
         raise LLMDegradedError("Gemini unavailable", llm_degraded.retry_after_seconds or 60)
