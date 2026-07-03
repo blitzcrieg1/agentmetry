@@ -52,7 +52,7 @@ export function MemoryNavigator() {
   return (
     <div>
       <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-        Memory Navigator
+        Memory Navigator <span className="text-muted-foreground/60">· Vault</span>
       </h2>
       <div className="text-xs text-muted-foreground space-y-0.5 font-mono max-h-48 overflow-y-auto">
         {folders.map((folder) => {

@@ -98,7 +98,7 @@ export function SkillDeck() {
     <div className="flex flex-col gap-4 h-full">
       <div>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          The Armory
+          The Armory <span className="text-muted-foreground/60">· Desk</span>
         </h2>
 
         <div className="mb-3">

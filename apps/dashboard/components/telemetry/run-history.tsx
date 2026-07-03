@@ -61,7 +61,9 @@ export function RunHistory() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Run History</CardTitle>
+        <CardTitle className="text-sm">
+          Run History <span className="text-muted-foreground/60">· Board</span>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-1.5 text-xs">
         {runs.map((run, i) => (

@@ -54,7 +54,7 @@ export function InterruptPanel() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">
-          Interrupts
+          Interrupts <span className="text-muted-foreground/60">· Gate</span>
           <span className="ml-2 text-xs font-normal text-muted-foreground">
             {rows.length} pending
           </span>

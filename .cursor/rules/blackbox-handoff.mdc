@@ -32,7 +32,7 @@ cd apps\dashboard && npm run dev
 - `apps/orchestrator/` — FastAPI, LangGraph, AsyncSqliteSaver, APScheduler, vault watcher, `blackbox` CLI
 - `apps/dashboard/` — Next.js 14, React Flow, Zustand, WebSocket
 - `vault/` — skills in `.system/skill-definitions/`, triggers in `.system/trigger-rules/`
-- **Skills (3):** lead_gen, summarize_meeting, weekly_review — hand-edited Python graphs + registry
+- **Skills (4):** lead_gen, summarize_meeting, weekly_review (Python graphs) + summarize_note (pure YAML `graph: pipeline` with `node_tools`)
 
 ## AOS subsystem status (Fable blueprint)
 
@@ -90,9 +90,10 @@ cd apps\dashboard && npm run dev
 
 ## Next work (priority order)
 
-1. ~~Pipeline `node_tools:` hook~~ / ~~skill #4 (summarize_note)~~ / ~~dashboard replay + interrupt panel~~
-2. Remove `_run_semaphore` → kernel admission
-3. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
+1. ~~Pipeline `node_tools:` hook~~ / ~~skill #4~~ / ~~dashboard replay + interrupts~~ / ~~kernel run admission~~
+   (run admission: `TokenScheduler.run_slot()` — interactive never queued, background
+   pool capped by `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT`, default 2; `_run_semaphore` removed)
+2. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
 4. Obsidian plugin (approvals, run-on-note, status bar)
 5. Mid-run crash recovery UX (stale 20-Active-Loops notes)
 6. Sandbox Tier 1 (restricted subprocess) to unlock exec-tagged drivers
