@@ -107,6 +107,12 @@ async def check_postgres() -> dict[str, Any]:
         }
 
 
+def _drivers_snapshot() -> dict[str, Any]:
+    from core.drivers.host import get_mcp_host
+
+    return get_mcp_host().snapshot()
+
+
 async def get_system_health() -> dict[str, Any]:
     # Probes run concurrently: on machines where dead ports black-hole instead
     # of refusing, sequential awaits add up past client timeouts.
@@ -168,6 +174,7 @@ async def get_system_health() -> dict[str, Any]:
         "llm_degraded": llm_degraded.as_dict(),
         "llm_provider": provider,
         "budget": get_budget_ledger().snapshot(),
+        "drivers": _drivers_snapshot(),
         "postgres": postgres,
         "modes": {
             "rag": rag_mode,

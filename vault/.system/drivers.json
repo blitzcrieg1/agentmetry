@@ -1,0 +1,22 @@
+{
+  "drivers": [
+    {
+      "name": "fs",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/spiro/Projects/agentic-os/vault"],
+      "env_allow": [],
+      "tags": [],
+      "enabled": false
+    },
+    {
+      "name": "shell",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-shell"],
+      "env_allow": [],
+      "tags": ["exec"],
+      "enabled": false
+    }
+  ]
+}

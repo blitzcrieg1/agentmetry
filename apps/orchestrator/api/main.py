@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.drivers import router as drivers_router
 from api.routes.events import router as events_router
 from api.routes.runs import router as runs_router
 from api.routes.skills import router as skills_router
@@ -86,10 +87,16 @@ async def lifespan(app: FastAPI):
         start_scheduler()
     except Exception as exc:
         logger.warning("Scheduler unavailable: %s", exc)
+    # Drivers mount in the background: a slow npx download must not delay boot.
+    from core.drivers.host import get_mcp_host
+
+    mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
     yield
     stop_scheduler()
     if vault_watcher:
         vault_watcher.stop()
+    mount_task.cancel()
+    await get_mcp_host().unmount_all()
     await get_scheduler().shutdown()
     for task in bridge_tasks:
         task.cancel()
@@ -122,6 +129,7 @@ app.include_router(skills_router, prefix="/api/v1")
 app.include_router(vault_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
+app.include_router(drivers_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

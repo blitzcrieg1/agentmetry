@@ -19,6 +19,7 @@ class InterruptVector(StrEnum):
     HITL_APPROVAL = "hitl_approval"
     BUDGET_DEFER = "budget_defer"
     LLM_DEGRADED = "llm_degraded"
+    TOOL_EXEC_APPROVAL = "tool_exec_approval"
 
 
 class Base(DeclarativeBase):
@@ -161,6 +162,26 @@ class InterruptVectorTable:
             trigger_rule_id=trigger_rule_id,
             trigger_file_path=trigger_file_path,
             payload={"budget": budget_snapshot or {}},
+        )
+
+    def raise_tool_exec(
+        self,
+        *,
+        skill_name: str,
+        session_id: str,
+        tool: str,
+        arguments_summary: str = "",
+    ) -> dict[str, Any]:
+        """Tier 0 sandbox policy: exec-tagged tool calls are recorded and denied."""
+        for row in self.list_pending(InterruptVector.TOOL_EXEC_APPROVAL):
+            if row["skill_name"] == skill_name and row["payload"].get("tool") == tool:
+                return row
+        return self.raise_interrupt(
+            str(uuid.uuid4()),
+            InterruptVector.TOOL_EXEC_APPROVAL,
+            skill_name=skill_name,
+            session_id=session_id,
+            payload={"tool": tool, "arguments_summary": arguments_summary},
         )
 
     def raise_llm_degraded(

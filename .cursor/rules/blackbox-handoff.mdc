@@ -8,7 +8,7 @@ alwaysApply: true
 ## Project
 - **Name:** BLACKBOX (Obsidian-Cortex Agentic OS)
 - **Repo:** https://github.com/blitzcrieg1/agentic-os (private), branch `master`
-- **Head:** `219242c` — IVT + deferred autonomous resume
+- **Head:** see `git log` — architect audit approved s3/pipeline (with fixes) and landed s4 Drivers
 - **Wedge:** Governed autonomy — LangGraph state machines, approval gates, vault ledger, mission-control dashboard
 
 ## Local-first (non-negotiable)
@@ -40,9 +40,18 @@ cd apps\dashboard && npm run dev
 |----|-----------|--------|----------|
 | s1 | Kernel token scheduler | ✅ `98cfc4a` | `core/kernel/scheduler.py` |
 | s2 | Event bus + outbox | ✅ `c9b3842` | `core/bus/` |
-| s3 | Interrupt Vector Table | ✅ `219242c` | `core/kernel/interrupts.py` |
-| s4 | Drivers (MCP) | 📋 Next | spec first — do not explore blind |
-| s5 | Sandbox | 📋 Planned | after drivers |
+| s3 | Interrupt Vector Table | ✅ `219242c` (+audit fixes) | `core/kernel/interrupts.py` |
+| s4 | Drivers (MCP) | ✅ landed | `core/drivers/` — host, permissions, spec; `vault/.system/drivers.json` |
+| s5 | Sandbox | 🟡 Tier 0 policy live | exec-tagged tools denied → `TOOL_EXEC_APPROVAL` interrupt |
+
+### Drivers (s4) quick facts
+- Config: `vault/.system/drivers.json` — entries `{name, transport: stdio|sse, command, args, env_allow, tags, enabled}`; shipped examples are `enabled: false`
+- Env is **allowlist-only** — `GEMINI_API_KEY` never crosses into a driver unless `env_allow` names it
+- Skills opt in per tool: `tools: ["fs.read_file", "search.*"]` in skill YAML (closed by default)
+- `tags: ["exec"]` on a driver → every tool denied with `ToolExecApprovalRequired` + IVT row (Tier 0 sandbox)
+- API: `GET /api/v1/drivers/`, `POST /api/v1/drivers/remount`; `/health` has a `drivers` key
+- Each driver runs in an owner task (anyio contexts must enter/exit in the same task); mounts happen in background at boot
+- Graph nodes do NOT consume tools yet — next step is a pipeline `tools:` node hook
 
 **Ground rules:** kernel + user space in **one process**; keep `registry.py`; MCP replaces tools not graphs; no Docker/E2B default.
 
@@ -76,12 +85,13 @@ cd apps\dashboard && npm run dev
 
 ## Next work (priority order)
 
-1. ~~Handoff refresh~~ (this file)
-2. ~~Pre-step `max_cost_per_run`~~ — `graph_call_llm()` in `usage_helpers.py`
-3. ~~YAML pipeline compiler v1~~ — `core/graphs/pipeline_graph.py`; new skills use `graph: pipeline`
-4. **s4 Drivers spec** — MCP tool layer; do not replace `registry.py`
-5. Obsidian plugin (approvals, run-on-note, status bar)
-6. Mid-run crash recovery UX
+1. ~~Pre-step `max_cost_per_run`~~ / ~~pipeline v1~~ / ~~s4 Drivers + Tier 0 exec gate~~
+2. **Pipeline `tools:` node hook** — let a pipeline step call `get_mcp_host().call_tool()` (first real consumer of drivers)
+3. Dashboard: outbox replay on WS reconnect (`GET /api/v1/events?since=N`); interrupt panel from `/skills/interrupts`
+4. Remove `_run_semaphore` → kernel admission
+5. Skill #4 as pure `graph: pipeline` YAML with `tools:` (prove user space)
+6. Obsidian plugin (approvals, run-on-note, status bar)
+7. Mid-run crash recovery UX (stale 20-Active-Loops notes)
 
 ### Adding a skill without Python (pipeline v1)
 ```yaml

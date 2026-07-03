@@ -26,6 +26,12 @@ VAULT_FILE_CHANGED = "vault/file_changed"
 INTERRUPT_RAISED = "interrupt/raised"
 INTERRUPT_RESOLVED = "interrupt/resolved"
 
+# Driver subsystem (MCP)
+DRIVER_MOUNTED = "driver/mounted"
+DRIVER_FAILED = "driver/failed"
+TOOL_CALLED = "run/tool_called"
+TOOL_DENIED = "run/tool_denied"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
