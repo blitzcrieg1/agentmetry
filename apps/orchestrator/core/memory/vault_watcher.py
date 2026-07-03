@@ -22,6 +22,8 @@ class VaultSyncHandler(FileSystemEventHandler):
         self.loop = loop
         self.vault_path = vault_path
         self._debounce: dict[str, asyncio.TimerHandle] = {}
+        # Strong refs so in-flight index tasks are not garbage-collected.
+        self._tasks: set[asyncio.Task] = set()
 
     def _schedule_reindex(self, path: str) -> None:
         if not path.endswith(".md"):
@@ -29,20 +31,27 @@ class VaultSyncHandler(FileSystemEventHandler):
         if ".system" in path.replace("\\", "/"):
             return
 
-        if path in self._debounce:
-            self._debounce[path].cancel()
-
         def _do_index():
+            self._debounce.pop(path, None)
             file_path = Path(path)
 
             async def _work():
                 await self.rag.index_file(file_path)
                 await evaluate_vault_triggers(file_path, self.vault_path)
 
-            asyncio.run_coroutine_threadsafe(_work(), self.loop)
+            task = self.loop.create_task(_work())
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
-        handle = self.loop.call_later(2.0, _do_index)
-        self._debounce[path] = handle
+        def _arm_timer():
+            # Timer create/cancel must happen on the loop thread; watchdog
+            # callbacks arrive on the observer thread.
+            existing = self._debounce.get(path)
+            if existing is not None:
+                existing.cancel()
+            self._debounce[path] = self.loop.call_later(2.0, _do_index)
+
+        self.loop.call_soon_threadsafe(_arm_timer)
         logger.info("Vault change detected: %s — scheduling index + triggers", path)
 
     def on_modified(self, event: FileSystemEvent) -> None:

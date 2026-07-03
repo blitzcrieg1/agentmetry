@@ -25,7 +25,8 @@ class PendingThread(Base):
     session_id = Column(String, nullable=False)
     active_loop_path = Column(String, nullable=False)
     config_json = Column(Text, nullable=False)
-    start_monotonic = Column(Float, default=0.0)
+    # Wall-clock epoch seconds; keeps the legacy column name to avoid a migration.
+    start_epoch = Column("start_monotonic", Float, default=0.0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -56,7 +57,7 @@ class PendingThreadStore:
                 session_id=session_id,
                 active_loop_path=active_loop_path,
                 config_json=json.dumps(config),
-                start_monotonic=start,
+                start_epoch=start,
             )
             session.merge(row)
             session.commit()
@@ -71,7 +72,7 @@ class PendingThreadStore:
                 "session_id": row.session_id,
                 "skill_name": row.skill_name,
                 "active_loop_path": row.active_loop_path,
-                "start": row.start_monotonic,
+                "start": row.start_epoch,
             }
 
     def delete(self, thread_id: str) -> None:
@@ -91,7 +92,7 @@ class PendingThreadStore:
                     "session_id": row.session_id,
                     "active_loop_path": row.active_loop_path,
                     "config": json.loads(row.config_json),
-                    "start": row.start_monotonic,
+                    "start": row.start_epoch,
                 }
                 for row in rows
             ]

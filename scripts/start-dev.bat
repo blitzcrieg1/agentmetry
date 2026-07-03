@@ -1,16 +1,15 @@
 @echo off
-echo Starting BLACKBOX infrastructure...
-docker compose up -d
+rem BLACKBOX local launcher — no Docker required.
+rem Optional services (Qdrant/Postgres/Ollama): scripts\start-services.bat
 
-echo.
 echo Starting orchestrator...
-cd apps\orchestrator
-start cmd /k ".venv\Scripts\activate && uvicorn api.main:app --reload --port 8000"
+cd /d "%~dp0..\apps\orchestrator"
+start "BLACKBOX orchestrator" cmd /k ".venv\Scripts\activate && uvicorn api.main:app --reload --port 8000"
 
-echo.
 echo Starting dashboard...
-cd ..\dashboard
-start cmd /k "npm run dev"
+cd /d "%~dp0..\apps\dashboard"
+start "BLACKBOX dashboard" cmd /k "npm run dev"
 
 echo.
 echo BLACKBOX is launching. Dashboard: http://localhost:3000
+echo Logs: apps\orchestrator\data\logs\orchestrator.log

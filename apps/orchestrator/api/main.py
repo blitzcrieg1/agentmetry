@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +21,36 @@ from core.scheduler.engine import start_scheduler, stop_scheduler
 from core.telemetry.store import TelemetryStore
 
 logger = logging.getLogger(__name__)
+
+_LOG_DIR = Path(__file__).resolve().parents[1] / "data" / "logs"
+
+
+def _setup_logging() -> None:
+    """Persist app logs to disk so they survive a closed terminal."""
+    root = logging.getLogger()
+    if any(isinstance(h, RotatingFileHandler) for h in root.handlers):
+        return
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    file_handler = RotatingFileHandler(
+        _LOG_DIR / "orchestrator.log",
+        maxBytes=5_000_000,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    root.addHandler(console)
+
+    if root.level in (logging.NOTSET, logging.WARNING):
+        root.setLevel(logging.INFO)
+
+
+_setup_logging()
 
 vault_watcher: VaultWatcher | None = None
 telemetry = TelemetryStore()

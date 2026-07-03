@@ -31,6 +31,18 @@ _run_semaphore = asyncio.Semaphore(2)
 _TRIGGER_NOTE_MAX_CHARS = 50_000
 
 
+def _latency_ms(start_epoch: float) -> int:
+    """Elapsed ms since a wall-clock start; 0 when the start is garbage.
+
+    Pending threads persist their start across restarts — rows written by
+    older builds stored time.monotonic(), which is meaningless after a boot.
+    """
+    elapsed = time.time() - start_epoch
+    if 0 <= elapsed < 30 * 86400:
+        return int(elapsed * 1000)
+    return 0
+
+
 def _inject_trigger_note(
     system_context: str,
     context_sources: list[str],
@@ -162,7 +174,7 @@ async def _finalize_execution(
         note=f"Archived to {archive_path.name}",
     )
 
-    latency = int((time.monotonic() - start) * 1000)
+    latency = _latency_ms(start)
     cost = final_state.get("cost", 0.0)
     telemetry.log_execution(
         thread_id,
@@ -240,7 +252,7 @@ async def run_skill(
         return {"status": "rejected", "error": msg, "degraded": True}
 
     async with _run_semaphore:
-        start = time.monotonic()
+        start = time.time()
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
 
@@ -386,7 +398,7 @@ async def run_skill(
             )
 
         except Exception as e:
-            latency = int((time.monotonic() - start) * 1000)
+            latency = _latency_ms(start)
             obsidian.resolve_active_loop(active_loop_path, "failed", note=str(e))
             telemetry.log_execution(
                 thread_id, skill_name, "failed", latency_ms=latency, error=str(e)
