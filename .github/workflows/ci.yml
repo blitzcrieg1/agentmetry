@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Install orchestrator
         run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check core api tests
       - name: Run tests
         run: pytest -q
 
@@ -38,3 +40,5 @@ jobs:
         run: npm ci
       - name: Lint dashboard
         run: npm run lint
+      - name: Build dashboard
+        run: npm run build
