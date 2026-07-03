@@ -49,44 +49,5 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect(ws, session_id)
 
-    async def send_node_update(
-        self,
-        session_id: str,
-        node: str,
-        status: str,
-        *,
-        output: str = "",
-        metrics: dict[str, Any] | None = None,
-    ) -> None:
-        await self.broadcast(session_id, {
-            "type": "node_update",
-            "node": node,
-            "status": status,
-            "output": output,
-            "metrics": metrics or {},
-        })
-
-    async def send_approval_request(
-        self,
-        session_id: str,
-        thread_id: str,
-        draft: str,
-        confidence: float,
-    ) -> None:
-        await self.broadcast(session_id, {
-            "type": "approval_required",
-            "thread_id": thread_id,
-            "draft": draft,
-            "confidence": confidence,
-            "status": "waiting_for_input",
-        })
-
-    async def send_token_stream(self, session_id: str, token: str, node: str) -> None:
-        await self.broadcast(session_id, {
-            "type": "token",
-            "token": token,
-            "node": node,
-        })
-
 
 ws_manager = ConnectionManager()

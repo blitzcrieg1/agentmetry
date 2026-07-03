@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import RUN_NODE
 
 
 def node_events_path() -> Path:
@@ -53,10 +54,15 @@ async def emit_node(
 
     if not session_id:
         return
-    await ws_manager.send_node_update(
-        session_id,
-        node,
-        status,
-        output=snippet,
-        metrics=metrics or {},
+    bus.publish(
+        RUN_NODE,
+        {
+            "type": "node_update",
+            "node": node,
+            "status": status,
+            "output": snippet,
+            "metrics": metrics or {},
+        },
+        session_id=session_id,
+        thread_id=thread_id,
     )

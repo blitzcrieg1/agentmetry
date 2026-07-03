@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import LLM_TOKEN
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
 from core.llm.types import LLMResult, LLMUsage
 
@@ -16,7 +17,11 @@ async def call_mock(
     mock = f"[Mock LLM Response for: {prompt[:100]}...]"
     if session_id and node:
         for word in mock.split(" "):
-            await ws_manager.send_token_stream(session_id, word + " ", node)
+            bus.publish(
+                LLM_TOKEN,
+                {"type": "token", "token": word + " ", "node": node},
+                session_id=session_id,
+            )
     input_tokens = fallback_token_estimate(prompt)
     output_tokens = fallback_token_estimate(mock)
     return LLMResult(

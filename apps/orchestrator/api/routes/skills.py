@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import RUN_TERMINATED
 from core.auth import require_api_key
 from core.execution.context import (
     obsidian,
@@ -94,10 +95,10 @@ async def approve_skill(request: ApprovalRequest):
         )
         pending_threads.pop(request.thread_id, None)
         pending_store.delete(request.thread_id)
-        await ws_manager.broadcast(pending["session_id"], {
+        bus.publish(RUN_TERMINATED, {
             "type": "execution_terminated",
             "thread_id": request.thread_id,
-        })
+        }, session_id=pending["session_id"], thread_id=request.thread_id)
         telemetry.log_execution(
             request.thread_id, pending["skill_name"], "terminated"
         )

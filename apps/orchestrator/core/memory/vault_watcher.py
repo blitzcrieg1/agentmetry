@@ -9,10 +9,11 @@ from pathlib import Path
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from core.bus.bus import bus
+from core.bus.events import VAULT_FILE_CHANGED
 from core.config import settings
 from core.kernel.scheduler import Priority, run_priority
 from core.memory.rag_engine import RAGEngine
-from core.scheduler.triggers import evaluate_vault_triggers
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,11 @@ class VaultSyncHandler(FileSystemEventHandler):
                 # Indexing is background; triggered runs re-tag as AUTONOMOUS.
                 run_priority.set(Priority.MAINTENANCE)
                 await self.rag.index_file(file_path)
-                await evaluate_vault_triggers(file_path, self.vault_path)
+                # Trigger evaluation is decoupled: the bus bridge reacts.
+                bus.publish(VAULT_FILE_CHANGED, {
+                    "absolute_path": str(file_path),
+                    "vault_path": str(self.vault_path),
+                })
 
             task = self.loop.create_task(_work())
             self._tasks.add(task)

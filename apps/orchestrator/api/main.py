@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
@@ -8,11 +9,16 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.events import router as events_router
 from api.routes.runs import router as runs_router
 from api.routes.skills import router as skills_router
 from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
+from api.ws_bridge import ws_event_bridge
 from core.auth import require_api_key, verify_ws_token
+from core.bus.bridges import outbox_persister, trigger_bridge
+from core.bus.bus import bus
+from core.bus.outbox import get_outbox
 from core.execution.context import skill_registry
 from core.execution.service import recover_pending_threads
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
@@ -61,6 +67,13 @@ telemetry = TelemetryStore()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global vault_watcher
+    # Event bus first: everything downstream publishes onto it.
+    bus.set_initial_seq(get_outbox().max_seq())
+    bridge_tasks = [
+        asyncio.create_task(ws_event_bridge(), name="ws-bridge"),
+        asyncio.create_task(outbox_persister(), name="outbox-persister"),
+        asyncio.create_task(trigger_bridge(), name="trigger-bridge"),
+    ]
     await init_checkpointer()
     skill_registry.reload()
     await recover_pending_threads()
@@ -78,6 +91,8 @@ async def lifespan(app: FastAPI):
     if vault_watcher:
         vault_watcher.stop()
     await get_scheduler().shutdown()
+    for task in bridge_tasks:
+        task.cancel()
     await shutdown_checkpointer()
 
 
@@ -106,6 +121,7 @@ app.add_middleware(
 app.include_router(skills_router, prefix="/api/v1")
 app.include_router(vault_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
+app.include_router(events_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

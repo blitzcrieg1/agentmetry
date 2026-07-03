@@ -9,7 +9,8 @@ from typing import Any
 
 import httpx
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import LLM_TOKEN
 from core.config import settings
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
@@ -213,7 +214,11 @@ async def _stream_generate(
                         token = _extract_text(chunk)
                         if token:
                             parts.append(token)
-                            await ws_manager.send_token_stream(session_id, token, node)
+                            bus.publish(
+                                LLM_TOKEN,
+                                {"type": "token", "token": token, "node": node},
+                                session_id=session_id,
+                            )
                 break
     except Exception:
         return None

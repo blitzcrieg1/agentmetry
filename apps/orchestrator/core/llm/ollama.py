@@ -6,7 +6,8 @@ import json
 
 import httpx
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import LLM_TOKEN
 from core.config import settings
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
 from core.llm.types import LLMResult, LLMUsage
@@ -93,7 +94,11 @@ async def _stream_chat(
                     token = chunk.get("message", {}).get("content", "")
                     if token:
                         parts.append(token)
-                        await ws_manager.send_token_stream(session_id, token, node)
+                        bus.publish(
+                            LLM_TOKEN,
+                            {"type": "token", "token": token, "node": node},
+                            session_id=session_id,
+                        )
 
                     if chunk.get("done"):
                         break

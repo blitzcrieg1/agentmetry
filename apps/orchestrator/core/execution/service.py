@@ -8,7 +8,15 @@ import time
 import uuid
 from typing import Any
 
-from api.websocket import ws_manager
+from core.bus.bus import bus
+from core.bus.events import (
+    ALERT_COST,
+    ALERT_DRIFT,
+    RUN_COMPLETED,
+    RUN_FAILED,
+    RUN_STARTED,
+    RUN_WAITING,
+)
 from core.config import settings
 from core.execution.context import (
     obsidian,
@@ -116,22 +124,22 @@ async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) ->
     return system_context, sources
 
 
-async def _maybe_drift_alert(session_id: str, final_state: dict[str, Any]) -> None:
+def _maybe_drift_alert(session_id: str, final_state: dict[str, Any]) -> None:
     messages = [getattr(m, "content", str(m)) for m in final_state.get("messages", [])]
     if telemetry.detect_drift(messages):
-        await ws_manager.broadcast(session_id, {
+        bus.publish(ALERT_DRIFT, {
             "type": "drift_alert",
             "message": "Agent output appears cyclically repetitive — review results carefully",
-        })
+        }, session_id=session_id)
 
 
-async def _maybe_cost_alert(session_id: str, cost: float) -> None:
+def _maybe_cost_alert(session_id: str, cost: float) -> None:
     if cost >= settings.cost_alert_threshold:
-        await ws_manager.broadcast(session_id, {
+        bus.publish(ALERT_COST, {
             "type": "cost_alert",
             "cost": cost,
             "threshold": settings.cost_alert_threshold,
-        })
+        }, session_id=session_id)
 
 
 def _extract_result_content(final_state: dict[str, Any]) -> str:
@@ -210,10 +218,10 @@ async def _finalize_execution(
             f"{skill_name} {status_label} (${cost:.4f})",
         )
 
-    await _maybe_cost_alert(session_id, cost)
-    await _maybe_drift_alert(session_id, final_state)
+    _maybe_cost_alert(session_id, cost)
+    _maybe_drift_alert(session_id, final_state)
 
-    await ws_manager.broadcast(session_id, {
+    bus.publish(RUN_COMPLETED, {
         "type": "execution_completed",
         "thread_id": thread_id,
         "archive_path": str(archive_path),
@@ -223,7 +231,7 @@ async def _finalize_execution(
             "output_tokens": final_state.get("output_tokens", 0),
             "latency_ms": latency,
         },
-    })
+    }, session_id=session_id, thread_id=thread_id)
 
     return {
         "status": status_label,
@@ -333,14 +341,14 @@ async def run_skill(
                 "error": f"No graph registered for skill '{skill_name}'",
             }
 
-        await ws_manager.broadcast(session_id, {
+        bus.publish(RUN_STARTED, {
             "type": "execution_started",
             "thread_id": thread_id,
             "skill": skill_name,
             "context_sources": context_sources,
             "nodes": skill_config.get("nodes", []),
             "triggered_by": triggered_by,
-        })
+        }, session_id=session_id, thread_id=thread_id)
 
         try:
             final_state = await active_graph.ainvoke(initial_state, config)
@@ -399,13 +407,14 @@ async def run_skill(
                     "waiting",
                     output=state_values.get("draft", ""),
                 )
-                await ws_manager.send_approval_request(
-                    session_id,
-                    thread_id,
-                    state_values.get("draft", ""),
-                    state_values.get("confidence_score", 0.0),
-                )
-                await _maybe_cost_alert(session_id, run_cost)
+                bus.publish(RUN_WAITING, {
+                    "type": "approval_required",
+                    "thread_id": thread_id,
+                    "draft": state_values.get("draft", ""),
+                    "confidence": state_values.get("confidence_score", 0.0),
+                    "status": "waiting_for_input",
+                }, session_id=session_id, thread_id=thread_id)
+                _maybe_cost_alert(session_id, run_cost)
                 log_run({
                     "thread_id": thread_id,
                     "skill": skill_name,
@@ -445,9 +454,9 @@ async def run_skill(
                 "session_id": session_id,
                 "error": str(e),
             })
-            await ws_manager.broadcast(session_id, {
+            bus.publish(RUN_FAILED, {
                 "type": "execution_failed",
                 "thread_id": thread_id,
                 "error": str(e),
-            })
+            }, session_id=session_id, thread_id=thread_id)
             return {"status": "failed", "thread_id": thread_id, "error": str(e)}
