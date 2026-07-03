@@ -51,7 +51,12 @@ cd apps\dashboard && npm run dev
 - `tags: ["exec"]` on a driver → every tool denied with `ToolExecApprovalRequired` + IVT row (Tier 0 sandbox)
 - API: `GET /api/v1/drivers/`, `POST /api/v1/drivers/remount`; `/health` has a `drivers` key
 - Each driver runs in an owner task (anyio contexts must enter/exit in the same task); mounts happen in background at boot
-- Graph nodes do NOT consume tools yet — next step is a pipeline `tools:` node hook
+- Pipeline steps consume tools via `node_tools:` (declarative calls, args templated
+  from `{user_input}` + prior step outputs; results injected as step outputs)
+- Proof skill: `summarize_note` (`graph: pipeline`, zero Python) reads any vault
+  note through `vault_fs.read_note` and archives a summary — verified live
+- `vault_fs` driver = our own read-only FastMCP server
+  (`apps/orchestrator/tools/vault_fs_server.py`), jailed to the vault, no Node needed
 
 **Ground rules:** kernel + user space in **one process**; keep `registry.py`; MCP replaces tools not graphs; no Docker/E2B default.
 
@@ -85,13 +90,12 @@ cd apps\dashboard && npm run dev
 
 ## Next work (priority order)
 
-1. ~~Pre-step `max_cost_per_run`~~ / ~~pipeline v1~~ / ~~s4 Drivers + Tier 0 exec gate~~
-2. **Pipeline `tools:` node hook** — let a pipeline step call `get_mcp_host().call_tool()` (first real consumer of drivers)
-3. Dashboard: outbox replay on WS reconnect (`GET /api/v1/events?since=N`); interrupt panel from `/skills/interrupts`
-4. Remove `_run_semaphore` → kernel admission
-5. Skill #4 as pure `graph: pipeline` YAML with `tools:` (prove user space)
-6. Obsidian plugin (approvals, run-on-note, status bar)
-7. Mid-run crash recovery UX (stale 20-Active-Loops notes)
+1. ~~Pipeline `node_tools:` hook~~ / ~~skill #4 (summarize_note)~~ / ~~dashboard replay + interrupt panel~~
+2. Remove `_run_semaphore` → kernel admission
+3. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
+4. Obsidian plugin (approvals, run-on-note, status bar)
+5. Mid-run crash recovery UX (stale 20-Active-Loops notes)
+6. Sandbox Tier 1 (restricted subprocess) to unlock exec-tagged drivers
 
 ### Adding a skill without Python (pipeline v1)
 ```yaml

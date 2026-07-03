@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAgentStore } from "@/lib/store";
-import { WS_URL } from "@/lib/utils";
+import { ORCHESTRATOR_URL, WS_URL } from "@/lib/utils";
 import { buildGraphNodes } from "@/lib/graph-utils";
 
 function wsUrl(sessionId: string): string {
@@ -13,6 +13,8 @@ function wsUrl(sessionId: string): string {
   }
   return base;
 }
+
+const RECONNECT_DELAY_MS = 3000;
 
 export function useWebSocket() {
   const sessionId = useAgentStore((s) => s.sessionId);
@@ -28,6 +30,7 @@ export function useWebSocket() {
   const incrementMemoryAccess = useAgentStore((s) => s.incrementMemoryAccess);
   const bumpRunsRefresh = useAgentStore((s) => s.bumpRunsRefresh);
   const wsRef = useRef<WebSocket | null>(null);
+  const lastSeqRef = useRef(0);
 
   const applyMetrics = (metrics: Record<string, number>) => {
     if (!metrics) return;
@@ -45,14 +48,13 @@ export function useWebSocket() {
   };
 
   useEffect(() => {
-    const ws = new WebSocket(wsUrl(sessionId));
-    wsRef.current = ws;
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    ws.onopen = () => setWsConnected(true);
-    ws.onclose = () => setWsConnected(false);
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    const handleEvent = (data: any) => {
+      if (typeof data.seq === "number" && data.seq > lastSeqRef.current) {
+        lastSeqRef.current = data.seq;
+      }
 
       switch (data.type) {
         case "execution_started":
@@ -79,6 +81,15 @@ export function useWebSocket() {
           appendStreamToken(data.node, data.token);
           break;
 
+        case "tool_called":
+          appendTerminal(`🔧 Tool: ${data.tool}`);
+          break;
+
+        case "tool_denied":
+          appendTerminal(`⛔ Tool denied: ${data.tool} (${data.reason})`);
+          bumpRunsRefresh();
+          break;
+
         case "approval_required":
           setExecutionStatus("waiting_for_input");
           setApproval(data.draft, data.confidence);
@@ -100,6 +111,7 @@ export function useWebSocket() {
         case "execution_failed":
           setExecutionStatus("failed");
           appendTerminal(`✗ Failed: ${data.error}`);
+          bumpRunsRefresh();
           break;
 
         case "execution_terminated":
@@ -119,9 +131,55 @@ export function useWebSocket() {
       }
     };
 
-    return () => {
-      ws.close();
+    // Reconnect gap-fill: replay everything this session missed from the
+    // durable outbox, in order, through the same handler as live frames.
+    const replayMissed = async () => {
+      if (!lastSeqRef.current) return;
+      try {
+        const res = await fetch(
+          `${ORCHESTRATOR_URL}/api/v1/events/?since=${lastSeqRef.current}&limit=500`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const event of data.events || []) {
+          if (event.session_id === sessionId) {
+            handleEvent({ ...event.payload, seq: event.seq });
+          } else if (typeof event.seq === "number" && event.seq > lastSeqRef.current) {
+            lastSeqRef.current = event.seq;
+          }
+        }
+        appendTerminal("↻ Reconnected — replayed missed events");
+      } catch {
+        /* orchestrator still down; next reconnect will retry */
+      }
     };
+
+    const connect = () => {
+      if (disposed) return;
+      const ws = new WebSocket(wsUrl(sessionId));
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setWsConnected(true);
+        void replayMissed();
+      };
+      ws.onclose = () => {
+        setWsConnected(false);
+        if (!disposed) {
+          retryTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+        }
+      };
+      ws.onmessage = (event) => handleEvent(JSON.parse(event.data));
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      wsRef.current?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     sessionId,
     setWsConnected,
@@ -137,38 +195,61 @@ export function useWebSocket() {
     bumpRunsRefresh,
   ]);
 
-  // Global feed: surfaces autonomous runs (vault triggers, cron) that execute
-  // outside this dashboard session.
+  // Global feed: surfaces autonomous runs (vault triggers, cron) and
+  // interrupt activity that happens outside this dashboard session.
   useEffect(() => {
-    const ws = new WebSocket(wsUrl("global"));
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let socket: WebSocket | null = null;
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const origin: string = data.origin_session || "";
-      if (!origin.startsWith("autonomous-")) return;
+    const connect = () => {
+      if (disposed) return;
+      const ws = new WebSocket(wsUrl("global"));
+      socket = ws;
 
-      const rule = origin.replace("autonomous-", "");
-      switch (data.type) {
-        case "execution_started":
-          appendTerminal(`🤖 [${rule}] ${data.skill} started`);
-          break;
-        case "execution_completed":
-          appendTerminal(`🤖 [${rule}] completed — ${data.archive_path}`);
-          bumpRunsRefresh();
-          break;
-        case "execution_failed":
-          appendTerminal(`🤖 [${rule}] failed: ${data.error}`);
-          bumpRunsRefresh();
-          break;
-        case "approval_required":
-          appendTerminal(`🤖 [${rule}] ⚠ approval required (thread ${data.thread_id})`);
-          bumpRunsRefresh();
-          break;
-      }
+      ws.onclose = () => {
+        if (!disposed) retryTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+      };
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const origin: string = data.origin_session || "";
+        if (!origin.startsWith("autonomous-")) return;
+
+        const rule = origin.replace("autonomous-", "");
+        switch (data.type) {
+          case "execution_started":
+            appendTerminal(`🤖 [${rule}] ${data.skill} started`);
+            break;
+          case "execution_completed":
+            appendTerminal(`🤖 [${rule}] completed — ${data.archive_path}`);
+            bumpRunsRefresh();
+            break;
+          case "execution_failed":
+            appendTerminal(`🤖 [${rule}] failed: ${data.error}`);
+            bumpRunsRefresh();
+            break;
+          case "approval_required":
+            appendTerminal(`🤖 [${rule}] ⚠ approval required (thread ${data.thread_id})`);
+            bumpRunsRefresh();
+            break;
+          case "interrupt_raised":
+            appendTerminal(`⏸ [${rule}] deferred (${data.vector})`);
+            bumpRunsRefresh();
+            break;
+          case "interrupt_resolved":
+            appendTerminal(`▶ [${rule}] resuming ${data.skill}`);
+            bumpRunsRefresh();
+            break;
+        }
+      };
     };
 
+    connect();
+
     return () => {
-      ws.close();
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      socket?.close();
     };
   }, [appendTerminal, bumpRunsRefresh]);
 

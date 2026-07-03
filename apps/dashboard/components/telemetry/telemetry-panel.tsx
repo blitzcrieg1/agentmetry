@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InterruptPanel } from "@/components/telemetry/interrupt-panel";
 import { RunHistory } from "@/components/telemetry/run-history";
 import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 
@@ -100,6 +101,8 @@ export function TelemetryPanel() {
           </CardContent>
         </Card>
       )}
+
+      <InterruptPanel />
 
       <RunHistory />
 
