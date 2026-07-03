@@ -1,6 +1,18 @@
 {
   "drivers": [
     {
+      "name": "vault_fs",
+      "transport": "stdio",
+      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "args": [
+        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/vault_fs_server.py",
+        "C:/Users/spiro/Projects/agentic-os/vault"
+      ],
+      "env_allow": [],
+      "tags": [],
+      "enabled": true
+    },
+    {
       "name": "fs",
       "transport": "stdio",
       "command": "npx",

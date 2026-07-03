@@ -9,10 +9,60 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from core.config import settings
+from core.drivers.host import get_mcp_host
 from core.graphs.node_events import emit_node
 from core.graphs.usage_helpers import graph_call_llm
 
 _RESERVED = frozenset({"critic", "human_approval", "finalize"})
+
+
+def _tool_result_text(result: Any) -> str:
+    """Flatten an MCP CallToolResult into plain text for prompt injection."""
+    parts = [getattr(item, "text", "") for item in getattr(result, "content", [])]
+    return "\n".join(p for p in parts if p)
+
+
+async def _run_step_tools(state: "PipelineState", step_id: str) -> dict[str, str]:
+    """Execute a step's declarative tool calls; results become step outputs.
+
+    YAML shape:
+        node_tools:
+          summarize:
+            - tool: vault_fs.read_note
+              args: {path: "{user_input}"}
+              output: note_text
+
+    Args are templated from user_input and prior step outputs. Every call goes
+    through the governed host path (per-skill allowlist, Tier 0 exec gate).
+    """
+    calls = (state["skill_config"].get("node_tools") or {}).get(step_id) or []
+    if not calls:
+        return {}
+
+    outputs = dict(state.get("step_outputs") or {})
+    host = get_mcp_host()
+    results: dict[str, str] = {}
+    for call in calls:
+        qualified = call["tool"]
+        raw_args = call.get("args") or {}
+        args = {
+            key: value.format(user_input=state["user_input"], **outputs)
+            if isinstance(value, str)
+            else value
+            for key, value in raw_args.items()
+        }
+        result = await host.call_tool(
+            qualified,
+            args,
+            skill_config=state["skill_config"],
+            session_id=state.get("session_id", ""),
+            thread_id=state.get("thread_id", ""),
+        )
+        key = call.get("output") or qualified.replace(".", "_")
+        text = _tool_result_text(result)
+        results[key] = text
+        outputs[key] = text
+    return results
 
 
 class PipelineState(TypedDict):
@@ -87,11 +137,14 @@ def _make_step_node(step_id: str):
         thread_id = state.get("thread_id", "")
         await emit_node(session_id, thread_id, step_id, "running")
 
+        outputs = dict(state.get("step_outputs") or {})
+        tool_outputs = await _run_step_tools(state, step_id)
+        outputs.update(tool_outputs)
+
         system = state["skill_config"].get("system_prompt", "")
-        prompt = _resolve_prompt(state, step_id)
+        prompt = _resolve_prompt({**state, "step_outputs": outputs}, step_id)
         llm, usage = await graph_call_llm(state, prompt, system=system, node=step_id)
 
-        outputs = dict(state.get("step_outputs") or {})
         outputs[step_id] = llm.text
         result: dict[str, Any] = {
             "step_outputs": outputs,
