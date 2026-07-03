@@ -47,6 +47,22 @@ and the orchestrator mounts `apps/dashboard/out/` at `/`. No second terminal, no
 CORS or port juggling. Rebuild the export after changing dashboard code; the
 two-terminal `start-dev.bat` flow remains best for hot-reload development.
 
+## blackbox CLI
+
+`scripts\blackbox.bat` (or `blackbox` inside the orchestrator venv) manages the
+appliance:
+
+| Command | What it does |
+|---------|--------------|
+| `blackbox start` | Start the orchestrator detached (no window), wait for health |
+| `blackbox stop` | Stop it (kills the process tree; state recovers on next start) |
+| `blackbox status` | Health, LLM/RAG mode, note count, Flash budget, pending approvals |
+| `blackbox logs [-n 50] [-f]` | Tail the rotating orchestrator log |
+| `blackbox backup [--out X]` | Zip vault (runtime dirs included) + all data stores to `backups/` — SQLite snapshotted consistently even while running |
+| `blackbox restore <zip>` | Restore a backup (refuses while running; auto-backs-up current state first) |
+| `blackbox install` | Register at-logon autostart via Task Scheduler (user session, so toasts work) |
+| `blackbox uninstall` | Remove the scheduled task |
+
 ## Optional services (Docker)
 
 Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without
