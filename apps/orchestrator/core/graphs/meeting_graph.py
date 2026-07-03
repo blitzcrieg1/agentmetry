@@ -38,7 +38,8 @@ def _metrics(state: MeetingState) -> dict[str, Any]:
 
 async def ingest_node(state: MeetingState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
-    await emit_node(session_id, "ingest", "running")
+    thread_id = state.get("thread_id", "")
+    await emit_node(session_id, thread_id, "ingest", "running")
 
     combined = f"{state['user_input']}\n\nVault context:\n{state['system_context']}"
 
@@ -46,13 +47,14 @@ async def ingest_node(state: MeetingState) -> dict[str, Any]:
         "raw_notes": combined,
         "messages": [AIMessage(content=f"[Ingest] Loaded {len(combined)} chars of context")],
     }
-    await emit_node(session_id, "ingest", "completed", output="Context ingested", metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "extract", "running")
+    await emit_node(session_id, thread_id, "ingest", "completed", output="Context ingested", metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "extract", "running")
     return result
 
 
 async def extract_node(state: MeetingState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
     system = state["skill_config"].get("system_prompt", "")
 
     prompt = f"""Extract from these meeting notes:
@@ -70,13 +72,14 @@ Notes:
         "messages": [AIMessage(content=f"[Extract]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "extract", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "summarize", "running")
+    await emit_node(session_id, thread_id, "extract", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "summarize", "running")
     return result
 
 
 async def summarize_node(state: MeetingState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
 
     prompt = f"""Write an executive meeting summary from this extraction.
 
@@ -92,19 +95,20 @@ Extraction:
         "messages": [AIMessage(content=f"[Summarize]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "summarize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "finalize", "running")
+    await emit_node(session_id, thread_id, "summarize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "finalize", "running")
     return result
 
 
 async def finalize_node(state: MeetingState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
     final = state["summary"]
 
     result = {
         "messages": [AIMessage(content=f"[Final Summary]\n{final}")],
     }
-    await emit_node(session_id, "finalize", "completed", output=final, metrics=_metrics(state))
+    await emit_node(session_id, thread_id, "finalize", "completed", output=final, metrics=_metrics(state))
     return result
 
 

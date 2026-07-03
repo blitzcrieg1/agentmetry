@@ -39,20 +39,22 @@ def _metrics(state: WeeklyReviewState) -> dict[str, Any]:
 
 async def collect_node(state: WeeklyReviewState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
-    await emit_node(session_id, "collect", "running")
+    thread_id = state.get("thread_id", "")
+    await emit_node(session_id, thread_id, "collect", "running")
 
     combined = f"{state['user_input']}\n\nVault context:\n{state['system_context']}"
     result = {
         "collected": combined,
         "messages": [AIMessage(content=f"[Collect] Loaded {len(combined)} chars from vault")],
     }
-    await emit_node(session_id, "collect", "completed", output="Context collected", metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "analyze", "running")
+    await emit_node(session_id, thread_id, "collect", "completed", output="Context collected", metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "analyze", "running")
     return result
 
 
 async def analyze_node(state: WeeklyReviewState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
     system = state["skill_config"].get("system_prompt", "")
 
     prompt = f"""Analyze this week's vault activity and notes.
@@ -72,13 +74,14 @@ Context:
         "messages": [AIMessage(content=f"[Analyze]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "analyze", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "prioritize", "running")
+    await emit_node(session_id, thread_id, "analyze", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "prioritize", "running")
     return result
 
 
 async def prioritize_node(state: WeeklyReviewState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
 
     prompt = f"""From this analysis, produce a prioritized action list for next week.
 
@@ -94,13 +97,14 @@ Analysis:
         "messages": [AIMessage(content=f"[Prioritize]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "prioritize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "finalize", "running")
+    await emit_node(session_id, thread_id, "prioritize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "finalize", "running")
     return result
 
 
 async def finalize_node(state: WeeklyReviewState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
 
     prompt = f"""Write a concise weekly review executive summary combining analysis and priorities.
 
@@ -117,7 +121,7 @@ Priorities:
         "messages": [AIMessage(content=f"[Weekly Review]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "finalize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "finalize", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     return result
 
 

@@ -11,7 +11,7 @@ from core.config import settings
 from core.memory.obsidian_client import ObsidianClient
 
 
-def _audit_path() -> Path:
+def audit_path() -> Path:
     root = Path(__file__).resolve().parents[2] / "data"
     root.mkdir(parents=True, exist_ok=True)
     return root / "runs.jsonl"
@@ -22,7 +22,7 @@ def log_run(event: dict[str, Any]) -> None:
         "ts": datetime.now(timezone.utc).isoformat(),
         **event,
     }
-    path = _audit_path()
+    path = audit_path()
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(payload, default=str) + "\n")
 

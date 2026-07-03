@@ -193,6 +193,7 @@ async def _finalize_execution(
         "status": status_label,
         "triggered_by": triggered_by,
         "trigger_rule_id": trigger_rule_id,
+        "session_id": session_id,
         "cost": cost,
         "latency_ms": latency,
         "archive_path": str(archive_path),
@@ -247,6 +248,7 @@ async def run_skill(
             "status": "rejected",
             "triggered_by": triggered_by,
             "trigger_rule_id": trigger_rule_id,
+            "session_id": session_id,
             "error": msg,
         })
         return {"status": "rejected", "error": msg, "degraded": True}
@@ -328,6 +330,7 @@ async def run_skill(
                     "skill": skill_name,
                     "status": "budget_exceeded",
                     "triggered_by": triggered_by,
+                    "session_id": session_id,
                     "cost": run_cost,
                     "max_cost_per_run": max_cost,
                 })
@@ -362,6 +365,7 @@ async def run_skill(
                 )
                 await emit_node(
                     session_id,
+                    thread_id,
                     "human_approval",
                     "waiting",
                     output=state_values.get("draft", ""),
@@ -379,6 +383,7 @@ async def run_skill(
                     "status": "waiting_for_input",
                     "triggered_by": triggered_by,
                     "trigger_rule_id": trigger_rule_id,
+                    "session_id": session_id,
                 })
                 return {
                     "status": "waiting_for_input",
@@ -408,6 +413,7 @@ async def run_skill(
                 "skill": skill_name,
                 "status": "failed",
                 "triggered_by": triggered_by,
+                "session_id": session_id,
                 "error": str(e),
             })
             await ws_manager.broadcast(session_id, {

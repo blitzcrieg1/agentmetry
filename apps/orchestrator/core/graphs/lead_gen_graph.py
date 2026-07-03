@@ -37,7 +37,8 @@ class LeadGenState(TypedDict):
 
 async def planner_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
-    await emit_node(session_id, "planner", "running")
+    thread_id = state.get("thread_id", "")
+    await emit_node(session_id, thread_id, "planner", "running")
 
     system = state["skill_config"].get("system_prompt", "")
     context = state["system_context"]
@@ -58,13 +59,14 @@ Output a numbered plan with: research targets, personalization angles, and email
         "messages": [AIMessage(content=f"[Planner]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "planner", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "researcher", "running")
+    await emit_node(session_id, thread_id, "planner", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "researcher", "running")
     return result
 
 
 async def researcher_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
 
     prompt = f"""You are the Researcher agent. Based on this plan, gather prospect intelligence.
 
@@ -90,13 +92,14 @@ Identify top prospects, their recent news, and personalization hooks."""
         "context_sources": sources[:5],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "researcher", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "writer", "running")
+    await emit_node(session_id, thread_id, "researcher", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "writer", "running")
     return result
 
 
 async def writer_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
 
     prompt = f"""You are the Writer agent. Draft a personalized outreach email.
 
@@ -115,13 +118,14 @@ Write a concise email (under 150 words) with subject line. Use technical peer to
         "messages": [AIMessage(content=f"[Writer]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "writer", "completed", output=llm.text, metrics=_metrics({**state, **result}))
-    await emit_node(session_id, "critic", "running")
+    await emit_node(session_id, thread_id, "writer", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "critic", "running")
     return result
 
 
 async def critic_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
     threshold = state["skill_config"].get(
         "approval_threshold", settings.approval_threshold
     )
@@ -170,7 +174,7 @@ DECISIONS: <key decisions made>"""
         "messages": [AIMessage(content=f"[Critic]\n{llm.text}")],
         **merge_llm_usage(state, llm),
     }
-    await emit_node(session_id, "critic", "completed", output=llm.text, metrics=_metrics({**state, **result}))
+    await emit_node(session_id, thread_id, "critic", "completed", output=llm.text, metrics=_metrics({**state, **result}))
     return result
 
 
@@ -191,10 +195,11 @@ def should_request_approval(state: LeadGenState) -> str:
 async def human_approval_node(state: LeadGenState) -> dict[str, Any]:
     """Runs after graph resume — records approval and continues to finalize."""
     session_id = state.get("session_id", "")
+    thread_id = state.get("thread_id", "")
     if state.get("approved"):
-        await emit_node(session_id, "human_approval", "completed", output="Approved by human")
+        await emit_node(session_id, thread_id, "human_approval", "completed", output="Approved by human")
     else:
-        await emit_node(session_id, "human_approval", "waiting", output=state.get("draft", ""))
+        await emit_node(session_id, thread_id, "human_approval", "waiting", output=state.get("draft", ""))
     return {
         "messages": [
             AIMessage(
@@ -207,7 +212,8 @@ async def human_approval_node(state: LeadGenState) -> dict[str, Any]:
 
 async def finalize_node(state: LeadGenState) -> dict[str, Any]:
     session_id = state.get("session_id", "")
-    await emit_node(session_id, "finalize", "running")
+    thread_id = state.get("thread_id", "")
+    await emit_node(session_id, thread_id, "finalize", "running")
 
     final = state.get("modified_input") or state["draft"]
     status = "approved" if state.get("approved") else "auto-approved"
@@ -217,7 +223,7 @@ async def finalize_node(state: LeadGenState) -> dict[str, Any]:
             AIMessage(content=f"[Final Output — {status}]\n{final}")
         ],
     }
-    await emit_node(session_id, "finalize", "completed", output=final, metrics=_metrics(state))
+    await emit_node(session_id, thread_id, "finalize", "completed", output=final, metrics=_metrics(state))
     return result
 
 

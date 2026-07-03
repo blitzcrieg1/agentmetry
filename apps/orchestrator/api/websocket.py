@@ -8,6 +8,11 @@ from typing import Any
 from fastapi import WebSocket
 
 
+# Session id that mirrors every event; the dashboard subscribes to it to
+# observe autonomous runs that happen in other sessions.
+GLOBAL_SESSION = "global"
+
+
 class ConnectionManager:
     def __init__(self):
         self.active: dict[str, list[WebSocket]] = {}
@@ -27,6 +32,11 @@ class ConnectionManager:
                 del self.active[session_id]
 
     async def broadcast(self, session_id: str, event: dict[str, Any]) -> None:
+        await self._send(session_id, event)
+        if session_id != GLOBAL_SESSION:
+            await self._send(GLOBAL_SESSION, {**event, "origin_session": session_id})
+
+    async def _send(self, session_id: str, event: dict[str, Any]) -> None:
         if session_id not in self.active:
             return
         payload = json.dumps(event)

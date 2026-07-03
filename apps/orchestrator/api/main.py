@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.runs import router as runs_router
 from api.routes.skills import router as skills_router
 from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
@@ -102,6 +103,7 @@ app.add_middleware(
 
 app.include_router(skills_router, prefix="/api/v1")
 app.include_router(vault_router, prefix="/api/v1")
+app.include_router(runs_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
