@@ -8,7 +8,7 @@ import pytest
 
 import core.llm.gemini as gemini
 from core.config import settings
-from core.llm.gemini import _post_with_retry, embed_gemini
+from core.llm.gemini import _post_with_retry, embed_gemini, embed_gemini_batch
 
 
 class FakeResponse:
@@ -89,3 +89,41 @@ async def test_embed_uses_embed_throttle_not_flash(monkeypatch: pytest.MonkeyPat
     assert values == [0.1, 0.2, 0.3]
     assert len(embed_calls) == 1
     assert len(flash_calls) == 0
+
+
+async def test_embed_batch_is_one_call_on_embed_throttle(monkeypatch: pytest.MonkeyPatch):
+    embed_calls: list[int] = []
+    flash_calls: list[int] = []
+
+    async def fake_embed():
+        embed_calls.append(1)
+
+    async def fake_flash():
+        flash_calls.append(1)
+
+    monkeypatch.setattr(gemini, "throttle_embed", fake_embed)
+    monkeypatch.setattr(gemini, "throttle_flash", fake_flash)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+
+    response = FakeResponse(
+        {"embeddings": [{"values": [0.1, 0.2]}, {"values": [0.3, 0.4]}]}
+    )
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(response))
+
+    values = await embed_gemini_batch(["chunk one", "chunk two"])
+    assert values == [[0.1, 0.2], [0.3, 0.4]]
+    assert len(embed_calls) == 1
+    assert len(flash_calls) == 0
+
+
+async def test_embed_batch_rejects_mismatched_response(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+
+    async def fake_embed():
+        pass
+
+    monkeypatch.setattr(gemini, "throttle_embed", fake_embed)
+    response = FakeResponse({"embeddings": [{"values": [0.1]}]})  # one result for two texts
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(response))
+
+    assert await embed_gemini_batch(["a", "b"]) is None

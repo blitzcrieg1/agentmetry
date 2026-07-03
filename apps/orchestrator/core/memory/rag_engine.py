@@ -21,7 +21,8 @@ from qdrant_client.models import (
 )
 
 from core.config import settings
-from core.llm.gemini import embed_gemini
+from core.llm.gemini import EMBED_BATCH_SIZE, embed_gemini, embed_gemini_batch
+from core.memory.embedding_cache import EmbeddingCache, get_embedding_cache
 from core.memory.obsidian_client import ObsidianClient
 
 
@@ -50,6 +51,7 @@ class RAGEngine:
       vector_db_url: str | None = None,
       collection_name: str | None = None,
       vault_path: str | Path | None = None,
+      embedding_cache: EmbeddingCache | None = None,
   ):
       self.client = QdrantClient(
           url=vector_db_url or settings.qdrant_url,
@@ -58,6 +60,7 @@ class RAGEngine:
       )
       self.collection_name = collection_name or settings.collection_name
       self.obsidian = ObsidianClient(vault_path or settings.vault_path)
+      self.cache = embedding_cache or get_embedding_cache()
       self._ensure_collection()
 
   def _memory_key(self) -> str:
@@ -98,14 +101,25 @@ class RAGEngine:
       return vec
 
   async def embed_text(self, text: str, *, for_query: bool = False) -> list[float]:
-      """Embed text using Gemini, Ollama, or pseudo-embed fallback."""
+      """Embed text using the cache, Gemini, Ollama, or pseudo-embed fallback."""
       task_type = "RETRIEVAL_QUERY" if for_query else "RETRIEVAL_DOCUMENT"
 
       if settings.gemini_api_key:
+          model = settings.gemini_embedding_model
+          dims = settings.embedding_dimensions
+          cached = self.cache.get(model, dims, task_type, text)
+          if cached is not None:
+              return cached
           embedding = await embed_gemini(text, task_type=task_type)
           if embedding is not None:
+              self.cache.put(model, dims, task_type, text, embedding)
               return embedding
 
+      cached = self.cache.get(
+          settings.embedding_model, settings.embedding_dimensions, task_type, text
+      )
+      if cached is not None:
+          return cached
       try:
           import httpx
 
@@ -116,10 +130,43 @@ class RAGEngine:
                   timeout=3.0,
               )
               if resp.status_code == 200:
-                  return resp.json()["embedding"]
+                  embedding = resp.json()["embedding"]
+                  self.cache.put(
+                      settings.embedding_model,
+                      settings.embedding_dimensions,
+                      task_type,
+                      text,
+                      embedding,
+                  )
+                  return embedding
       except Exception:
           pass
+      # Pseudo-embeddings are deterministic and free — never cached.
       return self._simple_embed(text)
+
+  async def _embed_chunks(self, chunks: list[str]) -> list[list[float]]:
+      """Embed document chunks: cache first, then one batch API call per 100 misses."""
+      vectors: list[list[float] | None] = [None] * len(chunks)
+
+      if settings.gemini_api_key:
+          model = settings.gemini_embedding_model
+          dims = settings.embedding_dimensions
+          for i, chunk in enumerate(chunks):
+              vectors[i] = self.cache.get(model, dims, "RETRIEVAL_DOCUMENT", chunk)
+          missing = [i for i, v in enumerate(vectors) if v is None]
+          for start in range(0, len(missing), EMBED_BATCH_SIZE):
+              group = missing[start : start + EMBED_BATCH_SIZE]
+              embedded = await embed_gemini_batch([chunks[i] for i in group])
+              if embedded is None:
+                  break
+              for i, vector in zip(group, embedded):
+                  self.cache.put(model, dims, "RETRIEVAL_DOCUMENT", chunks[i], vector)
+                  vectors[i] = vector
+
+      for i, vector in enumerate(vectors):
+          if vector is None:
+              vectors[i] = await self.embed_text(chunks[i])
+      return vectors  # type: ignore[return-value]
 
   def _point_id(self, source_path: str, chunk_index: int) -> str:
       raw = f"{source_path}:{chunk_index}"
@@ -230,8 +277,9 @@ class RAGEngine:
       memory_points: list[_MemoryPoint] = []
       indexed = 0
 
-      for idx, chunk in enumerate(self._chunk_text(body)):
-          embedding = await self.embed_text(chunk)
+      chunks = self._chunk_text(body)
+      vectors = await self._embed_chunks(chunks)
+      for idx, (chunk, embedding) in enumerate(zip(chunks, vectors)):
           payload = {
               "text": chunk,
               "source_path": rel_path,
@@ -284,76 +332,44 @@ class RAGEngine:
       return await self._index_vault_full()
 
   async def index_vault_incremental(self) -> int:
-      """Index only new or modified files using a persisted mtime manifest."""
+      """Index new or modified files; rehydrate unchanged ones from the embedding cache."""
       import logging
       logger = logging.getLogger(__name__)
 
       manifest = self._load_manifest()
       new_manifest: dict[str, int] = {}
       indexed = 0
-      all_unchanged = True
+      restored = 0
 
       for file_path in self.obsidian.list_markdown_files():
           rel_path = str(file_path.relative_to(self.obsidian.vault_path))
           mtime_ns = file_path.stat().st_mtime_ns
           new_manifest[rel_path] = mtime_ns
           if manifest.get(rel_path) != mtime_ns:
-              all_unchanged = False
               indexed += await self.index_file(file_path)
           elif not self._file_in_memory(rel_path):
-              continue
+              # After a restart the in-memory store is empty; unchanged files
+              # re-index through the embedding cache with zero API calls.
+              restored += await self.index_file(file_path)
 
-      if indexed == 0 and all_unchanged and manifest:
+      if restored:
           logger.info(
-              "Vault unchanged — skipping embed burst on restart "
-              "(use Admin → Reindex to rebuild semantic memory)"
+              "Semantic memory rehydrated from embedding cache: %d chunks", restored
           )
+      if indexed:
+          logger.info("Vault changes indexed: %d chunks", indexed)
 
       self._save_manifest(new_manifest)
-      return indexed
+      return indexed + restored
 
   async def _index_vault_full(self) -> int:
       """Index all markdown files in the vault into Qdrant and in-memory store."""
       files = self.obsidian.list_markdown_files()
-      points: list[PointStruct] = []
-      memory_points: list[_MemoryPoint] = []
+      self._shared_memory[self._memory_key()] = []
       indexed = 0
 
       for file_path in files:
-          content = file_path.read_text(encoding="utf-8")
-          meta, body = self.obsidian.parse_frontmatter(content)
-          tags = meta.get("tags", [])
-          if isinstance(tags, str):
-              tags = [tags]
-
-          rel_path = str(file_path.relative_to(self.obsidian.vault_path))
-          chunks = self._chunk_text(body)
-
-          for idx, chunk in enumerate(chunks):
-              embedding = await self.embed_text(chunk)
-              payload = {
-                  "text": chunk,
-                  "source_path": rel_path,
-                  "tags": tags,
-                  "chunk_index": idx,
-              }
-              points.append(
-                  PointStruct(
-                      id=self._point_id(rel_path, idx),
-                      vector=embedding,
-                      payload=payload,
-                  )
-              )
-              memory_points.append(_MemoryPoint(vector=embedding, payload=payload))
-              indexed += 1
-
-      self._shared_memory[self._memory_key()] = memory_points
-
-      if points:
-          try:
-              self.client.upsert(collection_name=self.collection_name, points=points)
-          except Exception:
-              pass
+          indexed += await self.index_file(file_path)
 
       manifest = {
           str(f.relative_to(self.obsidian.vault_path)): f.stat().st_mtime_ns

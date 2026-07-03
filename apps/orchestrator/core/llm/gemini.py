@@ -250,6 +250,53 @@ async def embed_gemini(
         return None
 
 
+EMBED_BATCH_SIZE = 100  # batchEmbedContents request limit
+
+
+async def embed_gemini_batch(
+    texts: list[str],
+    *,
+    task_type: str = "RETRIEVAL_DOCUMENT",
+) -> list[list[float]] | None:
+    """Embed multiple texts in a single API call. Returns None on failure."""
+    api_key = _api_key()
+    if not api_key or not texts:
+        return None
+
+    model = settings.gemini_embedding_model
+    payload: dict[str, Any] = {
+        "requests": [
+            {
+                "model": f"models/{model}",
+                "content": {"parts": [{"text": text}]},
+                "taskType": task_type,
+                "outputDimensionality": settings.embedding_dimensions,
+            }
+            for text in texts
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await _post_with_retry(
+                client,
+                f"{GEMINI_BASE}/models/{model}:batchEmbedContents",
+                params={"key": api_key},
+                json_body=payload,
+                timeout=60.0,
+                throttle=throttle_embed,
+            )
+            if resp is None or resp.status_code != 200:
+                return None
+            embeddings = resp.json().get("embeddings") or []
+            values = [e.get("values") for e in embeddings]
+            if len(values) != len(texts) or any(not v for v in values):
+                return None
+            return values
+    except Exception:
+        return None
+
+
 async def check_gemini_health() -> dict[str, Any]:
     """Verify Gemini API key and model access."""
     if llm_degraded.active:
