@@ -14,13 +14,24 @@ from core.config import settings
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.pricing import cost_from_usage, fallback_token_estimate
-from core.llm.quota import get_cached_health, set_cached_health, throttle_embed, throttle_flash
+from core.kernel.scheduler import BudgetExhausted, Priority, get_scheduler
+from core.llm.quota import get_cached_health, set_cached_health
 from core.llm.types import LLMResult, LLMUsage
 
 logger = logging.getLogger(__name__)
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _MAX_RETRIES = 3
+
+
+async def throttle_flash() -> None:
+    """Kernel grant for a generateContent slot (priority from run context)."""
+    await get_scheduler().acquire("flash")
+
+
+async def throttle_embed() -> None:
+    """Kernel grant for an embedding slot (priority from run context)."""
+    await get_scheduler().acquire("embed")
 
 
 def _mock_fallback() -> str:
@@ -337,7 +348,18 @@ async def check_gemini_health() -> dict[str, Any]:
         return payload
 
     try:
-        await throttle_flash()
+        try:
+            # Probes are background work: never let them eat the interactive reserve.
+            await get_scheduler().acquire("flash", priority=Priority.MAINTENANCE)
+        except BudgetExhausted:
+            payload = {
+                "status": "up",
+                "model": settings.gemini_model,
+                "provider": "gemini",
+                "detail": "probe skipped — Flash budget at interactive reserve",
+            }
+            set_cached_health(payload)
+            return payload
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{GEMINI_BASE}/models/{settings.gemini_model}:generateContent",

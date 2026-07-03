@@ -10,6 +10,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from core.config import settings
+from core.kernel.scheduler import Priority, run_priority
 from core.memory.rag_engine import RAGEngine
 from core.scheduler.triggers import evaluate_vault_triggers
 
@@ -36,6 +37,8 @@ class VaultSyncHandler(FileSystemEventHandler):
             file_path = Path(path)
 
             async def _work():
+                # Indexing is background; triggered runs re-tag as AUTONOMOUS.
+                run_priority.set(Priority.MAINTENANCE)
                 await self.rag.index_file(file_path)
                 await evaluate_vault_triggers(file_path, self.vault_path)
 
@@ -94,6 +97,7 @@ class VaultWatcher:
         asyncio.create_task(self._initial_index())
 
     async def _initial_index(self) -> None:
+        run_priority.set(Priority.MAINTENANCE)
         if not settings.startup_vault_index:
             logger.info("Startup vault index skipped (BLACKBOX_STARTUP_VAULT_INDEX=false)")
             return

@@ -19,6 +19,7 @@ from core.execution.context import (
     telemetry,
 )
 from core.graphs.node_events import emit_node
+from core.kernel.scheduler import Priority, run_priority
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.notifiers.audit import append_vault_run_log, log_run
@@ -273,6 +274,13 @@ async def run_skill(
                 "budget": snapshot,
             })
             return {"status": "deferred_budget", "budget": snapshot}
+
+    # Kernel priority for every LLM/embed grant in this run. Task-scoped
+    # context: API handlers, cron jobs, and watcher work each run in their
+    # own task, so this cannot leak into unrelated work.
+    run_priority.set(
+        Priority.INTERACTIVE if triggered_by == "manual" else Priority.AUTONOMOUS
+    )
 
     async with _run_semaphore:
         start = time.time()

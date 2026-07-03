@@ -17,6 +17,7 @@ from core.execution.context import skill_registry
 from core.execution.service import recover_pending_threads
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
 from core.health import get_system_health
+from core.kernel.scheduler import get_scheduler
 from core.memory.vault_watcher import VaultWatcher
 from core.scheduler.engine import start_scheduler, stop_scheduler
 from core.telemetry.store import TelemetryStore
@@ -76,6 +77,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
     if vault_watcher:
         vault_watcher.stop()
+    await get_scheduler().shutdown()
     await shutdown_checkpointer()
 
 
