@@ -27,6 +27,25 @@ from core.llm.gemini import EMBED_BATCH_SIZE, embed_gemini, embed_gemini_batch
 from core.memory.embedding_cache import EmbeddingCache, get_embedding_cache
 from core.memory.obsidian_client import ObsidianClient
 
+_VAULT_TEXT_ENCODINGS = ("utf-8", "utf-8-sig", "utf-16", "utf-16-le")
+
+
+def _read_vault_text(file_path: Path) -> str | None:
+    """Read vault markdown; tolerate Windows UTF-16 writes and skip unreadable files."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    for encoding in _VAULT_TEXT_ENCODINGS:
+        try:
+            return file_path.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+        except OSError as exc:
+            logger.warning("Could not read %s: %s", file_path, exc)
+            return None
+    logger.warning("Skipping unreadable vault file (unknown encoding): %s", file_path)
+    return None
+
 
 @dataclass
 class ChunkResult:
@@ -299,7 +318,9 @@ class RAGEngine:
       rel_path = str(file_path.relative_to(self.obsidian.vault_path))
       await self.remove_file(rel_path)
 
-      content = file_path.read_text(encoding="utf-8")
+      content = _read_vault_text(file_path)
+      if content is None:
+          return 0
       meta, body = self.obsidian.parse_frontmatter(content)
       tags = meta.get("tags", [])
       if isinstance(tags, str):
@@ -486,7 +507,9 @@ class RAGEngine:
       pattern = re.compile(re.escape(query), re.IGNORECASE)
 
       for file_path in files:
-          content = file_path.read_text(encoding="utf-8")
+          content = _read_vault_text(file_path)
+          if content is None:
+              continue
           _, body = self.obsidian.parse_frontmatter(content)
           if pattern.search(body):
               rel_path = str(file_path.relative_to(self.obsidian.vault_path))
