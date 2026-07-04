@@ -24,6 +24,17 @@
       "enabled": false
     },
     {
+      "name": "gmail",
+      "transport": "stdio",
+      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "args": [
+        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/gmail_server.py"
+      ],
+      "env_allow": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"],
+      "tags": [],
+      "enabled": false
+    },
+    {
       "name": "fs",
       "transport": "stdio",
       "command": "npx",

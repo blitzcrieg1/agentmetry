@@ -28,13 +28,51 @@ _BASE_ENV_NAMES = (
 )
 
 
+def _orchestrator_env_file() -> Path:
+    return Path(__file__).resolve().parents[2] / ".env"
+
+
+def _dotenv_values() -> dict[str, str]:
+    """Minimal KEY=VALUE parse of the orchestrator .env (gitignored secrets).
+
+    pydantic-settings reads .env into Settings fields only — it never exports
+    to os.environ — so env_allow names documented as ".env keys" (SERPER,
+    GMAIL client creds, ...) would otherwise silently never reach a driver.
+    """
+    path = _orchestrator_env_file()
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError as exc:
+        logger.warning("Could not read %s for driver env: %s", path, exc)
+    return values
+
+
 def base_subprocess_env(extra_names: list[str] | None = None) -> dict[str, str]:
-    """Allowlist-only environment for any sandboxed/driver subprocess."""
+    """Allowlist-only environment for any sandboxed/driver subprocess.
+
+    Allowlisted names resolve from the live process env first, then fall back
+    to the orchestrator's .env file. Base names never fall back — they are
+    OS plumbing, not secrets.
+    """
     result: dict[str, str] = {}
-    for name in (*_BASE_ENV_NAMES, *(extra_names or [])):
+    for name in _BASE_ENV_NAMES:
         value = os.environ.get(name)
         if value is not None:
             result[name] = value
+    if extra_names:
+        dotenv = _dotenv_values()
+        for name in extra_names:
+            value = os.environ.get(name, dotenv.get(name))
+            if value is not None:
+                result[name] = value
     return result
 
 

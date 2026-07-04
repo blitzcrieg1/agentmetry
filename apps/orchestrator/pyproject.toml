@@ -25,6 +25,10 @@ dependencies = [
     "apscheduler>=3.10.0",
     "plyer>=2.1.0",
     "mcp>=1.2",
+    "google-auth>=2.0",
+    "google-auth-oauthlib>=1.0",
+    "google-api-python-client>=2.0",
+    "keyring>=24.0",
 ]
 
 [project.optional-dependencies]
