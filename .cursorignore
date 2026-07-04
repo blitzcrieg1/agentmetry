@@ -1,0 +1,15 @@
+﻿node_modules/
+apps/dashboard/.next/
+apps/dashboard/out/
+apps/obsidian-plugin/node_modules/
+apps/obsidian-plugin/main.js
+vault/20-Active-Loops/
+vault/30-Archive/
+vault/.obsidian/
+data/
+backups/
+**/__pycache__/
+*.log
+apps/orchestrator/.venv/
+.venv/
+venv/

@@ -1,0 +1,39 @@
+---
+description: BLACKBOX vault, skills, triggers, product docs
+globs: vault/**,docs/**
+alwaysApply: false
+---
+
+# Vault + product docs
+
+## Skills (9)
+
+Python graphs: lead_gen, summarize_meeting, weekly_review.
+
+YAML pipelines: summarize_note, inbox_triage, supplier_intake, client_brief, follow_up_draft, supplier_research (needs search driver).
+
+## Autonomy
+
+Drop `.md` in `00-Inbox/` → `inbox-note-summarize` (meeting tag → meeting rule). Budget defer → IVT resume.
+
+## Pipeline skill template
+
+```yaml
+name: my_skill
+graph: pipeline
+tools: [vault_fs.read_note]
+nodes: [draft, human_approval, finalize]  # optional gate
+max_cost_per_run: 0.15
+```
+
+## Vault layout
+
+`00-Inbox/` · `10-Knowledge/` · `20-Active-Loops/` (system) · `30-Archive/` (system) · `.system/skill-definitions/`
+
+Use `Set-Content -Encoding utf8` on Windows — not `echo >` (UTF-16 breaks RAG).
+
+## Strategy docs
+
+- `docs/future-concepts.md` — go/no-go §7 gates Gmail/Woo
+- `docs/product-audit-2026-07.md` — finish line
+- `docs/vertical-opportunities.md` · `docs/smb-pain-research.md`

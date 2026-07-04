@@ -1,206 +1,42 @@
 ---
-description: BLACKBOX project context, roadmap, and session handoff (updated 2026-07-04)
+description: BLACKBOX — compact always-on pointer (full detail in scoped rules)
 alwaysApply: true
 ---
 
-# BLACKBOX — Session Handoff
+# BLACKBOX — Quick pointer
 
-## Project
-- **Name:** BLACKBOX (Obsidian-Cortex Agentic OS)
-- **Repo:** https://github.com/blitzcrieg1/agentic-os (private), branch `master`
-- **Head:** see `git log` — architect audit approved s3/pipeline (with fixes) and landed s4 Drivers
-- **Wedge:** Governed autonomy — LangGraph state machines, approval gates, vault ledger, mission-control dashboard
+**Obsidian-Cortex Agentic OS** — governed local agent runtime. Vault in → skills → approve → archive.
 
-## Local-first (non-negotiable)
-- **Windows 11**, developer PC only — no cloud deploy
-- Orchestrator `localhost:8000`; dashboard dev `localhost:3000` (or 3001)
-- **No Docker** default; Gemini API = only cloud dependency
-- Secrets: `apps/orchestrator/.env` (gitignored)
-- **Preferred run:** `scripts\blackbox.bat start` or `scripts\serve.bat` (single process)
+- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
+- **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **137 passed**, 1 skipped
+- **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve
 
-## Run locally
-```powershell
-# Single process (recommended)
-scripts\serve.bat
+## File map (start here — do not re-explore)
 
-# Dev (two terminals)
-cd apps\orchestrator && uvicorn api.main:app --reload --port 8000
-cd apps\dashboard && npm run dev
-```
-
-## Stack
-- `apps/orchestrator/` — FastAPI, LangGraph, AsyncSqliteSaver, APScheduler, vault watcher, `blackbox` CLI
-- `apps/dashboard/` — Next.js 14, React Flow, Zustand, WebSocket
-- `vault/` — skills in `.system/skill-definitions/`, triggers in `.system/trigger-rules/`
-- **Skills (9):** lead_gen, summarize_meeting, weekly_review (Python graphs) +
-  YAML pipelines: summarize_note, inbox_triage, supplier_intake, client_brief,
-  follow_up_draft (all vault_fs), supplier_research (needs search driver enabled)
-- **Drivers:** vault_fs (enabled) · search (Serper/Tavily via
-  `tools/search_server.py`, ships `enabled: false` — set SERPER_API_KEY or
-  TAVILY_API_KEY and flip `enabled` in drivers.json) · fs/shell npx examples (off)
-- **Autonomy:** drop any note into `00-Inbox/` → `inbox-note-summarize` trigger runs
-  summarize_note (meeting-tagged notes go to the meeting rule via `not_tags` exclusion);
-  budget-deferred runs queue in the IVT and resume when the gate clears
-
-### Demo (drop file → archive appears)
-```powershell
-scripts\blackbox.bat start
-# drop a note:
-echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
-# within ~2s the watcher fires; watch the terminal/Board in the dashboard.
-# If the Flash budget is at the interactive reserve, the run parks in
-# Interrupts · Gate (budget_defer) and resumes automatically after UTC reset.
-# Result: vault\30-Archive\<date>-<time>-summarize_note-<thread>.md
-```
-
-## AOS subsystem status (Fable blueprint)
-
-| ID | Subsystem | Status | Key path |
-|----|-----------|--------|----------|
-| s1 | Kernel token scheduler | ✅ `98cfc4a` | `core/kernel/scheduler.py` |
-| s2 | Event bus + outbox | ✅ `c9b3842` | `core/bus/` |
-| s3 | Interrupt Vector Table | ✅ `219242c` (+audit fixes) | `core/kernel/interrupts.py` |
-| s4 | Drivers (MCP) | ✅ landed | `core/drivers/` — host, permissions, spec; `vault/.system/drivers.json` |
-| s5 | Sandbox | 🟡 Tier 0 + Tier 1 | exec deny → `TOOL_EXEC_APPROVAL`; approve runs via `core/sandbox/tier1.py` (allowlisted, vault-jailed) |
-| — | Obsidian plugin v0 | ✅ landed | `apps/obsidian-plugin/` — status bar, summarize/triage/approve |
-| — | Crash recovery | ✅ landed | `core/execution/recovery.py`; `/skills/recovery`, `blackbox recovery`, dashboard panel |
-
-### Obsidian plugin (v0)
-- `apps/obsidian-plugin/` — TS, esbuild. `npm run deploy` copies `main.js`+`manifest.json`
-  into `vault/.obsidian/plugins/blackbox/`; enable in Obsidian community plugins.
-- Status bar polls `/health` + `/skills/pending` (30s). Commands: Summarize active note,
-  Triage active note, Review pending approvals (SuggestModal → draft review → approve/reject).
-- Settings: orchestrator URL, API key. `main.js` is gitignored (build artifact).
-
-### Crash recovery
-- Startup logs stale `20-Active-Loops/` notes; `scan_recovery` classifies orphan (running,
-  no live thread) vs stale_approval. `GET /api/v1/skills/recovery`,
-  `POST /skills/recovery/resolve` {mark_failed|dismiss}, `blackbox recovery [--dismiss-all]`,
-  dashboard Recovery panel.
-- **Root cause of the 32 stale notes it found:** `ObsidianClient`/`VaultWatcher` now
-  `.resolve()` the vault path — a relative `BLACKBOX_VAULT_PATH=../../vault` produced
-  loop paths with `..` that `resolve_active_loop`'s traversal guard silently rejected,
-  so notes never left `running`. Fixed + regression test.
-
-### Sandbox Tier 1
-- `core/sandbox/tier1.py` `run_tier1()`: allowlist (`BLACKBOX_SANDBOX_TIER1_ALLOWED`,
-  default `git`), cwd jailed to vault, scrubbed env, hard timeout, no shell. Accidents not
-  adversaries; real isolation is Tier 2 (WSL2).
-- Approve an exec interrupt: `POST /api/v1/skills/interrupts/{id}/approve` — runs the recorded
-  `argv` in Tier 1, but only if the skill declares `sandbox_tier: 1`. `/deny` clears it.
-  exec interrupts now carry full `arguments` (incl. `argv`) for replay.
-
-### Drivers (s4) quick facts
-- Config: `vault/.system/drivers.json` — entries `{name, transport: stdio|sse, command, args, env_allow, tags, enabled}`; shipped examples are `enabled: false`
-- Env is **allowlist-only** — `GEMINI_API_KEY` never crosses into a driver unless `env_allow` names it
-- Skills opt in per tool: `tools: ["fs.read_file", "search.*"]` in skill YAML (closed by default)
-- `tags: ["exec"]` on a driver → every tool denied with `ToolExecApprovalRequired` + IVT row (Tier 0 sandbox)
-- API: `GET /api/v1/drivers/`, `POST /api/v1/drivers/remount`; `/health` has a `drivers` key
-- Each driver runs in an owner task (anyio contexts must enter/exit in the same task); mounts happen in background at boot
-- Pipeline steps consume tools via `node_tools:` (declarative calls, args templated
-  from `{user_input}` + prior step outputs; results injected as step outputs)
-- Proof skill: `summarize_note` (`graph: pipeline`, zero Python) reads any vault
-  note through `vault_fs.read_note` and archives a summary — verified live
-- `vault_fs` driver = our own read-only FastMCP server
-  (`apps/orchestrator/tools/vault_fs_server.py`), jailed to the vault, no Node needed
-
-**Ground rules:** kernel + user space in **one process**; keep `registry.py`; MCP replaces tools not graphs; no Docker/E2B default.
-
-## Shipped (do not re-implement)
-
-### Trust / P0 (done)
-- Append-only archive filenames (`{date}-{HHMM}-{skill}-{thread8}.md`)
-- Mock guard — `mock-dry-run` status, no silent mock into ledger
-- Trigger reads source note — `trigger_file_path` → `_inject_trigger_note()`
-- Embedding cache — `core/memory/embedding_cache.py`
-- Thread-safe vault watcher, disk logs (`data/logs/orchestrator.log`)
-- `blackbox` CLI — start/stop/status/logs/backup/restore/install
-
-### Phase 2 (mostly done)
-- Single-process dashboard serve (`34127c0`)
-- Run history API + dashboard panel
-- Flash budget ledger + IVT budget defer/resume
-- Event bus with durable outbox + WS bridge
-
-## Do not re-explore — start here
-
-| Task | File |
+| Task | Path |
 |------|------|
-| Execute any skill | `core/execution/service.py` → `run_skill()` |
-| Autonomous triggers | `core/scheduler/triggers.py` |
-| Graph registration | `core/graphs/registry.py` |
-| Interrupts / defer resume | `core/kernel/interrupts.py`, `resume_deferred_interrupts()` |
+| Execute skill | `apps/orchestrator/core/execution/service.py` → `run_skill()` |
+| Triggers | `core/scheduler/triggers.py` |
+| Graphs | `core/graphs/registry.py` |
+| Interrupts | `core/kernel/interrupts.py` |
 | LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
 | Vault I/O | `core/memory/obsidian_client.py` |
-| API lifespan | `api/main.py` |
+| Skills YAML | `vault/.system/skill-definitions/` |
+| Plugin | `apps/obsidian-plugin/src/main.ts` |
 
-## Next work (priority order)
+## Next (not code — operator)
 
-1. ~~Obsidian plugin v0~~ / ~~crash recovery UX~~ / ~~sandbox Tier 1~~ — **✅ 2026-07-04**
-2. ~~YAML skill pack~~ (supplier_intake, client_brief, follow_up_draft) /
-   ~~search driver MVP~~ / ~~plugin v0.1~~ (run-skill picker, thread notices,
-   in-flight status) — **✅ 2026-07-04** (`206b7d2`–`21da830`)
-3. ~~Per-skill weekly stats~~ / ~~search live-once harness~~ — **✅ 2026-07-04 (P3, uncommitted until asked)**
-   `GET /api/v1/runs/stats?window_days=7` → by_skill[], distinct_skills_successful,
-   go_no_go.dogfooding_met; `TelemetryStore.get_skill_stats`; `blackbox stats --days N`;
-   dashboard DogfoodingTile; `docs/search-driver-live.md` + opt-in `tests/test_search_live.py`
-   (skipped unless `BLACKBOX_LIVE_TESTS=1` + key). 134 tests, 1 skipped.
-4. ~~Batch approval~~ — **✅ 2026-07-04 (uncommitted until asked):** `POST /api/v1/skills/approve/batch`
-   {thread_ids[], approved} → per-thread results, one failure never aborts the rest;
-   dashboard PendingApprovalsPanel (checkboxes + Approve/Reject N); plugin v0.2
-   "Approve all / Reject all pending" commands.
-5. Operator dogfooding: 3+ skills weekly (now MEASURABLE — `blackbox stats`) → unlocks Gmail/Woo
-6. Mid-run checkpoint resume (recovery today dismisses orphans only)
-7. Plugin v0.2+ — WebSocket live status (batch approve done)
+1. **Dogfood:** 3+ skills/week on real notes → `blackbox stats --days 7`
+2. **Search live once:** `docs/search-driver-live.md`
+3. **Then:** Gmail draft-only (Phase 4) — gated by go/no-go in `docs/future-concepts.md` §7
 
-**Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
-`docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.
+## Docs
 
-**Tomorrow / session continuity (2026-07-03):** read `docs/tomorrow-handoff.md` first —
-live state, bugs fixed, vertical research, doc index, suggested next steps.
+- Audit: `docs/product-audit-2026-07.md`
+- Fable ↔ Cursor: `docs/fable-cursor-synergy-prompt.md`
+- Full handoff detail: scoped rules `blackbox-orchestrator.mdc`, `blackbox-dashboard-plugin.mdc`, `blackbox-vault-docs.mdc`
 
-**Vertical & market research:** `docs/vertical-opportunities.md`, `docs/smb-pain-research.md`,
-`docs/implementation-guide.md`.
+## Preferences
 
-### Adding a skill without Python (pipeline v1)
-```yaml
-# vault/.system/skill-definitions/my_skill.yaml
-name: my_skill
-graph: pipeline
-system_prompt: |
-  You are ...
-nodes:
-  - plan
-  - draft
-  - critic          # optional
-  - human_approval  # optional — enables interrupt gate
-  - finalize
-node_prompts:        # optional — defaults generated from step id
-  plan: "Plan the work for: {user_input}"
-max_cost_per_run: 0.20
-```
-
-## Gemini
-- Default model: `gemini-2.5-flash-lite`; paid tier in operator `.env` (100k/day, 0.2s pace)
-- Budget ledger: per-model keys, counts every API attempt (not just 200)
-- Degraded: clears after retry window; manual Armory runs proceed
-- RAG: tolerant vault text encodings (Windows UTF-16)
-- Free tier (if used): ~5 RPM, **20 RPD** — autonomous runs defer via IVT when reserve hit
-- Do not health-probe Gemini every poll; embedding cache avoids re-embed on restart
-
-## API quick reference
-- `GET /api/v1/skills/interrupts` — pending IVT rows (budget, degraded, HITL, tool_exec)
-- `GET /api/v1/skills/pending` — HITL approvals (`draft`, `confidence`)
-- `GET /api/v1/skills/recovery` — stale active-loop notes
-- `POST /api/v1/skills/recovery/resolve` — `{ path, action: mark_failed|dismiss }`
-- `POST /api/v1/skills/interrupts/{id}/approve|deny` — Tier 1 exec (skill needs `sandbox_tier: 1`)
-- `GET /api/v1/health` — budget snapshot + degraded flag
-
-## Tests
-- `cd apps/orchestrator && pip install -e ".[dev]" && pytest -q` — expect **129** passing
-- CI: ruff + pytest (orchestrator), lint + build (dashboard)
-
-## User preferences
-- Solo dev, Windows local only
-- Do not commit unless explicitly asked
-- Minimize scope; match existing conventions
+Solo dev · Windows local · minimize scope · **commit only when operator asks**
