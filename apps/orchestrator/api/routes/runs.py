@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query
 
+from core.execution.context import telemetry
 from core.graphs.node_events import node_events_path
 from core.notifiers.audit import audit_path
 
@@ -81,6 +82,12 @@ async def list_runs(
         "total": len(records),
         "runs": records[offset : offset + limit],
     }
+
+
+@router.get("/stats")
+async def run_stats(window_days: int = Query(7, ge=1, le=90)):
+    """Per-skill usage over a trailing window + the dogfooding go/no-go answer."""
+    return telemetry.get_skill_stats(window_days)
 
 
 @router.get("/{thread_id}/events")

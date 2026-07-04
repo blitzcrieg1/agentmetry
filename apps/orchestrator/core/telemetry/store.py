@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +112,68 @@ class TelemetryStore:
                     for r in recent
                 ],
             }
+
+    # A skill "counts" toward dogfooding only when it produced a real result.
+    _DOGFOOD_MIN_SKILLS = 3
+    _SUCCESS_STATUSES = ("completed", "approved")
+
+    @staticmethod
+    def _as_naive_utc(dt: datetime | None) -> datetime | None:
+        """SQLite returns naive datetimes; Postgres may return aware ones.
+
+        Normalize both to naive UTC so a single cutoff comparison works on
+        either backend.
+        """
+        if dt is None:
+            return None
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+
+    def get_skill_stats(self, window_days: int = 7) -> dict[str, Any]:
+        """Per-skill run counts within a trailing window, plus the go/no-go answer.
+
+        Answers "have I used >=3 skills this week?" — the dogfooding criterion
+        in docs/future-concepts.md that was previously unmeasurable.
+        """
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=window_days)
+        per_skill: dict[str, dict[str, int]] = {}
+
+        with Session(self.engine) as session:
+            for log in session.query(ExecutionLog).all():
+                created = self._as_naive_utc(log.created_at)
+                if created is None or created < cutoff:
+                    continue
+                bucket = per_skill.setdefault(
+                    log.skill_name or "unknown",
+                    {"runs": 0, "successful": 0},
+                )
+                bucket["runs"] += 1
+                if log.status in self._SUCCESS_STATUSES:
+                    bucket["successful"] += 1
+
+        by_skill = sorted(
+            (
+                {"skill": name, "runs": c["runs"], "successful": c["successful"]}
+                for name, c in per_skill.items()
+            ),
+            key=lambda row: (row["successful"], row["runs"]),
+            reverse=True,
+        )
+        # Dogfooding is about breadth of *successful* use, not raw attempts.
+        distinct_successful = sum(1 for row in by_skill if row["successful"] > 0)
+
+        return {
+            "window_days": window_days,
+            "by_skill": by_skill,
+            "distinct_skills": len(by_skill),
+            "distinct_skills_successful": distinct_successful,
+            "go_no_go": {
+                "criterion": f">={self._DOGFOOD_MIN_SKILLS} skills with a completed/approved run",
+                "min_skills": self._DOGFOOD_MIN_SKILLS,
+                "dogfooding_met": distinct_successful >= self._DOGFOOD_MIN_SKILLS,
+            },
+        }
 
     def detect_drift(self, messages: list[str], threshold: float = 0.8) -> bool:
         """Detect if agent is repeating the same output cyclically."""

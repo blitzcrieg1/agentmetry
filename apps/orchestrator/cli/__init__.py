@@ -188,6 +188,33 @@ def cmd_recovery(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    """Per-skill usage over a window + the dogfooding go/no-go answer."""
+    try:
+        data = httpx.get(
+            f"{_base_url(args.port)}/api/v1/runs/stats",
+            params={"window_days": args.days},
+            timeout=10.0,
+        ).json()
+    except Exception:
+        print("Not running - start BLACKBOX first (stats reads via the API).")
+        return 1
+
+    print(f"Skills used in the last {data['window_days']} day(s):")
+    if not data["by_skill"]:
+        print("  (none)")
+    for row in data["by_skill"]:
+        print(f"  {row['skill']:<22} {row['successful']} ok / {row['runs']} runs")
+
+    gng = data["go_no_go"]
+    verdict = "MET" if gng["dogfooding_met"] else "not met"
+    print(
+        f"\nDogfooding: {data['distinct_skills_successful']} skill(s) with a "
+        f"completed/approved run (need {gng['min_skills']}) -> {verdict}"
+    )
+    return 0
+
+
 def cmd_logs(args: argparse.Namespace) -> int:
     log = _DATA_DIR / "logs" / "orchestrator.log"
     if not log.exists():
@@ -363,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="health, budget, pending approvals")
     recovery = sub.add_parser("recovery", help="list stale active-loop notes after a crash")
     recovery.add_argument("--dismiss-all", action="store_true")
+    stats = sub.add_parser("stats", help="per-skill usage + dogfooding go/no-go")
+    stats.add_argument("--days", type=int, default=7)
     logs = sub.add_parser("logs", help="tail the orchestrator log")
     logs.add_argument("-n", "--lines", type=int, default=50)
     logs.add_argument("-f", "--follow", action="store_true")
@@ -379,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
         "stop": cmd_stop,
         "status": cmd_status,
         "recovery": cmd_recovery,
+        "stats": cmd_stats,
         "logs": cmd_logs,
         "backup": cmd_backup,
         "restore": cmd_restore,
