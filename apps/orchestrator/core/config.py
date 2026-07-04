@@ -29,7 +29,7 @@ class Settings(BaseSettings):
             "BLACKBOX_GEMINI_API_KEY",
         ),
     )
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-2.5-flash-lite"
     gemini_embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = 768
     collection_name: str = "agent_memory"
@@ -43,7 +43,8 @@ class Settings(BaseSettings):
     gemini_health_cache_seconds: int = 300
     gemini_health_probe: bool = False
     gemini_embed_min_interval_seconds: float = 0.7
-    gemini_flash_min_interval_seconds: float = 13.0
+    # Pacing: 60 / RPM. Flash-lite free tier ≈10 RPM → 6s; 2.5-flash ≈5 RPM → 13s.
+    gemini_flash_min_interval_seconds: float = 6.5
     gemini_flash_daily_limit: int = 20
     gemini_flash_interactive_reserve: int = 8
     kernel_background_run_limit: int = 2

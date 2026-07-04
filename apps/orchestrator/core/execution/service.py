@@ -358,6 +358,9 @@ async def run_skill(
     trigger_file_path: str | None = None,
 ) -> dict[str, Any]:
     """Execute a skill graph. Used by HTTP API and autonomous triggers."""
+    if llm_degraded.active and llm_degraded.retry_elapsed():
+        llm_degraded.clear()
+
     if llm_degraded.active and settings.llm_provider.lower() == "gemini":
         if triggered_by != "manual":
             interrupt = interrupt_table.raise_llm_degraded(
@@ -390,19 +393,9 @@ async def run_skill(
                 "resumable": True,
                 "reason": llm_degraded.reason,
             }
-        msg = f"LLM degraded: {llm_degraded.reason}"
-        log_run({
-            "skill": skill_name,
-            "status": "rejected",
-            "triggered_by": triggered_by,
-            "trigger_rule_id": trigger_rule_id,
-            "session_id": session_id,
-            "error": msg,
-        })
-        return {"status": "rejected", "error": msg, "degraded": True}
+        # Manual runs proceed — a real 429 during the call re-trips degraded mode.
 
     # Autonomous runs pause once only the interactive Flash reserve is left;
-    # manual runs always proceed (a real 429 still trips degraded mode).
     if triggered_by != "manual" and settings.llm_provider.lower() == "gemini":
         ledger = get_budget_ledger()
         if not ledger.autonomous_allowed():

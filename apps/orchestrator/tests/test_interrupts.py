@@ -137,7 +137,7 @@ async def test_autonomous_defers_on_llm_degraded(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr(
         service,
         "llm_degraded",
-        SimpleNamespace(active=True, reason="429 rate limit"),
+        SimpleNamespace(active=True, reason="429 rate limit", retry_elapsed=lambda: False),
     )
 
     result = await run_skill(

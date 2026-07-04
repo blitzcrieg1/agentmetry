@@ -127,3 +127,34 @@ async def test_embed_batch_rejects_mismatched_response(monkeypatch: pytest.Monke
     monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(response))
 
     assert await embed_gemini_batch(["a", "b"]) is None
+
+
+async def test_flash_ledger_counts_generate_but_never_embeds(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Embeds have their own quota pool — they must not inflate the Flash RPD meter."""
+    counted: list[int] = []
+    monkeypatch.setattr(gemini, "_record_flash_request", lambda: counted.append(1))
+
+    async def fake_throttle():
+        pass
+
+    monkeypatch.setattr(gemini, "throttle_embed", fake_throttle)
+    monkeypatch.setattr(gemini, "throttle_flash", fake_throttle)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+
+    embed_response = FakeResponse({"embedding": {"values": [0.1]}})
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(embed_response))
+    assert await embed_gemini("chunk") == [0.1]
+    batch_response = FakeResponse({"embeddings": [{"values": [0.2]}]})
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(batch_response))
+    assert await embed_gemini_batch(["chunk"]) == [[0.2]]
+    assert counted == []  # embeds never metered against Flash
+
+    generate_response = FakeResponse(
+        {"candidates": [{"content": {"parts": [{"text": "hi"}]}}]}
+    )
+    monkeypatch.setattr(gemini.httpx, "AsyncClient", lambda: FakeClient(generate_response))
+    result = await gemini.call_gemini("prompt")
+    assert result is not None and result.text == "hi"
+    assert counted == [1]  # one generateContent attempt, one ledger tick

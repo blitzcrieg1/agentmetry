@@ -25,6 +25,16 @@ class DegradedState:
         self.since = ""
         self.retry_after_seconds = 0
 
+    def retry_elapsed(self) -> bool:
+        """True once the provider's retry window has passed (RPM windows are short)."""
+        if not self.active:
+            return False
+        if self.retry_after_seconds <= 0 or not self.since:
+            return True
+        since_dt = datetime.fromisoformat(self.since)
+        elapsed = (datetime.now(timezone.utc) - since_dt).total_seconds()
+        return elapsed >= self.retry_after_seconds
+
     def as_dict(self) -> dict:
         return {
             "active": self.active,

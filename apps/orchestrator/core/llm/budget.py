@@ -1,9 +1,12 @@
 """Daily Gemini Flash budget ledger.
 
-The free tier allows ~20 generateContent requests per day. This ledger counts
-successful calls per UTC day so autonomous triggers can defer before the quota
-is gone, keeping a reserve for interactive use. Manual runs are never blocked
-here — a real 429 still flips degraded mode.
+Google counts every generateContent request toward RPD/RPM — including 429
+failures and retries. This ledger mirrors that so autonomous deferral aligns
+with the real quota. Manual runs are never blocked here; a 429 still trips
+degraded mode.
+
+Usage is tracked per model — switching from gemini-2.5-flash to flash-lite
+starts a fresh counter matching Google's separate RPD pools.
 """
 
 from __future__ import annotations
@@ -28,25 +31,54 @@ class BudgetLedger:
         with self._lock, self._conn:
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS daily_usage ("
-                "day TEXT PRIMARY KEY, flash_calls INTEGER NOT NULL DEFAULT 0)"
+                "day TEXT NOT NULL, model TEXT NOT NULL, "
+                "flash_calls INTEGER NOT NULL DEFAULT 0, "
+                "PRIMARY KEY (day, model))"
             )
+            self._migrate_legacy_schema()
+
+    def _migrate_legacy_schema(self) -> None:
+        """Upgrade day-only rows from older builds to per-model keys."""
+        cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(daily_usage)").fetchall()
+        }
+        if "model" in cols:
+            return
+        self._conn.execute(
+            "CREATE TABLE daily_usage_v2 ("
+            "day TEXT NOT NULL, model TEXT NOT NULL, "
+            "flash_calls INTEGER NOT NULL DEFAULT 0, "
+            "PRIMARY KEY (day, model))"
+        )
+        self._conn.execute(
+            "INSERT INTO daily_usage_v2 (day, model, flash_calls) "
+            "SELECT day, 'gemini-2.5-flash', flash_calls FROM daily_usage"
+        )
+        self._conn.execute("DROP TABLE daily_usage")
+        self._conn.execute("ALTER TABLE daily_usage_v2 RENAME TO daily_usage")
+
+    def _model(self) -> str:
+        return settings.gemini_model
 
     @staticmethod
     def _today() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     def record_flash_call(self) -> None:
+        """Record one generateContent HTTP attempt (success or rate-limited)."""
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO daily_usage (day, flash_calls) VALUES (?, 1) "
-                "ON CONFLICT(day) DO UPDATE SET flash_calls = flash_calls + 1",
-                (self._today(),),
+                "INSERT INTO daily_usage (day, model, flash_calls) VALUES (?, ?, 1) "
+                "ON CONFLICT(day, model) DO UPDATE SET flash_calls = flash_calls + 1",
+                (self._today(), self._model()),
             )
 
     def flash_calls_today(self) -> int:
         with self._lock:
             row = self._conn.execute(
-                "SELECT flash_calls FROM daily_usage WHERE day = ?", (self._today(),)
+                "SELECT flash_calls FROM daily_usage WHERE day = ? AND model = ?",
+                (self._today(), self._model()),
             ).fetchone()
         return int(row[0]) if row else 0
 
@@ -61,6 +93,7 @@ class BudgetLedger:
         used = self.flash_calls_today()
         return {
             "day": self._today(),
+            "model": self._model(),
             "flash_used": used,
             "flash_limit": settings.gemini_flash_daily_limit,
             "flash_remaining": max(0, settings.gemini_flash_daily_limit - used),

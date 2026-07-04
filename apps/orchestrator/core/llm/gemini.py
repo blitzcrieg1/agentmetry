@@ -89,6 +89,11 @@ def _retry_after(resp: httpx.Response) -> int:
         return 30
 
 
+def _record_flash_request() -> None:
+    """Count every generateContent attempt toward the daily ledger."""
+    get_budget_ledger().record_flash_call()
+
+
 async def _post_with_retry(
     client: httpx.AsyncClient,
     url: str,
@@ -97,10 +102,15 @@ async def _post_with_retry(
     json_body: dict[str, Any],
     timeout: float,
     throttle: Any = None,
+    record_attempt: Any = None,
 ) -> httpx.Response | None:
     for attempt in range(_MAX_RETRIES):
         if throttle is not None:
             await throttle()
+        if record_attempt is not None:
+            # Flash callers meter every attempt (Google counts 429s toward
+            # RPD); embed callers pass nothing — separate quota pool.
+            record_attempt()
         resp = await client.post(url, params=params, json=json_body, timeout=timeout)
         if resp.status_code == 200:
             llm_degraded.clear()
@@ -147,10 +157,10 @@ async def call_gemini(
                 json_body=payload,
                 timeout=120.0,
                 throttle=throttle_flash,
+                record_attempt=_record_flash_request,
             )
             if resp is None or resp.status_code != 200:
                 return None
-            get_budget_ledger().record_flash_call()
             data = resp.json()
             text = _extract_text(data)
             if not text:
@@ -178,6 +188,7 @@ async def _stream_generate(
         async with httpx.AsyncClient() as client:
             for attempt in range(_MAX_RETRIES):
                 await throttle_flash()
+                _record_flash_request()
                 async with client.stream(
                     "POST",
                     f"{GEMINI_BASE}/models/{model}:streamGenerateContent",
@@ -196,7 +207,6 @@ async def _stream_generate(
                         return None
 
                     llm_degraded.clear()
-                    get_budget_ledger().record_flash_call()
                     async for line in resp.aiter_lines():
                         if not line.startswith("data: "):
                             continue
@@ -318,6 +328,9 @@ async def embed_gemini_batch(
 
 async def check_gemini_health() -> dict[str, Any]:
     """Verify Gemini API key and model access."""
+    if llm_degraded.active and llm_degraded.retry_elapsed():
+        llm_degraded.clear()
+
     if llm_degraded.active:
         payload = {
             "status": "degraded",
@@ -366,6 +379,7 @@ async def check_gemini_health() -> dict[str, Any]:
             set_cached_health(payload)
             return payload
         async with httpx.AsyncClient() as client:
+            _record_flash_request()
             resp = await client.post(
                 f"{GEMINI_BASE}/models/{settings.gemini_model}:generateContent",
                 params={"key": api_key},
@@ -377,7 +391,6 @@ async def check_gemini_health() -> dict[str, Any]:
             )
             if resp.status_code == 200:
                 llm_degraded.clear()
-                get_budget_ledger().record_flash_call()
                 payload = {
                     "status": "up",
                     "model": settings.gemini_model,

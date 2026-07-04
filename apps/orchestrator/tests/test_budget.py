@@ -22,6 +22,13 @@ def test_counts_accumulate(ledger: BudgetLedger):
     assert ledger.flash_calls_today() == 2
 
 
+def test_each_api_attempt_counts_including_failures(ledger: BudgetLedger):
+    """Google RPD includes 429s — ledger records every generateContent attempt."""
+    for _ in range(3):
+        ledger.record_flash_call()
+    assert ledger.flash_calls_today() == 3
+
+
 def test_day_rollover(ledger: BudgetLedger, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(BudgetLedger, "_today", staticmethod(lambda: "2026-07-03"))
     ledger.record_flash_call()
@@ -61,5 +68,15 @@ def test_snapshot_shape(ledger: BudgetLedger, monkeypatch: pytest.MonkeyPatch):
 
 def test_persists_across_instances(tmp_path: Path):
     db = tmp_path / "budget.db"
+    BudgetLedger(db).record_flash_call()
+    assert BudgetLedger(db).flash_calls_today() == 1
+
+
+def test_usage_isolated_per_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    db = tmp_path / "budget.db"
+    monkeypatch.setattr(settings, "gemini_model", "gemini-2.5-flash")
+    BudgetLedger(db).record_flash_call()
+    monkeypatch.setattr(settings, "gemini_model", "gemini-2.5-flash-lite")
+    assert BudgetLedger(db).flash_calls_today() == 0
     BudgetLedger(db).record_flash_call()
     assert BudgetLedger(db).flash_calls_today() == 1
