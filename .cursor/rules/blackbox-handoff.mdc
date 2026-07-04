@@ -139,10 +139,15 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
 1. ~~Obsidian plugin v0~~ / ~~crash recovery UX~~ / ~~sandbox Tier 1~~ — **✅ 2026-07-04**
 2. ~~YAML skill pack~~ (supplier_intake, client_brief, follow_up_draft) /
    ~~search driver MVP~~ / ~~plugin v0.1~~ (run-skill picker, thread notices,
-   in-flight status) — **✅ 2026-07-04 pm** (uncommitted until operator asks)
-3. Operator dogfooding: run 3+ skills weekly → unlocks Gmail/Woo per go/no-go
-4. Mid-run checkpoint resume (recovery today dismisses orphans only)
-5. Plugin v0.2 — batch approve, WebSocket live status
+   in-flight status) — **✅ 2026-07-04** (`206b7d2`–`21da830`)
+3. ~~Per-skill weekly stats~~ / ~~search live-once harness~~ — **✅ 2026-07-04 (P3, uncommitted until asked)**
+   `GET /api/v1/runs/stats?window_days=7` → by_skill[], distinct_skills_successful,
+   go_no_go.dogfooding_met; `TelemetryStore.get_skill_stats`; `blackbox stats --days N`;
+   dashboard DogfoodingTile; `docs/search-driver-live.md` + opt-in `tests/test_search_live.py`
+   (skipped unless `BLACKBOX_LIVE_TESTS=1` + key). 134 tests, 1 skipped.
+4. Operator dogfooding: 3+ skills weekly (now MEASURABLE — `blackbox stats`) → unlocks Gmail/Woo
+5. Mid-run checkpoint resume (recovery today dismisses orphans only)
+6. Plugin v0.2 — batch approve, WebSocket live status
 
 **Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
 `docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.
@@ -188,7 +193,7 @@ max_cost_per_run: 0.20
 - `GET /api/v1/health` — budget snapshot + degraded flag
 
 ## Tests
-- `cd apps/orchestrator && pip install -e ".[dev]" && pytest -q` — expect **123** passing
+- `cd apps/orchestrator && pip install -e ".[dev]" && pytest -q` — expect **129** passing
 - CI: ruff + pytest (orchestrator), lint + build (dashboard)
 
 ## User preferences
