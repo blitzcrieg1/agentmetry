@@ -1,6 +1,8 @@
 # Fable session notes — 2026-07-04
 
-Built P0-A, P0-B, and P1 from [fable-continuation-prompt.md](./fable-continuation-prompt.md). **Not committed** — operator reviews in Cursor first.
+Built P0-A, P0-B, and P1 from [fable-continuation-prompt.md](./fable-continuation-prompt.md). **Committed** in `b037156`.
+
+Phase 2 committed in `206b7d2`–`21da830`. Product audit: [product-audit-2026-07.md](./product-audit-2026-07.md).
 
 ## Verify (Windows)
 

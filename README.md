@@ -9,6 +9,9 @@ A state machine execution environment where Obsidian is the non-volatile state l
 **Tomorrow handoff (session state):** [docs/tomorrow-handoff.md](docs/tomorrow-handoff.md).  
 **Fable build prompt (plugin / recovery / sandbox):** [docs/fable-continuation-prompt.md](docs/fable-continuation-prompt.md).  
 **Fable session output (2026-07-04):** [docs/fable-session-notes.md](docs/fable-session-notes.md).  
+**Product audit (2026-07):** [docs/product-audit-2026-07.md](docs/product-audit-2026-07.md).  
+**Phase 3 build prompt (instrument & dogfood):** [docs/fable-continuation-prompt-v3.md](docs/fable-continuation-prompt-v3.md).  
+**Fable ↔ Cursor synergy:** [docs/fable-cursor-synergy-prompt.md](docs/fable-cursor-synergy-prompt.md).  
 **Obsidian plugin:** [apps/obsidian-plugin/README.md](apps/obsidian-plugin/README.md).
 
 ## Quick Start (Local — Gemini, no Docker)

@@ -338,10 +338,10 @@ Compare to **one hour** of admin salary saved per week—the API line item is us
 | Auto-run on inbox drop | ✅ | ✅ |
 | Meeting → archive | ✅ | ✅ |
 | Budget / defer / resume | ✅ | ✅ |
-| Run from Obsidian | ❌ | ✅ Plugin v0 |
-| Crash recovery UX | Partial | ✅ Clear stale loops |
-| Safe write tools (git, shell) | Denied | ✅ Sandboxed Tier 1 |
-| 10+ business skills | 5 | ✅ YAML library |
+| Run from Obsidian | ✅ | ✅ Plugin v0.1 |
+| Crash recovery UX | ✅ | ✅ Clear stale loops |
+| Safe write tools (git, shell) | Tier 1 gated | ✅ Sandboxed Tier 1 |
+| 10+ business skills | 9 | ✅ YAML library (growing) |
 | Non-technical skill editor | YAML (light) | ✅ Templates + docs |
 
 You can **start personal and pilot SMB use today** on summarize/triage/meeting flows.
