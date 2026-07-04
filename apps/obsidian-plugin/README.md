@@ -1,4 +1,4 @@
-# BLACKBOX Obsidian plugin (v0)
+# BLACKBOX Obsidian plugin (v0.1)
 
 Run governed BLACKBOX skills from the note you are editing — without opening the dashboard.
 
@@ -30,11 +30,15 @@ In Obsidian: **Settings → Community plugins → turn off Safe mode → enable 
 
 - **BLACKBOX: Summarize active note** — runs `summarize_note` on the vault-relative path
 - **BLACKBOX: Triage active note** — runs `inbox_triage`
+- **BLACKBOX: Run skill on active note…** — pick any registered skill (v0.1)
 - **BLACKBOX: Review pending approvals** — picker → draft review modal → approve/reject
+
+Result notices show the archive filename and thread id (v0.1).
 
 ## Status bar
 
-Polls health and pending count every 30s: `BLACKBOX ok`, `degraded`, `offline`, or pending count.
+Polls health and pending count every 30s: `BLACKBOX ok`, `degraded`, `offline`, or pending
+count. Shows `BB ⚙ <skill>…` while a run started from Obsidian is in flight (v0.1).
 
 ## Build only
 

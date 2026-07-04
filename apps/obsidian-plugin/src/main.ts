@@ -27,6 +27,13 @@ interface PendingApproval {
   created_at?: string;
 }
 
+interface SkillInfo {
+  id: string;
+  name?: string;
+  display_name?: string;
+  description?: string;
+}
+
 export default class BlackboxPlugin extends Plugin {
   settings: BlackboxSettings = DEFAULT_SETTINGS;
   statusBar: HTMLElement | null = null;
@@ -53,10 +60,32 @@ export default class BlackboxPlugin extends Plugin {
       callback: () => this.runSkillOnActiveNote("inbox_triage"),
     });
     this.addCommand({
+      id: "run-skill-on-active-note",
+      name: "Run skill on active note…",
+      callback: () => this.openSkillPicker(),
+    });
+    this.addCommand({
       id: "review-approvals",
       name: "Review pending approvals",
       callback: () => this.openApprovals(),
     });
+  }
+
+  async openSkillPicker() {
+    try {
+      const data = await this.apiGet("/api/v1/skills/");
+      const skills: SkillInfo[] = (data.skills ?? []).map((s: SkillInfo) => ({
+        ...s,
+        id: s.id || s.name || "",
+      }));
+      if (skills.length === 0) {
+        new Notice("BLACKBOX: no skills registered.");
+        return;
+      }
+      new SkillPicker(this.app, this, skills).open();
+    } catch (err) {
+      new Notice(`BLACKBOX error: ${err}`, 8000);
+    }
   }
 
   // ------------------------------------------------------------------ api
@@ -119,18 +148,26 @@ export default class BlackboxPlugin extends Plugin {
       return;
     }
     new Notice(`BLACKBOX: running ${skill} on ${file.path}…`);
+    this.statusBar?.setText(`BB ⚙ ${skill}…`);
     try {
       const result = await this.apiPost("/api/v1/skills/execute", {
         skill_name: skill,
         user_input: file.path,
         session_id: "obsidian-plugin",
       });
+      const thread = result.thread_id ? ` (thread ${result.thread_id.slice(0, 8)})` : "";
       if (result.status === "completed" || result.status === "approved") {
-        new Notice(`BLACKBOX ✓ archived: ${result.archive_path ?? "done"}`, 8000);
+        const archive = result.archive_path
+          ? String(result.archive_path).split(/[\\/]/).pop()
+          : "done";
+        new Notice(`BLACKBOX ✓ 30-Archive/${archive}${thread}`, 8000);
       } else if (result.status === "waiting_for_input") {
-        new Notice("BLACKBOX ⚠ approval required — run 'Review pending approvals'.", 8000);
+        new Notice(
+          `BLACKBOX ⚠ approval required${thread} — run 'Review pending approvals'.`,
+          8000
+        );
       } else {
-        new Notice(`BLACKBOX ✗ ${result.status}: ${result.error ?? ""}`, 8000);
+        new Notice(`BLACKBOX ✗ ${result.status}${thread}: ${result.error ?? ""}`, 8000);
       }
     } catch (err) {
       new Notice(`BLACKBOX error: ${err}`, 8000);
@@ -180,6 +217,37 @@ export default class BlackboxPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+}
+
+class SkillPicker extends SuggestModal<SkillInfo> {
+  constructor(
+    app: App,
+    private plugin: BlackboxPlugin,
+    private skills: SkillInfo[]
+  ) {
+    super(app);
+    this.setPlaceholder("Run a BLACKBOX skill on the active note");
+  }
+
+  getSuggestions(query: string): SkillInfo[] {
+    const q = query.toLowerCase();
+    return this.skills.filter(
+      (s) =>
+        s.id.toLowerCase().includes(q) ||
+        (s.display_name ?? "").toLowerCase().includes(q)
+    );
+  }
+
+  renderSuggestion(skill: SkillInfo, el: HTMLElement) {
+    el.createEl("div", { text: skill.display_name || skill.id });
+    if (skill.description) {
+      el.createEl("small", { text: skill.description });
+    }
+  }
+
+  onChooseSuggestion(skill: SkillInfo) {
+    void this.plugin.runSkillOnActiveNote(skill.id);
   }
 }
 

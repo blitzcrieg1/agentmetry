@@ -32,8 +32,12 @@ cd apps\dashboard && npm run dev
 - `apps/orchestrator/` — FastAPI, LangGraph, AsyncSqliteSaver, APScheduler, vault watcher, `blackbox` CLI
 - `apps/dashboard/` — Next.js 14, React Flow, Zustand, WebSocket
 - `vault/` — skills in `.system/skill-definitions/`, triggers in `.system/trigger-rules/`
-- **Skills (5):** lead_gen, summarize_meeting, weekly_review (Python graphs) +
-  summarize_note, inbox_triage (pure YAML `graph: pipeline` with `node_tools`)
+- **Skills (9):** lead_gen, summarize_meeting, weekly_review (Python graphs) +
+  YAML pipelines: summarize_note, inbox_triage, supplier_intake, client_brief,
+  follow_up_draft (all vault_fs), supplier_research (needs search driver enabled)
+- **Drivers:** vault_fs (enabled) · search (Serper/Tavily via
+  `tools/search_server.py`, ships `enabled: false` — set SERPER_API_KEY or
+  TAVILY_API_KEY and flip `enabled` in drivers.json) · fs/shell npx examples (off)
 - **Autonomy:** drop any note into `00-Inbox/` → `inbox-note-summarize` trigger runs
   summarize_note (meeting-tagged notes go to the meeting rule via `not_tags` exclusion);
   budget-deferred runs queue in the IVT and resume when the gate clears
@@ -132,11 +136,13 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
 
 ## Next work (priority order)
 
-1. ~~Obsidian plugin v0~~ / ~~crash recovery UX~~ / ~~sandbox Tier 1~~ — **✅ 2026-07-04** (see sections above; notes in `docs/fable-session-notes.md`)
-2. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
-3. Gmail or search MCP driver MVP (see `docs/future-concepts.md` go/no-go)
+1. ~~Obsidian plugin v0~~ / ~~crash recovery UX~~ / ~~sandbox Tier 1~~ — **✅ 2026-07-04**
+2. ~~YAML skill pack~~ (supplier_intake, client_brief, follow_up_draft) /
+   ~~search driver MVP~~ / ~~plugin v0.1~~ (run-skill picker, thread notices,
+   in-flight status) — **✅ 2026-07-04 pm** (uncommitted until operator asks)
+3. Operator dogfooding: run 3+ skills weekly → unlocks Gmail/Woo per go/no-go
 4. Mid-run checkpoint resume (recovery today dismisses orphans only)
-5. Obsidian plugin v0.1 — WebSocket status, batch approve
+5. Plugin v0.2 — batch approve, WebSocket live status
 
 **Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
 `docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.
