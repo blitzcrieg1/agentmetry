@@ -2,6 +2,12 @@
 
 A state machine execution environment where Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
 
+**For personal or small-business rollout** (non-technical): see [docs/implementation-guide.md](docs/implementation-guide.md).  
+**SMB pain points & product fit:** [docs/smb-pain-research.md](docs/smb-pain-research.md).  
+**Future concepts backlog** (Woo/Gmail, verticals, drivers): [docs/future-concepts.md](docs/future-concepts.md).  
+**Vertical success research:** [docs/vertical-opportunities.md](docs/vertical-opportunities.md).  
+**Tomorrow handoff (session state):** [docs/tomorrow-handoff.md](docs/tomorrow-handoff.md).
+
 ## Quick Start (Local — Gemini, no Docker)
 
 Recommended setup. Uses Google Gemini for LLM + embeddings and in-memory semantic RAG.
@@ -187,7 +193,7 @@ See `.env.example` for all configuration options. Key variables:
 | `BLACKBOX_LLM_PROVIDER` | `gemini` | LLM backend: `gemini`, `ollama`, or `mock` |
 | `BLACKBOX_ALLOW_MOCK` | `false` | Permit mock fallback when no real provider is available (archived as `mock-dry-run`) |
 | `GEMINI_API_KEY` | — | Google AI Studio API key |
-| `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash` | Generation model |
+| `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash-lite` | Generation model (see `.env.example` for 3.1 Flash Lite preset) |
 | `BLACKBOX_GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | RAG embedding model |
 | `BLACKBOX_API_KEY` | empty | Optional API key for mutating endpoints |
 | `BLACKBOX_USE_POSTGRES` | `false` | Use PostgreSQL for telemetry + checkpoints |

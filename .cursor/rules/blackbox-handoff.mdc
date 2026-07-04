@@ -109,9 +109,18 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
    (run admission: `TokenScheduler.run_slot()` — interactive never queued, background
    pool capped by `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT`, default 2; `_run_semaphore` removed)
 2. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
-4. Obsidian plugin (approvals, run-on-note, status bar)
-5. Mid-run crash recovery UX (stale 20-Active-Loops notes)
-6. Sandbox Tier 1 (restricted subprocess) to unlock exec-tagged drivers
+3. Obsidian plugin (approvals, run-on-note, status bar)
+4. Mid-run crash recovery UX (stale 20-Active-Loops notes)
+5. Sandbox Tier 1 (restricted subprocess) to unlock exec-tagged drivers
+
+**Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
+`docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.
+
+**Tomorrow / session continuity (2026-07-03):** read `docs/tomorrow-handoff.md` first —
+live state, bugs fixed, vertical research, doc index, suggested next steps.
+
+**Vertical & market research:** `docs/vertical-opportunities.md`, `docs/smb-pain-research.md`,
+`docs/implementation-guide.md`.
 
 ### Adding a skill without Python (pipeline v1)
 ```yaml
@@ -131,9 +140,12 @@ node_prompts:        # optional — defaults generated from step id
 max_cost_per_run: 0.20
 ```
 
-## Gemini free tier
-- Flash: ~5 RPM, **20 RPD** — daily limit is the real blocker
-- Autonomous runs defer via IVT when only interactive reserve remains
+## Gemini
+- Default model: `gemini-2.5-flash-lite`; paid tier in operator `.env` (100k/day, 0.2s pace)
+- Budget ledger: per-model keys, counts every API attempt (not just 200)
+- Degraded: clears after retry window; manual Armory runs proceed
+- RAG: tolerant vault text encodings (Windows UTF-16)
+- Free tier (if used): ~5 RPM, **20 RPD** — autonomous runs defer via IVT when reserve hit
 - Do not health-probe Gemini every poll; embedding cache avoids re-embed on restart
 
 ## API quick reference
@@ -142,7 +154,7 @@ max_cost_per_run: 0.20
 - `GET /api/v1/health` — includes budget snapshot + degraded flag
 
 ## Tests
-- `cd apps/orchestrator && pytest -q` — expect ~79+ passing
+- `cd apps/orchestrator && pytest -q` — expect **111** passing
 - CI: ruff + pytest (orchestrator), lint + build (dashboard)
 
 ## User preferences
