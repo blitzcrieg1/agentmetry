@@ -1,5 +1,7 @@
 # Tomorrow Handoff — 2026-07-03 session
 
+> **Update 2026-07-04:** P0-A/B/P1 landed (Fable). See [fable-session-notes.md](./fable-session-notes.md). Uncommitted.
+
 Read this first when continuing work. Detailed specs live in linked docs.
 
 ---

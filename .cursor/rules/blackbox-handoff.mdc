@@ -1,5 +1,5 @@
 ---
-description: BLACKBOX project context, roadmap, and session handoff (updated 2026-07-03)
+description: BLACKBOX project context, roadmap, and session handoff (updated 2026-07-04)
 alwaysApply: true
 ---
 
@@ -57,7 +57,34 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
 | s2 | Event bus + outbox | ✅ `c9b3842` | `core/bus/` |
 | s3 | Interrupt Vector Table | ✅ `219242c` (+audit fixes) | `core/kernel/interrupts.py` |
 | s4 | Drivers (MCP) | ✅ landed | `core/drivers/` — host, permissions, spec; `vault/.system/drivers.json` |
-| s5 | Sandbox | 🟡 Tier 0 policy live | exec-tagged tools denied → `TOOL_EXEC_APPROVAL` interrupt |
+| s5 | Sandbox | 🟡 Tier 0 + Tier 1 | exec deny → `TOOL_EXEC_APPROVAL`; approve runs via `core/sandbox/tier1.py` (allowlisted, vault-jailed) |
+| — | Obsidian plugin v0 | ✅ landed | `apps/obsidian-plugin/` — status bar, summarize/triage/approve |
+| — | Crash recovery | ✅ landed | `core/execution/recovery.py`; `/skills/recovery`, `blackbox recovery`, dashboard panel |
+
+### Obsidian plugin (v0)
+- `apps/obsidian-plugin/` — TS, esbuild. `npm run deploy` copies `main.js`+`manifest.json`
+  into `vault/.obsidian/plugins/blackbox/`; enable in Obsidian community plugins.
+- Status bar polls `/health` + `/skills/pending` (30s). Commands: Summarize active note,
+  Triage active note, Review pending approvals (SuggestModal → draft review → approve/reject).
+- Settings: orchestrator URL, API key. `main.js` is gitignored (build artifact).
+
+### Crash recovery
+- Startup logs stale `20-Active-Loops/` notes; `scan_recovery` classifies orphan (running,
+  no live thread) vs stale_approval. `GET /api/v1/skills/recovery`,
+  `POST /skills/recovery/resolve` {mark_failed|dismiss}, `blackbox recovery [--dismiss-all]`,
+  dashboard Recovery panel.
+- **Root cause of the 32 stale notes it found:** `ObsidianClient`/`VaultWatcher` now
+  `.resolve()` the vault path — a relative `BLACKBOX_VAULT_PATH=../../vault` produced
+  loop paths with `..` that `resolve_active_loop`'s traversal guard silently rejected,
+  so notes never left `running`. Fixed + regression test.
+
+### Sandbox Tier 1
+- `core/sandbox/tier1.py` `run_tier1()`: allowlist (`BLACKBOX_SANDBOX_TIER1_ALLOWED`,
+  default `git`), cwd jailed to vault, scrubbed env, hard timeout, no shell. Accidents not
+  adversaries; real isolation is Tier 2 (WSL2).
+- Approve an exec interrupt: `POST /api/v1/skills/interrupts/{id}/approve` — runs the recorded
+  `argv` in Tier 1, but only if the skill declares `sandbox_tier: 1`. `/deny` clears it.
+  exec interrupts now carry full `arguments` (incl. `argv`) for replay.
 
 ### Drivers (s4) quick facts
 - Config: `vault/.system/drivers.json` — entries `{name, transport: stdio|sse, command, args, env_allow, tags, enabled}`; shipped examples are `enabled: false`
@@ -105,13 +132,11 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
 
 ## Next work (priority order)
 
-1. ~~Pipeline `node_tools:` hook~~ / ~~skill #4~~ / ~~dashboard replay + interrupts~~ / ~~kernel run admission~~
-   (run admission: `TokenScheduler.run_slot()` — interactive never queued, background
-   pool capped by `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT`, default 2; `_run_semaphore` removed)
+1. ~~Obsidian plugin v0~~ / ~~crash recovery UX~~ / ~~sandbox Tier 1~~ — **✅ 2026-07-04** (see sections above; notes in `docs/fable-session-notes.md`)
 2. More YAML skills using `tools:` + `node_tools:` (user-space breadth)
-3. Obsidian plugin (approvals, run-on-note, status bar)
-4. Mid-run crash recovery UX (stale 20-Active-Loops notes)
-5. Sandbox Tier 1 (restricted subprocess) to unlock exec-tagged drivers
+3. Gmail or search MCP driver MVP (see `docs/future-concepts.md` go/no-go)
+4. Mid-run checkpoint resume (recovery today dismisses orphans only)
+5. Obsidian plugin v0.1 — WebSocket status, batch approve
 
 **Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
 `docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.
@@ -149,12 +174,15 @@ max_cost_per_run: 0.20
 - Do not health-probe Gemini every poll; embedding cache avoids re-embed on restart
 
 ## API quick reference
-- `GET /api/v1/skills/interrupts` — pending IVT rows (budget, degraded, HITL)
-- `GET /api/v1/skills/pending` — enriched HITL approvals
-- `GET /api/v1/health` — includes budget snapshot + degraded flag
+- `GET /api/v1/skills/interrupts` — pending IVT rows (budget, degraded, HITL, tool_exec)
+- `GET /api/v1/skills/pending` — HITL approvals (`draft`, `confidence`)
+- `GET /api/v1/skills/recovery` — stale active-loop notes
+- `POST /api/v1/skills/recovery/resolve` — `{ path, action: mark_failed|dismiss }`
+- `POST /api/v1/skills/interrupts/{id}/approve|deny` — Tier 1 exec (skill needs `sandbox_tier: 1`)
+- `GET /api/v1/health` — budget snapshot + degraded flag
 
 ## Tests
-- `cd apps/orchestrator && pytest -q` — expect **111** passing
+- `cd apps/orchestrator && pip install -e ".[dev]" && pytest -q` — expect **123** passing
 - CI: ruff + pytest (orchestrator), lint + build (dashboard)
 
 ## User preferences

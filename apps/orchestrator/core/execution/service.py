@@ -149,12 +149,16 @@ async def resume_deferred_interrupts() -> dict[str, int]:
 
 async def recover_interrupts() -> dict[str, int]:
     """Reload HITL threads and resume deferred autonomous work on startup."""
+    from core.execution.recovery import report_recovery_on_startup
+
     hitl = await recover_pending_threads()
     deferred = await resume_deferred_interrupts()
+    stale = report_recovery_on_startup()
     return {
         "hitl": hitl,
         "budget_defer_resumed": deferred["budget"],
         "llm_degraded_resumed": deferred["degraded"],
+        "stale_loops": stale,
     }
 
 
@@ -540,6 +544,12 @@ async def run_skill(
                     active_loop_path=str(active_loop_path),
                     config=config,
                     start=start,
+                    # Approval surfaces (dashboard modal, Obsidian plugin) need
+                    # the draft without a live graph-state read.
+                    payload={
+                        "draft": state_values.get("draft", ""),
+                        "confidence": state_values.get("confidence_score", 0.0),
+                    },
                 )
                 obsidian.resolve_active_loop(
                     active_loop_path,

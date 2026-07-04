@@ -66,6 +66,7 @@ class PendingThreadStore:
         active_loop_path: str,
         config: dict[str, Any],
         start: float,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         self._ivt.raise_interrupt(
             thread_id,
@@ -75,6 +76,7 @@ class PendingThreadStore:
             active_loop_path=active_loop_path,
             config=config,
             start=start,
+            payload=payload,
         )
 
     def get(self, thread_id: str) -> dict[str, Any] | None:

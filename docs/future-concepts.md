@@ -52,9 +52,9 @@ Config pattern: `vault/.system/drivers.json` + skill `tools:` allowlist (existin
 
 | Item | Why | Priority |
 |------|-----|----------|
-| Obsidian plugin v0 | Status bar, summarize active note, approve via API | P0 |
-| Crash recovery UX | Stale `20-Active-Loops/`, `RUN_FAILED` IVT vector | P0 |
-| Sandbox Tier 1 | Subprocess jail for shell/write tools | P1 |
+| Obsidian plugin v0 | Status bar, summarize active note, approve via API | ✅ |
+| Crash recovery UX | Stale `20-Active-Loops/`, `RUN_FAILED` IVT vector | ✅ |
+| Sandbox Tier 1 | Subprocess jail for shell/write tools | ✅ |
 | Batch approval UI | Approve 10 emails / outreach rows at once | P1 |
 | Model routing | Cheap model triage, strong model for client-facing | P2 |
 | Per-tenant vault sync | Shared vault for 2–10 staff (Syncthing doc) | P2 |
@@ -184,8 +184,8 @@ Use chat for exploration; use BLACKBOX for **operations**.
 
 Start implementing §2–§5 when **all** are true:
 
-- [ ] Obsidian plugin v0 shipped (or equivalent zero-friction run-from-note)
-- [ ] Crash recovery UX acceptable (no confusing stale loops)
+- [x] Obsidian plugin v0 shipped (or equivalent zero-friction run-from-note)
+- [x] Crash recovery UX acceptable (no confusing stale loops)
 - [ ] At least 3 production skills used weekly by operator (dogfooding)
 - [ ] Gmail or search driver MVP stable in CI
 - [ ] One pilot SMB (or vertical self-test) ran 30 days without manual kernel fixes
@@ -207,7 +207,7 @@ Until then: extend **vault skills + triggers** only; defer Woo/Gmail drivers.
 
 | Date | Notes |
 |------|-------|
-| 2026-07-03 | Initial backlog: SMB research, K-beauty/Woo/Gmail, driver list, go/no-go |
+| 2026-07-04 | P0-A plugin, P0-B recovery + vault-path fix, P1 sandbox Tier 1 — see `fable-session-notes.md` |
 
 ---
 

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     gemini_flash_daily_limit: int = 20
     gemini_flash_interactive_reserve: int = 8
     kernel_background_run_limit: int = 2
+    sandbox_tier1_allowed: str = "git"  # comma-separated binaries runnable in the jail
     startup_vault_index: bool = True
     startup_index_skip_unchanged: bool = True
 

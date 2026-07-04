@@ -50,12 +50,15 @@ async def list_pending():
     items = []
     for thread_id, meta in pending_threads.items():
         row = interrupt_table.get(thread_id)
+        payload = (row or {}).get("payload") or {}
         items.append({
             "thread_id": thread_id,
             "skill_name": meta["skill_name"],
             "session_id": meta["session_id"],
             "vector": "hitl_approval",
             "created_at": row.get("created_at") if row else None,
+            "draft": payload.get("draft", ""),
+            "confidence": payload.get("confidence", 0.0),
         })
     return {"pending": items}
 
@@ -63,6 +66,105 @@ async def list_pending():
 @router.get("/interrupts")
 async def list_interrupts():
     return {"interrupts": interrupt_table.list_pending()}
+
+
+@router.post("/interrupts/{interrupt_id}/approve", dependencies=[Depends(require_api_key)])
+async def approve_exec_interrupt(interrupt_id: str):
+    """Approve a TOOL_EXEC_APPROVAL interrupt: run the recorded command in Tier 1."""
+    from core.bus.events import INTERRUPT_RESOLVED, TOOL_CALLED
+    from core.kernel.interrupts import InterruptVector
+    from core.sandbox.tier1 import SandboxDenied, run_tier1
+
+    row = interrupt_table.get(interrupt_id)
+    if not row or row.get("vector") != InterruptVector.TOOL_EXEC_APPROVAL:
+        raise HTTPException(status_code=404, detail="No such exec interrupt")
+
+    skill_config = obsidian.read_skill_config(row["skill_name"]) or {}
+    if skill_config.get("sandbox_tier") != 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Skill '{row['skill_name']}' does not declare sandbox_tier: 1",
+        )
+
+    argv = (row.get("payload", {}).get("arguments") or {}).get("argv")
+    if not isinstance(argv, list) or not argv:
+        raise HTTPException(
+            status_code=400,
+            detail="Interrupt carries no executable argv — deny it instead",
+        )
+
+    try:
+        result = await run_tier1([str(a) for a in argv])
+    except SandboxDenied as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    interrupt_table.delete(interrupt_id)
+    bus.publish(TOOL_CALLED, {
+        "type": "tool_called",
+        "tool": row["payload"].get("tool", ""),
+        "skill": row["skill_name"],
+        "sandboxed": True,
+        "argv": argv,
+        "exit_code": result.exit_code,
+    }, session_id=row.get("session_id", ""))
+    bus.publish(INTERRUPT_RESOLVED, {
+        "type": "interrupt_resolved",
+        "interrupt_id": interrupt_id,
+        "vector": str(InterruptVector.TOOL_EXEC_APPROVAL),
+        "skill": row["skill_name"],
+    }, session_id=row.get("session_id", ""))
+    return {
+        "status": "executed",
+        "exit_code": result.exit_code,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "duration_ms": result.duration_ms,
+        "timed_out": result.timed_out,
+    }
+
+
+@router.post("/interrupts/{interrupt_id}/deny", dependencies=[Depends(require_api_key)])
+async def deny_exec_interrupt(interrupt_id: str):
+    from core.bus.events import INTERRUPT_RESOLVED
+    from core.kernel.interrupts import InterruptVector
+
+    row = interrupt_table.get(interrupt_id)
+    if not row or row.get("vector") != InterruptVector.TOOL_EXEC_APPROVAL:
+        raise HTTPException(status_code=404, detail="No such exec interrupt")
+    interrupt_table.delete(interrupt_id)
+    bus.publish(INTERRUPT_RESOLVED, {
+        "type": "interrupt_resolved",
+        "interrupt_id": interrupt_id,
+        "vector": str(InterruptVector.TOOL_EXEC_APPROVAL),
+        "skill": row["skill_name"],
+        "denied": True,
+    }, session_id=row.get("session_id", ""))
+    return {"status": "denied", "interrupt_id": interrupt_id}
+
+
+class RecoveryRequest(BaseModel):
+    path: str
+    action: str  # mark_failed | dismiss
+
+
+@router.get("/recovery")
+async def list_recovery():
+    from core.execution.recovery import scan_recovery
+
+    return {"recovery": scan_recovery()}
+
+
+@router.post("/recovery/resolve", dependencies=[Depends(require_api_key)])
+async def resolve_recovery_item(request: RecoveryRequest):
+    from core.execution.recovery import resolve_recovery
+
+    try:
+        found = resolve_recovery(request.path, request.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not found:
+        raise HTTPException(status_code=404, detail="Loop note not found")
+    return {"status": "resolved", "path": request.path, "action": request.action}
 
 
 @router.post("/reload", dependencies=[Depends(require_api_key)])

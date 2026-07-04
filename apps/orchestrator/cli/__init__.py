@@ -147,6 +147,47 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_recovery(args: argparse.Namespace) -> int:
+    """List (and optionally dismiss) stale active-loop notes."""
+    try:
+        data = httpx.get(
+            f"{_base_url(args.port)}/api/v1/skills/recovery", timeout=10.0
+        ).json()
+    except Exception:
+        print("Not running - start BLACKBOX first (recovery reads via the API).")
+        return 1
+
+    items = data.get("recovery", [])
+    if not items:
+        print("No stale active loops.")
+        return 0
+
+    for item in items:
+        print(
+            f"  [{item['classification']}] {item['skill']}  {item['path']}  "
+            f"(created {item.get('created', '?')[:19]})"
+        )
+    print(f"{len(items)} stale loop note(s).")
+
+    if args.dismiss_all:
+        headers = {"Content-Type": "application/json"}
+        api_key = os.environ.get("BLACKBOX_API_KEY", "")
+        if api_key:
+            headers["X-API-Key"] = api_key
+        for item in items:
+            resp = httpx.post(
+                f"{_base_url(args.port)}/api/v1/skills/recovery/resolve",
+                json={"path": item["path"], "action": "dismiss"},
+                headers=headers,
+                timeout=10.0,
+            )
+            marker = "dismissed" if resp.status_code == 200 else f"HTTP {resp.status_code}"
+            print(f"  {item['path']} -> {marker}")
+    else:
+        print("Run 'blackbox recovery --dismiss-all' to clear them.")
+    return 0
+
+
 def cmd_logs(args: argparse.Namespace) -> int:
     log = _DATA_DIR / "logs" / "orchestrator.log"
     if not log.exists():
@@ -320,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("start", help="start the orchestrator (detached)")
     sub.add_parser("stop", help="stop the orchestrator")
     sub.add_parser("status", help="health, budget, pending approvals")
+    recovery = sub.add_parser("recovery", help="list stale active-loop notes after a crash")
+    recovery.add_argument("--dismiss-all", action="store_true")
     logs = sub.add_parser("logs", help="tail the orchestrator log")
     logs.add_argument("-n", "--lines", type=int, default=50)
     logs.add_argument("-f", "--follow", action="store_true")
@@ -335,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         "start": cmd_start,
         "stop": cmd_stop,
         "status": cmd_status,
+        "recovery": cmd_recovery,
         "logs": cmd_logs,
         "backup": cmd_backup,
         "restore": cmd_restore,

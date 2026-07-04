@@ -1,0 +1,20 @@
+{
+  "name": "blackbox-obsidian-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BLACKBOX Obsidian plugin v0",
+  "main": "main.js",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "deploy": "node esbuild.config.mjs production && node deploy.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.21.0",
+    "obsidian": "^1.5.7",
+    "typescript": "^5.4.0"
+  }
+}

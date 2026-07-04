@@ -28,6 +28,16 @@ _BASE_ENV_NAMES = (
 )
 
 
+def base_subprocess_env(extra_names: list[str] | None = None) -> dict[str, str]:
+    """Allowlist-only environment for any sandboxed/driver subprocess."""
+    result: dict[str, str] = {}
+    for name in (*_BASE_ENV_NAMES, *(extra_names or [])):
+        value = os.environ.get(name)
+        if value is not None:
+            result[name] = value
+    return result
+
+
 class DriverSpec(BaseModel):
     name: str = Field(pattern=r"^[a-z0-9_-]+$")
     transport: str = "stdio"  # stdio | sse
@@ -41,11 +51,7 @@ class DriverSpec(BaseModel):
 
     def build_env(self) -> dict[str, str]:
         """Allowlist-only environment for the driver subprocess."""
-        result: dict[str, str] = {}
-        for name in (*_BASE_ENV_NAMES, *self.env_allow):
-            value = os.environ.get(name)
-            if value is not None:
-                result[name] = value
+        result = base_subprocess_env(self.env_allow)
         result.update(self.env)
         return result
 

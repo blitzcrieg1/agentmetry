@@ -35,7 +35,7 @@ class VaultSyncHandler(FileSystemEventHandler):
 
         def _do_index():
             self._debounce.pop(path, None)
-            file_path = Path(path)
+            file_path = Path(path).resolve()
 
             async def _work():
                 # Indexing is background; triggered runs re-tag as AUTONOMOUS.
@@ -73,7 +73,7 @@ class VaultSyncHandler(FileSystemEventHandler):
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory or not event.src_path.endswith(".md"):
             return
-        file_path = Path(event.src_path)
+        file_path = Path(event.src_path).resolve()
         try:
             rel_path = str(file_path.relative_to(self.vault_path))
         except ValueError:
@@ -87,7 +87,9 @@ class VaultSyncHandler(FileSystemEventHandler):
 
 class VaultWatcher:
     def __init__(self, vault_path: Path | None = None):
-        self.vault_path = vault_path or settings.vault_path
+        # Absolute throughout: watchdog echoes back whatever form we watch
+        # with, and downstream relative_to() needs one consistent root.
+        self.vault_path = Path(vault_path or settings.vault_path).resolve()
         self.rag = RAGEngine(vault_path=self.vault_path)
         self.observer: Observer | None = None
 

@@ -1,0 +1,9 @@
+{
+  "id": "blackbox",
+  "name": "BLACKBOX",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Run BLACKBOX skills on the note you are editing: summarize, triage, and approve pending runs — governed by your local orchestrator.",
+  "author": "BLACKBOX",
+  "isDesktopOnly": true
+}

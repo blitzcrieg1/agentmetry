@@ -171,8 +171,13 @@ class InterruptVectorTable:
         session_id: str,
         tool: str,
         arguments_summary: str = "",
+        arguments: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Tier 0 sandbox policy: exec-tagged tool calls are recorded and denied."""
+        """Sandbox policy gate: exec-tagged tool calls are recorded and denied.
+
+        Full arguments are preserved so an operator approval can execute the
+        exact recorded request via Sandbox Tier 1.
+        """
         for row in self.list_pending(InterruptVector.TOOL_EXEC_APPROVAL):
             if row["skill_name"] == skill_name and row["payload"].get("tool") == tool:
                 return row
@@ -181,7 +186,11 @@ class InterruptVectorTable:
             InterruptVector.TOOL_EXEC_APPROVAL,
             skill_name=skill_name,
             session_id=session_id,
-            payload={"tool": tool, "arguments_summary": arguments_summary},
+            payload={
+                "tool": tool,
+                "arguments_summary": arguments_summary,
+                "arguments": arguments or {},
+            },
         )
 
     def raise_llm_degraded(

@@ -6,7 +6,10 @@ A state machine execution environment where Obsidian is the non-volatile state l
 **SMB pain points & product fit:** [docs/smb-pain-research.md](docs/smb-pain-research.md).  
 **Future concepts backlog** (Woo/Gmail, verticals, drivers): [docs/future-concepts.md](docs/future-concepts.md).  
 **Vertical success research:** [docs/vertical-opportunities.md](docs/vertical-opportunities.md).  
-**Tomorrow handoff (session state):** [docs/tomorrow-handoff.md](docs/tomorrow-handoff.md).
+**Tomorrow handoff (session state):** [docs/tomorrow-handoff.md](docs/tomorrow-handoff.md).  
+**Fable build prompt (plugin / recovery / sandbox):** [docs/fable-continuation-prompt.md](docs/fable-continuation-prompt.md).  
+**Fable session output (2026-07-04):** [docs/fable-session-notes.md](docs/fable-session-notes.md).  
+**Obsidian plugin:** [apps/obsidian-plugin/README.md](apps/obsidian-plugin/README.md).
 
 ## Quick Start (Local — Gemini, no Docker)
 

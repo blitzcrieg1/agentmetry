@@ -216,6 +216,7 @@ class MCPHost:
                     session_id=session_id,
                     tool=qualified,
                     arguments_summary=str(arguments)[:200],
+                    arguments=arguments,
                 )
             bus.publish(TOOL_DENIED, {
                 "type": "tool_denied",

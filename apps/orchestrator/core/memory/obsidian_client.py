@@ -21,7 +21,10 @@ _WRITE_ALLOWED_PREFIXES = (
 
 class ObsidianClient:
     def __init__(self, vault_path: str | Path):
-        self.vault_path = Path(vault_path)
+        # Resolve once: a relative BLACKBOX_VAULT_PATH (e.g. ../../vault) must
+        # not leak ".." segments into derived paths — the traversal guard in
+        # resolve_active_loop rejects those, silently orphaning loop notes.
+        self.vault_path = Path(vault_path).resolve()
         self.skill_path = self.vault_path / ".system" / "skill-definitions"
         self.archive_path = self.vault_path / "30-Archive"
         self.active_path = self.vault_path / "20-Active-Loops"
@@ -94,6 +97,24 @@ class ObsidianClient:
         if resolved != vault_root and vault_root not in resolved.parents:
             return None
         return resolved
+
+    def list_active_loops(self) -> list[dict[str, Any]]:
+        """Parse every note in 20-Active-Loops/ for crash-recovery triage."""
+        loops: list[dict[str, Any]] = []
+        for file in sorted(self.active_path.glob("*.md")):
+            try:
+                content = file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            meta, _ = self.parse_frontmatter(content)
+            loops.append({
+                "path": file.relative_to(self.vault_path).as_posix(),
+                "thread_id": str(meta.get("thread_id", "")),
+                "skill": str(meta.get("skill", "")),
+                "status": str(meta.get("status", "")),
+                "created": str(meta.get("created", "")),
+            })
+        return loops
 
     def read_note(self, relative_path: str) -> str | None:
         """Read a markdown note by vault-relative path."""
