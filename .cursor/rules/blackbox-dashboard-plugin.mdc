@@ -16,6 +16,7 @@ Panels: telemetry, dogfooding tile (`/api/v1/runs/stats`), pending approvals (ba
 
 - Build: `cd apps/obsidian-plugin && npm run deploy` → `vault/.obsidian/plugins/blackbox/`
 - Commands: Summarize/Triage active note, Run skill picker, Review pending, Approve/Reject all pending
+- **Live status:** WebSocket `/ws/global` → status bar `BB ⚙ <skill>…` (lifecycle events only; additive to 30s health/pending poll; reconnects on drop/settings change)
 - Settings: orchestrator URL, API key · `main.js` gitignored in source tree
 
 ## Verify UI changes

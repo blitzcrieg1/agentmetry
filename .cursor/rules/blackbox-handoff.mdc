@@ -9,8 +9,9 @@ alwaysApply: true
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **137 passed**, 1 skipped
-- **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **159 passed**, 1 skipped
+- **Skills:** 11 YAML/Python skills · K-beauty: `docs/kbeauty-sourcing-os.md`
+- **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
 
 ## File map (start here — do not re-explore)
 
@@ -24,12 +25,15 @@ alwaysApply: true
 | Vault I/O | `core/memory/obsidian_client.py` |
 | Skills YAML | `vault/.system/skill-definitions/` |
 | Plugin | `apps/obsidian-plugin/src/main.ts` |
+| Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · `docs/gmail-driver.md` · ships **disabled** |
+| Margin MCP (deterministic) | `apps/orchestrator/tools/margin_server.py` · ships **enabled** · `margin_compare` skill |
+| K-beauty sourcing | `kbeauty_trend_research` (needs search) · templates in `vault/10-Products/` |
 
 ## Next (not code — operator)
 
 1. **Dogfood:** 3+ skills/week on real notes → `blackbox stats --days 7`
-2. **Search live once:** `docs/search-driver-live.md`
-3. **Then:** Gmail draft-only (Phase 4) — gated by go/no-go in `docs/future-concepts.md` §7
+2. **K-beauty:** run `margin_compare` on `10-Products/sample-snail-essence.md`; enable search for `kbeauty_trend_research` (`docs/search-driver-live.md`)
+3. **Gmail OAuth + enable:** `docs/gmail-driver.md` (draft-only; no send until Phase 4-E)
 
 ## Docs
 
