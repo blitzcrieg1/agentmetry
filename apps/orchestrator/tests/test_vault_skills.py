@@ -34,6 +34,8 @@ def test_shipped_skills_all_compile(registry: SkillRegistry):
         "client_brief",
         "follow_up_draft",
         "supplier_research",
+        "kbeauty_trend_research",
+        "margin_compare",
     } <= registered
 
 
