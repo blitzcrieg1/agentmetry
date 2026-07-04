@@ -6,6 +6,7 @@ import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DogfoodingTile } from "@/components/telemetry/dogfooding-tile";
 import { InterruptPanel } from "@/components/telemetry/interrupt-panel";
+import { PendingApprovalsPanel } from "@/components/telemetry/pending-approvals-panel";
 import { RecoveryPanel } from "@/components/telemetry/recovery-panel";
 import { RunHistory } from "@/components/telemetry/run-history";
 import { ServiceStatusPanel } from "@/components/telemetry/service-status";
@@ -104,6 +105,8 @@ export function TelemetryPanel() {
           </CardContent>
         </Card>
       )}
+
+      <PendingApprovalsPanel />
 
       <InterruptPanel />
 

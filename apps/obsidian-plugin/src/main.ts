@@ -69,6 +69,40 @@ export default class BlackboxPlugin extends Plugin {
       name: "Review pending approvals",
       callback: () => this.openApprovals(),
     });
+    this.addCommand({
+      id: "approve-all-pending",
+      name: "Approve all pending",
+      callback: () => this.resolveAllPending(true),
+    });
+    this.addCommand({
+      id: "reject-all-pending",
+      name: "Reject all pending",
+      callback: () => this.resolveAllPending(false),
+    });
+  }
+
+  async resolveAllPending(approved: boolean) {
+    try {
+      const data = await this.apiGet("/api/v1/skills/pending");
+      const items: PendingApproval[] = data.pending ?? [];
+      if (items.length === 0) {
+        new Notice("BLACKBOX: no pending approvals.");
+        return;
+      }
+      const verb = approved ? "Approving" : "Rejecting";
+      new Notice(`BLACKBOX: ${verb} ${items.length} pending…`);
+      const result = await this.apiPost("/api/v1/skills/approve/batch", {
+        thread_ids: items.map((i) => i.thread_id),
+        approved,
+      });
+      new Notice(
+        `BLACKBOX ${approved ? "✓" : "✗"} ${result.resolved}/${result.requested} resolved.`,
+        8000
+      );
+    } catch (err) {
+      new Notice(`BLACKBOX error: ${err}`, 8000);
+    }
+    this.refreshStatus();
   }
 
   async openSkillPicker() {

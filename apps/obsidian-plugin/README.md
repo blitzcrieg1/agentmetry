@@ -32,6 +32,7 @@ In Obsidian: **Settings → Community plugins → turn off Safe mode → enable 
 - **BLACKBOX: Triage active note** — runs `inbox_triage`
 - **BLACKBOX: Run skill on active note…** — pick any registered skill (v0.1)
 - **BLACKBOX: Review pending approvals** — picker → draft review modal → approve/reject
+- **BLACKBOX: Approve all pending** / **Reject all pending** — one-shot batch (v0.2)
 
 Result notices show the archive filename and thread id (v0.1).
 

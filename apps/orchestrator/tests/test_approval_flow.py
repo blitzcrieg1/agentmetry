@@ -13,7 +13,12 @@ import api.routes.skills as skills_route
 import core.execution.service as service
 import core.graphs.checkpointer as checkpointer_module
 import core.graphs.node_events as node_events_module
-from api.routes.skills import ApprovalRequest, approve_skill
+from api.routes.skills import (
+    ApprovalRequest,
+    BatchApprovalRequest,
+    approve_skill,
+    batch_approve,
+)
 from core.config import settings
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
 from core.graphs.registry import SkillRegistry
@@ -152,3 +157,41 @@ async def test_approve_unknown_thread_is_404(wired):
     with pytest.raises(HTTPException) as exc:
         await approve_skill(ApprovalRequest(thread_id="does-not-exist", approved=True))
     assert exc.value.status_code == 404
+
+
+async def test_batch_approve_resolves_all(wired):
+    t1 = (await service.run_skill("lead_gen", "a", "b1"))["thread_id"]
+    t2 = (await service.run_skill("lead_gen", "b", "b1"))["thread_id"]
+
+    out = await batch_approve(BatchApprovalRequest(thread_ids=[t1, t2], approved=True))
+
+    assert out["requested"] == 2 and out["resolved"] == 2
+    assert {r["status"] for r in out["results"]} == {"approved"}
+    assert t1 not in wired.pending_threads and t2 not in wired.pending_threads
+    assert len(list((wired.vault / "30-Archive").glob("*lead_gen*.md"))) == 2
+
+
+async def test_batch_reject_terminates_all(wired):
+    t1 = (await service.run_skill("lead_gen", "a", "b2"))["thread_id"]
+    t2 = (await service.run_skill("lead_gen", "b", "b2"))["thread_id"]
+
+    out = await batch_approve(BatchApprovalRequest(thread_ids=[t1, t2], approved=False))
+
+    assert out["resolved"] == 2
+    assert {r["status"] for r in out["results"]} == {"terminated"}
+    assert not wired.pending_threads
+
+
+async def test_batch_isolates_failures(wired):
+    good = (await service.run_skill("lead_gen", "a", "b3"))["thread_id"]
+
+    out = await batch_approve(
+        BatchApprovalRequest(thread_ids=[good, "does-not-exist"], approved=True)
+    )
+
+    assert out["requested"] == 2 and out["resolved"] == 1
+    by_thread = {r["thread_id"]: r for r in out["results"]}
+    assert by_thread[good]["status"] == "approved"
+    assert by_thread["does-not-exist"]["status"] == "error"
+    # The valid thread still resolved despite the bad one in the same call.
+    assert good not in wired.pending_threads

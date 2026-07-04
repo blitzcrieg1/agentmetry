@@ -145,9 +145,13 @@ echo "# Idea: pipeline v2 branching" > vault\00-Inbox\demo-idea.md
    go_no_go.dogfooding_met; `TelemetryStore.get_skill_stats`; `blackbox stats --days N`;
    dashboard DogfoodingTile; `docs/search-driver-live.md` + opt-in `tests/test_search_live.py`
    (skipped unless `BLACKBOX_LIVE_TESTS=1` + key). 134 tests, 1 skipped.
-4. Operator dogfooding: 3+ skills weekly (now MEASURABLE — `blackbox stats`) → unlocks Gmail/Woo
-5. Mid-run checkpoint resume (recovery today dismisses orphans only)
-6. Plugin v0.2 — batch approve, WebSocket live status
+4. ~~Batch approval~~ — **✅ 2026-07-04 (uncommitted until asked):** `POST /api/v1/skills/approve/batch`
+   {thread_ids[], approved} → per-thread results, one failure never aborts the rest;
+   dashboard PendingApprovalsPanel (checkboxes + Approve/Reject N); plugin v0.2
+   "Approve all / Reject all pending" commands.
+5. Operator dogfooding: 3+ skills weekly (now MEASURABLE — `blackbox stats`) → unlocks Gmail/Woo
+6. Mid-run checkpoint resume (recovery today dismisses orphans only)
+7. Plugin v0.2+ — WebSocket live status (batch approve done)
 
 **Future concepts backlog** (SMB verticals, Gmail/Woo drivers, K-beauty):
 `docs/future-concepts.md` — implement after daily-driver go/no-go criteria met.

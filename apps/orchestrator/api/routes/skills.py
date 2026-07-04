@@ -35,6 +35,11 @@ class ApprovalRequest(BaseModel):
     modified_input: str | None = None
 
 
+class BatchApprovalRequest(BaseModel):
+    thread_ids: list[str]
+    approved: bool
+
+
 @router.get("/")
 async def list_skills():
     return {
@@ -194,47 +199,45 @@ async def execute_skill(request: SkillRequest):
     return result
 
 
-@router.post("/approve", dependencies=[Depends(require_api_key)])
-async def approve_skill(request: ApprovalRequest):
-    pending = pending_threads.get(request.thread_id)
-    if not pending:
-        pending = pending_store.get(request.thread_id)
+async def _resolve_approval(
+    thread_id: str, approved: bool, modified_input: str | None = None
+) -> dict:
+    """Approve or reject one paused thread. Raises HTTPException if unresolvable."""
+    pending = pending_threads.get(thread_id) or pending_store.get(thread_id)
     if not pending:
         raise HTTPException(status_code=404, detail="Thread not found or already resolved")
 
-    if not request.approved:
+    if not approved:
         obsidian.resolve_active_loop(
             pending["active_loop_path"],
             "terminated",
             note="Terminated by user",
         )
         obsidian.write_crash_report(
-            request.thread_id, "Terminated by user", pending["skill_name"]
+            thread_id, "Terminated by user", pending["skill_name"]
         )
-        pending_threads.pop(request.thread_id, None)
-        pending_store.delete(request.thread_id)
+        pending_threads.pop(thread_id, None)
+        pending_store.delete(thread_id)
         bus.publish(RUN_TERMINATED, {
             "type": "execution_terminated",
-            "thread_id": request.thread_id,
-        }, session_id=pending["session_id"], thread_id=request.thread_id)
-        telemetry.log_execution(
-            request.thread_id, pending["skill_name"], "terminated"
-        )
-        return {"status": "terminated", "thread_id": request.thread_id}
+            "thread_id": thread_id,
+        }, session_id=pending["session_id"], thread_id=thread_id)
+        telemetry.log_execution(thread_id, pending["skill_name"], "terminated")
+        return {"status": "terminated", "thread_id": thread_id}
 
     graph = skill_registry.get(pending["skill_name"])
     if not graph:
         raise HTTPException(status_code=400, detail="Graph no longer registered")
     await graph.aupdate_state(
         pending["config"],
-        {"approved": True, "modified_input": request.modified_input},
+        {"approved": True, "modified_input": modified_input},
     )
     final_state = await graph.ainvoke(None, pending["config"])
     snapshot = await graph.aget_state(pending["config"])
     state_values = dict(snapshot.values) if snapshot.values else final_state
 
     result = await _finalize_execution(
-        thread_id=request.thread_id,
+        thread_id=thread_id,
         skill_name=pending["skill_name"],
         session_id=pending["session_id"],
         final_state=state_values,
@@ -242,7 +245,35 @@ async def approve_skill(request: ApprovalRequest):
         start=pending["start"],
         status_label="approved",
     )
-
-    pending_threads.pop(request.thread_id, None)
-    pending_store.delete(request.thread_id)
+    pending_threads.pop(thread_id, None)
+    pending_store.delete(thread_id)
     return result
+
+
+@router.post("/approve", dependencies=[Depends(require_api_key)])
+async def approve_skill(request: ApprovalRequest):
+    return await _resolve_approval(
+        request.thread_id, request.approved, request.modified_input
+    )
+
+
+@router.post("/approve/batch", dependencies=[Depends(require_api_key)])
+async def batch_approve(request: BatchApprovalRequest):
+    """Resolve several paused threads in one call.
+
+    Sequential on purpose: each approval resumes a graph (LLM calls), so the
+    kernel scheduler still paces them. One thread failing never aborts the
+    rest — each gets its own result row.
+    """
+    results = []
+    ok = 0
+    for thread_id in request.thread_ids:
+        try:
+            outcome = await _resolve_approval(thread_id, request.approved)
+            results.append({"thread_id": thread_id, **outcome})
+            ok += 1
+        except HTTPException as exc:
+            results.append({"thread_id": thread_id, "status": "error", "error": exc.detail})
+        except Exception as exc:  # a bad graph must not sink the batch
+            results.append({"thread_id": thread_id, "status": "error", "error": str(exc)})
+    return {"requested": len(request.thread_ids), "resolved": ok, "results": results}
