@@ -41,6 +41,10 @@ Result notices show the archive filename and thread id (v0.1).
 Polls health and pending count every 30s: `BLACKBOX ok`, `degraded`, `offline`, or pending
 count. Shows `BB ⚙ <skill>…` while a run started from Obsidian is in flight (v0.1).
 
+A WebSocket to the orchestrator's global feed reflects runs live — including
+autonomous (vault-trigger/cron) and dashboard-started runs, not just plugin ones
+— and reconnects automatically (v0.2).
+
 ## Build only
 
 ```powershell

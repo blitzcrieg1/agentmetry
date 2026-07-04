@@ -37,6 +37,9 @@ interface SkillInfo {
 export default class BlackboxPlugin extends Plugin {
   settings: BlackboxSettings = DEFAULT_SETTINGS;
   statusBar: HTMLElement | null = null;
+  private ws: WebSocket | null = null;
+  private wsReconnectTimer: number | null = null;
+  private unloaded = false;
 
   async onload() {
     await this.loadSettings();
@@ -45,9 +48,11 @@ export default class BlackboxPlugin extends Plugin {
     this.statusBar = this.addStatusBarItem();
     this.statusBar.setText("BB …");
     this.refreshStatus();
+    // 30s poll stays as the heartbeat; the WS stream adds live transitions.
     this.registerInterval(
       window.setInterval(() => this.refreshStatus(), 30_000)
     );
+    this.connectStatusStream();
 
     this.addCommand({
       id: "summarize-active-note",
@@ -150,6 +155,87 @@ export default class BlackboxPlugin extends Plugin {
     });
     if (res.status >= 400) throw new Error(`HTTP ${res.status}: ${res.text}`);
     return res.json;
+  }
+
+  // ----------------------------------------------------------- live stream
+
+  private wsUrl(): string {
+    const base = this.settings.orchestratorUrl.replace(/^http/, "ws");
+    const url = `${base}/ws/global`;
+    return this.settings.apiKey
+      ? `${url}?token=${encodeURIComponent(this.settings.apiKey)}`
+      : url;
+  }
+
+  /**
+   * Subscribe to the orchestrator's global event feed so the status bar
+   * reflects runs live — including autonomous and dashboard-started ones,
+   * not just runs launched from this plugin. Additive to the 30s poll.
+   */
+  connectStatusStream() {
+    if (this.unloaded) return;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.wsUrl());
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+    this.ws = ws;
+    ws.onopen = () => this.refreshStatus();
+    ws.onmessage = (ev) => this.onStreamEvent(ev);
+    ws.onclose = () => {
+      this.ws = null;
+      this.scheduleReconnect();
+    };
+  }
+
+  reconnectStatusStream() {
+    if (this.wsReconnectTimer !== null) {
+      window.clearTimeout(this.wsReconnectTimer);
+      this.wsReconnectTimer = null;
+    }
+    this.ws?.close();
+    this.connectStatusStream();
+  }
+
+  private scheduleReconnect() {
+    if (this.unloaded || this.wsReconnectTimer !== null) return;
+    this.wsReconnectTimer = window.setTimeout(() => {
+      this.wsReconnectTimer = null;
+      this.connectStatusStream();
+    }, 5_000);
+  }
+
+  private onStreamEvent(ev: MessageEvent) {
+    let data: { type?: string; skill?: string };
+    try {
+      data = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    // Lifecycle only — the global feed also carries token/node_update noise.
+    switch (data.type) {
+      case "execution_started":
+        this.statusBar?.setText(`BB ⚙ ${data.skill ?? "run"}…`);
+        break;
+      case "execution_completed":
+      case "execution_failed":
+      case "execution_terminated":
+      case "approval_required":
+        this.refreshStatus();
+        break;
+    }
+  }
+
+  onunload() {
+    this.unloaded = true;
+    if (this.wsReconnectTimer !== null) {
+      window.clearTimeout(this.wsReconnectTimer);
+      this.wsReconnectTimer = null;
+    }
+    this.ws?.close();
+    this.ws = null;
   }
 
   // --------------------------------------------------------------- status
@@ -380,6 +466,7 @@ class BlackboxSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.orchestratorUrl = value.replace(/\/+$/, "");
             await this.plugin.saveSettings();
+            this.plugin.reconnectStatusStream();
           })
       );
 
@@ -392,6 +479,7 @@ class BlackboxSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value.trim();
             await this.plugin.saveSettings();
+            this.plugin.reconnectStatusStream();
           })
       );
   }
