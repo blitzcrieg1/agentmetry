@@ -1,0 +1,36 @@
+name: follow_up_draft
+display_name: Follow-up Draft
+description: Draft a short check-in email from a follow-up note (approval-gated, never sent)
+graph: pipeline
+tools:
+  - vault_fs.read_note
+nodes:
+  - draft
+  - human_approval
+  - finalize
+node_tools:
+  draft:
+    - tool: vault_fs.read_note
+      args:
+        path: "{user_input}"
+      output: followup_note
+node_prompts:
+  draft: |
+    Write a short, warm follow-up email body (under 120 words) based on this
+    note. Include a subject line. No signature block — the operator adds it.
+    This is a draft only; BLACKBOX never sends email.
+
+    Format:
+    Subject: ...
+
+    (body)
+
+    Note path: {user_input}
+
+    Note content:
+    {followup_note}
+system_prompt: |
+  You draft brief, personable business check-ins. Reference only specifics
+  from the note; one clear ask per email; no pressure tactics.
+max_cost_per_run: 0.10
+default_input: 00-Inbox/sample-follow-up.md

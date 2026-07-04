@@ -1,0 +1,37 @@
+name: client_brief
+display_name: Client Brief
+description: Turn a meeting or inbox note into a client-facing brief (approval-gated)
+graph: pipeline
+tools:
+  - vault_fs.read_note
+nodes:
+  - draft
+  - human_approval
+  - finalize
+node_tools:
+  draft:
+    - tool: vault_fs.read_note
+      args:
+        path: "{user_input}"
+      output: source_note
+node_prompts:
+  draft: |
+    Draft a short client-facing brief from this internal note. The client will
+    read this directly, so keep it professional and free of internal jargon.
+
+    Use markdown:
+    ## Summary
+    ## What we agreed
+    ## Next steps (with owners and dates where stated)
+    ## Open items needing your input
+
+    Source path: {user_input}
+
+    Internal note:
+    {source_note}
+system_prompt: |
+  You write concise client communications for a professional services firm.
+  Only include facts present in the source note; flag gaps under open items
+  rather than inventing details.
+max_cost_per_run: 0.15
+default_input: 00-Inbox/sample-meeting-notes.md

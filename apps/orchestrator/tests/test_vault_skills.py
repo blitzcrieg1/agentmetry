@@ -30,7 +30,22 @@ def test_shipped_skills_all_compile(registry: SkillRegistry):
         "weekly_review",
         "summarize_note",
         "inbox_triage",
+        "supplier_intake",
+        "client_brief",
+        "follow_up_draft",
+        "supplier_research",
     } <= registered
+
+
+def test_shipped_default_inputs_point_at_real_notes():
+    obsidian = ObsidianClient(_REPO_VAULT)
+    for skill in obsidian.list_skills():
+        default_input = skill.get("default_input")
+        if not default_input or not str(default_input).endswith(".md"):
+            continue
+        assert obsidian.read_note(str(default_input)) is not None, (
+            f"{skill['name']}: default_input '{default_input}' is not a note in the vault"
+        )
 
 
 def test_shipped_pipeline_skills_declare_governed_tools():

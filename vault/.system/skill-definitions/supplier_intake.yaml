@@ -1,0 +1,47 @@
+name: supplier_intake
+display_name: Supplier Intake
+description: Triage a pasted supplier email or quote into a structured comparison row
+graph: pipeline
+tools:
+  - vault_fs.read_note
+nodes:
+  - intake
+  - finalize
+node_tools:
+  intake:
+    - tool: vault_fs.read_note
+      args:
+        path: "{user_input}"
+      output: supplier_note
+node_prompts:
+  intake: |
+    Extract supplier facts from this note. Output exactly this markdown:
+
+    ## Supplier
+    | Field | Value |
+    |-------|-------|
+    | Vendor | ... |
+    | Products / SKUs | ... |
+    | MOQ | ... |
+    | Unit price / terms | ... |
+    | Lead time | ... |
+    | Shipping / incoterms | ... |
+    | Certifications (COA etc.) | ... or "not stated" |
+    | Contact | ... |
+
+    ## Red flags
+    - (missing info, vague terms, prices that look off — or "none spotted")
+
+    ## Suggested next step
+    One decisive line.
+
+    Note path: {user_input}
+
+    Note content:
+    {supplier_note}
+system_prompt: |
+  You are a procurement analyst for a small import business. Extract only what
+  the note actually states; mark everything else "not stated". Never invent
+  numbers or terms.
+max_cost_per_run: 0.10
+default_input: 00-Inbox/sample-supplier-quote.md
