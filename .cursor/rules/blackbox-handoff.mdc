@@ -9,7 +9,7 @@ alwaysApply: true
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **167 passed**, 1 skipped
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **183 passed**, 1 skipped
 - **Skills:** 13 YAML/Python skills · K-beauty: `docs/kbeauty-sourcing-os.md` · Gmail flow: `customer_reply`, `gmail_inbox_brief` (`docs/phase4-5-lived-in-plan.md`)
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
@@ -29,12 +29,14 @@ alwaysApply: true
 | Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · `docs/gmail-driver.md` · ships **disabled** |
 | Margin MCP (deterministic) | `apps/orchestrator/tools/margin_server.py` · ships **enabled** · `margin_compare` skill |
 | K-beauty sourcing | `kbeauty_trend_research` (needs search) · templates in `vault/10-Products/` |
+| Telegram channel | `core/channels/telegram.py` + `router.py` · `docs/telegram-channel.md` · ships **disabled** · approvals get inline buttons |
 
 ## Next (not code — operator)
 
 1. **Dogfood:** 3+ skills/week on real notes → `blackbox stats --days 7`
 2. **K-beauty:** run `margin_compare` on `10-Products/sample-snail-essence.md`; enable search for `kbeauty_trend_research` (`docs/search-driver-live.md`)
 3. **Gmail OAuth + enable:** `docs/gmail-driver.md` (draft-only; no send until Phase 4-E)
+4. **Telegram on:** BotFather token + chat id → `.env` → `docs/telegram-channel.md` (~10 min)
 
 ## Docs
 

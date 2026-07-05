@@ -4,19 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.bus.bus import bus
-from core.bus.events import RUN_TERMINATED
 from core.auth import require_api_key
 from core.execution.context import (
     interrupt_table,
     obsidian,
-    pending_store,
     pending_threads,
     skill_registry,
-    telemetry,
 )
 from core.execution.service import (
+    ApprovalNotFound,
+    ApprovalUnavailable,
+    resolve_approval,
     run_skill,
-    _finalize_execution,
 )
 from core.graphs.registry import SkillRegistry
 
@@ -219,51 +218,12 @@ async def _resolve_approval(
     thread_id: str, approved: bool, modified_input: str | None = None
 ) -> dict:
     """Approve or reject one paused thread. Raises HTTPException if unresolvable."""
-    pending = pending_threads.get(thread_id) or pending_store.get(thread_id)
-    if not pending:
-        raise HTTPException(status_code=404, detail="Thread not found or already resolved")
-
-    if not approved:
-        obsidian.resolve_active_loop(
-            pending["active_loop_path"],
-            "terminated",
-            note="Terminated by user",
-        )
-        obsidian.write_crash_report(
-            thread_id, "Terminated by user", pending["skill_name"]
-        )
-        pending_threads.pop(thread_id, None)
-        pending_store.delete(thread_id)
-        bus.publish(RUN_TERMINATED, {
-            "type": "execution_terminated",
-            "thread_id": thread_id,
-        }, session_id=pending["session_id"], thread_id=thread_id)
-        telemetry.log_execution(thread_id, pending["skill_name"], "terminated")
-        return {"status": "terminated", "thread_id": thread_id}
-
-    graph = skill_registry.get(pending["skill_name"])
-    if not graph:
-        raise HTTPException(status_code=400, detail="Graph no longer registered")
-    await graph.aupdate_state(
-        pending["config"],
-        {"approved": True, "modified_input": modified_input},
-    )
-    final_state = await graph.ainvoke(None, pending["config"])
-    snapshot = await graph.aget_state(pending["config"])
-    state_values = dict(snapshot.values) if snapshot.values else final_state
-
-    result = await _finalize_execution(
-        thread_id=thread_id,
-        skill_name=pending["skill_name"],
-        session_id=pending["session_id"],
-        final_state=state_values,
-        active_loop_path=pending["active_loop_path"],
-        start=pending["start"],
-        status_label="approved",
-    )
-    pending_threads.pop(thread_id, None)
-    pending_store.delete(thread_id)
-    return result
+    try:
+        return await resolve_approval(thread_id, approved, modified_input)
+    except ApprovalNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ApprovalUnavailable as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/approve", dependencies=[Depends(require_api_key)])

@@ -20,6 +20,7 @@ from core.auth import require_api_key, verify_ws_token
 from core.bus.bridges import outbox_persister, trigger_bridge
 from core.bus.bus import bus
 from core.bus.outbox import get_outbox
+from core.config import settings
 from core.execution.context import skill_registry
 from core.execution.service import recover_interrupts
 from core.graphs.checkpointer import init_checkpointer, shutdown_checkpointer
@@ -87,11 +88,23 @@ async def lifespan(app: FastAPI):
         start_scheduler()
     except Exception as exc:
         logger.warning("Scheduler unavailable: %s", exc)
+    telegram_channel = None
+    if settings.channel_telegram_enabled:
+        from core.channels.telegram import TelegramChannel
+
+        try:
+            telegram_channel = TelegramChannel.from_settings()
+            await telegram_channel.start()
+        except Exception as exc:
+            telegram_channel = None
+            logger.warning("Telegram channel unavailable: %s", exc)
     # Drivers mount in the background: a slow npx download must not delay boot.
     from core.drivers.host import get_mcp_host
 
     mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
     yield
+    if telegram_channel is not None:
+        await telegram_channel.stop()
     stop_scheduler()
     if vault_watcher:
         vault_watcher.stop()

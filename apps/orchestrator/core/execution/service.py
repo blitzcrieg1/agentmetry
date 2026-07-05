@@ -16,6 +16,7 @@ from core.bus.events import (
     RUN_COMPLETED,
     RUN_FAILED,
     RUN_STARTED,
+    RUN_TERMINATED,
     RUN_WAITING,
 )
 from core.config import settings
@@ -41,6 +42,15 @@ logger = logging.getLogger(__name__)
 
 # Guard against pathological trigger notes blowing up the prompt.
 _TRIGGER_NOTE_MAX_CHARS = 50_000
+
+
+def _interactive(triggered_by: str) -> bool:
+    """A human is actively waiting: manual API/dashboard runs and channel commands.
+
+    Interactive runs get kernel INTERACTIVE priority and skip the autonomous
+    budget/degraded deferral gates (same contract the dashboard already has).
+    """
+    return triggered_by == "manual" or triggered_by.startswith("channel:")
 
 
 def _latency_ms(start_epoch: float) -> int:
@@ -362,6 +372,70 @@ async def _finalize_execution(
     }
 
 
+class ApprovalNotFound(LookupError):
+    """The thread does not exist or was already resolved."""
+
+
+class ApprovalUnavailable(RuntimeError):
+    """The thread exists but its graph is no longer registered."""
+
+
+async def resolve_approval(
+    thread_id: str, approved: bool, modified_input: str | None = None
+) -> dict[str, Any]:
+    """Approve or reject one paused thread.
+
+    Transport-agnostic: the HTTP route and channel adapters (Telegram, ...)
+    both resolve approvals through this single path so audit, archive, and
+    pending-store bookkeeping never diverge.
+    """
+    pending = pending_threads.get(thread_id) or pending_store.get(thread_id)
+    if not pending:
+        raise ApprovalNotFound("Thread not found or already resolved")
+
+    if not approved:
+        obsidian.resolve_active_loop(
+            pending["active_loop_path"],
+            "terminated",
+            note="Terminated by user",
+        )
+        obsidian.write_crash_report(
+            thread_id, "Terminated by user", pending["skill_name"]
+        )
+        pending_threads.pop(thread_id, None)
+        pending_store.delete(thread_id)
+        bus.publish(RUN_TERMINATED, {
+            "type": "execution_terminated",
+            "thread_id": thread_id,
+        }, session_id=pending["session_id"], thread_id=thread_id)
+        telemetry.log_execution(thread_id, pending["skill_name"], "terminated")
+        return {"status": "terminated", "thread_id": thread_id}
+
+    graph = skill_registry.get(pending["skill_name"])
+    if not graph:
+        raise ApprovalUnavailable("Graph no longer registered")
+    await graph.aupdate_state(
+        pending["config"],
+        {"approved": True, "modified_input": modified_input},
+    )
+    final_state = await graph.ainvoke(None, pending["config"])
+    snapshot = await graph.aget_state(pending["config"])
+    state_values = dict(snapshot.values) if snapshot.values else final_state
+
+    result = await _finalize_execution(
+        thread_id=thread_id,
+        skill_name=pending["skill_name"],
+        session_id=pending["session_id"],
+        final_state=state_values,
+        active_loop_path=pending["active_loop_path"],
+        start=pending["start"],
+        status_label="approved",
+    )
+    pending_threads.pop(thread_id, None)
+    pending_store.delete(thread_id)
+    return result
+
+
 async def run_skill(
     skill_name: str,
     user_input: str,
@@ -376,7 +450,7 @@ async def run_skill(
         llm_degraded.clear()
 
     if llm_degraded.active and settings.llm_provider.lower() == "gemini":
-        if triggered_by != "manual":
+        if not _interactive(triggered_by):
             interrupt = interrupt_table.raise_llm_degraded(
                 skill_name=skill_name,
                 session_id=session_id,
@@ -410,7 +484,7 @@ async def run_skill(
         # Manual runs proceed — a real 429 during the call re-trips degraded mode.
 
     # Autonomous runs pause once only the interactive Flash reserve is left;
-    if triggered_by != "manual" and settings.llm_provider.lower() == "gemini":
+    if not _interactive(triggered_by) and settings.llm_provider.lower() == "gemini":
         ledger = get_budget_ledger()
         if not ledger.autonomous_allowed():
             snapshot = ledger.snapshot()
@@ -454,7 +528,7 @@ async def run_skill(
     # context: API handlers, cron jobs, and watcher work each run in their
     # own task, so this cannot leak into unrelated work.
     run_priority.set(
-        Priority.INTERACTIVE if triggered_by == "manual" else Priority.AUTONOMOUS
+        Priority.INTERACTIVE if _interactive(triggered_by) else Priority.AUTONOMOUS
     )
 
     # Run admission lives in the kernel: interactive runs start immediately,

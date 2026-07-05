@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     gemini_flash_interactive_reserve: int = 8
     kernel_background_run_limit: int = 2
     sandbox_tier1_allowed: str = "git"  # comma-separated binaries runnable in the jail
+    # Telegram channel adapter — ships disabled, like the gmail/search drivers.
+    channel_telegram_enabled: bool = False
+    telegram_bot_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "TELEGRAM_BOT_TOKEN",
+            "BLACKBOX_TELEGRAM_BOT_TOKEN",
+        ),
+    )
+    telegram_allowed_chat_ids: str = ""  # comma-separated; empty refuses to start
     startup_vault_index: bool = True
     startup_index_skip_unchanged: bool = True
 

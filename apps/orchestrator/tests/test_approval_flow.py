@@ -71,13 +71,14 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     pending_store = PendingThreadStore(db_url)
     pending_threads: dict = {}
 
-    # The service and the skills route both bind these singletons by name.
+    # The service and the skills route both bind these singletons by name;
+    # approval resolution itself lives in the service module only.
     for module in (service, skills_route):
         monkeypatch.setattr(module, "obsidian", obsidian)
-        monkeypatch.setattr(module, "pending_store", pending_store)
         monkeypatch.setattr(module, "pending_threads", pending_threads)
         monkeypatch.setattr(module, "skill_registry", registry)
-        monkeypatch.setattr(module, "telemetry", telemetry)
+    monkeypatch.setattr(service, "pending_store", pending_store)
+    monkeypatch.setattr(service, "telemetry", telemetry)
     monkeypatch.setattr(service, "rag", FakeRAG())
     monkeypatch.setattr(service, "log_run", lambda event: None)
     monkeypatch.setattr(service, "append_vault_run_log", lambda line: None)
