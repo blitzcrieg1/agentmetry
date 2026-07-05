@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-import core.execution.recovery as recovery_module
 from core.execution.recovery import resume_orphan
 from core.memory.obsidian_client import ObsidianClient
 
