@@ -1,0 +1,53 @@
+name: customer_reply
+display_name: Customer Reply
+description: Read a Gmail thread, draft a reply from vault SOPs, file it as a Gmail draft after human approval (needs the gmail driver enabled)
+graph: pipeline
+tools:
+  - gmail.get_thread
+  - gmail.create_draft
+nodes:
+  - fetch
+  - draft
+  - critic
+  - human_approval
+  - deliver
+  - finalize
+# Confidence is capped at 1.0, so a threshold above it forces EVERY run
+# through human approval — nothing reaches Gmail without an explicit yes.
+approval_threshold: 1.1
+# fetch only pulls the thread; deliver only files the approved draft.
+# Neither burns an LLM call, and deliver never overwrites the approved text.
+tool_only_nodes:
+  - fetch
+  - deliver
+node_tools:
+  fetch:
+    - tool: gmail.get_thread
+      args:
+        thread_id: "{user_input}"
+      output: thread_text
+  deliver:
+    - tool: gmail.create_draft
+      args:
+        thread_id: "{user_input}"
+        body: "{approved_draft}"
+      output: draft_receipt
+node_prompts:
+  draft: |
+    Write a reply to the latest message in this Gmail thread, following any
+    tone and policy SOPs in the vault context. Under 150 words, one clear
+    next step, no signature block (the operator adds it). Reference only
+    facts present in the thread — never invent order numbers, prices, or
+    commitments.
+
+    Output the email body only (no subject line, no commentary).
+
+    Thread:
+    {thread_text}
+system_prompt: |
+  You draft brief, warm, professional replies for a small business owner.
+  One clear ask or answer per email. If the thread asks something you cannot
+  answer from the thread or vault context, say so in the draft and flag it
+  for the operator instead of guessing.
+max_cost_per_run: 0.15
+default_input: PASTE_GMAIL_THREAD_ID_HERE

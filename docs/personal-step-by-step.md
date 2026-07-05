@@ -8,11 +8,15 @@ Use this as a checklist. Each section builds on the previous one.
 
 ## Part 0 — One-time setup (30 minutes)
 
-### Step 0.1 — API key
+**Already running BLACKBOX with Gemini?** Skip to **Part 1**. You only need Part 0 on a fresh machine or new clone.
+
+### Step 0.1 — API key (skip if you already have `apps/orchestrator/.env`)
 
 1. Copy `apps/orchestrator/.env.example` → `apps/orchestrator/.env` (if not done).
-2. Set `GEMINI_API_KEY=...` (Google AI Studio).
+2. Set `GEMINI_API_KEY=...` (Google AI Studio) — **skip if your key is already there**.
 3. Optional: set `BLACKBOX_API_KEY` if you locked down the API.
+
+Quick check: `scripts\blackbox.bat status` should show Gemini **up**, not degraded.
 
 ### Step 0.2 — Python + tests (sanity check)
 

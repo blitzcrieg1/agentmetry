@@ -9,8 +9,9 @@ alwaysApply: true
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **159 passed**, 1 skipped
-- **Skills:** 11 YAML/Python skills · K-beauty: `docs/kbeauty-sourcing-os.md`
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **167 passed**, 1 skipped
+- **Skills:** 13 YAML/Python skills · K-beauty: `docs/kbeauty-sourcing-os.md` · Gmail flow: `customer_reply`, `gmail_inbox_brief` (`docs/phase4-5-lived-in-plan.md`)
+- **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
 
 ## File map (start here — do not re-explore)

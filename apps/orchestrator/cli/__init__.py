@@ -169,11 +169,27 @@ def cmd_recovery(args: argparse.Namespace) -> int:
         )
     print(f"{len(items)} stale loop note(s).")
 
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("BLACKBOX_API_KEY", "")
+    if api_key:
+        headers["X-API-Key"] = api_key
+
+    if args.resume:
+        # Resuming re-enters the graph from its checkpoint — LLM calls happen.
+        resp = httpx.post(
+            f"{_base_url(args.port)}/api/v1/skills/recovery/resume",
+            json={"path": args.resume},
+            headers=headers,
+            timeout=300.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            print(f"  {args.resume} -> {data.get('status')}")
+        else:
+            print(f"  {args.resume} -> HTTP {resp.status_code}: {resp.text[:200]}")
+        return 0
+
     if args.dismiss_all:
-        headers = {"Content-Type": "application/json"}
-        api_key = os.environ.get("BLACKBOX_API_KEY", "")
-        if api_key:
-            headers["X-API-Key"] = api_key
         for item in items:
             resp = httpx.post(
                 f"{_base_url(args.port)}/api/v1/skills/recovery/resolve",
@@ -184,7 +200,10 @@ def cmd_recovery(args: argparse.Namespace) -> int:
             marker = "dismissed" if resp.status_code == 200 else f"HTTP {resp.status_code}"
             print(f"  {item['path']} -> {marker}")
     else:
-        print("Run 'blackbox recovery --dismiss-all' to clear them.")
+        print(
+            "Run 'blackbox recovery --dismiss-all' to clear them, or\n"
+            "'blackbox recovery --resume <path>' to resume an orphan from its checkpoint."
+        )
     return 0
 
 
@@ -390,6 +409,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="health, budget, pending approvals")
     recovery = sub.add_parser("recovery", help="list stale active-loop notes after a crash")
     recovery.add_argument("--dismiss-all", action="store_true")
+    recovery.add_argument(
+        "--resume", metavar="PATH", default=None,
+        help="resume one orphaned loop note from its LangGraph checkpoint",
+    )
     stats = sub.add_parser("stats", help="per-skill usage + dogfooding go/no-go")
     stats.add_argument("--days", type=int, default=7)
     logs = sub.add_parser("logs", help="tail the orchestrator log")

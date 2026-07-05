@@ -1,0 +1,10 @@
+id: gmail-morning-brief
+type: cron
+# Ships disabled: the gmail driver itself ships disabled, so an enabled rule
+# would fail at the tool gate every morning on a fresh checkout. Flip this to
+# true together with the gmail driver (docs/gmail-driver.md).
+enabled: false
+skill: gmail_inbox_brief
+# Weekdays at 08:00 local time.
+cron: "0 8 * * mon-fri"
+user_input_template: "morning inbox brief"

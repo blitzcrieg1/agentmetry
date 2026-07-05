@@ -149,15 +149,25 @@ async def resume_deferred_interrupts() -> dict[str, int]:
 
 async def recover_interrupts() -> dict[str, int]:
     """Reload HITL threads and resume deferred autonomous work on startup."""
-    from core.execution.recovery import report_recovery_on_startup
+    import os
+
+    from core.execution.recovery import report_recovery_on_startup, resume_orphans_on_startup
 
     hitl = await recover_pending_threads()
     deferred = await resume_deferred_interrupts()
+
+    # Opt-in checkpoint resume for crashed mid-run work; manual resume via
+    # the recovery panel / CLI is always available regardless of this flag.
+    auto_resumed = 0
+    if os.environ.get("BLACKBOX_AUTO_RESUME", "").strip() in ("1", "true", "yes"):
+        auto_resumed = await resume_orphans_on_startup()
+
     stale = report_recovery_on_startup()
     return {
         "hitl": hitl,
         "budget_defer_resumed": deferred["budget"],
         "llm_degraded_resumed": deferred["degraded"],
+        "auto_resumed": auto_resumed,
         "stale_loops": stale,
     }
 

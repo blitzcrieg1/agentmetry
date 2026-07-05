@@ -40,6 +40,11 @@ async def _run_step_tools(state: "PipelineState", step_id: str) -> dict[str, str
         return {}
 
     outputs = dict(state.get("step_outputs") or {})
+    # Post-approval steps must deliver what the human approved (edits included),
+    # not the pre-approval draft — expose it to arg templating as {approved_draft}.
+    outputs.setdefault(
+        "approved_draft", state.get("modified_input") or state.get("draft") or ""
+    )
     host = get_mcp_host()
     results: dict[str, str] = {}
     for call in calls:
@@ -140,6 +145,23 @@ def _make_step_node(step_id: str):
         outputs = dict(state.get("step_outputs") or {})
         tool_outputs = await _run_step_tools(state, step_id)
         outputs.update(tool_outputs)
+
+        # Tool-only steps (e.g. a post-approval "deliver" that files a Gmail
+        # draft) run their tools and stop: no LLM call, and crucially no
+        # overwrite of `draft` — the approved text must survive to finalize.
+        if step_id in (state["skill_config"].get("tool_only_nodes") or []):
+            text = "\n\n".join(
+                f"### {k}\n{v}" for k, v in tool_outputs.items()
+            ) or "(no tool output)"
+            result = {
+                "step_outputs": outputs,
+                "messages": [AIMessage(content=f"[{step_id}]\n{text}")],
+            }
+            await emit_node(
+                session_id, thread_id, step_id, "completed",
+                output=text, metrics=_metrics(state),
+            )
+            return result
 
         system = state["skill_config"].get("system_prompt", "")
         prompt = _resolve_prompt({**state, "step_outputs": outputs}, step_id)

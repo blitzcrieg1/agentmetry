@@ -172,6 +172,22 @@ async def resolve_recovery_item(request: RecoveryRequest):
     return {"status": "resolved", "path": request.path, "action": request.action}
 
 
+class RecoveryResumeRequest(BaseModel):
+    path: str
+
+
+@router.post("/recovery/resume", dependencies=[Depends(require_api_key)])
+async def resume_recovery_item(request: RecoveryResumeRequest):
+    """Resume an orphaned run from its LangGraph checkpoint (never re-runs input)."""
+    from core.execution.recovery import resume_orphan
+
+    result = await resume_orphan(request.path)
+    reason = result.get("reason", "")
+    if result.get("status") == "unresumable" and "not a resumable orphan" in reason:
+        raise HTTPException(status_code=404, detail=reason)
+    return result
+
+
 @router.post("/reload", dependencies=[Depends(require_api_key)])
 async def reload_skills():
     """Re-scan vault skill definitions and refresh graph registry."""

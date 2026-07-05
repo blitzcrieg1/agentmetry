@@ -94,6 +94,57 @@ async def test_step_tools_respect_skill_allowlist(wired):
         await graph.ainvoke(_initial_state(skill), {"configurable": {"thread_id": "t2"}})
 
 
+async def test_tool_only_node_skips_llm_and_keeps_draft(wired):
+    _, prompts = wired
+    skill = {
+        "name": "deliver_demo",
+        "graph": "pipeline",
+        "tools": ["fake.*"],
+        "nodes": ["deliver", "finalize"],
+        "tool_only_nodes": ["deliver"],
+        "node_tools": {
+            "deliver": [
+                {"tool": "fake.echo", "args": {"text": "{approved_draft}"}, "output": "receipt"}
+            ]
+        },
+    }
+    graph = compile_pipeline_graph(skill)
+    state = _initial_state(skill)
+    state["draft"] = "approved text"
+
+    final = await graph.ainvoke(state, {"configurable": {"thread_id": "t4"}})
+
+    # Fixture echoes reversed: proof the tool received the approved draft.
+    assert final["step_outputs"]["receipt"] == "approved text"[::-1]
+    assert final["draft"] == "approved text"   # tool-only step never overwrites it
+    assert prompts == []                        # and never calls the LLM
+
+
+async def test_approved_draft_prefers_human_edit(wired):
+    _, _ = wired
+    skill = {
+        "name": "deliver_edited",
+        "graph": "pipeline",
+        "tools": ["fake.*"],
+        "nodes": ["deliver", "finalize"],
+        "tool_only_nodes": ["deliver"],
+        "node_tools": {
+            "deliver": [
+                {"tool": "fake.echo", "args": {"text": "{approved_draft}"}, "output": "receipt"}
+            ]
+        },
+    }
+    graph = compile_pipeline_graph(skill)
+    state = _initial_state(skill)
+    state["draft"] = "original"
+    state["modified_input"] = "edited"
+
+    final = await graph.ainvoke(state, {"configurable": {"thread_id": "t5"}})
+
+    # The human's edit, not the pre-approval draft, reaches the tool.
+    assert final["step_outputs"]["receipt"] == "edited"[::-1]
+
+
 async def test_steps_without_tools_skip_the_host(monkeypatch: pytest.MonkeyPatch):
     from langgraph.checkpoint.memory import InMemorySaver
 
