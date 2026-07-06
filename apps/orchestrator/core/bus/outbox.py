@@ -65,6 +65,26 @@ class EventOutbox:
                 "WHERE seq > ? ORDER BY seq LIMIT ?",
                 (seq, limit),
             ).fetchall()
+        return self._rows_to_dicts(rows)
+
+    def read_between(
+        self,
+        start_ts: str,
+        end_ts: str,
+        *,
+        limit: int = 100_000,
+    ) -> list[dict[str, Any]]:
+        """Return events with ts in [start_ts, end_ts] (ISO-8601 strings, inclusive)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT seq, ts, topic, session_id, thread_id, payload FROM events "
+                "WHERE ts >= ? AND ts <= ? ORDER BY seq LIMIT ?",
+                (start_ts, end_ts, limit),
+            ).fetchall()
+        return self._rows_to_dicts(rows)
+
+    @staticmethod
+    def _rows_to_dicts(rows) -> list[dict[str, Any]]:
         out = []
         for r in rows:
             try:

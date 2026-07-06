@@ -27,6 +27,26 @@ def log_run(event: dict[str, Any]) -> None:
         f.write(json.dumps(payload, default=str) + "\n")
 
 
+def read_runs_between(start_ts: str, end_ts: str) -> list[dict[str, Any]]:
+    """Return run ledger rows whose ts falls in [start_ts, end_ts] (inclusive)."""
+    path = audit_path()
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ts = row.get("ts", "")
+        if start_ts <= ts <= end_ts:
+            rows.append(row)
+    return rows
+
+
 def append_vault_run_log(line: str) -> None:
     """Append to vault/.system/run-log.md for Obsidian-visible history."""
     obsidian = ObsidianClient(settings.vault_path)

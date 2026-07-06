@@ -1,6 +1,6 @@
 """blackbox — local ops CLI for the BLACKBOX appliance.
 
-Commands: start, stop, status, logs, backup, restore, install, uninstall.
+Commands: start, stop, status, logs, backup, restore, export, verify, install, uninstall.
 Pure stdlib + httpx; never imports the FastAPI app (fast startup, no side effects).
 """
 
@@ -396,6 +396,75 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------------- export
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from core.audit.evidence_pack import (
+        build_evidence_pack,
+        default_export_path,
+        parse_date,
+        write_evidence_pack,
+    )
+
+    if not args.evidence:
+        print("Use: blackbox export --evidence --from YYYY-MM-DD --to YYYY-MM-DD")
+        return 1
+    if not args.date_from or not args.date_to:
+        print("--from and --to are required (YYYY-MM-DD)")
+        return 1
+
+    try:
+        from_date = parse_date(args.date_from)
+        to_date = parse_date(args.date_to)
+    except ValueError as exc:
+        print(f"Invalid date: {exc}")
+        return 1
+
+    pack = build_evidence_pack(from_date, to_date)
+    out = Path(args.output) if args.output else default_export_path(from_date, to_date)
+    write_evidence_pack(pack, out)
+
+    summary = pack.get("summary", {})
+    print(f"Evidence pack -> {out}")
+    print(
+        f"  {summary.get('event_count', 0)} events, "
+        f"{summary.get('run_ledger_rows', 0)} ledger rows, "
+        f"{summary.get('approval_gates', 0)} approval gates, "
+        f"{summary.get('tool_calls', 0)} tool calls"
+    )
+    print(f"  integrity: {pack['meta']['integrity_sha256'][:16]}…")
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    import json
+
+    from core.audit.evidence_pack import verify_evidence_pack
+
+    path = Path(args.evidence_file)
+    if not path.exists():
+        print(f"No such file: {path}")
+        return 1
+    try:
+        pack = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"Invalid JSON: {exc}")
+        return 1
+
+    ok, message = verify_evidence_pack(pack)
+    if ok:
+        print(f"OK — {message}")
+        meta = pack.get("meta", {})
+        print(
+            f"  {meta.get('date_from')} .. {meta.get('date_to')}  "
+            f"schema {meta.get('schema_version')}"
+        )
+        return 0
+    print(f"FAILED — {message}")
+    return 1
+
+
 # ---------------------------------------------------------------------- main
 
 
@@ -424,6 +493,16 @@ def main(argv: list[str] | None = None) -> int:
     restore.add_argument("backup_zip")
     sub.add_parser("install", help="register at-logon start (Task Scheduler)")
     sub.add_parser("uninstall", help="remove the scheduled task")
+    export = sub.add_parser("export", help="export audit artifacts")
+    export.add_argument(
+        "--evidence", action="store_true",
+        help="build EU AI Act-oriented evidence pack (JSON)",
+    )
+    export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
+    export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
+    export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
+    verify = sub.add_parser("verify", help="verify an evidence pack integrity hash")
+    verify.add_argument("evidence_file", help="path to exported evidence JSON")
 
     args = parser.parse_args(argv)
     handlers = {
@@ -437,5 +516,7 @@ def main(argv: list[str] | None = None) -> int:
         "restore": cmd_restore,
         "install": cmd_install,
         "uninstall": cmd_uninstall,
+        "export": cmd_export,
+        "verify": cmd_verify,
     }
     return handlers[args.command](args)
