@@ -23,6 +23,7 @@ import os
 import re
 import sys
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -126,6 +127,22 @@ def _save_credentials(creds) -> None:
     import keyring
 
     keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, creds.to_json())
+
+
+def _load_orchestrator_dotenv() -> None:
+    """Load apps/orchestrator/.env into os.environ (setdefault — shell wins)."""
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def _client_config() -> dict[str, Any]:
@@ -259,6 +276,7 @@ def create_draft(thread_id: str, body: str, subject: str | None = None) -> str:
 
 if __name__ == "__main__":
     if "--auth" in sys.argv:
+        _load_orchestrator_dotenv()
         run_auth_flow()
     else:
         server.run()

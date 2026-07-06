@@ -3,7 +3,15 @@
 import { useEffect, useRef } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL, WS_URL } from "@/lib/utils";
-import { buildGraphNodes } from "@/lib/graph-utils";
+import { buildGraphNodes, displayNodesForSkill } from "@/lib/graph-utils";
+
+const PIPELINE_CLEAR_MS = 4500;
+
+function schedulePipelineClear() {
+  window.setTimeout(() => {
+    useAgentStore.getState().clearPipelineView();
+  }, PIPELINE_CLEAR_MS);
+}
 
 function wsUrl(sessionId: string): string {
   const base = `${WS_URL}/ws/${sessionId}`;
@@ -61,7 +69,11 @@ export function useWebSocket() {
           setThreadId(data.thread_id);
           setExecutionStatus("running");
           if (data.nodes?.length) {
-            setGraphNodes(buildGraphNodes(data.nodes));
+            setGraphNodes(
+              buildGraphNodes(
+                displayNodesForSkill({ id: data.skill, nodes: data.nodes })
+              )
+            );
           }
           appendTerminal(`▶ Execution started: ${data.skill}`);
           if (data.context_sources) {
@@ -106,12 +118,14 @@ export function useWebSocket() {
           if (data.metrics) applyMetrics(data.metrics);
           appendTerminal(`✓ Completed — archived to ${data.archive_path}`);
           bumpRunsRefresh();
+          schedulePipelineClear();
           break;
 
         case "execution_failed":
           setExecutionStatus("failed");
           appendTerminal(`✗ Failed: ${data.error}`);
           bumpRunsRefresh();
+          schedulePipelineClear();
           break;
 
         case "execution_terminated":

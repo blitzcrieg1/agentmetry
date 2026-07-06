@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="docs/assets/blackbox-hero.png" alt="BLACKBOX Agentic OS — state machine execution environment with durable state, agent workflows, and mission control" width="720" />
+</p>
+
 # BLACKBOX — Obsidian-Cortex Agentic OS
 
-A state machine execution environment where Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
+A state machine execution environment where **durable state**, **agent workflows**, and **mission control** come together — Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
 
 **For personal or small-business rollout** (non-technical): see [docs/implementation-guide.md](docs/implementation-guide.md).  
 **SMB pain points & product fit:** [docs/smb-pain-research.md](docs/smb-pain-research.md).  

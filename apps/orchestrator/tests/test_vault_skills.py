@@ -55,7 +55,7 @@ def test_shipped_default_inputs_point_at_real_notes():
 def test_shipped_pipeline_skills_declare_governed_tools():
     obsidian = ObsidianClient(_REPO_VAULT)
     for skill in obsidian.list_skills():
-        if skill.get("graph") != "pipeline":
+        if skill.get("graph") not in ("pipeline", "email_reply"):
             continue
         node_tools = skill.get("node_tools") or {}
         allow = skill.get("tools") or []

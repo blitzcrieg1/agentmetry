@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { type GraphNodeState, type NodeStatus } from "@/lib/graph-utils";
+import { type GraphNodeState, type NodeStatus, resolveNodeUpdates } from "@/lib/graph-utils";
 import { generateSessionId } from "@/lib/utils";
 
 export type { GraphNodeState, NodeStatus };
@@ -64,6 +64,7 @@ interface AgentStore {
   setWsConnected: (connected: boolean) => void;
   bumpRunsRefresh: () => void;
   reset: (nodes?: GraphNodeState[]) => void;
+  clearPipelineView: () => void;
 }
 
 export const useAgentStore = create<AgentStore>((set) => ({
@@ -93,11 +94,16 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setExecutionStatus: (status) => set({ executionStatus: status }),
   setGraphNodes: (nodes) => set({ graphNodes: nodes }),
   updateNode: (id, status, output) =>
-    set((state) => ({
-      graphNodes: state.graphNodes.map((n) =>
-        n.id === id ? { ...n, status, output: output ?? n.output } : n
-      ),
-    })),
+    set((state) => {
+      const patches = resolveNodeUpdates(id, status, output);
+      return {
+        graphNodes: state.graphNodes.map((n) => {
+          const patch = patches.find((p) => p.id === n.id);
+          if (!patch) return n;
+          return { ...n, status: patch.status, output: patch.output ?? n.output };
+        }),
+      };
+    }),
   appendTerminal: (line) =>
     set((state) => ({ terminalOutput: [...state.terminalOutput, line] })),
   appendStreamToken: (node, token) =>
@@ -134,11 +140,12 @@ export const useAgentStore = create<AgentStore>((set) => ({
       return {
         threadId: null,
         executionStatus: "idle",
-        graphNodes: base.map((n) => ({ ...n, status: "idle", output: "" })),
+        graphNodes: base.map((n) => ({ ...n, status: "idle" as NodeStatus, output: "" })),
         terminalOutput: [],
         metrics: { inputTokens: 0, outputTokens: 0, cost: 0, contextUsagePercent: 0, latencyMs: 0 },
         approvalDraft: "",
         approvalConfidence: 0,
       };
     }),
+  clearPipelineView: () => set({ graphNodes: [], executionStatus: "idle" }),
 }));

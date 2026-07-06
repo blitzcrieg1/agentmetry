@@ -15,6 +15,12 @@ async def vault_tree():
     return {"entries": obsidian.list_vault_entries()}
 
 
+@router.get("/active-loops")
+async def vault_active_loops():
+    """Live runs in 20-Active-Loops/ for dashboard constellation."""
+    return {"loops": obsidian.list_active_loops()}
+
+
 @router.get("/notes/{note_path:path}")
 async def read_vault_note(note_path: str):
     content = obsidian.read_note(note_path)

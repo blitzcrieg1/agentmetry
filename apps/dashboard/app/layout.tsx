@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { MissionControl } from "@/components/mission-control";
 
 export const metadata: Metadata = {
   title: "BLACKBOX — Agentic OS",
   description: "Obsidian-Cortex State Machine Execution Environment",
+  icons: { icon: "/blackbox-logo.png", apple: "/blackbox-logo.png" },
 };
 
 export default function RootLayout({

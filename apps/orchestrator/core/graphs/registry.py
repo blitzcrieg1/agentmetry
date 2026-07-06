@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from core.graphs.email_reply_graph import compile_email_reply_graph
 from core.graphs.lead_gen_graph import compile_lead_gen_graph
 from core.graphs.meeting_graph import compile_meeting_graph
 from core.graphs.pipeline_graph import compile_pipeline_graph
@@ -19,6 +20,7 @@ _GRAPH_BUILDERS: dict[str, Any] = {
     "summarize_meeting": compile_meeting_graph,
     "weekly_review": compile_weekly_review_graph,
     "pipeline": compile_pipeline_graph,
+    "email_reply": compile_email_reply_graph,
 }
 
 
@@ -35,7 +37,7 @@ class SkillRegistry:
         builder = _GRAPH_BUILDERS.get(graph_key)
         if not builder or not skill_id:
             return None
-        if graph_key == "pipeline":
+        if graph_key in ("pipeline", "email_reply"):
             return builder(skill)
         return builder()
 

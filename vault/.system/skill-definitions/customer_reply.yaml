@@ -1,10 +1,11 @@
 name: customer_reply
 display_name: Customer Reply
 description: Read a Gmail thread, draft a reply from vault SOPs, file it as a Gmail draft after human approval (needs the gmail driver enabled)
-graph: pipeline
+graph: email_reply
 tools:
   - gmail.get_thread
   - gmail.create_draft
+  - vault_fs.read_note
 nodes:
   - fetch
   - draft
@@ -15,10 +16,11 @@ nodes:
 # Confidence is capped at 1.0, so a threshold above it forces EVERY run
 # through human approval — nothing reaches Gmail without an explicit yes.
 approval_threshold: 1.1
-# fetch only pulls the thread; deliver only files the approved draft.
-# Neither burns an LLM call, and deliver never overwrites the approved text.
+max_replan_count: 1
 tool_only_nodes:
   - fetch
+  - load_client_sop
+  - load_generic_sop
   - deliver
 node_tools:
   fetch:
@@ -26,6 +28,16 @@ node_tools:
       args:
         thread_id: "{user_input}"
       output: thread_text
+  load_client_sop:
+    - tool: vault_fs.read_note
+      args:
+        path: "{client_note_path}"
+      output: sop_text
+  load_generic_sop:
+    - tool: vault_fs.read_note
+      args:
+        path: "10-SOPs/client-reply.md"
+      output: sop_text
   deliver:
     - tool: gmail.create_draft
       args:
@@ -33,14 +45,30 @@ node_tools:
         body: "{approved_draft}"
       output: draft_receipt
 node_prompts:
+  classify_thread: |
+    Classify this Gmail thread for reply routing.
+
+    Thread:
+    {thread_text}
+
+    Vault context:
+    {system_context}
+
+    Output exactly:
+    ROUTE: client_known | client_unknown | thread_stale | needs_escalation
+    CLIENT_NOTE: vault-relative path under 10-Knowledge/clients/ or none
+    REASON: one line
   draft: |
-    Write a reply to the latest message in this Gmail thread, following any
-    tone and policy SOPs in the vault context. Under 150 words, one clear
-    next step, no signature block (the operator adds it). Reference only
-    facts present in the thread — never invent order numbers, prices, or
-    commitments.
+    Write a reply to the latest message in this Gmail thread, following the
+    client SOP below and any tone/policy in vault context. Under 150 words,
+    one clear next step, no signature block (the operator adds it). Reference
+    only facts present in the thread or SOP — never invent order numbers,
+    prices, or commitments.
 
     Output the email body only (no subject line, no commentary).
+
+    Client SOP:
+    {sop_text}
 
     Thread:
     {thread_text}

@@ -5,7 +5,7 @@ import { Zap } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiPost } from "@/lib/api";
-import { buildGraphNodes, defaultInputForSkill, nodesForSkill } from "@/lib/graph-utils";
+import { buildGraphNodes, defaultInputForSkill, displayNodesForSkill } from "@/lib/graph-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MemoryNavigator } from "@/components/memory-navigator";
@@ -48,7 +48,9 @@ export function SkillDeck() {
         if (loaded.length > 0) {
           // The tool-using YAML skill is the demo path — select it by default.
           const preferred =
-            loaded.find((s) => s.id === "summarize_note") || loaded[0];
+            loaded.find((s) => s.id === "gmail_inbox_brief") ||
+            loaded.find((s) => s.id === "summarize_note") ||
+            loaded[0];
           setActiveSkill(preferred.id);
           setUserInput(defaultInputForSkill(preferred));
         }
@@ -59,7 +61,7 @@ export function SkillDeck() {
   const runSkill = async (skillId: string) => {
     const skill = skills.find((s) => s.id === skillId);
     const input = userInput.trim() || defaultInputForSkill(skill || { id: skillId });
-    const nodes = buildGraphNodes(nodesForSkill(skill || { id: skillId }));
+    const nodes = buildGraphNodes(displayNodesForSkill(skill || { id: skillId }));
 
     setActiveSkill(skillId);
     reset(nodes);
@@ -79,6 +81,7 @@ export function SkillDeck() {
         setExecutionStatus("waiting_for_input");
       } else if (data.status === "completed" || data.status === "approved") {
         setExecutionStatus("completed");
+        window.setTimeout(() => useAgentStore.getState().clearPipelineView(), 4500);
       } else if (data.status === "failed") {
         setExecutionStatus("failed");
         appendTerminal(`✗ ${data.error || "Execution failed"}`);
@@ -119,8 +122,10 @@ export function SkillDeck() {
           {skills.map((skill) => (
             <Card
               key={skill.id}
-              className={`transition-all hover:border-primary/50 ${
-                activeSkill === skill.id ? "border-primary" : ""
+              className={`cursor-pointer transition-all duration-300 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-900/10 ${
+                activeSkill === skill.id
+                  ? "border-violet-500/60 bg-violet-950/20 shadow-md shadow-violet-900/15"
+                  : "border-border/60 bg-card/50"
               }`}
               onClick={() => selectSkill(skill.id)}
             >
