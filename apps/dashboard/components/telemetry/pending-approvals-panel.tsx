@@ -36,11 +36,73 @@ export function PendingApprovalsPanel() {
     return () => clearInterval(interval);
   }, [fetchItems, runsRefreshKey]);
 
-  // Drop selections for threads that are no longer pending.
   useEffect(() => {
     const live = new Set(items.map((i) => i.thread_id));
     setSelected((prev) => new Set(Array.from(prev).filter((id) => live.has(id))));
   }, [items]);
+
+  const resolveBatch = useCallback(
+    async (approved: boolean, threadIds?: string[]) => {
+      const ids =
+        threadIds ??
+        items.map((i) => i.thread_id).filter((id) => selected.has(id));
+      if (ids.length === 0) return;
+      setBusy(true);
+      try {
+        await apiPost("/api/v1/skills/approve/batch", { thread_ids: ids, approved });
+      } finally {
+        setBusy(false);
+        setSelected(new Set());
+        fetchItems();
+        bumpRunsRefresh();
+      }
+    },
+    [items, selected, fetchItems, bumpRunsRefresh]
+  );
+
+  useEffect(() => {
+    if (items.length === 0 || busy) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "a" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          void resolveBatch(true, items.map((i) => i.thread_id));
+        } else {
+          const ids = items
+            .map((i) => i.thread_id)
+            .filter((id) => selected.has(id));
+          if (ids.length === 0 && items.length === 1) {
+            void resolveBatch(true, [items[0].thread_id]);
+          } else if (ids.length > 0) {
+            void resolveBatch(true, ids);
+          }
+        }
+      } else if (e.key === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const ids = items
+          .map((i) => i.thread_id)
+          .filter((id) => selected.has(id));
+        if (ids.length > 0) {
+          void resolveBatch(false, ids);
+        }
+      } else if (e.key === "x" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const focused = items[0]?.thread_id;
+        if (!focused) return;
+        setSelected((prev) => {
+          const next = new Set(prev);
+          next.has(focused) ? next.delete(focused) : next.add(focused);
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items, busy, selected, resolveBatch]);
 
   if (items.length === 0) return null;
 
@@ -54,22 +116,6 @@ export function PendingApprovalsPanel() {
   const allSelected = selected.size === items.length;
   const toggleAll = () =>
     setSelected(allSelected ? new Set() : new Set(items.map((i) => i.thread_id)));
-
-  const resolveBatch = async (approved: boolean) => {
-    const thread_ids = items
-      .map((i) => i.thread_id)
-      .filter((id) => selected.has(id));
-    if (thread_ids.length === 0) return;
-    setBusy(true);
-    try {
-      await apiPost("/api/v1/skills/approve/batch", { thread_ids, approved });
-    } finally {
-      setBusy(false);
-      setSelected(new Set());
-      fetchItems();
-      bumpRunsRefresh();
-    }
-  };
 
   return (
     <Card>
@@ -104,6 +150,9 @@ export function PendingApprovalsPanel() {
             </span>
           </label>
         ))}
+        <p className="text-[10px] text-muted-foreground/70 pt-0.5">
+          Keys: a approve · Shift+a all · r reject checked
+        </p>
         <div className="flex gap-2 pt-1">
           <button
             className="flex-1 rounded border border-border px-2 py-0.5 text-green-400 hover:bg-muted disabled:opacity-40"

@@ -147,3 +147,45 @@ async def test_dispatch_passes_path_and_respects_exclusion(
     assert calls[0]["skill"] == "summarize_note"
     assert calls[0]["user_input"] == "00-Inbox/idea.md"   # bare path for vault_fs.read_note
     assert calls[0]["trigger_file_path"] == "00-Inbox/idea.md"
+
+
+def test_path_suffixes_match_documents(vault_tmp: Path):
+    obsidian = ObsidianClient(vault_tmp)
+    rule = _rule(path_glob="00-Inbox/*", path_suffixes=[".pdf", ".docx"])
+    assert note_matches_rule(rule, "00-Inbox/contract.pdf", obsidian)
+    assert note_matches_rule(rule, "00-Inbox/brief.DOCX", obsidian)
+    assert not note_matches_rule(rule, "00-Inbox/notes.md", obsidian)
+
+
+async def test_pdf_drop_fires_doc_summarize(vault_tmp: Path, monkeypatch: pytest.MonkeyPatch):
+    import core.scheduler.triggers as triggers
+
+    rule_file = vault_tmp / ".system" / "trigger-rules" / "inbox-doc.yaml"
+    rule_file.write_text(
+        "id: inbox-doc\ntype: vault_watch\nenabled: true\nskill: doc_summarize\n"
+        "cooldown_seconds: 300\n"
+        "match:\n  path_glob: '00-Inbox/*'\n  extensions: ['.pdf', '.docx']\n"
+        "user_input_template: '{{ trigger.file_path }}'\n",
+        encoding="utf-8",
+    )
+    (vault_tmp / ".system" / "trigger-rules" / "inbox.yaml").unlink()
+
+    pdf = vault_tmp / "00-Inbox" / "contract.pdf"
+    pdf.write_bytes(b"%PDF-1.4 minimal")
+
+    calls: list[dict] = []
+
+    async def fake_run_skill(skill, user_input, session_id, **kwargs):
+        calls.append({"skill": skill, "user_input": user_input, **kwargs})
+        return {"status": "completed"}
+
+    monkeypatch.setattr(triggers, "run_skill", fake_run_skill)
+    monkeypatch.setattr(triggers, "obsidian", ObsidianClient(vault_tmp))
+    triggers._cooldowns.clear()
+    monkeypatch.setattr(triggers.time, "monotonic", lambda: 5.0)
+
+    await triggers.evaluate_vault_triggers(pdf, vault_tmp)
+
+    assert len(calls) == 1
+    assert calls[0]["skill"] == "doc_summarize"
+    assert calls[0]["user_input"] == "00-Inbox/contract.pdf"

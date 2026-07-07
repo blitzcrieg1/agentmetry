@@ -86,8 +86,9 @@ def test_build_evidence_pack_contents(wired):
     box, vault = wired
     pack = build_evidence_pack(date(2026, 7, 5), date(2026, 7, 5), outbox=box, vault_path=vault)
 
-    assert pack["meta"]["schema_version"] == "1.0"
+    assert pack["meta"]["schema_version"] == "1.1"
     assert pack["meta"]["integrity_sha256"]
+    assert pack["meta"]["provider_metadata"]["provider"]
     assert pack["summary"]["event_count"] == 6
     assert pack["summary"]["tool_calls"] == 1
     assert pack["summary"]["approvals_granted"] == 1
@@ -96,6 +97,9 @@ def test_build_evidence_pack_contents(wired):
     assert approved["thread_id"] == "t1"
     assert approved["decision"] == "approved"
     assert approved["draft"] == "Dear customer..."
+    assert approved["confidence_score"] == 0.42
+    assert approved["approval_signature"]
+    assert len(approved["approval_signature"]) == 64
     terminated_run = next(r for r in pack["runs"] if r["thread_id"] == "t2")
     assert terminated_run["status"] == "terminated"
 

@@ -67,6 +67,11 @@ async def _run_step_tools(state: "PipelineState", step_id: str) -> dict[str, str
         text = _tool_result_text(result)
         results[key] = text
         outputs[key] = text
+    defaults = (state["skill_config"].get("node_defaults") or {}).get(step_id) or {}
+    for key, value in defaults.items():
+        if key not in results:
+            results[key] = str(value)
+            outputs[key] = str(value)
     return results
 
 

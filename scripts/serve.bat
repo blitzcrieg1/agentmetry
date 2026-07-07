@@ -16,4 +16,4 @@ echo.
 echo Starting BLACKBOX (single process) on http://localhost:8000
 cd /d "%~dp0..\apps\orchestrator"
 start "" http://localhost:8000
-.venv\Scripts\activate && uvicorn api.main:app --port 8000
+.venv\Scripts\uvicorn api.main:app --host 0.0.0.0 --port 8000

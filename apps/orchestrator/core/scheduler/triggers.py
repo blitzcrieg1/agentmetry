@@ -26,7 +26,14 @@ async def evaluate_vault_triggers(file_path: Path, vault_path: Path) -> None:
     except ValueError:
         return
 
-    if not rel_path.endswith(".md") or rel_path.startswith(".system/"):
+    if rel_path.startswith(".system/"):
+        return
+    lower = rel_path.lower()
+    if not (
+        lower.endswith(".md")
+        or lower.endswith(".pdf")
+        or lower.endswith(".docx")
+    ):
         return
 
     now = time.monotonic()

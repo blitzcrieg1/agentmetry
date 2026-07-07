@@ -2,30 +2,49 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from core.execution.recovery import resolve_recovery, scan_recovery
+from core.execution.recovery import (
+    archive_stale_resolved_loops,
+    resolve_recovery,
+    scan_archivable_loops,
+    scan_recovery,
+)
 from core.memory.obsidian_client import ObsidianClient
+
+_OLD = "2026-06-20T10:00:00+00:00"
+_RECENT = "2026-07-06T10:00:00+00:00"
+_NOW = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
 def vault(tmp_path: Path) -> ObsidianClient:
     client = ObsidianClient(tmp_path)
 
-    def loop_note(name: str, status: str, thread_id: str) -> None:
+    def loop_note(
+        name: str,
+        status: str,
+        thread_id: str,
+        *,
+        created: str = _OLD,
+        resolved: str = "",
+    ) -> None:
+        resolved_line = f"resolved: '{resolved}'\n" if resolved else ""
         (client.active_path / name).write_text(
             f"---\ntype: active-loop\nskill: lead_gen\nthread_id: {thread_id}\n"
-            f"status: {status}\ncreated: '2026-07-04T00:00:00+00:00'\n---\n\n# Task\n",
+            f"status: {status}\ncreated: '{created}'\n{resolved_line}---\n\n# Task\n",
             encoding="utf-8",
         )
 
     loop_note("crashed.md", "running", "t-crashed")
     loop_note("waiting-live.md", "awaiting_approval", "t-live")
     loop_note("waiting-stale.md", "awaiting_approval", "t-stale")
-    loop_note("done.md", "completed", "t-done")
-    loop_note("failed.md", "failed", "t-failed")
+    loop_note("done-old.md", "completed", "t-done-old", resolved=_OLD)
+    loop_note("done-recent.md", "completed", "t-done-recent", resolved=_RECENT)
+    loop_note("failed.md", "failed", "t-failed", resolved=_OLD)
     return client
 
 
@@ -39,7 +58,31 @@ def test_scan_classifies_orphans_and_stale_approvals(vault: ObsidianClient):
     }
     # Healthy approval and terminal notes are untouched.
     assert "t-live" not in by_thread
-    assert "t-done" not in by_thread
+    assert "t-done-recent" not in by_thread
+
+
+def test_scan_archivable_selects_old_terminal_loops(vault: ObsidianClient):
+    items = scan_archivable_loops(client=vault, max_age_days=7, now=_NOW)
+    paths = {item["path"] for item in items}
+
+    assert "20-Active-Loops/done-old.md" in paths
+    assert "20-Active-Loops/failed.md" in paths
+    assert "20-Active-Loops/done-recent.md" not in paths
+    assert "20-Active-Loops/crashed.md" not in paths
+
+
+def test_archive_stale_resolved_moves_to_archive(vault: ObsidianClient):
+    archived = archive_stale_resolved_loops(client=vault, max_age_days=7, now=_NOW)
+
+    assert set(archived) == {
+        "20-Active-Loops/done-old.md",
+        "20-Active-Loops/failed.md",
+    }
+    assert not (vault.active_path / "done-old.md").exists()
+    assert (vault.archive_path / "active-loops" / "done-old.md").exists()
+    assert (vault.archive_path / "active-loops" / "failed.md").exists()
+    assert (vault.active_path / "done-recent.md").exists()
+    assert scan_archivable_loops(client=vault, max_age_days=7, now=_NOW) == []
 
 
 def test_resolve_mark_failed_rewrites_frontmatter(vault: ObsidianClient):

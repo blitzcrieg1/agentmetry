@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 
+from core.config import settings
 from core.execution.context import obsidian, pending_threads
 from core.memory.obsidian_client import ObsidianClient
 
@@ -22,6 +24,8 @@ _ACTIONS = {
     "mark_failed": ("failed", "Orphaned by crash — marked failed via recovery"),
     "dismiss": ("dismissed", "Dismissed via recovery"),
 }
+
+_ACTIVE_STATUSES = frozenset({"running", "awaiting_approval"})
 
 
 def scan_recovery(
@@ -48,6 +52,87 @@ def scan_recovery(
         elif status == "awaiting_approval" and loop.get("thread_id") not in live:
             items.append({**loop, "classification": "stale_approval"})
     return items
+
+
+def _parse_iso_timestamp(value: str) -> datetime | None:
+    if not value or not value.strip():
+        return None
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _loop_resolved_age_days(loop: dict[str, Any], *, now: datetime | None = None) -> float | None:
+    """Days since the loop reached a terminal state; None if timestamp missing."""
+    ts = _parse_iso_timestamp(loop.get("resolved", "")) or _parse_iso_timestamp(
+        loop.get("created", "")
+    )
+    if ts is None:
+        return None
+    reference = now or datetime.now(timezone.utc)
+    return (reference - ts).total_seconds() / 86400
+
+
+def scan_archivable_loops(
+    client: ObsidianClient | None = None,
+    *,
+    max_age_days: int | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Terminal active-loop notes older than max_age_days, ready to leave 20-Active-Loops/."""
+    vault = client or obsidian
+    age_limit = max_age_days if max_age_days is not None else settings.active_loop_archive_days
+    items: list[dict[str, Any]] = []
+    for loop in vault.list_active_loops():
+        status = loop.get("status", "")
+        if status in _ACTIVE_STATUSES:
+            continue
+        age_days = _loop_resolved_age_days(loop, now=now)
+        if age_days is None or age_days < age_limit:
+            continue
+        items.append({**loop, "classification": "archivable", "age_days": round(age_days, 1)})
+    return items
+
+
+def archive_stale_resolved_loops(
+    client: ObsidianClient | None = None,
+    *,
+    max_age_days: int | None = None,
+    dry_run: bool = False,
+    now: datetime | None = None,
+) -> list[str]:
+    """Move terminal loops older than max_age_days to 30-Archive/active-loops/."""
+    vault = client or obsidian
+    archived: list[str] = []
+    for loop in scan_archivable_loops(client=vault, max_age_days=max_age_days, now=now):
+        rel_path = loop["path"]
+        if dry_run:
+            archived.append(rel_path)
+            continue
+        dest = vault.archive_active_loop(rel_path)
+        if dest is not None:
+            archived.append(rel_path)
+            logger.info("Archived stale active loop %s -> %s", rel_path, dest.name)
+    return archived
+
+
+def archive_resolved_loops_on_startup() -> int:
+    """Opt-in boot cleanup (BLACKBOX_ACTIVE_LOOP_AUTO_ARCHIVE=false to disable)."""
+    if not settings.active_loop_auto_archive:
+        return 0
+    archived = archive_stale_resolved_loops(max_age_days=settings.active_loop_archive_days)
+    if archived:
+        logger.info(
+            "Archived %d resolved active-loop note(s) older than %d days",
+            len(archived),
+            settings.active_loop_archive_days,
+        )
+    return len(archived)
 
 
 def resolve_recovery(

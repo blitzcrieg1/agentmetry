@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     telegram_allowed_chat_ids: str = ""  # comma-separated; empty refuses to start
     startup_vault_index: bool = True
     startup_index_skip_unchanged: bool = True
+    active_loop_archive_days: int = 7
+    active_loop_auto_archive: bool = True
+    gmail_send_enabled: bool = False  # Phase 4-E — requires explicit unlock
 
 
 settings = Settings()

@@ -3,10 +3,10 @@
     {
       "name": "vault_fs",
       "transport": "stdio",
-      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "command": "{PYTHON}",
       "args": [
-        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/vault_fs_server.py",
-        "C:/Users/spiro/Projects/agentic-os/vault"
+        "{ORCHESTRATOR_ROOT}/tools/vault_fs_server.py",
+        "{VAULT_PATH}"
       ],
       "env_allow": [],
       "tags": [],
@@ -15,9 +15,9 @@
     {
       "name": "search",
       "transport": "stdio",
-      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "command": "{PYTHON}",
       "args": [
-        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/search_server.py"
+        "{ORCHESTRATOR_ROOT}/tools/search_server.py"
       ],
       "env_allow": ["SERPER_API_KEY", "TAVILY_API_KEY"],
       "tags": [],
@@ -26,10 +26,10 @@
     {
       "name": "margin",
       "transport": "stdio",
-      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "command": "{PYTHON}",
       "args": [
-        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/margin_server.py",
-        "C:/Users/spiro/Projects/agentic-os/vault"
+        "{ORCHESTRATOR_ROOT}/tools/margin_server.py",
+        "{VAULT_PATH}"
       ],
       "env_allow": [],
       "tags": [],
@@ -38,10 +38,10 @@
     {
       "name": "docs",
       "transport": "stdio",
-      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "command": "{PYTHON}",
       "args": [
-        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/docs_server.py",
-        "C:/Users/spiro/Projects/agentic-os/vault"
+        "{ORCHESTRATOR_ROOT}/tools/docs_server.py",
+        "{VAULT_PATH}"
       ],
       "env_allow": [],
       "tags": [],
@@ -50,11 +50,11 @@
     {
       "name": "gmail",
       "transport": "stdio",
-      "command": "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/.venv/Scripts/python.exe",
+      "command": "{PYTHON}",
       "args": [
-        "C:/Users/spiro/Projects/agentic-os/apps/orchestrator/tools/gmail_server.py"
+        "{ORCHESTRATOR_ROOT}/tools/gmail_server.py"
       ],
-      "env_allow": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"],
+      "env_allow": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "BLACKBOX_GMAIL_SEND_ENABLED"],
       "tags": [],
       "enabled": false
     },
@@ -62,7 +62,7 @@
       "name": "fs",
       "transport": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/spiro/Projects/agentic-os/vault"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "{VAULT_PATH}"],
       "env_allow": [],
       "tags": [],
       "enabled": false

@@ -8,6 +8,8 @@ entered and exited by the same task, so contexts never cross task boundaries.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +23,8 @@ from core.drivers.permissions import (
     ToolPermissionError,
     check_tool_allowed,
 )
-from core.drivers.spec import DriverSpec, load_driver_specs
+from core.diagnostics.driver_paths import load_resolved_driver_specs
+from core.drivers.spec import DriverSpec
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +64,7 @@ class MCPHost:
     # ------------------------------------------------------------ lifecycle
 
     async def mount_all(self, config_path: Path | None = None) -> None:
-        for spec in load_driver_specs(config_path or default_config_path()):
+        for spec in load_resolved_driver_specs(config_path or default_config_path()):
             await self.mount(spec)
 
     async def mount(self, spec: DriverSpec) -> bool:
@@ -239,11 +242,16 @@ class MCPHost:
             raise RuntimeError(f"Driver '{meta.driver}' is not mounted")
 
         result = await driver.session.call_tool(meta.name, arguments)
-        bus.publish(TOOL_CALLED, {
+        payload: dict[str, Any] = {
             "type": "tool_called",
             "tool": qualified,
             "skill": skill_name,
-        }, session_id=session_id, thread_id=thread_id)
+        }
+        if qualified == "gmail.send_draft":
+            canonical = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
+            payload["arguments_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            payload["draft_id"] = arguments.get("draft_id")
+        bus.publish(TOOL_CALLED, payload, session_id=session_id, thread_id=thread_id)
         return result
 
 

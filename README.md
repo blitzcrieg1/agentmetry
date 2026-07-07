@@ -14,8 +14,8 @@ A state machine execution environment where **durable state**, **agent workflows
 **Fable build prompt (plugin / recovery / sandbox):** [docs/fable-continuation-prompt.md](docs/fable-continuation-prompt.md).  
 **Fable session output (2026-07-04):** [docs/fable-session-notes.md](docs/fable-session-notes.md).  
 **Product audit (2026-07):** [docs/product-audit-2026-07.md](docs/product-audit-2026-07.md).  
-**Phase 3 build prompt (instrument & dogfood):** [docs/fable-continuation-prompt-v3.md](docs/fable-continuation-prompt-v3.md).  
-**Fable ↔ Cursor synergy:** [docs/fable-cursor-synergy-prompt.md](docs/fable-cursor-synergy-prompt.md).  
+**Compliance Trust-Kit:** [docs/compliance/README.md](docs/compliance/README.md).  
+**Gmail driver (draft-only):** [docs/gmail-driver.md](docs/gmail-driver.md).  
 **Obsidian plugin:** [apps/obsidian-plugin/README.md](apps/obsidian-plugin/README.md).
 
 ## Quick Start (Local — Gemini, no Docker)
@@ -70,9 +70,14 @@ appliance:
 
 | Command | What it does |
 |---------|--------------|
-| `blackbox start` | Start the orchestrator detached (no window), wait for health |
+| `blackbox start [--host 0.0.0.0]` | Start the orchestrator detached (no window), wait for health |
 | `blackbox stop` | Stop it (kills the process tree; state recovers on next start) |
 | `blackbox status` | Health, LLM/RAG mode, note count, Flash budget, pending approvals |
+| `blackbox doctor [--fix]` | Preflight: vault, python, portable `drivers.json` ( `--fix` rewrites path tokens) |
+| `blackbox recovery [--dismiss-all] [--resume PATH]` | List stale active-loop notes; resume orphans from checkpoint |
+| `blackbox stats --days 7` | Per-skill usage and dogfood go/no-go metrics |
+| `blackbox export --evidence --from DATE --to DATE` | Tamper-evident audit pack (JSON + SHA-256) → `vault/30-Archive/exports/` |
+| `blackbox verify <evidence.json>` | Recompute integrity hash on an evidence export |
 | `blackbox logs [-n 50] [-f]` | Tail the rotating orchestrator log |
 | `blackbox backup [--out X]` | Zip vault (runtime dirs included) + all data stores to `backups/` — SQLite snapshotted consistently even while running |
 | `blackbox restore <zip>` | Restore a backup (refuses while running; auto-backs-up current state first) |
@@ -107,13 +112,35 @@ docker exec -it agentic-os-ollama-1 ollama pull nomic-embed-text
 
 ## Skills
 
-| Skill | Defined in | Description |
-|-------|-----------|-------------|
-| `summarize_note` | pure YAML (`graph: pipeline`) | Read any vault note via the `vault_fs` driver, archive a summary |
-| `inbox_triage` | pure YAML (`graph: pipeline`) | Classify a note — category, urgency, suggested action |
-| `lead_gen` | Python graph | B2B outreach with a human approval gate |
-| `summarize_meeting` | Python graph | Meeting notes → decisions and action items |
-| `weekly_review` | Python graph | Weekly vault review and priorities |
+| Skill | Graph | Description |
+|-------|-------|-------------|
+| `gmail_inbox_brief` | pipeline | Morning inbox summary (cron trigger) |
+| `customer_reply` | email_reply | Gmail thread → vault SOPs → draft → HITL → Gmail draft (no send) |
+| `doc_summarize` | pipeline | PDF/DOCX via docs driver → structured archive summary |
+| `summarize_note` | pipeline | Read any vault note, archive a summary |
+| `summarize_meeting` | meeting | Meeting notes → decisions and action items |
+| `inbox_triage` | pipeline | Classify a note — category, urgency, suggested action |
+| `follow_up_draft` | pipeline | Follow-up email from vault context |
+| `margin_compare` | pipeline | Deterministic margin math via margin MCP |
+| `lead_gen` | Python | B2B outreach with human approval gate |
+| `weekly_review` | Python | Weekly vault review and priorities |
+
+Skill YAML lives in `vault/.system/skill-definitions/`. Shared context:
+`GOALS.md`, `AGENTS.md`, FTS5 keyword search, RAG, and optional `sop_paths`
+(full SOP text injected before retrieval — used by `customer_reply`).
+
+## Daily Stack (dogfood ritual)
+
+Operator rhythm in `vault/.system/GOALS.md`:
+
+| Time | Loop |
+|------|------|
+| **08:00** | `gmail_inbox_brief` (cron) |
+| **Day** | Drop PDF/DOCX in `00-Inbox/` → `doc_summarize` |
+| **14:00** | `customer_reply` / follow-ups (manual) |
+| **17:00** | Meeting summarize / day-close |
+
+Success gate: **4 consecutive green dogfood weeks** before enabling send-after-approve.
 
 ## Adding a New Skill (no Python)
 
@@ -142,28 +169,39 @@ written in Python and registered in `core/graphs/registry.py`.
 ## Drivers (MCP tools)
 
 Tool capability comes from MCP servers mounted at boot from
-`vault/.system/drivers.json` (operator-owned; agents cannot write it):
+`vault/.system/drivers.json` (operator-owned; agents cannot write it).
 
-- Ships with `vault_fs` — a read-only server jailed to the vault, running on the
-  orchestrator's own Python (no Node needed). `fs`/`shell` npx examples included
-  but disabled.
-- Driver subprocess env is **allowlist-only**: secrets like `GEMINI_API_KEY`
-  never cross into a driver unless `env_allow` names them.
-- Skills opt in per tool (`tools:` allowlist, fnmatch patterns); drivers tagged
-  `exec` are denied with a recorded `tool_exec_approval` interrupt until a
-  sandbox tier exists.
-- Inspect with `GET /api/v1/drivers/`; remount after config edits with
-  `POST /api/v1/drivers/remount`.
+Paths use portable tokens — `{PYTHON}`, `{ORCHESTRATOR_ROOT}`, `{VAULT_PATH}` —
+expanded at mount time. Run `blackbox doctor --fix` after cloning on a new machine.
+
+| Driver | Ships | Tools |
+|--------|-------|-------|
+| `vault_fs` | enabled | Read-only vault notes |
+| `margin` | enabled | Deterministic margin math |
+| `docs` | enabled | PDF/DOCX text extraction (`pypdf`, `python-docx`) |
+| `gmail` | **disabled** | `list_threads`, `get_thread`, `create_draft`, `send_draft`* |
+| `search` | disabled | Web search (Serper/Tavily) |
+| `fs` / `shell` | disabled | npx examples |
+
+\* `send_draft` is shadow-built for Phase 4-E but **disabled** until
+`BLACKBOX_GMAIL_SEND_ENABLED=1` after the 4-green-week gate. Default flow is
+draft-only; operator sends manually from Gmail.
+
+- Driver subprocess env is **allowlist-only**; skills opt in via YAML `tools:`.
+- Inspect with `GET /api/v1/drivers/`; remount with `POST /api/v1/drivers/remount`.
 
 ## Autonomy
 
-Drop any markdown note into `00-Inbox/` and the `inbox-note-summarize` trigger
-runs `summarize_note` on it automatically (meeting-tagged notes route to
-`summarize_meeting` instead). When only the interactive Flash reserve remains,
-autonomous runs park as `budget_defer` interrupts — visible in the dashboard's
-**Interrupts · Gate** panel — and resume unattended once the daily budget
-resets. Trigger rules live in `vault/.system/trigger-rules/` and support
-`path_glob`, frontmatter `tags`/`not_tags`, cron schedules, and cooldowns.
+Vault watch triggers in `vault/.system/trigger-rules/`:
+
+- **`00-Inbox/*.md`** → `summarize_note` (meeting-tagged notes → `summarize_meeting`)
+- **`00-Inbox/*.{pdf,docx}`** → `doc_summarize`
+- **`gmail-morning-brief`** cron → `gmail_inbox_brief`
+
+When only the interactive Flash reserve remains, autonomous runs park as
+`budget_defer` interrupts and resume when the daily budget resets. Terminal
+active-loop notes older than 7 days auto-archive to `30-Archive/active-loops/`
+on boot.
 
 ## Architecture
 
@@ -212,6 +250,9 @@ See `.env.example` for all configuration options. Key variables:
 | `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget (free tier ~20 RPD) |
 | `BLACKBOX_GEMINI_FLASH_INTERACTIVE_RESERVE` | `8` | Calls kept for manual runs; autonomous runs pause below this |
 | `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT` | `2` | Concurrent background runs; interactive runs are never queued |
+| `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` (after 4 green dogfood weeks) |
+| `BLACKBOX_ACTIVE_LOOP_ARCHIVE_DAYS` | `7` | Auto-archive resolved loops from `20-Active-Loops/` |
+| `BLACKBOX_ACTIVE_LOOP_AUTO_ARCHIVE` | `true` | Disable to skip boot-time loop cleanup |
 
 ## Production Features
 
@@ -246,11 +287,21 @@ See `.env.example` for all configuration options. Key variables:
   triggered skills receive the full content of the note that fired them
 - **Path-jailed vault reads** — Prevents directory traversal outside vault root
 - **Logs on disk** — Rotating orchestrator log at `data/logs/orchestrator.log`
+- **Evidence export v1.1** — `blackbox export --evidence` bundles runs, approvals,
+  tool calls, SOP version hashes, provider metadata, and drivers snapshot with
+  SHA-256 integrity (`blackbox verify`)
+- **Compliance Trust-Kit** — [docs/compliance/](docs/compliance/) maps existing IVT,
+  outbox, and evidence export to deployer-side AI Act / ISO alignment (docs only,
+  not legal advice)
+- **Approval keyboard shortcuts** — Dashboard: `a` approve, `Shift+a` all, `r` reject
 
 ## Tests
 
 ```bash
 cd apps/orchestrator
 pip install -e ".[dev]"
+pip install pypdf python-docx   # optional: docs driver / doc_summarize
 pytest
 ```
+
+~220 tests (1 skipped without optional doc deps).

@@ -26,7 +26,7 @@ from core.bus.outbox import EventOutbox, get_outbox
 from core.config import settings
 from core.notifiers.audit import read_runs_between
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 _COMPLIANCE_MAPPING = {
     "art_12_logging": (
@@ -64,14 +64,57 @@ def parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
-def _extract_runs(run_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _skill_definition_hash(vault: Path, skill_name: str | None) -> str | None:
+    if not skill_name:
+        return None
+    yaml_path = vault / ".system" / "skill-definitions" / f"{skill_name}.yaml"
+    if not yaml_path.is_file():
+        return None
+    digest = hashlib.sha256(yaml_path.read_bytes()).hexdigest()
+    return digest
+
+
+def _provider_metadata() -> dict[str, str]:
+    provider = settings.llm_provider.lower()
+    if provider == "ollama":
+        model = settings.ollama_model
+    elif provider == "gemini":
+        model = settings.gemini_model
+    else:
+        model = provider
+    return {"provider": provider, "model": model}
+
+
+def _drivers_snapshot(vault: Path) -> dict[str, Any]:
+    drivers_path = vault / ".system" / "drivers.json"
+    if not drivers_path.is_file():
+        return {"path": str(drivers_path), "sha256": None, "present": False}
+    raw = drivers_path.read_bytes()
+    return {
+        "path": str(drivers_path),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "present": True,
+    }
+
+
+def _approval_signature(thread_id: str, decided_at: str | None, session_id: str | None) -> str | None:
+    if not decided_at:
+        return None
+    material = f"{thread_id}|{decided_at}|{session_id or ''}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _extract_runs(
+    run_rows: list[dict[str, Any]], *, vault: Path
+) -> list[dict[str, Any]]:
     """Normalize run ledger rows for the evidence bundle."""
     runs: list[dict[str, Any]] = []
     for row in run_rows:
-        runs.append({
+        skill = row.get("skill")
+        entry: dict[str, Any] = {
             "ts": row.get("ts"),
             "thread_id": row.get("thread_id"),
-            "skill": row.get("skill"),
+            "skill": skill,
             "status": row.get("status"),
             "session_id": row.get("session_id"),
             "triggered_by": row.get("triggered_by"),
@@ -80,7 +123,11 @@ def _extract_runs(run_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "latency_ms": row.get("latency_ms"),
             "archive_path": row.get("archive_path"),
             "error": row.get("error"),
-        })
+        }
+        sop_hash = _skill_definition_hash(vault, skill)
+        if sop_hash:
+            entry["sop_version_hash"] = sop_hash
+        runs.append(entry)
     return runs
 
 
@@ -134,6 +181,9 @@ def _extract_approvals(
                 metrics = payload.get("metrics") or {}
                 gates[tid]["final_cost"] = metrics.get("cost")
                 gates[tid]["archive_path"] = payload.get("archive_path")
+                gates[tid]["approval_signature"] = _approval_signature(
+                    tid, ev["ts"], ev.get("session_id")
+                )
         elif ev["topic"] == RUN_TERMINATED:
             if tid in gates:
                 gates[tid]["decision"] = "terminated"
@@ -152,11 +202,19 @@ def _extract_approvals(
         if status == "approved":
             gates[tid]["decision"] = "approved"
             gates[tid]["decided_at"] = row.get("ts")
+            gates[tid]["approval_signature"] = _approval_signature(
+                tid, row.get("ts"), row.get("session_id")
+            )
         elif status == "terminated":
             gates[tid]["decision"] = "terminated"
             gates[tid]["decided_at"] = row.get("ts")
         elif status == "waiting_for_input" and "decision" not in gates[tid]:
             gates[tid]["decision"] = "pending"
+
+    for gate in gates.values():
+        conf = gate.get("confidence")
+        if conf is not None:
+            gate["confidence_score"] = conf
 
     return sorted(gates.values(), key=lambda g: g.get("waiting_at") or "")
 
@@ -195,9 +253,11 @@ def build_evidence_pack(
     events = box.read_between(start_ts, end_ts)
     run_rows = read_runs_between(start_ts, end_ts)
 
-    runs = _extract_runs(run_rows)
+    vault = vault_path or settings.vault_path
+    runs = _extract_runs(run_rows, vault=vault)
     tool_calls = _extract_tool_calls(events)
     approvals = _extract_approvals(events, run_rows)
+    drivers = _drivers_snapshot(vault)
 
     body = {
         "runs": runs,
@@ -208,7 +268,6 @@ def build_evidence_pack(
         "summary": _summarize(runs, approvals, tool_calls, events),
     }
 
-    vault = vault_path or settings.vault_path
     pack = {
         "meta": {
             "schema_version": SCHEMA_VERSION,
@@ -218,6 +277,8 @@ def build_evidence_pack(
             "vault_path": str(vault),
             "query_start_ts": start_ts,
             "query_end_ts": end_ts,
+            "provider_metadata": _provider_metadata(),
+            "tool_allowlist_snapshot": drivers,
         },
         **body,
     }

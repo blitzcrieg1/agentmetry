@@ -274,6 +274,32 @@ def create_draft(thread_id: str, body: str, subject: str | None = None) -> str:
     return f"Draft created (id `{draft.get('id')}`) — review and send from Gmail."
 
 
+def _send_enabled() -> bool:
+    return os.environ.get("BLACKBOX_GMAIL_SEND_ENABLED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+@server.tool()
+def send_draft(draft_id: str) -> str:
+    """Send an existing Gmail draft (Phase 4-E — disabled until operator unlock).
+
+    Requires BLACKBOX_GMAIL_SEND_ENABLED=1 on the orchestrator after the
+    4-green-week dogfood gate. Prefer create_draft + manual send until then.
+    """
+    if not _send_enabled():
+        raise RuntimeError(
+            "send_draft is disabled — complete 4 green dogfood weeks, then set "
+            "BLACKBOX_GMAIL_SEND_ENABLED=1 (see docs/gmail-driver.md)"
+        )
+    svc = _get_service()
+    sent = svc.users().drafts().send(userId="me", body={"id": draft_id}).execute()
+    message_id = sent.get("id", draft_id)
+    return f"Message sent (id `{message_id}`) — audited on the event outbox."
+
+
 if __name__ == "__main__":
     if "--auth" in sys.argv:
         _load_orchestrator_dotenv()

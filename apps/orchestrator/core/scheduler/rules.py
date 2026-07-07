@@ -20,6 +20,7 @@ class TriggerRule:
     skill: str
     enabled: bool
     path_glob: str = ""
+    path_suffixes: list[str] | None = None
     frontmatter_tags: list[str] | None = None
     frontmatter_not_tags: list[str] | None = None
     user_input_template: str = ""
@@ -36,12 +37,16 @@ class TriggerRule:
         not_tags = frontmatter.get("not_tags")
         if isinstance(not_tags, str):
             not_tags = [not_tags]
+        suffixes = match.get("extensions") or match.get("path_suffixes")
+        if isinstance(suffixes, str):
+            suffixes = [suffixes]
         return cls(
             id=data["id"],
             type=data.get("type", "vault_watch"),
             skill=data["skill"],
             enabled=bool(data.get("enabled", True)),
             path_glob=match.get("path_glob", ""),
+            path_suffixes=suffixes,
             frontmatter_tags=tags,
             frontmatter_not_tags=not_tags,
             user_input_template=data.get("user_input_template", ""),
@@ -70,6 +75,10 @@ def note_matches_rule(rule: TriggerRule, rel_path: str, obsidian: ObsidianClient
     normalized = rel_path.replace("\\", "/")
     if rule.path_glob and not fnmatch.fnmatch(normalized, rule.path_glob):
         return False
+    if rule.path_suffixes:
+        lower = normalized.lower()
+        if not any(lower.endswith(s.lower()) for s in rule.path_suffixes):
+            return False
     if not rule.frontmatter_tags and not rule.frontmatter_not_tags:
         return True
     content = obsidian.read_note(normalized)

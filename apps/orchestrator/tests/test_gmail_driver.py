@@ -72,6 +72,10 @@ class _Drafts:
         self.svc.calls.append(("drafts.create", kwargs))
         return _Req({"id": "draft-123"})
 
+    def send(self, **kwargs):
+        self.svc.calls.append(("drafts.send", kwargs))
+        return _Req({"id": "msg-sent-1"})
+
 
 def _message(headers: dict[str, str], payload: dict[str, Any] | None = None) -> dict[str, Any]:
     body = payload or {"mimeType": "text/plain", "body": {"data": _b64("hello")}}
@@ -192,12 +196,29 @@ def test_create_draft_keeps_existing_re_prefix(monkeypatch: pytest.MonkeyPatch):
     assert message_from_bytes(raw)["Subject"] == "Re: ongoing"
 
 
-def test_no_send_tool_exposed():
-    """Draft-only by design: the server must expose exactly these three tools."""
+def test_send_draft_disabled_by_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("BLACKBOX_GMAIL_SEND_ENABLED", raising=False)
+    with pytest.raises(RuntimeError, match="send_draft is disabled"):
+        gmail_server.send_draft("draft-123")
+
+
+def test_send_draft_calls_api_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("BLACKBOX_GMAIL_SEND_ENABLED", "1")
+    svc = FakeGmail(threads={})
+    monkeypatch.setattr(gmail_server, "_get_service", lambda: svc)
+
+    out = gmail_server.send_draft("draft-456")
+    assert "msg-sent-1" in out
+    send_call = next(kw for name, kw in svc.calls if name == "drafts.send")
+    assert send_call["body"]["id"] == "draft-456"
+
+
+def test_send_tool_shadow_exists_but_gated():
+    """Phase 4-E: send_draft exists; default env keeps it off."""
     source = _SERVER.read_text(encoding="utf-8")
-    assert source.count("@server.tool()") == 3
-    for forbidden in ("def send", "messages().send", "drafts().send"):
-        assert forbidden not in source
+    assert "def send_draft" in source
+    assert "BLACKBOX_GMAIL_SEND_ENABLED" in source
+    assert "messages().send" not in source
 
 
 # ------------------------------------------------------------ config & env
@@ -210,7 +231,11 @@ def test_gmail_driver_ships_disabled():
     )
     gmail = next(d for d in config["drivers"] if d["name"] == "gmail")
     assert gmail["enabled"] is False
-    assert set(gmail["env_allow"]) == {"GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"}
+    assert set(gmail["env_allow"]) == {
+        "GMAIL_CLIENT_ID",
+        "GMAIL_CLIENT_SECRET",
+        "BLACKBOX_GMAIL_SEND_ENABLED",
+    }
 
 
 def test_env_allow_falls_back_to_dotenv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

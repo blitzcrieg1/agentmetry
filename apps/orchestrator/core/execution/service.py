@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from core.bus.bus import bus
@@ -36,6 +37,7 @@ from core.kernel.scheduler import Priority, get_scheduler, run_priority
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.errors import CostBudgetExceeded
+from core.memory.obsidian_client import ObsidianClient
 from core.notifiers.audit import append_vault_run_log, log_run
 from core.notifiers.toast import notify
 
@@ -43,6 +45,52 @@ logger = logging.getLogger(__name__)
 
 # Guard against pathological trigger notes blowing up the prompt.
 _TRIGGER_NOTE_MAX_CHARS = 50_000
+_SOP_CONTEXT_MAX_CHARS = 4_000
+
+
+def _resolve_sop_paths(
+    skill_config: dict[str, Any], vault_path: Path | None = None
+) -> list[str]:
+    """Expand skill-configured SOP paths and globs to vault-relative markdown files."""
+    vault = Path(vault_path or settings.vault_path)
+    configured = skill_config.get("sop_paths") or []
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for entry in configured:
+        rel = str(entry).replace("\\", "/").lstrip("/")
+        if any(ch in rel for ch in "*?[]"):
+            for match in sorted(vault.glob(rel)):
+                if match.is_file() and match.suffix.lower() == ".md":
+                    path = match.relative_to(vault).as_posix()
+                    if path not in seen:
+                        seen.add(path)
+                        resolved.append(path)
+            continue
+        if (vault / rel).is_file() and rel not in seen:
+            seen.add(rel)
+            resolved.append(rel)
+    return resolved
+
+
+def _append_sop_context(
+    blocks: list[str],
+    sources: list[str],
+    skill_config: dict[str, Any],
+    *,
+    vault_path: Path | None = None,
+) -> None:
+    """Inject full SOP text before FTS/RAG so reply skills follow vault policy."""
+    if not skill_config.get("sop_paths"):
+        return
+    reader = obsidian if vault_path is None else ObsidianClient(vault_path)
+    for rel in _resolve_sop_paths(skill_config, vault_path):
+        if rel in sources:
+            continue
+        text = reader.read_note(rel)
+        if not text:
+            continue
+        sources.append(rel)
+        blocks.append(f"[SOP: {rel}]\n{text[:_SOP_CONTEXT_MAX_CHARS]}")
 
 
 def _interactive(triggered_by: str) -> bool:
@@ -162,7 +210,11 @@ async def recover_interrupts() -> dict[str, int]:
     """Reload HITL threads and resume deferred autonomous work on startup."""
     import os
 
-    from core.execution.recovery import report_recovery_on_startup, resume_orphans_on_startup
+    from core.execution.recovery import (
+        archive_resolved_loops_on_startup,
+        report_recovery_on_startup,
+        resume_orphans_on_startup,
+    )
 
     hitl = await recover_pending_threads()
     deferred = await resume_deferred_interrupts()
@@ -173,12 +225,14 @@ async def recover_interrupts() -> dict[str, int]:
     if os.environ.get("BLACKBOX_AUTO_RESUME", "").strip() in ("1", "true", "yes"):
         auto_resumed = await resume_orphans_on_startup()
 
+    archived = archive_resolved_loops_on_startup()
     stale = report_recovery_on_startup()
     return {
         "hitl": hitl,
         "budget_defer_resumed": deferred["budget"],
         "llm_degraded_resumed": deferred["degraded"],
         "auto_resumed": auto_resumed,
+        "archived_loops": archived,
         "stale_loops": stale,
     }
 
@@ -192,6 +246,8 @@ async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) ->
         if text:
             sources.append(rel)
             blocks.append(f"[Source: {rel}]\n{text[:2500]}")
+
+    _append_sop_context(blocks, sources, skill_config)
 
     for hit in fts.search(user_input, limit=5):
         path = hit["path"]

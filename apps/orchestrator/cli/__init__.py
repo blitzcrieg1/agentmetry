@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -32,8 +33,30 @@ _BACKUP_EXCLUDE_DIRS = {"logs"}
 _BACKUP_EXCLUDE_SUFFIXES = {".pid"}
 
 
-def _base_url(port: int) -> str:
-    return f"http://127.0.0.1:{port}"
+def _base_url(port: int, host: str = "127.0.0.1") -> str:
+    display = host if host != "0.0.0.0" else "127.0.0.1"
+    return f"http://{display}:{port}"
+
+
+def _lan_ip() -> str | None:
+    """Best-effort local IPv4 for phone/LAN access hints."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        return ip
+    except OSError:
+        return None
+
+
+def _print_lan_hint(port: int) -> None:
+    ip = _lan_ip()
+    if not ip:
+        print("LAN: could not detect local IP — run ipconfig and use http://<your-ip>:8000")
+        return
+    print(f"Phone / LAN dashboard: http://{ip}:{port}")
+    print("  (Needs dashboard built — run scripts\\serve.bat or scripts\\mobile.bat first)")
 
 
 def _fetch_health(port: int) -> dict | None:
@@ -51,8 +74,11 @@ def _fetch_health(port: int) -> dict | None:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    host = getattr(args, "host", "127.0.0.1")
     if _fetch_health(args.port):
-        print(f"Already running on {_base_url(args.port)}")
+        print(f"Already running on {_base_url(args.port, host)}")
+        if host == "0.0.0.0":
+            _print_lan_hint(args.port)
         return 0
 
     _DATA_DIR.joinpath("logs").mkdir(parents=True, exist_ok=True)
@@ -64,7 +90,16 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     with out_log.open("ab") as out:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "api.main:app", "--port", str(args.port)],
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "api.main:app",
+                "--host",
+                host,
+                "--port",
+                str(args.port),
+            ],
             cwd=str(_ORCH_ROOT),
             stdout=out,
             stderr=out,
@@ -76,7 +111,9 @@ def cmd_start(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         if _fetch_health(args.port):
-            print(f"BLACKBOX running on {_base_url(args.port)} (pid {proc.pid})")
+            print(f"BLACKBOX running on {_base_url(args.port, host)} (pid {proc.pid})")
+            if host == "0.0.0.0":
+                _print_lan_hint(args.port)
             return 0
         if proc.poll() is not None:
             print(f"Orchestrator exited early (code {proc.returncode}) - see {out_log}")
@@ -465,6 +502,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Preflight: vault, python, portable drivers.json."""
+    sys.path.insert(0, str(_ORCH_ROOT))
+    from core.diagnostics.doctor import format_report, run_doctor
+
+    report = run_doctor(fix_drivers=getattr(args, "fix", False))
+    print("BLACKBOX doctor\n" + format_report(report))
+    return report.exit_code
+
+
 # ---------------------------------------------------------------------- main
 
 
@@ -473,8 +520,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("start", help="start the orchestrator (detached)")
     sub.add_parser("stop", help="stop the orchestrator")
+    start = sub.add_parser("start", help="start the orchestrator (detached)")
+    start.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind address — use 0.0.0.0 for phone/LAN access (default: 127.0.0.1)",
+    )
     sub.add_parser("status", help="health, budget, pending approvals")
     recovery = sub.add_parser("recovery", help="list stale active-loop notes after a crash")
     recovery.add_argument("--dismiss-all", action="store_true")
@@ -503,6 +555,12 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
     verify = sub.add_parser("verify", help="verify an evidence pack integrity hash")
     verify.add_argument("evidence_file", help="path to exported evidence JSON")
+    doctor = sub.add_parser("doctor", help="preflight checks (vault, drivers, python)")
+    doctor.add_argument(
+        "--fix",
+        action="store_true",
+        help="rewrite drivers.json to portable {PYTHON}/{VAULT_PATH} tokens",
+    )
 
     args = parser.parse_args(argv)
     handlers = {
@@ -518,5 +576,6 @@ def main(argv: list[str] | None = None) -> int:
         "uninstall": cmd_uninstall,
         "export": cmd_export,
         "verify": cmd_verify,
+        "doctor": cmd_doctor,
     }
     return handlers[args.command](args)

@@ -18,6 +18,13 @@ from core.memory.rag_engine import RAGEngine
 
 logger = logging.getLogger(__name__)
 
+_TRIGGERABLE_SUFFIXES = (".md", ".pdf", ".docx")
+
+
+def _triggerable_suffix(path: str) -> bool:
+    lower = path.lower()
+    return any(lower.endswith(suffix) for suffix in _TRIGGERABLE_SUFFIXES)
+
 
 class VaultSyncHandler(FileSystemEventHandler):
     def __init__(self, rag: RAGEngine, loop: asyncio.AbstractEventLoop, vault_path: Path):
@@ -29,10 +36,11 @@ class VaultSyncHandler(FileSystemEventHandler):
         self._tasks: set[asyncio.Task] = set()
 
     def _schedule_reindex(self, path: str) -> None:
-        if not path.endswith(".md"):
+        if not _triggerable_suffix(path):
             return
         norm = path.replace("\\", "/")
         skip_rag = ".system" in norm
+        is_markdown = path.lower().endswith(".md")
 
         def _do_index():
             self._debounce.pop(path, None)
@@ -41,14 +49,14 @@ class VaultSyncHandler(FileSystemEventHandler):
             async def _work():
                 # Indexing is background; triggered runs re-tag as AUTONOMOUS.
                 run_priority.set(Priority.MAINTENANCE)
-                if not skip_rag:
+                if is_markdown and not skip_rag:
                     await self.rag.index_file(file_path)
                 fts = get_fts_index(self.vault_path)
                 try:
                     rel = file_path.relative_to(self.vault_path).as_posix()
                 except ValueError:
                     rel = norm
-                if fts_should_index(rel):
+                if is_markdown and fts_should_index(rel):
                     fts.upsert_file(file_path)
                 # Trigger evaluation is decoupled: the bus bridge reacts.
                 if not skip_rag:

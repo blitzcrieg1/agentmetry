@@ -67,9 +67,10 @@ Until then, confirm the mount via `GET /api/v1/drivers/` and watch
 
 ## Scope guarantees
 
-- **No send:** the server defines exactly three tools; none send mail. The
-  `gmail.compose` scope could technically send, but nothing in BLACKBOX calls
-  it — and every tool call is allowlisted per skill and audited on the bus.
+- **Draft-first:** default mode creates drafts via `create_draft`; you send manually
+  from Gmail. `send_draft` exists as a **shadow tool** for Phase 4-E but is
+  **disabled** until you set `BLACKBOX_GMAIL_SEND_ENABLED=1` after 4 green weeks.
+- **Audit:** every `gmail.send_draft` call records `arguments_sha256` on the bus.
 - **Caps:** max 20 threads per list; bodies truncated at 8k chars; HTML
   stripped to text.
 - Missing/expired token → clear error naming the `--auth` command; the driver
@@ -83,3 +84,5 @@ Until then, confirm the mount via `GET /api/v1/drivers/` and watch
 | `Gmail token missing or expired` on tool call | Re-run step 2 (e.g. after revoking access) |
 | Driver `failed` in `/api/v1/drivers/` | Check `data/logs/orchestrator.log`; usually deps — `pip install -e ".[dev]"` |
 | Browser opens but redirect fails | Firewall blocking localhost loopback; retry, or free the chosen port |
+| Driver won't mount after clone | `blackbox doctor` — vault, python, schema checks |
+| Absolute paths in drivers.json | `blackbox doctor --fix` → `{PYTHON}` / `{VAULT_PATH}` tokens |

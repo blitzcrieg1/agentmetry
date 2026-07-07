@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,7 @@ class ObsidianClient:
                 "skill": str(meta.get("skill", "")),
                 "status": str(meta.get("status", "")),
                 "created": str(meta.get("created", "")),
+                "resolved": str(meta.get("resolved", "")),
             })
         return loops
 
@@ -298,6 +300,29 @@ class ObsidianClient:
 
         yaml_block = yaml.dump(meta, default_flow_style=False, allow_unicode=True)
         self._write_text(file, f"---\n{yaml_block}---\n\n{body}")
+
+    def archive_active_loop(self, path: Path | str) -> Path | None:
+        """Move a terminal active-loop note from 20-Active-Loops/ to 30-Archive/active-loops/."""
+        file = Path(path)
+        if not file.is_absolute():
+            resolved = self._resolve_safe_path(str(file))
+            if resolved is None:
+                return None
+            file = resolved
+        if not file.exists() or not file.is_file():
+            return None
+
+        dest_dir = self.archive_path / "active-loops"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / file.name
+        counter = 2
+        while dest.exists():
+            dest = dest_dir / f"{file.stem}-{counter}{file.suffix}"
+            counter += 1
+
+        self._assert_writable(dest)
+        shutil.move(str(file), str(dest))
+        return dest
 
     def write_crash_report(self, thread_id: str, error: str, skill_name: str) -> Path:
         """Write a crash report when a thread is terminated."""

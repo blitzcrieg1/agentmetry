@@ -32,8 +32,13 @@ def _skill(**overrides) -> dict:
                 {
                     "tool": "fake.echo",
                     "args": {"text": "{client_note_path}"},
+                    "output": "client_note",
+                },
+                {
+                    "tool": "fake.echo",
+                    "args": {"text": "10-SOPs/client-reply.md"},
                     "output": "sop_text",
-                }
+                },
             ],
             "load_generic_sop": [
                 {"tool": "fake.echo", "args": {"text": "generic-sop"}, "output": "sop_text"}
@@ -42,7 +47,12 @@ def _skill(**overrides) -> dict:
                 {"tool": "fake.echo", "args": {"text": "{approved_draft}"}, "output": "receipt"}
             ],
         },
-        "node_prompts": {"draft": "Draft using SOP:\n{sop_text}\nThread:\n{thread_text}"},
+        "node_prompts": {
+            "draft": (
+                "Draft using SOP:\n{sop_text}\nClient:\n{client_note}\nThread:\n{thread_text}"
+            ),
+        },
+        "node_defaults": {"load_generic_sop": {"client_note": ""}},
     }
     base.update(overrides)
     return base
@@ -112,7 +122,8 @@ async def test_client_known_routes_through_client_sop_load(wired):
 
     assert "classify_thread" in calls
     assert "draft" in calls
-    assert final["step_outputs"]["sop_text"] == "10-Knowledge/clients/acme.md"[::-1]
+    assert final["step_outputs"]["client_note"] == "10-Knowledge/clients/acme.md"[::-1]
+    assert final["step_outputs"]["sop_text"] == "10-SOPs/client-reply.md"[::-1]
     assert final["draft"] == "draft-from-sop"
 
 

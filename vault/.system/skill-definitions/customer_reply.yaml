@@ -6,6 +6,10 @@ tools:
   - gmail.get_thread
   - gmail.create_draft
   - vault_fs.read_note
+# Injected into system_context before FTS/RAG on every run (classify + draft).
+sop_paths:
+  - 10-SOPs/client-reply.md
+  - 10-Knowledge/SOPs/*.md
 nodes:
   - fetch
   - draft
@@ -22,6 +26,9 @@ tool_only_nodes:
   - load_client_sop
   - load_generic_sop
   - deliver
+node_defaults:
+  load_generic_sop:
+    client_note: ""
 node_tools:
   fetch:
     - tool: gmail.get_thread
@@ -32,6 +39,10 @@ node_tools:
     - tool: vault_fs.read_note
       args:
         path: "{client_note_path}"
+      output: client_note
+    - tool: vault_fs.read_note
+      args:
+        path: "10-SOPs/client-reply.md"
       output: sop_text
   load_generic_sop:
     - tool: vault_fs.read_note
@@ -60,15 +71,18 @@ node_prompts:
     REASON: one line
   draft: |
     Write a reply to the latest message in this Gmail thread, following the
-    client SOP below and any tone/policy in vault context. Under 150 words,
-    one clear next step, no signature block (the operator adds it). Reference
-    only facts present in the thread or SOP — never invent order numbers,
+    reply SOP below and any client-specific context. Under 150 words, one clear
+    next step, no signature block (the operator adds it). Reference only facts
+    present in the thread, client note, or SOP — never invent order numbers,
     prices, or commitments.
 
     Output the email body only (no subject line, no commentary).
 
-    Client SOP:
+    Reply SOP (mandatory):
     {sop_text}
+
+    Client-specific context (if any):
+    {client_note}
 
     Thread:
     {thread_text}
