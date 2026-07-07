@@ -20,7 +20,13 @@ jobs:
       - name: Install orchestrator
         run: pip install -e ".[dev]"
       - name: Lint
-        run: ruff check core api tests
+        run: ruff check core api tests scripts
+      - name: Lint skill YAML governance
+        run: python scripts/lint_skills.py
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run tests
         run: pytest -q
 

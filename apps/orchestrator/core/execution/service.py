@@ -21,6 +21,7 @@ from core.bus.events import (
 )
 from core.config import settings
 from core.execution.context import (
+    fts,
     interrupt_table,
     obsidian,
     pending_store,
@@ -183,6 +184,22 @@ async def recover_interrupts() -> dict[str, int]:
 
 
 async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) -> tuple[str, list[str]]:
+    sources: list[str] = []
+    blocks: list[str] = []
+
+    for rel in (".system/GOALS.md", ".system/AGENTS.md"):
+        text = obsidian.read_note(rel)
+        if text:
+            sources.append(rel)
+            blocks.append(f"[Source: {rel}]\n{text[:2500]}")
+
+    for hit in fts.search(user_input, limit=5):
+        path = hit["path"]
+        if path in sources:
+            continue
+        sources.append(path)
+        blocks.append(f"[Source: {path}]\n{hit['snippet']}")
+
     prospect_chunks = await rag.query(
         query_text=user_input,
         top_k=5,
@@ -194,15 +211,19 @@ async def _fetch_skill_context(user_input: str, skill_config: dict[str, Any]) ->
         filter_metadata={"tags": skill_config.get("knowledge_tags", ["brand", "guidelines"])},
     )
 
-    seen: set[str] = set()
+    seen: set[str] = set(sources)
     merged = []
     for chunk in prospect_chunks + knowledge_chunks:
         if chunk.source_path not in seen:
             seen.add(chunk.source_path)
             merged.append(chunk)
 
-    system_context = await rag.summarize_context(merged)
-    sources = [c.source_path for c in merged]
+    rag_context = await rag.summarize_context(merged)
+    if rag_context:
+        blocks.append(rag_context)
+        sources.extend(c.source_path for c in merged)
+
+    system_context = "\n\n".join(blocks)
     return system_context, sources
 
 

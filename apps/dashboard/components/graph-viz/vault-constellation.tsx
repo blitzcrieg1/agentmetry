@@ -93,6 +93,73 @@ function accentFor(folder: string): string {
   return FOLDER_ACCENTS[folder] || "slate";
 }
 
+const MAX_ORBIT_LOOPS = 8;
+
+function selectVisibleLoops(loops: ActiveLoop[]): ActiveLoop[] {
+  const sorted = [...loops].sort((a, b) => {
+    const rank = (status: string) => {
+      if (status.includes("approval")) return 0;
+      if (status.includes("running")) return 1;
+      return 2;
+    };
+    return rank(a.status) - rank(b.status);
+  });
+  return sorted.slice(0, MAX_ORBIT_LOOPS);
+}
+
+function LoopOrbit3D({
+  loops,
+  totalCount,
+}: {
+  loops: ActiveLoop[];
+  totalCount: number;
+}) {
+  if (loops.length === 0) return null;
+
+  const step = 360 / loops.length;
+  const extra = totalCount - loops.length;
+
+  return (
+    <div className="orbit-scene pointer-events-none absolute left-1/2 top-1/2 h-0 w-0">
+      <div className="orbit-ring-3d">
+        {loops.map((loop, i) => {
+          const isWaiting = loop.status.includes("approval");
+          const accent = isWaiting ? "amber" : "orange";
+          const styles = ACCENT_CLASSES[accent];
+
+          return (
+            <div
+              key={loop.thread_id || `${loop.skill}-${i}`}
+              className="orbit-card-3d"
+              style={{ transform: `rotateY(${i * step}deg) translateZ(148px)` }}
+            >
+              <div
+                className={`min-w-[88px] max-w-[100px] rounded-lg border px-2 py-1.5 backdrop-blur-md ${styles.border} ${styles.bg}`}
+              >
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  <Loader2
+                    className={`h-2.5 w-2.5 shrink-0 ${styles.text} ${isWaiting ? "animate-spin" : ""}`}
+                    style={{ animationDuration: isWaiting ? "1.2s" : undefined }}
+                  />
+                  <span className={`truncate font-medium ${styles.text}`}>
+                    {loop.skill.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-[8px] uppercase tracking-wide text-muted-foreground/80">
+                  {loop.status.replace(/_/g, " ")}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {extra > 0 ? (
+        <div className="orbit-more-badge">+{extra} more active</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ConstellationNode({
   data,
 }: {
@@ -103,11 +170,34 @@ function ConstellationNode({
     accent: string;
     pulse?: boolean;
     delay: number;
+    orbitLoops?: ActiveLoop[];
+    totalLoopCount?: number;
   };
 }) {
   const styles = ACCENT_CLASSES[data.accent] || ACCENT_CLASSES.slate;
   const size =
     data.kind === "core" ? "min-w-[120px] px-5 py-4" : data.kind === "folder" ? "min-w-[100px] px-3 py-2.5" : "px-2 py-1.5";
+
+  if (data.kind === "core") {
+    return (
+      <div className="relative">
+        {data.orbitLoops && data.orbitLoops.length > 0 ? (
+          <LoopOrbit3D loops={data.orbitLoops} totalCount={data.totalLoopCount ?? data.orbitLoops.length} />
+        ) : null}
+        <div
+          className={`relative z-30 rounded-xl border backdrop-blur-sm ${size} ${styles.border} ${styles.bg}`}
+        >
+          <div className="flex items-center gap-2 text-xs">
+            <CircleDot className={`h-4 w-4 ${styles.text}`} />
+            <span className={`font-medium ${styles.text}`}>{data.label}</span>
+          </div>
+          {data.sublabel ? (
+            <p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">{data.sublabel}</p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -117,9 +207,7 @@ function ConstellationNode({
       style={{ animationDelay: `${data.delay}s` }}
     >
       <div className={`flex items-center gap-2 ${data.kind === "file" ? "text-[10px]" : "text-xs"}`}>
-        {data.kind === "core" ? (
-          <CircleDot className={`h-4 w-4 ${styles.text}`} />
-        ) : data.kind === "folder" ? (
+        {data.kind === "folder" ? (
           <FolderOpen className={`h-3.5 w-3.5 ${styles.text}`} />
         ) : data.kind === "loop" ? (
           <Loader2 className={`h-3 w-3 animate-spin ${styles.text}`} />
@@ -145,6 +233,9 @@ function buildConstellation(
 ): { nodes: Node[]; edges: Edge[] } {
   const folders = entries.filter((e) => e.type === "folder");
   const filesByFolder = new Map<string, VaultEntry[]>();
+  const visibleLoops = selectVisibleLoops(loops);
+  const fileCount = entries.filter((e) => e.type === "file").length;
+
   for (const e of entries) {
     if (e.type !== "file" || !e.folder) continue;
     const top = e.folder.split("/")[0];
@@ -160,10 +251,15 @@ function buildConstellation(
       position: { x: 0, y: 0 },
       data: {
         label: "Vault",
-        sublabel: `${entries.filter((e) => e.type === "file").length} notes`,
+        sublabel:
+          loops.length > 0
+            ? `${fileCount} notes · ${loops.length} active`
+            : `${fileCount} notes`,
         kind: "core",
         accent: "violet",
         delay: 0,
+        orbitLoops: visibleLoops,
+        totalLoopCount: loops.length,
       },
     },
   ];
@@ -231,39 +327,15 @@ function buildConstellation(
     });
   });
 
-  loops.forEach((loop, i) => {
-    const angle = (i / Math.max(loops.length, 1)) * Math.PI * 2;
-    const lr = 110;
-    const lx = Math.cos(angle) * lr;
-    const ly = Math.sin(angle) * lr;
-    const isWaiting = loop.status.includes("approval");
-
-    nodes.push({
-      id: `loop-${loop.thread_id || i}`,
-      type: "constellation",
-      position: { x: lx - 40, y: ly - 20 },
-      data: {
-        label: loop.skill.replace(/_/g, " "),
-        sublabel: loop.status.replace(/_/g, " "),
-        kind: "loop",
-        accent: isWaiting ? "amber" : "orange",
-        pulse: true,
-        delay: i * 0.25,
-      },
-    });
-
+  if (loops.length > 0 && nodes.some((n) => n.id === "folder-20-Active-Loops")) {
     edges.push({
-      id: `core-loop-${loop.thread_id || i}`,
+      id: "core-active-halo",
       source: "vault-core",
-      target: `loop-${loop.thread_id || i}`,
+      target: "folder-20-Active-Loops",
       animated: true,
-      style: {
-        stroke: isWaiting ? "#fbbf24" : "#fb923c",
-        strokeWidth: 2,
-        opacity: 0.7,
-      },
+      style: { stroke: "#fb923c", strokeWidth: 1.5, opacity: 0.45, strokeDasharray: "6 4" },
     });
-  });
+  }
 
   return { nodes, edges };
 }

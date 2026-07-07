@@ -13,6 +13,7 @@ from core.bus.bus import bus
 from core.bus.events import VAULT_FILE_CHANGED
 from core.config import settings
 from core.kernel.scheduler import Priority, run_priority
+from core.memory.fts_index import get_fts_index, should_index as fts_should_index
 from core.memory.rag_engine import RAGEngine
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,8 @@ class VaultSyncHandler(FileSystemEventHandler):
     def _schedule_reindex(self, path: str) -> None:
         if not path.endswith(".md"):
             return
-        if ".system" in path.replace("\\", "/"):
-            return
+        norm = path.replace("\\", "/")
+        skip_rag = ".system" in norm
 
         def _do_index():
             self._debounce.pop(path, None)
@@ -40,12 +41,21 @@ class VaultSyncHandler(FileSystemEventHandler):
             async def _work():
                 # Indexing is background; triggered runs re-tag as AUTONOMOUS.
                 run_priority.set(Priority.MAINTENANCE)
-                await self.rag.index_file(file_path)
+                if not skip_rag:
+                    await self.rag.index_file(file_path)
+                fts = get_fts_index(self.vault_path)
+                try:
+                    rel = file_path.relative_to(self.vault_path).as_posix()
+                except ValueError:
+                    rel = norm
+                if fts_should_index(rel):
+                    fts.upsert_file(file_path)
                 # Trigger evaluation is decoupled: the bus bridge reacts.
-                bus.publish(VAULT_FILE_CHANGED, {
-                    "absolute_path": str(file_path),
-                    "vault_path": str(self.vault_path),
-                })
+                if not skip_rag:
+                    bus.publish(VAULT_FILE_CHANGED, {
+                        "absolute_path": str(file_path),
+                        "vault_path": str(self.vault_path),
+                    })
 
             task = self.loop.create_task(_work())
             self._tasks.add(task)
@@ -80,7 +90,9 @@ class VaultSyncHandler(FileSystemEventHandler):
             return
 
         async def _remove():
-            await self.rag.remove_file(rel_path)
+            if ".system" not in rel_path.replace("\\", "/"):
+                await self.rag.remove_file(rel_path)
+            get_fts_index(self.vault_path).upsert_file(file_path)
 
         asyncio.run_coroutine_threadsafe(_remove(), self.loop)
 
@@ -113,6 +125,12 @@ class VaultWatcher:
             logger.info("Startup vault index: %d chunks indexed", count)
         except Exception as e:
             logger.warning("Initial vault index skipped: %s", e)
+
+        try:
+            fts_count = get_fts_index(self.vault_path).reindex()
+            logger.info("Startup FTS index: %d notes indexed", fts_count)
+        except Exception as e:
+            logger.warning("Initial FTS index skipped: %s", e)
 
     def stop(self) -> None:
         if self.observer:

@@ -1,126 +1,70 @@
-# Tomorrow Handoff — 2026-07-03 session
+# Tomorrow Handoff — 2026-07-06 session
 
-> **Update 2026-07-04:** P0-A/B/P1 landed (Fable). See [fable-session-notes.md](./fable-session-notes.md). Uncommitted.
-
-Read this first when continuing work. Detailed specs live in linked docs.
+Read this first when continuing. Full email spec: [fable-5-email-autopilot.md](./fable-5-email-autopilot.md).
 
 ---
 
-## Session snapshot (what happened today)
+## Session snapshot
 
-### Live system
-- **BLACKBOX running:** `scripts\blackbox.bat start` → `:8000`
-- **Model:** `gemini-2.5-flash-lite` (paid tier in `.env`)
-- **Budget config:** 100000/day, 0.2s pacing, reserve 50
-- **Tests:** **111 passed** (full pytest)
-- **Proven live:** Meeting Summarizer on `00-Inbox/sample-meeting-notes.md` → archive OK
+### Shipped & pushed (`d56fdb6` on `master`)
+- **`email_reply` graph** — classify → SOP load → replan for `customer_reply`
+- **Dashboard refresh** — vault constellation (idle), pipeline overlay (runs), 3-step gmail brief viz, brand logo
+- **Gmail `--auth`** loads `apps/orchestrator/.env` automatically
+- **`GET /api/v1/vault/active-loops`** for live loop nodes
+- **README hero** + `docs/assets/blackbox-hero.png`, `apps/dashboard/public/blackbox-logo.png`
+- **Fable 5 spec** + `vault/10-SOPs/client-reply.md`
+- **Tests:** ~198 passed (email_reply + existing suite)
 
-### Code changes (session — verify `git status` before commit)
-- **Gemini:** default `flash-lite`; count every API attempt; per-model budget ledger
-- **Degraded:** auto-clear after retry window; manual runs proceed while degraded
-- **RAG:** UTF-8/UTF-16 tolerant reads (`_read_vault_text`) — PowerShell `echo >` broke watcher
-- **Docs added:** see index below
-- **User `.env`:** updated model + paid-tier limits (gitignored)
+### Operator state (YOU — local, not in repo)
+| Item | Status |
+|------|--------|
+| Gmail OAuth | Done — token in Windows Credential Manager (`blackbox-gmail`) |
+| `GMAIL_*` in `.env` | Set |
+| `drivers.json` gmail `enabled: true` | **Local only** — intentionally not committed |
+| First `gmail_inbox_brief` | Ran successfully — archive `30-Archive/2026-07-06-195336-gmail_inbox_brief-4962df6a.md` |
+| `customer_reply` on real thread | **Not yet** |
+| Telegram | **Do not enable** — use dashboard/Obsidian for approvals |
 
-### Bugs hit & fixed
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| Internal Server Error on summarize | UTF-16 `test.md` crashed RAG | Encoding helper + delete bad file |
-| Sticky LLM degraded | Flag never cleared | `retry_elapsed()` + health check |
-| Manual runs blocked when degraded | service.py rejected manual | Manual bypass; autonomous still defers |
-| Dashboard 17/20 vs Google 46/20 | Only counted HTTP 200 | Count every attempt |
-| Gemini 429 on free tier | 5 RPM / 20 RPD | Switched model + paid tier |
+### Phase 1 shipped (uncommitted): shared memory + CI governance
+- `vault/.system/GOALS.md` + `AGENTS.md` — operator-editable goals/personas injected into every skill run
+- `core/memory/fts_index.py` — SQLite FTS5 keyword index over vault markdown (startup + watcher upsert)
+- `_fetch_skill_context()` — prepends GOALS/AGENTS + FTS hits before Qdrant RAG
+- `scripts/lint_skills.py` — CI gate: skill YAML name/graph/tools invariants
+- CI: skill lint + gitleaks secret scan added to `.github/workflows/ci.yml`
 
-### Do not repeat
-- Windows: use `Set-Content ... -Encoding utf8` not `echo > file`
-- Only one server: `blackbox start` — not parallel `uvicorn --reload`
+### New this session (uncommitted): docs driver + Document Summarizer
+- `apps/orchestrator/tools/docs_server.py` — read-only PDF/DOCX/TXT/MD extraction, jailed to vault, ships **enabled** (local, no network, like margin)
+- `vault/.system/skill-definitions/doc_summarize.yaml` — drop a PDF/DOCX in the vault, run `doc_summarize` with its vault-relative path as input → TL;DR / key points / action items archived
+- `apps/orchestrator/tests/test_docs_driver.py` — jail, extraction, truncation tests
+- **Before first use:** `cd apps\orchestrator && .venv\Scripts\pip install pypdf python-docx && pytest -q` then restart blackbox
 
----
+### Tomorrow — start here (15 min)
+1. `scripts\blackbox.bat start` → hard-refresh dashboard (`Ctrl+Shift+R`)
+2. Run **`customer_reply`** on Ioannis thread (or any thread id from brief queue)
+3. Approve in dashboard → check Gmail Drafts → send manually
+4. `blackbox stats --days 7`
 
-## Product thinking captured today
+### Dogfood gate (before new features)
+4 green weeks · 3+ skills/week · approvals resolved · zero orphans Monday.
+Until then: **no** Telegram, Stripe, CRM, dashboard redesign, send-after-approve.
 
-### Positioning (honest)
-- **Not:** generic agentic OS, ChatGPT replacement, enterprise platform
-- **Is:** governed local runtime for **document-heavy micro-business** — vault in, approve, archive out
-- **Kernel ~75%** of blueprint · **Product ~40%** of something strangers pay for
-- **Great at:** personal tool + niche SMB if one vertical ships (Gmail + plugin)
+### Kill / defer list
+- Telegram (built, disabled — ignore)
+- `vault/.system/drivers.json` gmail flip — never commit
+- Scratch prompts in `docs/*prompt*.md` — untracked, optional cleanup
 
-### vs ChatGPT
-- Chat = one-off; BLACKBOX = triggers + ledger + gate + repeat skills
-- Real agent tasks (search, send email, Woo) need **drivers** — not built yet
+### Key paths
+| What | Where |
+|------|--------|
+| Email spec | `docs/fable-5-email-autopilot.md` |
+| Gmail setup | `docs/gmail-driver.md` |
+| Email skills | `gmail_inbox_brief`, `customer_reply` |
+| Recovery | `blackbox recovery --resume <path>` |
+| Evidence export | `blackbox export --evidence --from … --to …` |
 
-### K-beauty e-shop (Greece → EU, Woo + Gmail)
-- **Tier S vertical #1** — supplier research, support replies, product copy
-- **Phase A now:** paste email → Inbox → triage/summarize
-- **Phase B:** gmail + woocommerce MCP + `customer_reply` / `supplier_outreach`
-- Vault layout in `future-concepts.md` §3.2
-
-### Other Tier S verticals (expansion)
-1. Professional services agencies — **works today**, best zero-driver pilot
-2. Solo consultants — Obsidian crowd, 9% admin time (EU)
-3. Import/wholesale (general)
-4. Grant/nonprofit EU
-5. Boutique recruiting
-
-Full ranking: `vertical-opportunities.md`
-
-### Future implementation backlog
-All deferred until **go/no-go** in `future-concepts.md` §7:
-- Obsidian plugin v0 (P0)
-- Crash recovery UX (P0)
-- Gmail, search, Woo drivers (P1)
-- Sandbox Tier 1 (P1)
-- Vertical skill packs
+### Resume prompt for Cursor
+> Continue BLACKBOX email autopilot dogfood. Gmail OAuth done, inbox brief ran once. Next: first `customer_reply` → approve → Gmail draft. Kernel done — no rewrites. See `docs/tomorrow-handoff.md` and `docs/fable-5-email-autopilot.md`.
 
 ---
 
-## Doc index (ideas preserved)
-
-| File | Contents |
-|------|----------|
-| [implementation-guide.md](./implementation-guide.md) | Personal/SMB rollout, folders, phases |
-| [smb-pain-research.md](./smb-pain-research.md) | 2026 survey pains × BLACKBOX fit |
-| [future-concepts.md](./future-concepts.md) | Drivers, skills, Woo/Gmail, K-beauty, go/no-go |
-| [vertical-opportunities.md](./vertical-opportunities.md) | Tier S/A verticals, geography, top 10 |
-| **this file** | Session state + tomorrow picks |
-
----
-
-## Suggested priorities for tomorrow
-
-Pick **one** engineering + **one** product track:
-
-### Engineering (if coding)
-1. Obsidian plugin v0 spec or spike
-2. OR `docs/honest-assessment.md` → save yesterday's review (optional)
-3. OR start Gmail driver scaffold (read-only first)
-4. Commit session changes if user asks (not committed today)
-
-### Product (if thinking / outreach)
-1. Pick pilot vertical: **agency** (easiest) vs **K-beauty contact** (highest upside)
-2. Draft 30-day pilot checklist for one shop
-3. Fable token-light prompt if Claude quota back — plugin or Gmail only, skip kernel
-
-### Quick verify (2 min)
-```powershell
-scripts\blackbox.bat status
-# Expect: ok, gemini-2.5-flash-lite, budget N/100000
-```
-
----
-
-## Open questions (no decision yet)
-- Open repo or stay private?
-- First paid pilot: agency vs K-beauty?
-- Save honest assessment as doc?
-- Wire logo into dashboard (user liked first cyan HUD logo — not done)
-
----
-
-## One-line north star (reuse in pitches)
-
-> **Reads your business notes and email, drafts the reply or outreach, never sends without your OK — filed in Obsidian.**
-
----
-
-*Session end: 2026-07-03 ~23:55 local. User: solo dev, Greece, Windows, paid Gemini.*
+*Prior sessions: [fable-session-notes.md](./fable-session-notes.md) · [phase4-5-lived-in-plan.md](./phase4-5-lived-in-plan.md)*

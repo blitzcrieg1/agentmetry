@@ -38,6 +38,7 @@ def test_shipped_skills_all_compile(registry: SkillRegistry):
         "margin_compare",
         "gmail_inbox_brief",
         "customer_reply",
+        "doc_summarize",
     } <= registered
 
 

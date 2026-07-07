@@ -9,8 +9,8 @@ alwaysApply: true
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **183 passed**, 1 skipped
-- **Skills:** 13 YAML/Python skills · K-beauty: `docs/kbeauty-sourcing-os.md` · Gmail flow: `customer_reply`, `gmail_inbox_brief` (`docs/phase4-5-lived-in-plan.md`)
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **206 passed**, 1 skipped
+- **Skills:** 15 YAML/Python skills · shared memory: `vault/.system/GOALS.md`, `AGENTS.md` · FTS index: `core/memory/fts_index.py`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
 
@@ -24,10 +24,13 @@ alwaysApply: true
 | Interrupts | `core/kernel/interrupts.py` |
 | LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
 | Vault I/O | `core/memory/obsidian_client.py` |
+| FTS keyword index | `core/memory/fts_index.py` · `data/vault_fts.db` |
+| Skill YAML lint | `apps/orchestrator/scripts/lint_skills.py` |
 | Skills YAML | `vault/.system/skill-definitions/` |
 | Plugin | `apps/obsidian-plugin/src/main.ts` |
 | Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · `docs/gmail-driver.md` · ships **disabled** |
 | Margin MCP (deterministic) | `apps/orchestrator/tools/margin_server.py` · ships **enabled** · `margin_compare` skill |
+| Docs MCP (PDF/DOCX read) | `apps/orchestrator/tools/docs_server.py` · ships **enabled** · `doc_summarize` skill · needs `pypdf` + `python-docx` |
 | K-beauty sourcing | `kbeauty_trend_research` (needs search) · templates in `vault/10-Products/` |
 | Telegram channel | `core/channels/telegram.py` + `router.py` · `docs/telegram-channel.md` · ships **disabled** · approvals get inline buttons |
 

@@ -116,6 +116,57 @@
   animation: pulse-glow 1.5s ease-in-out infinite;
 }
 
+/* 3D orbit ring for active loops in vault constellation */
+.orbit-scene {
+  perspective: 900px;
+  perspective-origin: 50% 50%;
+}
+
+.orbit-ring-3d {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  animation: orbit-ring-spin 32s linear infinite;
+  will-change: transform;
+}
+
+.orbit-card-3d {
+  position: absolute;
+  left: -44px;
+  top: -22px;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.orbit-more-badge {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  transform: translateX(-50%);
+  z-index: 200;
+  border-radius: 9999px;
+  border: 1px solid rgb(249 115 22 / 0.3);
+  background: rgb(67 20 7 / 0.6);
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 500;
+  color: rgb(254 215 170 / 0.9);
+  backdrop-filter: blur(4px);
+}
+
+@keyframes orbit-ring-spin {
+  from {
+    transform: rotateX(16deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(16deg) rotateY(360deg);
+  }
+}
+
 /* React Flow — Obsidian-graph feel */
 .react-flow__background pattern circle {
   fill: hsl(265 30% 25% / 0.35);
