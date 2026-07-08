@@ -9,7 +9,8 @@ alwaysApply: true
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **206 passed**, 1 skipped
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **~220 passed**
+- **Handoff:** `docs/tomorrow-handoff.md` — read first each session
 - **Skills:** 15 YAML/Python skills · shared memory: `vault/.system/GOALS.md`, `AGENTS.md` · FTS index: `core/memory/fts_index.py`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
@@ -34,12 +35,14 @@ alwaysApply: true
 | K-beauty sourcing | `kbeauty_trend_research` (needs search) · templates in `vault/10-Products/` |
 | Telegram channel | `core/channels/telegram.py` + `router.py` · `docs/telegram-channel.md` · ships **disabled** · approvals get inline buttons |
 
-## Next (not code — operator)
+## Next (operator — Week 1 dogfood)
 
-1. **Dogfood:** 3+ skills/week on real notes → `blackbox stats --days 7`
-2. **K-beauty:** run `margin_compare` on `10-Products/sample-snail-essence.md`; enable search for `kbeauty_trend_research` (`docs/search-driver-live.md`)
-3. **Gmail OAuth + enable:** `docs/gmail-driver.md` (draft-only; no send until Phase 4-E)
-4. **Telegram on:** BotFather token + chat id → `.env` → `docs/telegram-channel.md` (~10 min)
+1. **First `customer_reply`** on real Gmail thread → approve → Gmail Draft → manual send
+2. **08:00** `gmail_inbox_brief` (enable cron trigger locally if not already)
+3. **`blackbox stats --days 7`** every Monday → `vault/.system/run-log.md`
+4. **`blackbox doctor`** after clone/reboot; **`drivers.json` gmail flip never commit**
+
+Full state: `docs/tomorrow-handoff.md`
 
 ## Docs
 

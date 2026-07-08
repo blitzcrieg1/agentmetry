@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -15,8 +16,10 @@ import yaml
 _WRITE_ALLOWED_PREFIXES = (
     "20-Active-Loops/",
     "30-Archive/",
+    "10-SOPs/Learnings/",
     ".system/run-log.md",
     ".system/Approvals-Digest.md",
+    ".system/feedback/",
 )
 
 
@@ -59,6 +62,17 @@ class ObsidianClient:
             rel = f".system/{rel}"
         target = self.vault_path / rel
         return self._write_text(target, content)
+
+    def append_jsonl(self, relative_path: str, entry: dict[str, Any]) -> Path:
+        """Append one JSON object as a line to a vault-relative JSONL file."""
+        rel = relative_path.replace("\\", "/").lstrip("/")
+        target = self.vault_path / rel
+        self._assert_writable(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(entry, ensure_ascii=False) + "\n"
+        with target.open("a", encoding="utf-8") as f:
+            f.write(line)
+        return target
 
     def read_skill_config(self, skill_name: str) -> dict[str, Any] | None:
         """Read a YAML skill definition from .system/skill-definitions/."""
@@ -178,8 +192,9 @@ class ObsidianClient:
         context_sources: list[str] | None = None,
         key_decisions: list[str] | None = None,
         next_steps: list[str] | None = None,
+        archive_subdir: str | None = None,
     ) -> Path:
-        """Write a structured memory closeout note to 30-Archive/."""
+        """Write a structured memory closeout note to 30-Archive/ (optional subdir)."""
         timestamp = datetime.now(timezone.utc)
         suffix = f"-{thread_id[:8]}" if thread_id else ""
         filename = f"{timestamp.strftime('%Y-%m-%d-%H%M%S')}-{skill_name}{suffix}.md"
@@ -227,10 +242,68 @@ class ObsidianClient:
         content = f"---\n{yaml_block}---\n\n{body}"
 
         # The archive is append-only: never overwrite an existing closeout note.
-        target_file = self.archive_path / filename
+        archive_dir = self.archive_path
+        if archive_subdir:
+            rel = str(archive_subdir).strip("/\\")
+            if rel:
+                archive_dir = archive_dir / rel
+                archive_dir.mkdir(parents=True, exist_ok=True)
+        target_file = archive_dir / filename
         counter = 2
         while target_file.exists():
-            target_file = self.archive_path / f"{filename[:-3]}-{counter}.md"
+            target_file = archive_dir / f"{filename[:-3]}-{counter}.md"
+            counter += 1
+        return self._write_text(target_file, content)
+
+    def write_sop_learning_patch(
+        self,
+        result: str,
+        *,
+        skill_name: str = "sop_drift_review",
+        thread_id: str = "",
+        metadata: dict[str, Any] | None = None,
+        confidence_score: float = 0.0,
+        context_sources: list[str] | None = None,
+    ) -> Path:
+        """Write an approved SOP patch proposal to 10-SOPs/Learnings/ (never overwrites core SOPs)."""
+        timestamp = datetime.now(timezone.utc)
+        filename = f"SOP-Patch-{timestamp.strftime('%Y-%m-%d-%H%M%S')}.md"
+        learnings_dir = self.vault_path / "10-SOPs" / "Learnings"
+        learnings_dir.mkdir(parents=True, exist_ok=True)
+
+        frontmatter: dict[str, Any] = {
+            "type": "sop-learning-patch",
+            "skill": skill_name,
+            "status": "approved",
+            "confidence_score": confidence_score,
+            "created": timestamp.isoformat(),
+            **(metadata or {}),
+        }
+        if thread_id:
+            frontmatter["thread_id"] = thread_id
+
+        sources_section = ""
+        if context_sources:
+            sources_section = "# Context Sources\n" + "\n".join(
+                f"- [[{s}]]" for s in context_sources
+            )
+
+        body = f"""# Proposed SOP Update
+
+{result}
+
+{sources_section}
+
+> Merge manually into the target SOP under `10-SOPs/` when ready.
+"""
+
+        yaml_block = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+        content = f"---\n{yaml_block}---\n\n{body}"
+
+        target_file = learnings_dir / filename
+        counter = 2
+        while target_file.exists():
+            target_file = learnings_dir / f"SOP-Patch-{timestamp.strftime('%Y-%m-%d-%H%M%S')}-{counter}.md"
             counter += 1
         return self._write_text(target_file, content)
 

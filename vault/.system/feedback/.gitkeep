@@ -1,0 +1,3 @@
+# Operator corrections captured by the implicit diff flywheel.
+# Each line is JSON — see `core/learning/flywheel.py` for schema.
+# Future: sop_drift cron reads this file and writes learnings to `10-SOPs/Learnings/`.

@@ -47,6 +47,7 @@ interface AgentStore {
   memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
   runsRefreshKey: number;
+  devMode: boolean;
 
   setSkills: (skills: Skill[]) => void;
   setActiveSkill: (skill: string) => void;
@@ -63,6 +64,7 @@ interface AgentStore {
   incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
   bumpRunsRefresh: () => void;
+  setDevMode: (enabled: boolean) => void;
   reset: (nodes?: GraphNodeState[]) => void;
   clearPipelineView: () => void;
 }
@@ -87,6 +89,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   memoryHeatmap: {},
   wsConnected: false,
   runsRefreshKey: 0,
+  devMode: false,
 
   setSkills: (skills) => set({ skills }),
   setActiveSkill: (skill) => set({ activeSkill: skill }),
@@ -134,6 +137,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setWsConnected: (connected) => set({ wsConnected: connected }),
   bumpRunsRefresh: () =>
     set((state) => ({ runsRefreshKey: state.runsRefreshKey + 1 })),
+  setDevMode: (enabled) => set({ devMode: enabled }),
   reset: (nodes) =>
     set((state) => {
       const base = nodes ?? state.graphNodes;

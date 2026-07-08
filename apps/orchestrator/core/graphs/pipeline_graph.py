@@ -13,7 +13,9 @@ from core.drivers.host import get_mcp_host
 from core.graphs.node_events import emit_node
 from core.graphs.usage_helpers import graph_call_llm
 
-_RESERVED = frozenset({"critic", "human_approval", "finalize"})
+# "archive" is an alias for finalize — YAML skills can use either name.
+_ARCHIVE_NODES = frozenset({"finalize", "archive"})
+_RESERVED = frozenset({"critic", "human_approval", "finalize", "archive"})
 
 
 def _tool_result_text(result: Any) -> str:
@@ -300,7 +302,7 @@ def compile_pipeline_graph(skill_config: dict[str, Any]):
     llm_steps = [name for name in node_names if name not in _RESERVED]
     has_critic = "critic" in node_names
     has_approval = "human_approval" in node_names
-    has_finalize = "finalize" in node_names
+    has_finalize = any(name in _ARCHIVE_NODES for name in node_names)
 
     for step_id in llm_steps:
         graph.add_node(step_id, _make_step_node(step_id))
@@ -318,8 +320,9 @@ def compile_pipeline_graph(skill_config: dict[str, Any]):
                 ordered.append("critic")
             elif name == "human_approval" and has_approval:
                 ordered.append("human_approval")
-            elif name == "finalize" and has_finalize:
-                ordered.append("finalize")
+            elif name in _ARCHIVE_NODES and has_finalize:
+                if "finalize" not in ordered:
+                    ordered.append("finalize")
         else:
             ordered.append(name)
 

@@ -13,6 +13,7 @@ RUN_WAITING = "run/approval_required"
 RUN_COMPLETED = "run/completed"
 RUN_FAILED = "run/failed"
 RUN_TERMINATED = "run/terminated"
+FLYWHEEL_CAPTURE = "run/flywheel_capture"
 ALERT_COST = "run/cost_alert"
 ALERT_DRIFT = "run/drift_alert"
 

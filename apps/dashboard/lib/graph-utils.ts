@@ -27,6 +27,8 @@ const NODE_LABELS: Record<string, string> = {
   inbox_fetch: "Fetch Inbox",
   triage: "AI Triage",
   archive: "Archive",
+  research: "Research",
+  analyzer: "Analyzer",
   classify_thread: "Classify",
   load_client_sop: "Client SOP",
   load_generic_sop: "Reply SOP",
@@ -78,7 +80,8 @@ export function defaultInputForSkill(skill: { id?: string; name?: string; defaul
   if (id === "summarize_meeting") return "Summarize the latest meeting notes from the inbox and extract action items";
   if (id === "weekly_review") return "Review this week's vault activity and produce a prioritized plan for next week";
   if (id === "gmail_inbox_brief") return "morning inbox brief";
-  if (id === "customer_reply") return "PASTE_GMAIL_THREAD_ID_HERE";
+  if (id === "customer_reply") return "00-Inbox/sample-shipping-complaint.md";
+  if (id === "sop_drift_review") return "20";
   return "Describe what the agent should do...";
 }
 

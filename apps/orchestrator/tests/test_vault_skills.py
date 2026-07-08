@@ -39,6 +39,7 @@ def test_shipped_skills_all_compile(registry: SkillRegistry):
         "gmail_inbox_brief",
         "customer_reply",
         "doc_summarize",
+        "sop_drift_review",
     } <= registered
 
 

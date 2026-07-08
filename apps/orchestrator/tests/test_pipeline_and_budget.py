@@ -72,6 +72,24 @@ def test_compile_pipeline_graph_linear(monkeypatch: pytest.MonkeyPatch):
     assert graph is not None
 
 
+def test_compile_pipeline_graph_archive_alias(monkeypatch: pytest.MonkeyPatch):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    monkeypatch.setattr(
+        "core.graphs.checkpointer.get_checkpointer",
+        lambda: InMemorySaver(),
+    )
+    skill = {
+        "name": "demo",
+        "graph": "pipeline",
+        "nodes": ["research", "draft", "human_approval", "archive"],
+        "system_prompt": "test",
+        "approval_threshold": 1.1,
+    }
+    graph = compile_pipeline_graph(skill)
+    assert graph is not None
+
+
 def test_registry_supports_pipeline_graph_type():
     from core.graphs.registry import SkillRegistry
 

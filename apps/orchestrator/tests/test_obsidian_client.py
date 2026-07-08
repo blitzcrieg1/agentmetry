@@ -49,3 +49,12 @@ def test_closeout_result_written_once(vault: ObsidianClient):
     content = path.read_text(encoding="utf-8")
     assert content.count("UNIQUE_RESULT_TOKEN") == 1
     assert "thread_id: t1" in content
+
+
+def test_closeout_archive_subdir(vault: ObsidianClient):
+    path = vault.write_closeout_note(
+        "customer_reply", "draft body", thread_id="t2", archive_subdir="drafts"
+    )
+    assert path.parent.name == "drafts"
+    assert path.parent.parent.name == "30-Archive"
+    assert "draft body" in path.read_text(encoding="utf-8")

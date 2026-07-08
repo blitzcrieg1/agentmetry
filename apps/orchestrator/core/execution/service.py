@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -34,6 +35,7 @@ from core.execution.context import (
 from core.graphs.node_events import emit_node
 from core.kernel.interrupts import InterruptVector
 from core.kernel.scheduler import Priority, get_scheduler, run_priority
+from core.learning.flywheel import schedule_edit_capture
 from core.llm.budget import get_budget_ledger
 from core.llm.degraded import llm_degraded
 from core.llm.errors import CostBudgetExceeded
@@ -371,20 +373,33 @@ async def _finalize_execution(
 ) -> dict[str, Any]:
     result_content = _extract_result_content(final_state)
     llm_providers = list(final_state.get("llm_providers") or [])
-    archive_path = obsidian.write_closeout_note(
-        skill_name=skill_name,
-        result=result_content,
-        metadata={
-            "cost": final_state.get("cost", 0),
-            "llm_providers": llm_providers,
-        },
-        thread_id=thread_id,
-        status="mock-dry-run" if "mock" in llm_providers else "success",
-        confidence_score=final_state.get("confidence_score", 0.0),
-        context_sources=final_state.get("context_sources", []),
-        key_decisions=final_state.get("key_decisions", []),
-        next_steps=final_state.get("next_steps", []),
-    )
+    skill_config = final_state.get("skill_config") or {}
+    metadata = {
+        "cost": final_state.get("cost", 0),
+        "llm_providers": llm_providers,
+    }
+    if skill_config.get("learning_archive"):
+        archive_path = obsidian.write_sop_learning_patch(
+            result_content,
+            skill_name=skill_name,
+            thread_id=thread_id,
+            metadata=metadata,
+            confidence_score=final_state.get("confidence_score", 0.0),
+            context_sources=final_state.get("context_sources", []),
+        )
+    else:
+        archive_path = obsidian.write_closeout_note(
+            skill_name=skill_name,
+            result=result_content,
+            metadata=metadata,
+            thread_id=thread_id,
+            status="mock-dry-run" if "mock" in llm_providers else "success",
+            confidence_score=final_state.get("confidence_score", 0.0),
+            context_sources=final_state.get("context_sources", []),
+            key_decisions=final_state.get("key_decisions", []),
+            next_steps=final_state.get("next_steps", []),
+            archive_subdir=skill_config.get("archive_subdir"),
+        )
 
     obsidian.resolve_active_loop(
         active_loop_path,
@@ -491,6 +506,23 @@ async def resolve_approval(
     graph = skill_registry.get(pending["skill_name"])
     if not graph:
         raise ApprovalUnavailable("Graph no longer registered")
+
+    snapshot = await graph.aget_state(pending["config"])
+    state_values = dict(snapshot.values) if snapshot.values else {}
+    original_draft = str(state_values.get("draft") or "")
+    if not original_draft:
+        row = interrupt_table.get(thread_id)
+        original_draft = str(((row or {}).get("payload") or {}).get("draft") or "")
+
+    await schedule_edit_capture(
+        thread_id=thread_id,
+        skill_name=pending["skill_name"],
+        session_id=pending["session_id"],
+        original_draft=original_draft,
+        modified_input=modified_input,
+        client=obsidian,
+    )
+
     await graph.aupdate_state(
         pending["config"],
         {"approved": True, "modified_input": modified_input},

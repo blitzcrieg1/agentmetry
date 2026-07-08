@@ -142,6 +142,10 @@ export function useWebSocket() {
         case "drift_alert":
           appendTerminal(`⚠ Drift detected: ${data.message}`);
           break;
+
+        case "flywheel_capture":
+          appendTerminal(`✨ ${data.message ?? "Correction captured."}`);
+          break;
       }
     };
 

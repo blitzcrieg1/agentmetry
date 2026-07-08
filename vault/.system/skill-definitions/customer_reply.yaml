@@ -1,95 +1,121 @@
 name: customer_reply
 display_name: Customer Reply
-description: Read a Gmail thread, draft a reply from vault SOPs, file it as a Gmail draft after human approval (needs the gmail driver enabled)
-graph: email_reply
+description: Read a customer inquiry from the vault, draft a reply from SOPs, approve, archive to 30-Archive/drafts/ (vault-only — no Gmail)
+graph: pipeline
 tools:
-  - gmail.get_thread
-  - gmail.create_draft
   - vault_fs.read_note
-# Injected into system_context before FTS/RAG on every run (classify + draft).
+# Full SOP text injected into system_context before FTS/RAG on every run.
 sop_paths:
+  - 10-SOPs/customer-tone.md
+  - 10-SOPs/shipping-faq.md
+  - 10-SOPs/returns-policy.md
   - 10-SOPs/client-reply.md
-  - 10-Knowledge/SOPs/*.md
+archive_subdir: drafts
 nodes:
-  - fetch
+  - research
   - draft
   - critic
   - human_approval
-  - deliver
-  - finalize
+  - archive
 # Confidence is capped at 1.0, so a threshold above it forces EVERY run
-# through human approval — nothing reaches Gmail without an explicit yes.
+# through human approval — nothing is archived without an explicit yes.
 approval_threshold: 1.1
-max_replan_count: 1
-tool_only_nodes:
-  - fetch
-  - load_client_sop
-  - load_generic_sop
-  - deliver
-node_defaults:
-  load_generic_sop:
-    client_note: ""
 node_tools:
-  fetch:
-    - tool: gmail.get_thread
-      args:
-        thread_id: "{user_input}"
-      output: thread_text
-  load_client_sop:
+  research:
     - tool: vault_fs.read_note
       args:
-        path: "{client_note_path}"
-      output: client_note
+        path: "{user_input}"
+      output: inquiry_text
     - tool: vault_fs.read_note
       args:
-        path: "10-SOPs/client-reply.md"
-      output: sop_text
-  load_generic_sop:
+        path: 10-SOPs/customer-tone.md
+      output: tone_sop
     - tool: vault_fs.read_note
       args:
-        path: "10-SOPs/client-reply.md"
-      output: sop_text
-  deliver:
-    - tool: gmail.create_draft
+        path: 10-SOPs/shipping-faq.md
+      output: shipping_sop
+    - tool: vault_fs.read_note
       args:
-        thread_id: "{user_input}"
-        body: "{approved_draft}"
-      output: draft_receipt
+        path: 10-SOPs/returns-policy.md
+      output: returns_sop
 node_prompts:
-  classify_thread: |
-    Classify this Gmail thread for reply routing.
+  research: |
+    Summarize this customer inquiry and list which SOP facts apply.
 
-    Thread:
-    {thread_text}
+    Inquiry path: {user_input}
 
-    Vault context:
-    {system_context}
+    Customer message:
+    {inquiry_text}
 
-    Output exactly:
-    ROUTE: client_known | client_unknown | thread_stale | needs_escalation
-    CLIENT_NOTE: vault-relative path under 10-Knowledge/clients/ or none
-    REASON: one line
+    Tone policy:
+    {tone_sop}
+
+    Shipping policy:
+    {shipping_sop}
+
+    Returns policy:
+    {returns_sop}
+
+    Output markdown:
+    ## Inquiry summary
+    (2–3 sentences)
+
+    ## Applicable SOPs
+    (bullet list)
+
+    ## Facts we can cite in the reply
+    (only from inquiry + SOPs — never invent tracking or dates)
   draft: |
-    Write a reply to the latest message in this Gmail thread, following the
-    reply SOP below and any client-specific context. Under 150 words, one clear
-    next step, no signature block (the operator adds it). Reference only facts
-    present in the thread, client note, or SOP — never invent order numbers,
-    prices, or commitments.
+    Write a reply email body to this customer inquiry.
 
-    Output the email body only (no subject line, no commentary).
+    Rules:
+    - Under 150 words, one clear next step
+    - Follow tone SOP — professional, empathetic, no apology for carrier delays
+    - Reference only facts from the inquiry and SOPs below
+    - No subject line, no signature block
+    - If order status is unknown, say you will confirm dispatch/tracking internally
 
-    Reply SOP (mandatory):
-    {sop_text}
+    Tone:
+    {tone_sop}
 
-    Client-specific context (if any):
-    {client_note}
+    Shipping:
+    {shipping_sop}
 
-    Thread:
-    {thread_text}
+    Returns:
+    {returns_sop}
+
+    Research:
+    {research}
+
+    Original inquiry ({user_input}):
+    {inquiry_text}
+
+    Output the email body only.
+  critic: |
+    Review this customer reply draft against tone, shipping, and returns SOPs.
+
+    Draft:
+    {draft}
+
+    Tone:
+    {tone_sop}
+
+    Shipping:
+    {shipping_sop}
+
+    Returns:
+    {returns_sop}
+
+    Rate confidence 0.0-1.0. Flag invented order facts, wrong policy, or tone violations.
+
+    Format:
+    CONFIDENCE: <score>
+    ISSUES: <list or "none">
+    DECISIONS: <key decisions made>
 system_prompt: |
-  You draft brief, warm, professional replies for a small business owner.
-  One clear ask or answer per email. If the thread asks something you cannot
-  answer from the thread or vault context, say so in the draft and flag it
-  for the operator instead of guessing.
-max_cost_per_run: 0.15
-default_input: PASTE_GMAIL_THREAD_ID_HERE
+  You draft brief, empathetic, professional customer replies for a small
+  e-commerce business. Never invent order numbers, tracking codes, or delivery
+  dates not in the inquiry. If you cannot answer from context, say the team will
+  follow up with specifics.
+max_cost_per_run: 0.10
+default_input: 00-Inbox/sample-shipping-complaint.md
