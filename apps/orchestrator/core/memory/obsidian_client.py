@@ -17,6 +17,7 @@ _WRITE_ALLOWED_PREFIXES = (
     "20-Active-Loops/",
     "30-Archive/",
     "10-SOPs/Learnings/",
+    "00-Inbox/ingress-",
     ".system/run-log.md",
     ".system/Approvals-Digest.md",
     ".system/feedback/",
@@ -254,6 +255,19 @@ class ObsidianClient:
             target_file = archive_dir / f"{filename[:-3]}-{counter}.md"
             counter += 1
         return self._write_text(target_file, content)
+
+    def write_ingress_note(self, source: str, content: str) -> Path:
+        """Write a webhook ingress note to 00-Inbox/ingress-{source}-{timestamp}.md."""
+        from core.ingress.webhook import ingress_filename
+
+        rel = ingress_filename(source)
+        target = self.vault_path / rel
+        counter = 2
+        while target.exists():
+            stem = target.stem
+            target = target.parent / f"{stem}-{counter}.md"
+            counter += 1
+        return self._write_text(target, content)
 
     def write_sop_learning_patch(
         self,

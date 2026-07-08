@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.drivers import router as drivers_router
 from api.routes.events import router as events_router
+from api.routes.ingress import router as ingress_router
 from api.routes.runs import router as runs_router
 from api.routes.skills import router as skills_router
 from api.routes.vault import router as vault_router
@@ -139,6 +140,7 @@ app.add_middleware(
 )
 
 app.include_router(skills_router, prefix="/api/v1")
+app.include_router(ingress_router, prefix="/api/v1")
 app.include_router(vault_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
