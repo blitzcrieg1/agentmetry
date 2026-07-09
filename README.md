@@ -7,6 +7,7 @@
 A state machine execution environment where **durable state**, **agent workflows**, and **mission control** come together — Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
 
 **For personal or small-business rollout** (non-technical): see [docs/implementation-guide.md](docs/implementation-guide.md).  
+**Operator setup + Day 1:** [docs/blackbox-operator-guide.md](docs/blackbox-operator-guide.md).  
 **SMB pain points & product fit:** [docs/smb-pain-research.md](docs/smb-pain-research.md).  
 **Future concepts backlog** (Woo/Gmail, verticals, drivers): [docs/future-concepts.md](docs/future-concepts.md).  
 **Vertical success research:** [docs/vertical-opportunities.md](docs/vertical-opportunities.md).  

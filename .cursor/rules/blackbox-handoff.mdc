@@ -10,7 +10,7 @@ alwaysApply: true
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master` · **`2a4510d`**
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
 - **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q`
-- **Handoff:** `docs/tomorrow-handoff.md` · **Fable 7:** `docs/fable-7-progress-rating-2026-07-09.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
+- **Handoff:** `docs/tomorrow-handoff.md` · **Operator guide:** `docs/blackbox-operator-guide.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
 - **Skills:** 16+ YAML/Python skills · flywheel: `vault/.system/feedback/edit-log.jsonl`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
@@ -19,6 +19,7 @@ alwaysApply: true
 
 | Task | Path |
 |---|---|
+| **Day 1 onboarding** | `docs/blackbox-operator-guide.md` (§4 customer_reply) · K-beauty vertical: `docs/personal-step-by-step.md` |
 | Execute skill | `apps/orchestrator/core/execution/service.py` → `run_skill()` |
 | Flywheel capture | `core/learning/flywheel.py` → `edit-log.jsonl` on approve-with-edit |
 | Webhook ingress | `api/routes/ingress.py` · `core/ingress/webhook.py` · `POST /api/v1/ingress` |

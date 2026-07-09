@@ -1,6 +1,8 @@
-# BLACKBOX — personal step-by-step (what you can do today)
+# BLACKBOX — K-beauty vertical steps (what you can do today)
 
-**Repo:** `master` @ K-beauty v1 · **159 tests** · Obsidian vault = `vault/`
+> **General onboarding (install + Day 1 customer_reply):** see [blackbox-operator-guide.md](./blackbox-operator-guide.md). This file keeps K-beauty-specific workflows; test counts here may lag the main guide.
+
+**Repo:** `master` · Obsidian vault = `vault/`
 
 Use this as a checklist. Each section builds on the previous one.
 
@@ -12,7 +14,7 @@ Use this as a checklist. Each section builds on the previous one.
 
 ### Step 0.1 — API key (skip if you already have `apps/orchestrator/.env`)
 
-1. Copy `apps/orchestrator/.env.example` → `apps/orchestrator/.env` (if not done).
+1. Copy `apps/orchestrator/.env.example` → `apps/orchestrator/.env` (if not done). See [blackbox-operator-guide.md](./blackbox-operator-guide.md) §2.2.
 2. Set `GEMINI_API_KEY=...` (Google AI Studio) — **skip if your key is already there**.
 3. Optional: set `BLACKBOX_API_KEY` if you locked down the API.
 

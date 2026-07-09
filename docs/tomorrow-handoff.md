@@ -1,6 +1,8 @@
 # Tomorrow Handoff — 2026-07-09 session
 
-Read this first when continuing. **Fable 7 rating:** [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md). Dogfood ritual: [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md).
+**Setup + Day 1:** [blackbox-operator-guide.md](./blackbox-operator-guide.md) · **Rating:** [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md) · **Ritual:** [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md)
+
+**Strategy (Path B · Round 6 clear):** [profit research Parts A–S](./blackbox-agentic-os-profit-research-2026-07.md) · [Week 2 execution pack §6](./blackbox-path-b-execution-pack-2026-07.md) · debate closed until Week 4 signal tally or €500 MRR
 
 ---
 
