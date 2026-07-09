@@ -1,85 +1,81 @@
-# Tomorrow Handoff — 2026-07-09 session
+# Tomorrow Handoff — resume 2026-07-10
 
-**Setup + Day 1:** [blackbox-operator-guide.md](./blackbox-operator-guide.md) · **Rating:** [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md) · **Ritual:** [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md)
+**Read this first.** Last session: **2026-07-09 late** — strategy debate complete, Path B locked, execution pack Cursor-cleared, pushed **`d3fc4b5`**.
 
-**Strategy (Path B · Round 6 clear):** [profit research Parts A–S](./blackbox-agentic-os-profit-research-2026-07.md) · [Week 2 execution pack §6](./blackbox-path-b-execution-pack-2026-07.md) · debate closed until Week 4 signal tally or €500 MRR
+| Link | Purpose |
+|------|---------|
+| [operator guide §4](./blackbox-operator-guide.md) | Day 1 ritual (do first if not done) |
+| [execution pack §6](./blackbox-path-b-execution-pack-2026-07.md) | Week 2 Mon–Fri checklist |
+| [profit research Part Q + S](./blackbox-agentic-os-profit-research-2026-07.md) | Action card + Round 6 fixes |
+| [Week 2 Claude prompt](./fable-week2-operator-prompt.md) | Paste into Claude for kit/copy tasks |
+| [dogfood scorecard](./dogfood-scorecard-v1.md) | Green week criteria |
+
+**Strategy:** Path **B** — comms hero, doc tab 2, meeting Week 3 lane. **Debate closed** until Week 4 signal tally or €500 MRR.
 
 ---
 
-## Session snapshot (2026-07-09 evening)
+## What we finished tonight (2026-07-09)
 
-### Shipped & pushed
-
-| Commit | Contents |
-|--------|----------|
-| **`2a4510d`** | Fable 6 benchmark, dogfood scorecard, how-it-works HTML, test isolation fixes |
-| **`a156e2a`** | Webhook ingress |
-| **`1d1dede`** | Approval Inbox, flywheel, vault-only `customer_reply` |
-
-### Fable 7 verdict (2026-07-09 evening)
-
-- **Overall: 54/100 (D)** — habit weighted 30%; **habit 12/100 (F)** unchanged (1 edit-log row, no `os-log.md`, 0 ritual days).
-- **Tier 1.5** — visited daily-driver for one evening; doesn't live there yet.
-- **Go/no-go: 3.5/5** — unchanged; higher confidence (suite green modulo optional `python-docx`).
-- **Two green logged weeks → ~67 (C) with zero new code.**
-- **Moratorium:** no more Fable/assessment sessions until **Week 2 Friday** (next input = 14 `os-log.md` rows).
-
-### Master rating (Fable 7)
-
-| Dimension | Score | Grade |
-|-----------|-------|-------|
-| Kernel / runtime | 83 | B |
-| Product vision | 74 | B |
-| Habit / dogfood | 12 | F |
-| Flywheel loop | 55 | C |
-| Shippable product | 53 | D |
-| **Overall** | **54** | **D** |
-
-Full table: [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md)
-
-### Proven live
-
-| Item | Status |
+| Done | Detail |
 |------|--------|
-| Vault-only `customer_reply` → approve → archive | ✅ Live (Jul 8) |
-| Flywheel capture (edit on approve) | ✅ Live (1 row) |
-| Approval Inbox (operator mode default) | ✅ Live |
+| Agentic OS debate | Parts **A–S** in profit research doc — Tier 1 runtime, profit paths, five surfaces, 2028 scenarios, Path B chosen |
+| Execution pack | Loom script, landing copy, 3 starter kit outlines, signal log, EU one-pager, Week 2 calendar |
+| Round 6 review | Part S — fixed Loom paths, FAQ boundary, trades SOP gaps, doc_summarize honesty (no approval gate) |
+| Pushed | **`d3fc4b5`** — strategy + operator guide + execution pack + `.env.example` |
+| Claude prompt | [`fable-week2-operator-prompt.md`](./fable-week2-operator-prompt.md) — tasks A–G for Bucket A writing |
 
-### Built + tested — not operator-run
-
-| Item | Status |
-|------|--------|
-| `sop_drift_review` | pytest only |
-| Webhook ingress | pytest only |
-| Gmail `create_draft` on approve | ❌ Not wired |
+**Not committed (local only):** `drivers.json` (gmail on), `edit-log.jsonl`, inbox scratch notes, GLM/fable scratch prompts.
 
 ---
 
-## Top 3 operator actions (Fable 7 §6 — ritual only)
+## Tomorrow — start here (pick one track)
 
-1. **Tomorrow 08:00 — Day 1 ritual** from [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md). **Create `vault/10-SOPs/os-log.md`** with row 1 even if every metric is red — the file is the commitment device.
-2. **3 edit-log rows by Friday**, then first live **`sop_drift_review`** — approve or reject the patch. This week's only score-moving act.
-3. **One live ingress call** (PowerShell block below) — 5 minutes; stops integration row being theoretical.
+### Track 1 — Day 1 not done yet (priority)
 
-Also: `pip install python-docx` in orchestrator venv (optional dep; test now skips if missing).
+1. `scripts\blackbox.bat start` → http://127.0.0.1:8000 · confirm **Live** pill
+2. [operator guide §4](./blackbox-operator-guide.md): one real `customer_reply` → edit → approve
+3. Create `vault/10-SOPs/os-log.md` row 1
+4. **Plus:** one non-email skill (`summarize_meeting` or `doc_summarize`) on real work — Path B requirement
+5. Create `vault/10-SOPs/signal-log.md` from [execution pack §4](./blackbox-path-b-execution-pack-2026-07.md)
 
-**Do not:** run Fable/GLM assessment sessions until Week 2 Friday.
+### Track 2 — Day 1 already done → Week 2 Monday (execution pack §6)
+
+1. Paste [fable-week2-operator-prompt.md](./fable-week2-operator-prompt.md) into Claude → **Task A** (trades starter kit full markdown)
+2. Or write `vault-templates/trades/` yourself using pack §3.1
+3. **No Bucket B code** unless a paying pilot blocks on Gmail Drafts
 
 ---
 
-## Tomorrow morning — start here
+## Decisions locked (do not re-litigate)
 
-1. `scripts\blackbox.bat status` → http://127.0.0.1:8000
-2. Day 1 ritual + create `os-log.md`
-3. **No feature work** — build freeze until 4 green weeks
+| Decision | Value |
+|----------|--------|
+| Path | **B** — broadened horizontal |
+| Marketing hero | Comms (`customer_reply`) |
+| Demo tab 2 | Document intake (honest: auto-archive, no approval gate today) |
+| Bucket B #1 | Week 4 tally: ≥2/3 on one surface → swap; tie → Gmail Drafts; then Stripe, then wizard |
+| Compound bet | Vault + edit-log + HITL — never weaken for packaging |
+| Y1 realistic ARR | €25–40K Path B band (Cursor-adjusted) |
+| Success gate Month 6 | €500 MRR OR 3 paying pilots OR 2/3 screen-share wins across ≥2 surfaces |
 
-### Week 1 success metric
+---
 
-**≥5 drafts/week, ≥2 flywheel captures/week, ≥3 distinct skills.** Corrections captured matter more than drafts alone.
+## Repo truth reminders (from Part S)
 
-### Pre-authorized ops fix (red-week only)
+- Dashboard: **The Armory · Desk** → skill card → **Task input** → **Execute**
+- Edit-log: `vault/.system/feedback/edit-log.jsonl` (not vault root)
+- Archive drafts: `30-Archive/drafts/`
+- `customer_reply` hardcodes: `10-SOPs/customer-tone.md`, `shipping-faq.md`, `returns-policy.md`
+- Trades kit **must** include shipping-faq + returns-policy (even trades-appropriate stubs)
+- FAQ copy: vault local; task+SOP text → your LLM; Gmail API when Gmail skills used
 
-If vault-only forces re-typing into Gmail for 2 weeks → wire `customer_reply` → `gmail.create_draft` (draft-only).
+---
+
+## Fable 7 baseline (unchanged)
+
+- **54/100 (D)** · habit **12/100** · build freeze until 4 green weeks
+- **Moratorium:** no new Fable/strategy sessions until **Week 2 Friday** (14 os-log rows)
+- Tests: ~238 passed, 1 skipped @ `bf7b717`+
 
 ---
 
@@ -87,48 +83,30 @@ If vault-only forces re-typing into Gmail for 2 weeks → wire `customer_reply` 
 
 | Item | Location |
 |------|----------|
-| Secrets | `apps/orchestrator/.env` (+ `BLACKBOX_API_KEY` for ingress) |
-| Gmail enabled | `vault/.system/drivers.json` → `"gmail".enabled: true` |
-| Flywheel edit log | `vault/.system/feedback/edit-log.jsonl` |
-| Dogfood log (create Day 1) | `vault/10-SOPs/os-log.md` |
-| Customer SOPs | `vault/10-SOPs/customer-tone.md`, `shipping-faq.md`, `returns-policy.md` |
-
----
-
-## Key commands
-
-```powershell
-scripts\blackbox.bat start
-scripts\blackbox.bat status
-scripts\blackbox.bat stats --days 7
-
-# Optional: clear last suite failure
-pip install python-docx
-
-# Ingress test (after BLACKBOX_API_KEY set)
-$headers = @{
-  "X-API-Key"      = $env:BLACKBOX_API_KEY
-  "X-Target-Skill" = "customer_reply"
-  "X-Source-Name"  = "woocommerce"
-  "Content-Type"   = "application/json"
-}
-$body = '{"customer_email":"test@example.com","subject":"Where is my order?","body":"Order #1234 shipped 5 days ago, no tracking."}'
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/ingress" -Method POST -Headers $headers -Body $body
-```
-
----
-
-## Explicitly deferred (4 green weeks gate)
-
-- Send-after-approve · new channels · Woo/CRM drivers · dashboard polish · ingress hardening
-- **Assessment sessions** until Week 2 Friday
+| Secrets | `apps/orchestrator/.env` |
+| Gmail enabled | `vault/.system/drivers.json` |
+| Flywheel | `vault/.system/feedback/edit-log.jsonl` |
+| Dogfood log | `vault/10-SOPs/os-log.md` (create Day 1) |
+| Signal log | `vault/10-SOPs/signal-log.md` (create Week 2) |
 
 ---
 
 ## Resume prompt for Cursor
 
-> Continue BLACKBOX dogfood Week 1+. Master at `2a4510d`. Fable 7: overall 54/100 (D), habit 12/100, tier 1.5, go/no-go 3.5/5. Build freeze — ritual over code. Next: Day 1 ritual + create `os-log.md`, 3 edit-log rows by Friday → sop_drift_review, one ingress call. No more Fable until Week 2 Friday. Do not commit `.env`, gmail-enabled `drivers.json`, or `edit-log.jsonl`.
+```
+Continue BLACKBOX from docs/tomorrow-handoff.md. Master @ d3fc4b5.
+Path B locked; debate closed until Week 4 tally. Round 6 clear — Week 2 shipping.
+If Day 1 not done: operator guide §4 + os-log + one non-email skill first.
+If Day 1 done: help write vault-templates/trades/ (Task A) or follow execution pack §6.
+No Bucket B code unless paying pilot. Do not commit drivers.json, .env, edit-log.jsonl.
+```
 
 ---
 
-*Prior: Fable 7 rating · `2a4510d` Fable 6 sync · `a156e2a` ingress*
+## Resume prompt for Claude
+
+Paste [`fable-week2-operator-prompt.md`](./fable-week2-operator-prompt.md) — start with: *"Day 1 ritual done? Which task A–G first?"*
+
+---
+
+*Updated 2026-07-09 night · prior push `d3fc4b5` · next session: 2026-07-10*
