@@ -21,6 +21,7 @@ def vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_docx_text_and_tables_extracted(vault: Path):
+    pytest.importorskip("docx")
     from docx import Document
 
     doc = Document()

@@ -7,10 +7,10 @@ alwaysApply: true
 
 **Obsidian-Cortex Agentic OS** — governed local agent runtime. Vault in → skills → approve → archive.
 
-- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master` · **`a156e2a`**
+- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master` · **`2a4510d`**
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
 - **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q`
-- **Handoff:** `docs/tomorrow-handoff.md` · **Fable 6:** `docs/fable-6-benchmark-review-2026-07.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
+- **Handoff:** `docs/tomorrow-handoff.md` · **Fable 7:** `docs/fable-7-progress-rating-2026-07-09.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
 - **Skills:** 16+ YAML/Python skills · flywheel: `vault/.system/feedback/edit-log.jsonl`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
@@ -35,12 +35,12 @@ alwaysApply: true
 | Docs MCP | `apps/orchestrator/tools/docs_server.py` · `doc_summarize` skill |
 | Telegram channel | `core/channels/telegram.py` · ships **disabled** |
 
-## Next (operator — Week 1 dogfood — **build freeze**)
+## Next (operator — Week 1 dogfood — **build freeze** · **no Fable until Week 2 Fri**)
 
-1. **Daily:** real `customer_reply` → approve **with edit** → verify edit-log grows
-2. **Friday:** first live `sop_drift_review` → approve SOP patch
-3. **Once:** ingress smoke test (`BLACKBOX_API_KEY` + `POST /api/v1/ingress`)
-4. **`blackbox stats --days 7`** · go/no-go **3.5/5** · **`drivers.json` gmail flip never commit**
+1. **Day 1:** ritual + create `vault/10-SOPs/os-log.md`
+2. **By Friday:** 3 edit-log rows → live `sop_drift_review`
+3. **Once:** ingress smoke test
+4. **`blackbox stats --days 7`** · overall **54/100** · go/no-go **3.5/5**
 
 Full ritual: `docs/dogfood-scorecard-v1.md`
 

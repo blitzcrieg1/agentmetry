@@ -1,45 +1,45 @@
 # Tomorrow Handoff — 2026-07-09 session
 
-Read this first when continuing. Full benchmark: [fable-6-benchmark-review-2026-07.md](./fable-6-benchmark-review-2026-07.md). Dogfood ritual: [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md).
+Read this first when continuing. **Fable 7 rating:** [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md). Dogfood ritual: [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md).
 
 ---
 
-## Session snapshot (2026-07-09)
+## Session snapshot (2026-07-09 evening)
 
-### Shipped & pushed (prior session)
+### Shipped & pushed
 
 | Commit | Contents |
 |--------|----------|
-| **`1d1dede`** | Approval Inbox UI, vault-only `customer_reply`, flywheel capture, `sop_drift_review`, SOPs |
-| **`a156e2a`** | Universal webhook ingress (`POST /api/v1/ingress`) |
+| **`2a4510d`** | Fable 6 benchmark, dogfood scorecard, how-it-works HTML, test isolation fixes |
+| **`a156e2a`** | Webhook ingress |
+| **`1d1dede`** | Approval Inbox, flywheel, vault-only `customer_reply` |
 
-### Fable 6 verdict (2026-07-09)
+### Fable 7 verdict (2026-07-09 evening)
 
-- **Code velocity exceptional; habit velocity ~zero.** Only behavioral evidence: **1 row** in `edit-log.jsonl`.
-- **Flywheel 1/3 proven:** capture live; drift review + SOP patch never operator-run.
-- **Benchmark:** Closest to Dust.tt; differentiated on forced approval gate, user-owned ledger, edit→SOP loop.
-- **Real enemy:** Gemini-in-Gmail (convenience); win on ownership + compounding only.
-- **Gate drift:** Telegram + 3D orbit shipped during gate — freeze now.
-- **Build freeze** except test fixes (done locally, uncommitted).
+- **Overall: 54/100 (D)** — habit weighted 30%; **habit 12/100 (F)** unchanged (1 edit-log row, no `os-log.md`, 0 ritual days).
+- **Tier 1.5** — visited daily-driver for one evening; doesn't live there yet.
+- **Go/no-go: 3.5/5** — unchanged; higher confidence (suite green modulo optional `python-docx`).
+- **Two green logged weeks → ~67 (C) with zero new code.**
+- **Moratorium:** no more Fable/assessment sessions until **Week 2 Friday** (next input = 14 `os-log.md` rows).
 
-### Delta scorecard (July audit → today)
+### Master rating (Fable 7)
 
-| Layer | July | Today | Δ |
-|-------|------|-------|---|
-| A. AOS blueprint (kernel) | ~78 | **~82** | +4 |
-| B. Product vision | ~62 | **~74** | +12 |
-| C. Industry "agentic OS" | ~28 | **~34** | +6 |
-| D. Shippable product | ~45 | **~52** | +7 |
-| E. Go/no-go | 2.5/5 | **3.5/5** | +1 |
-| F. Compounding intelligence (flywheel) | — | **~55** | new |
-| G. SMB UX (Business Mode) | — | **~45** | new |
-| H. Integration (ingress vs drivers) | — | **~40** | new |
+| Dimension | Score | Grade |
+|-----------|-------|-------|
+| Kernel / runtime | 83 | B |
+| Product vision | 74 | B |
+| Habit / dogfood | 12 | F |
+| Flywheel loop | 55 | C |
+| Shippable product | 53 | D |
+| **Overall** | **54** | **D** |
+
+Full table: [fable-7-progress-rating-2026-07-09.md](./fable-7-progress-rating-2026-07-09.md)
 
 ### Proven live
 
 | Item | Status |
 |------|--------|
-| Vault-only `customer_reply` → approve → archive | ✅ Live |
+| Vault-only `customer_reply` → approve → archive | ✅ Live (Jul 8) |
 | Flywheel capture (edit on approve) | ✅ Live (1 row) |
 | Approval Inbox (operator mode default) | ✅ Live |
 
@@ -53,21 +53,23 @@ Read this first when continuing. Full benchmark: [fable-6-benchmark-review-2026-
 
 ---
 
-## Top 3 operator actions (this week — ritual over code)
+## Top 3 operator actions (Fable 7 §6 — ritual only)
 
-1. **Daily ritual starting tomorrow:** one real email through `customer_reply`, edit honestly, approve. See [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md).
-2. **Friday: first live `sop_drift_review`** — one edit-log row is enough; prove the approve-a-patch motion.
-3. **Fire one real ingress call** (PowerShell block below) so integration row stops being theoretical.
+1. **Tomorrow 08:00 — Day 1 ritual** from [dogfood-scorecard-v1.md](./dogfood-scorecard-v1.md). **Create `vault/10-SOPs/os-log.md`** with row 1 even if every metric is red — the file is the commitment device.
+2. **3 edit-log rows by Friday**, then first live **`sop_drift_review`** — approve or reject the patch. This week's only score-moving act.
+3. **One live ingress call** (PowerShell block below) — 5 minutes; stops integration row being theoretical.
 
-Also: log the week in `vault/10-SOPs/os-log.md` with the six scorecard metrics — even if every number is red.
+Also: `pip install python-docx` in orchestrator venv (optional dep; test now skips if missing).
+
+**Do not:** run Fable/GLM assessment sessions until Week 2 Friday.
 
 ---
 
 ## Tomorrow morning — start here
 
 1. `scripts\blackbox.bat status` → http://127.0.0.1:8000
-2. Daily ritual (above) — **no feature work** unless red-week trigger fires
-3. `scripts\blackbox.bat stats --days 7`
+2. Day 1 ritual + create `os-log.md`
+3. **No feature work** — build freeze until 4 green weeks
 
 ### Week 1 success metric
 
@@ -86,8 +88,8 @@ If vault-only forces re-typing into Gmail for 2 weeks → wire `customer_reply` 
 | Secrets | `apps/orchestrator/.env` (+ `BLACKBOX_API_KEY` for ingress) |
 | Gmail enabled | `vault/.system/drivers.json` → `"gmail".enabled: true` |
 | Flywheel edit log | `vault/.system/feedback/edit-log.jsonl` |
+| Dogfood log (create Day 1) | `vault/10-SOPs/os-log.md` |
 | Customer SOPs | `vault/10-SOPs/customer-tone.md`, `shipping-faq.md`, `returns-policy.md` |
-| Vault path | `.env` → `BLACKBOX_VAULT_PATH=C:/Users/spiro/Projects/agentic-os/vault` |
 
 ---
 
@@ -96,8 +98,10 @@ If vault-only forces re-typing into Gmail for 2 weeks → wire `customer_reply` 
 ```powershell
 scripts\blackbox.bat start
 scripts\blackbox.bat status
-scripts\blackbox.bat doctor
 scripts\blackbox.bat stats --days 7
+
+# Optional: clear last suite failure
+pip install python-docx
 
 # Ingress test (after BLACKBOX_API_KEY set)
 $headers = @{
@@ -114,18 +118,15 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/ingress" -Method POST -Head
 
 ## Explicitly deferred (4 green weeks gate)
 
-- Send-after-approve (`send_draft` live)
-- New channels (Telegram freeze — no WhatsApp/Slack)
-- Woo/CRM/calendar drivers
-- Dashboard/3D polish
-- Ingress idempotency (until real external source posts weekly)
+- Send-after-approve · new channels · Woo/CRM drivers · dashboard polish · ingress hardening
+- **Assessment sessions** until Week 2 Friday
 
 ---
 
 ## Resume prompt for Cursor
 
-> Continue BLACKBOX dogfood Week 1+. Master at `a156e2a`. Fable 6 benchmark in `docs/fable-6-benchmark-review-2026-07.md`. Build freeze — ritual over code. Next: daily customer_reply + edit, Friday sop_drift_review, one ingress call. Go/no-go 3.5/5. Do not commit `.env`, gmail-enabled `drivers.json`, or `edit-log.jsonl`.
+> Continue BLACKBOX dogfood Week 1+. Master at `2a4510d`. Fable 7: overall 54/100 (D), habit 12/100, tier 1.5, go/no-go 3.5/5. Build freeze — ritual over code. Next: Day 1 ritual + create `os-log.md`, 3 edit-log rows by Friday → sop_drift_review, one ingress call. No more Fable until Week 2 Friday. Do not commit `.env`, gmail-enabled `drivers.json`, or `edit-log.jsonl`.
 
 ---
 
-*Prior: Fable 6 benchmark · `a156e2a` ingress · `1d1dede` Approval Inbox + flywheel*
+*Prior: Fable 7 rating · `2a4510d` Fable 6 sync · `a156e2a` ingress*
