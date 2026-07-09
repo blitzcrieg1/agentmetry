@@ -224,11 +224,24 @@ def test_send_tool_shadow_exists_but_gated():
 # ------------------------------------------------------------ config & env
 
 
+def _committed_drivers_json() -> str:
+    """Shipped driver defaults — not the operator's local drivers.json flip."""
+    repo_root = Path(__file__).resolve().parents[3]
+    import subprocess
+
+    try:
+        return subprocess.check_output(
+            ["git", "show", "HEAD:vault/.system/drivers.json"],
+            cwd=repo_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return (repo_root / "vault" / ".system" / "drivers.json").read_text(encoding="utf-8")
+
+
 def test_gmail_driver_ships_disabled():
-    config = json.loads(
-        (Path(__file__).resolve().parents[3] / "vault" / ".system" / "drivers.json")
-        .read_text(encoding="utf-8")
-    )
+    config = json.loads(_committed_drivers_json())
     gmail = next(d for d in config["drivers"] if d["name"] == "gmail")
     assert gmail["enabled"] is False
     assert set(gmail["env_allow"]) == {

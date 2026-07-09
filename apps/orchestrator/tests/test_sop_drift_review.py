@@ -12,6 +12,7 @@ import api.routes.skills as skills_route
 import core.execution.service as service
 import core.graphs.checkpointer as checkpointer_module
 import core.graphs.node_events as node_events_module
+import core.graphs.pipeline_graph as pipeline_graph_module
 from core.drivers.host import MCPHost
 from core.drivers.spec import DriverSpec
 from api.routes.skills import ApprovalRequest, approve_skill
@@ -122,6 +123,10 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (vault / "10-SOPs" / name).write_text(body, encoding="utf-8")
     (vault / "10-SOPs" / "Learnings").mkdir(parents=True)
 
+    # Prior tests (e.g. test_registry) may leave a global checkpointer alive —
+    # init_checkpointer() no-ops when one exists, so tear down first.
+    await shutdown_checkpointer()
+
     host = MCPHost()
     vfs_script = _ORCH_ROOT / "tools" / "vault_fs_server.py"
     spec = DriverSpec(
@@ -134,6 +139,7 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     import core.drivers.host as driver_host
 
     monkeypatch.setattr(driver_host, "_host", host)
+    monkeypatch.setattr(pipeline_graph_module, "get_mcp_host", lambda: host)
 
     monkeypatch.setattr(settings, "vault_path", vault)
     monkeypatch.setattr(settings, "llm_provider", "mock")

@@ -7,42 +7,42 @@ alwaysApply: true
 
 **Obsidian-Cortex Agentic OS** — governed local agent runtime. Vault in → skills → approve → archive.
 
-- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
+- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master` · **`a156e2a`**
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **~220 passed**
-- **Handoff:** `docs/tomorrow-handoff.md` — read first each session
-- **Skills:** 15 YAML/Python skills · shared memory: `vault/.system/GOALS.md`, `AGENTS.md` · FTS index: `core/memory/fts_index.py`
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q`
+- **Handoff:** `docs/tomorrow-handoff.md` · **Fable 6:** `docs/fable-6-benchmark-review-2026-07.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
+- **Skills:** 16+ YAML/Python skills · flywheel: `vault/.system/feedback/edit-log.jsonl`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
 
 ## File map (start here — do not re-explore)
 
 | Task | Path |
-|------|------|
+|---|---|
 | Execute skill | `apps/orchestrator/core/execution/service.py` → `run_skill()` |
+| Flywheel capture | `core/learning/flywheel.py` → `edit-log.jsonl` on approve-with-edit |
+| Webhook ingress | `api/routes/ingress.py` · `core/ingress/webhook.py` · `POST /api/v1/ingress` |
 | Triggers | `core/scheduler/triggers.py` |
 | Graphs | `core/graphs/registry.py` |
 | Interrupts | `core/kernel/interrupts.py` |
 | LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
 | Vault I/O | `core/memory/obsidian_client.py` |
-| FTS keyword index | `core/memory/fts_index.py` · `data/vault_fts.db` |
-| Skill YAML lint | `apps/orchestrator/scripts/lint_skills.py` |
 | Skills YAML | `vault/.system/skill-definitions/` |
+| Approval Inbox UI | `apps/dashboard/components/mission-control.tsx`, `approval-inbox-card.tsx` |
 | Plugin | `apps/obsidian-plugin/src/main.ts` |
-| Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · `docs/gmail-driver.md` · ships **disabled** |
-| Margin MCP (deterministic) | `apps/orchestrator/tools/margin_server.py` · ships **enabled** · `margin_compare` skill |
-| Docs MCP (PDF/DOCX read) | `apps/orchestrator/tools/docs_server.py` · ships **enabled** · `doc_summarize` skill · needs `pypdf` + `python-docx` |
-| K-beauty sourcing | `kbeauty_trend_research` (needs search) · templates in `vault/10-Products/` |
-| Telegram channel | `core/channels/telegram.py` + `router.py` · `docs/telegram-channel.md` · ships **disabled** · approvals get inline buttons |
+| Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · ships **disabled** · local enable in `drivers.json` |
+| Margin MCP | `apps/orchestrator/tools/margin_server.py` · `margin_compare` skill |
+| Docs MCP | `apps/orchestrator/tools/docs_server.py` · `doc_summarize` skill |
+| Telegram channel | `core/channels/telegram.py` · ships **disabled** |
 
-## Next (operator — Week 1 dogfood)
+## Next (operator — Week 1 dogfood — **build freeze**)
 
-1. **First `customer_reply`** on real Gmail thread → approve → Gmail Draft → manual send
-2. **08:00** `gmail_inbox_brief` (enable cron trigger locally if not already)
-3. **`blackbox stats --days 7`** every Monday → `vault/.system/run-log.md`
-4. **`blackbox doctor`** after clone/reboot; **`drivers.json` gmail flip never commit**
+1. **Daily:** real `customer_reply` → approve **with edit** → verify edit-log grows
+2. **Friday:** first live `sop_drift_review` → approve SOP patch
+3. **Once:** ingress smoke test (`BLACKBOX_API_KEY` + `POST /api/v1/ingress`)
+4. **`blackbox stats --days 7`** · go/no-go **3.5/5** · **`drivers.json` gmail flip never commit**
 
-Full state: `docs/tomorrow-handoff.md`
+Full ritual: `docs/dogfood-scorecard-v1.md`
 
 ## Docs
 
