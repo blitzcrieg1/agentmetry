@@ -173,4 +173,22 @@ Append one block per dogfood session. This is the record that says "the schema t
 
 ---
 
+### Dogfood run — 2026-07-12 (GREEN)
+
+- Operator id: `home-lab`
+- Profile: `.env.agentaudit-demo` (mock, zero cloud)
+- Skills run: `audit_demo` (approve), `audit_demo` (reject)
+- thread_ids: `e4808307-ce42-4c7d-a36d-53481cafcbb9` (approve), `a0822c37-24f8-406f-8519-4578c75417f8` (reject)
+- JSONL: 89 → 103 lines, 0 invalid
+- approval_response success/denied: Y / Y
+- tool_called present + input_hash 64-hex: Y
+- actor.id correct on all events: Y
+- replay readable + correlation_id matches: Y (use `$env:PYTHONIOENCODING='utf-8'` on Windows for box-drawing chars)
+- Approval modal body: empty draft — **functional, ship as-is** (Case 1)
+- Loki demoed: N (cut Beat 4 for Loom)
+- Result: **GREEN**
+- Notes: Loom skill = `audit_demo`. Archive path on approve: `30-Archive/audit-demo/2026-07-12-094400-audit_demo-e4808307.md`
+
+---
+
 *Companion to the AgentAudit launch sequence: README (#1) → this checklist (#2) → Loom (#3) → LinkedIn (#4) → Sigma pack (#5) → hash-chain spec (#6). Detection field names in #5 must match what this checklist observed live.*

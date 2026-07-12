@@ -12,12 +12,29 @@
 
 ## Setup (open these, in this order, before you hit record)
 
-1. **Terminal** — orchestrator already running (`scripts\blackbox.bat start`), venv active so `blackbox` works.
-2. **Browser tab 1** — dashboard `http://127.0.0.1:8000`, on **The Armory · Desk**, a `customer_reply` run sitting at the approval interrupt (so the approve/reject click is instant on camera).
-3. **Editor** — `apps\orchestrator\data\audit-forward.jsonl` open, scrolled to the bottom.
-4. *(Optional)* **Browser tab 2** — Grafana Explore `http://localhost:3001`, query `{job="agent-audit"} | json` already typed. Only if Loki came up clean in dogfood.
+```powershell
+copy apps\orchestrator\.env.agentaudit-demo apps\orchestrator\.env
+# BLACKBOX_OPERATOR_ID=home-lab (or your handle)
+scripts\blackbox.bat start
+$env:PYTHONIOENCODING = 'utf-8'   # Windows replay timeline chars
+```
 
-Redact on screen: nothing here shows customer PII — `customer_reply` on a sample note is fine. If your input note has real content, swap it for a sample first.
+1. **Terminal** — venv active so `blackbox` works; replay command ready (see thread id below).
+2. **Browser tab 1** — dashboard `http://127.0.0.1:8000` → **The Armory · Desk** → run **`AgentAudit Demo`** (`audit_demo`). Leave one run paused at approval, or stage approve + reject live on camera.
+3. **Editor** — `apps\orchestrator\data\audit-forward.jsonl` open, scrolled to the bottom (lines for `audit_demo` / `vault_fs.read_note`).
+4. *(Optional)* **Browser tab 2** — Grafana Explore `http://localhost:3001`, query `{job="agent-audit"} | json`. Only if Loki came up clean in dogfood.
+
+**Verified dogfood thread ids (2026-07-12, mock profile):**
+- Approve run (use for replay): `e4808307-ce42-4c7d-a36d-53481cafcbb9`
+- Reject run: `a0822c37-24f8-406f-8519-4578c75417f8`
+
+```powershell
+blackbox replay e4808307-ce42-4c7d-a36d-53481cafcbb9
+```
+
+**On screen:** no PII — input is `00-Inbox/audit-demo-note.md`. Approval modal may show an **empty body** (tool-only skill); narrate the governed vault read, not a draft.
+
+**Ollama variant:** swap to `.env.agentaudit-ollama` + `ollama pull llama3.2` if you want Beat 2 to say "local model" literally; mock is fine if you say "audit trail is real, inference is on-box mock."
 
 ---
 
@@ -44,7 +61,7 @@ Redact on screen: nothing here shows customer PII — `customer_reply` on a samp
 **Say:**
 > "Every decision is an event. I reject this one — that's a denial, on the record. I approve the next — that's logged too, with who and when."
 
-**Screen action 2 (0:24–0:36):** Switch to the terminal. Run `blackbox replay <thread_id>` for the approved run. Let the ASCII timeline print.
+**Screen action 2 (0:24–0:36):** Switch to the terminal. Run `blackbox replay e4808307-ce42-4c7d-a36d-53481cafcbb9` (or your approved run's thread id). Let the ASCII timeline print.
 
 **Say:**
 > "Here's the whole run replayed from the local outbox — the tool it called, the approval, in order. No vendor cloud in that path."
