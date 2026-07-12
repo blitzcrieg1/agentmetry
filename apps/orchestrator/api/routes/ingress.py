@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from core.auth import require_api_key
 from core.execution.context import obsidian, skill_registry
 from core.execution.service import run_skill
-from core.ingress.webhook import ingress_filename, payload_to_markdown
+from core.ingress.webhook import payload_to_markdown
 
 logger = logging.getLogger(__name__)
 

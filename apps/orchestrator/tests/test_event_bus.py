@@ -63,7 +63,6 @@ def test_outbox_roundtrip(tmp_path: Path):
 
 
 async def test_audit_exporter_writes_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from core.bus.audit_exporter import audit_exporter
     from core.config import settings
 
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")

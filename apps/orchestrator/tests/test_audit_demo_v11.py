@@ -34,7 +34,6 @@ from core.telemetry.pending_store import PendingThreadStore
 
 _ORCH_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ORCH_ROOT / "tools"))
-import vault_fs_server as vfs  # noqa: E402
 
 
 class FakeRAG:

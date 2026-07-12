@@ -12,7 +12,6 @@ from core.config import settings
 from core.diagnostics.driver_paths import (
     default_python,
     entry_has_absolute_paths,
-    expand_placeholders,
     normalize_drivers_file,
     orchestrator_root,
     resolve_driver_entry,
