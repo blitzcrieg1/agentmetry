@@ -1,0 +1,11 @@
+{
+  "source_app": "claude",
+  "adapter": "claude_hook",
+  "event_type": "tool_called",
+  "correlation_id": "claude-example-session",
+  "tool": {
+    "qualified": "Bash",
+    "server": "claude",
+    "arguments": {"command": "echo hello"}
+  }
+}

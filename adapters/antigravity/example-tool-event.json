@@ -1,0 +1,11 @@
+{
+  "source_app": "antigravity",
+  "adapter": "antigravity_hook",
+  "event_type": "tool_called",
+  "correlation_id": "antigravity-example-session",
+  "tool": {
+    "qualified": "workspace.read_file",
+    "server": "antigravity",
+    "arguments": {"path": "src/main.ts"}
+  }
+}

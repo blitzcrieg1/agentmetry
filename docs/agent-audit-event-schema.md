@@ -135,4 +135,17 @@ blackbox export --evidence ...  # Batch compliance pack (separate format)
 
 ## Limitations (Tier C)
 
-AgentAudit records agents running **through this host**. It does not see unmanaged ChatGPT, Cursor auto-approve, or browser copilots without CASB/gateway policy.
+AgentAudit records:
+
+- **Tier A** — agents running through the BLACKBOX governed host
+- **Tier B** — external agents you wire in via [`docs/external-agent-audit.md`](./external-agent-audit.md) (Cursor hooks, MCP proxy, ingest API)
+
+It does **not** see unmanaged ChatGPT, Cursor with hooks disabled, or browser copilots without CASB/gateway policy.
+
+### Tier B `source` block (v1.1+)
+
+```json
+"source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"}
+```
+
+BLACKBOX-native events use `agent.name: "blackbox"` and omit `source` (implicit Tier A).

@@ -1,0 +1,42 @@
+{
+  "agentaudit": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/agentaudit_ingest.py antigravity hook PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/agentaudit_ingest.py antigravity hook PostToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py antigravity hook PreInvocation",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py antigravity hook Stop",
+        "timeout": 10
+      }
+    ]
+  }
+}
