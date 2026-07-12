@@ -256,9 +256,7 @@ BLACKBOX ships example skills that exercise the governed host — they are **dem
 - **Governed email drafting** — read a thread, draft a reply, human approves before anything is written back; nothing auto-sends (`customer_reply`, draft-only, Gmail driver ships disabled)
 - **Obsidian vault** as the local knowledge/store surface, with a companion plugin
 
-These live under the skill definitions in `vault/.system/skill-definitions/` and the docs below. If you're here for the flight recorder, you can ignore all of them — they just give you traffic to audit.
-
-Older product framing (SMB/inbox positioning) is retained for reference in [`docs/`](docs/) but is **not** the current direction.
+These live under the skill definitions in `vault/.system/skill-definitions/`. If you're here for the flight recorder, you can ignore all of them — they just give you traffic to audit.
 
 ---
 
@@ -320,7 +318,7 @@ See `.env.example` for all options. Key variables:
 | `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget |
 | `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` after dogfood gate |
 
-Further docs: [operator guide](docs/blackbox-operator-guide.md) · [Obsidian plugin](apps/obsidian-plugin/README.md) · [compliance Trust-Kit](docs/compliance/README.md) · [session handoff](docs/tomorrow-handoff.md)
+Further docs: [validation checklist](docs/agentaudit-dogfood-checklist.md) · [Tier B hooks](docs/external-agent-audit.md) · [Obsidian plugin](apps/obsidian-plugin/README.md) · [compliance Trust-Kit](docs/compliance/README.md) · [session handoff](docs/tomorrow-handoff.md)
 
 **Audit-only / zero-cloud dogfood:** copy [`apps/orchestrator/.env.agentaudit-demo`](apps/orchestrator/.env.agentaudit-demo) → `.env` — mock LLM, no Gemini. Details: [dependency audit](docs/agentaudit-dependency-audit.md).
 

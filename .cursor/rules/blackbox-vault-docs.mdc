@@ -34,6 +34,6 @@ Use `Set-Content -Encoding utf8` on Windows — not `echo >` (UTF-16 breaks RAG)
 
 ## Strategy docs
 
-- `docs/future-concepts.md` — go/no-go §7 gates Gmail/Woo
-- `docs/product-audit-2026-07.md` — finish line
-- `docs/vertical-opportunities.md` · `docs/smb-pain-research.md`
+- `docs/agentaudit-dogfood-checklist.md` — pre-Loom validation
+- `docs/external-agent-audit.md` — Tier B IDE hooks
+- `docs/agent-audit-event-schema.md` — canonical JSON v1.1

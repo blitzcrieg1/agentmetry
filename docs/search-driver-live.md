@@ -2,8 +2,7 @@
 
 The `search` MCP driver and the `supplier_research` skill ship **disabled** and
 have only mocked test coverage. This is the one-time procedure to prove real
-bytes move — the go/no-go "search driver proven live" criterion
-(`docs/future-concepts.md` §7).
+bytes move — useful before enabling `supplier_research` or `kbeauty_trend_research` example skills.
 
 ## 1. Get a key
 

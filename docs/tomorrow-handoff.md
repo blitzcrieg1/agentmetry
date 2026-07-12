@@ -39,7 +39,7 @@
 ## Not now
 
 - Inbox / Gmail / customer_reply hero path (skills remain as **examples** only)
-- `dogfood-scorecard-v1` (removed — was Path B inbox ritual)
+- Path B inbox scorecard / SMB playbook docs (removed)
 - Schema v1.2, Tier C / CASB claims, new drivers
 
 ---

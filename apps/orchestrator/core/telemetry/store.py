@@ -133,8 +133,8 @@ class TelemetryStore:
     def get_skill_stats(self, window_days: int = 7) -> dict[str, Any]:
         """Per-skill run counts within a trailing window, plus the go/no-go answer.
 
-        Answers "have I used >=3 skills this week?" — the dogfooding criterion
-        in docs/future-concepts.md that was previously unmeasurable.
+        Answers "have I used >=3 skills this week?" — legacy dogfooding metric
+        (Path B inbox ritual removed; endpoint kept for optional stats).
         """
         cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=window_days)
         per_skill: dict[str, dict[str, int]] = {}

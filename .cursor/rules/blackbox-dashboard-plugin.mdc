@@ -10,7 +10,7 @@ alwaysApply: false
 
 Next.js 14 · React Flow · Zustand · WebSocket · served with orchestrator in single-process mode.
 
-Panels: telemetry, dogfooding tile (`/api/v1/runs/stats`), pending approvals (batch checkboxes), recovery.
+Panels: flight recorder, telemetry, pending approvals (batch checkboxes), recovery.
 
 ## Obsidian plugin v0.2
 
