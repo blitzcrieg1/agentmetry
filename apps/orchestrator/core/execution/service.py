@@ -15,6 +15,8 @@ from core.bus.events import (
     ALERT_DRIFT,
     INTERRUPT_RAISED,
     INTERRUPT_RESOLVED,
+    RUN_APPROVAL_DENIED,
+    RUN_APPROVAL_GRANTED,
     RUN_COMPLETED,
     RUN_FAILED,
     RUN_STARTED,
@@ -496,6 +498,11 @@ async def resolve_approval(
         )
         pending_threads.pop(thread_id, None)
         pending_store.delete(thread_id)
+        bus.publish(RUN_APPROVAL_DENIED, {
+            "type": "approval_denied",
+            "thread_id": thread_id,
+            "skill": pending["skill_name"],
+        }, session_id=pending["session_id"], thread_id=thread_id)
         bus.publish(RUN_TERMINATED, {
             "type": "execution_terminated",
             "thread_id": thread_id,
@@ -514,6 +521,7 @@ async def resolve_approval(
         row = interrupt_table.get(thread_id)
         original_draft = str(((row or {}).get("payload") or {}).get("draft") or "")
 
+    edited = bool(modified_input and modified_input.strip() != original_draft.strip())
     await schedule_edit_capture(
         thread_id=thread_id,
         skill_name=pending["skill_name"],
@@ -522,6 +530,13 @@ async def resolve_approval(
         modified_input=modified_input,
         client=obsidian,
     )
+
+    bus.publish(RUN_APPROVAL_GRANTED, {
+        "type": "approval_granted",
+        "thread_id": thread_id,
+        "skill": pending["skill_name"],
+        "edited": edited,
+    }, session_id=pending["session_id"], thread_id=thread_id)
 
     await graph.aupdate_state(
         pending["config"],

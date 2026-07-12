@@ -502,6 +502,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(_ORCH_ROOT))
+    from core.audit.replay import format_timeline
+    from core.bus.outbox import get_outbox
+
+    thread_id = args.thread_id.strip()
+    if not thread_id:
+        print("thread_id is required")
+        return 1
+    rows = get_outbox().read_by_thread_id(thread_id)
+    print(format_timeline(rows, thread_id=thread_id))
+    return 0 if rows else 1
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Preflight: vault, python, portable drivers.json."""
     sys.path.insert(0, str(_ORCH_ROOT))
@@ -561,6 +575,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rewrite drivers.json to portable {PYTHON}/{VAULT_PATH} tokens",
     )
+    replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
+    replay.add_argument("thread_id", help="LangGraph thread_id / correlation_id")
 
     args = parser.parse_args(argv)
     handlers = {
@@ -577,5 +593,6 @@ def main(argv: list[str] | None = None) -> int:
         "export": cmd_export,
         "verify": cmd_verify,
         "doctor": cmd_doctor,
+        "replay": cmd_replay,
     }
     return handlers[args.command](args)

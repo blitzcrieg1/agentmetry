@@ -1,0 +1,45 @@
+# AgentAudit Sigma rule — High-risk (shell/exec) tool success
+# Ported from detections-loki.md R2.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+---
+title: AgentAudit - High-Risk Tool Executed
+id: c3e8f925-4d67-4b01-8e32-9a1f5c2d7e03
+status: experimental
+description: >
+  A governed agent successfully executed a shell/exec-family tool that passed
+  the host allowlist. Not inherently malicious — but every success here should
+  map to an operator-approved run. Verify intent.
+references:
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agent-audit-event-schema.md
+author: AgentAudit
+date: 2026-07-12
+logsource:
+  product: agentaudit
+  service: governed-host
+detection:
+  selection:
+    action.type: tool_called          # [verify against live JSONL] Loki label: action_type
+    action.outcome: success           # [verify against live JSONL] Loki label: action_outcome
+  # tool.qualified matches shell-family names. Mirrors LogQL regex
+  # ".*shell.*|.*powershell.*|.*exec.*". [verify against live JSONL] — confirm
+  # your actual tool naming (e.g. shell.run, fs.exec) in audit-forward.jsonl.
+  tool_shell:
+    tool.qualified|contains:
+      - 'shell'
+      - 'powershell'
+      - 'exec'
+  condition: selection and tool_shell
+fields:
+  - correlation_id
+  - tool.qualified
+  - tool.server
+  - actor.id
+falsepositives:
+  - Operator-approved maintenance skill that legitimately runs a shell tool
+  - A skill whose name coincidentally contains "exec" (tighten the match if so)
+level: high
+tags:
+  - attack.execution
+  - attack.t1059
+  - attack.t1059.001

@@ -8,13 +8,12 @@ entered and exited by the same task, so contexts never cross task boundaries.
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.audit.canonical import normalize_arguments_for_audit
 from core.bus.bus import bus
 from core.bus.events import DRIVER_FAILED, DRIVER_MOUNTED, TOOL_CALLED, TOOL_DENIED
 from core.config import settings
@@ -226,6 +225,7 @@ class MCPHost:
                 "tool": qualified,
                 "skill": skill_name,
                 "reason": "tool_exec_approval",
+                "arguments_sha256": normalize_arguments_for_audit(arguments),
             }, session_id=session_id, thread_id=thread_id)
             raise
         except Exception:
@@ -234,6 +234,7 @@ class MCPHost:
                 "tool": qualified,
                 "skill": skill_name,
                 "reason": "not_allowed",
+                "arguments_sha256": normalize_arguments_for_audit(arguments),
             }, session_id=session_id, thread_id=thread_id)
             raise
 
@@ -246,10 +247,9 @@ class MCPHost:
             "type": "tool_called",
             "tool": qualified,
             "skill": skill_name,
+            "arguments_sha256": normalize_arguments_for_audit(arguments),
         }
         if qualified == "gmail.send_draft":
-            canonical = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
-            payload["arguments_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             payload["draft_id"] = arguments.get("draft_id")
         bus.publish(TOOL_CALLED, payload, session_id=session_id, thread_id=thread_id)
         return result

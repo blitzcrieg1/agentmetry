@@ -18,6 +18,7 @@ from api.routes.vault import router as vault_router
 from api.websocket import ws_manager
 from api.ws_bridge import ws_event_bridge
 from core.auth import require_api_key, verify_ws_token
+from core.bus.audit_exporter import audit_exporter
 from core.bus.bridges import outbox_persister, trigger_bridge
 from core.bus.bus import bus
 from core.bus.outbox import get_outbox
@@ -75,6 +76,7 @@ async def lifespan(app: FastAPI):
     bridge_tasks = [
         asyncio.create_task(ws_event_bridge(), name="ws-bridge"),
         asyncio.create_task(outbox_persister(), name="outbox-persister"),
+        asyncio.create_task(audit_exporter(), name="audit-exporter"),
         asyncio.create_task(trigger_bridge(), name="trigger-bridge"),
     ]
     await init_checkpointer()

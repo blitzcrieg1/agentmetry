@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from core.bus.events import (
+    RUN_APPROVAL_DENIED,
+    RUN_APPROVAL_GRANTED,
     RUN_COMPLETED,
     RUN_FAILED,
     RUN_STARTED,
@@ -174,6 +176,16 @@ def _extract_approvals(
                 "confidence": payload.get("confidence"),
                 "session_id": ev.get("session_id"),
             })
+        elif ev["topic"] == RUN_APPROVAL_GRANTED:
+            if tid in gates:
+                gates[tid]["decision"] = "approved"
+                gates[tid]["decided_at"] = ev["ts"]
+                if payload.get("edited"):
+                    gates[tid]["edited"] = True
+        elif ev["topic"] == RUN_APPROVAL_DENIED:
+            if tid in gates:
+                gates[tid]["decision"] = "terminated"
+                gates[tid]["decided_at"] = ev["ts"]
         elif ev["topic"] == RUN_COMPLETED and payload.get("type") == "execution_completed":
             if tid in gates:
                 gates[tid]["decision"] = "approved"

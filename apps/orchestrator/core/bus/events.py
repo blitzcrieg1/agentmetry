@@ -10,6 +10,8 @@ from typing import Any
 RUN_STARTED = "run/started"
 RUN_NODE = "run/node"
 RUN_WAITING = "run/approval_required"
+RUN_APPROVAL_GRANTED = "run/approval_granted"
+RUN_APPROVAL_DENIED = "run/approval_denied"
 RUN_COMPLETED = "run/completed"
 RUN_FAILED = "run/failed"
 RUN_TERMINATED = "run/terminated"

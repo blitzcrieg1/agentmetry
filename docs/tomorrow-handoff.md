@@ -1,48 +1,126 @@
-# Tomorrow Handoff — resume 2026-07-10
+# Tomorrow Handoff — AgentAudit OSS (resume 2026-07-12)
 
-**Read this first.** Last session: **2026-07-09 late** — strategy debate complete, Path B locked, execution pack Cursor-cleared, pushed **`d3fc4b5`**.
+**Read this first.** Product identity pivoted from Path B / consumer SaaS to **AgentAudit** — solo-first governed agent flight recorder with SIEM-agnostic forwarders. Implementation **Weeks 1–4 done in repo (uncommitted unless operator asked).**
 
 | Link | Purpose |
 |------|---------|
-| [operator guide §4](./blackbox-operator-guide.md) | Day 1 ritual (do first if not done) |
-| [execution pack §6](./blackbox-path-b-execution-pack-2026-07.md) | Week 2 Mon–Fri checklist |
-| [profit research Part Q + S](./blackbox-agentic-os-profit-research-2026-07.md) | Action card + Round 6 fixes |
-| [Week 2 Claude prompt](./fable-week2-operator-prompt.md) | Paste into Claude for kit/copy tasks |
-| [dogfood scorecard](./dogfood-scorecard-v1.md) | Green week criteria |
+| [agent-audit-event-schema.md](./agent-audit-event-schema.md) | Canonical JSON, env vars, topic mapping |
+| [integrations/loki-homelab.md](./integrations/loki-homelab.md) | Free homelab SIEM (Docker) |
+| [integrations/elastic-ecs.md](./integrations/elastic-ecs.md) | Enterprise Elastic adapter |
+| [integrations/splunk-hec.md](./integrations/splunk-hec.md) | Splunk HEC adapter |
+| [glm-52-agentaudit-siem-research-prompt.md](./glm-52-agentaudit-siem-research-prompt.md) | GLM research prompt (already run) |
+| [claude-agentaudit-launch-sequence-prompt.md](./claude-agentaudit-launch-sequence-prompt.md) | **Launch drafting** — README → dogfood → Loom → LinkedIn → Sigma (sequenced) |
+| [claude-agentaudit-continuation-prompt.md](./claude-agentaudit-continuation-prompt.md) | Broader pivot context + Week 5 tasks |
 
-**Strategy:** Path **B** — comms hero, doc tab 2, meeting Week 3 lane. **Debate closed** until Week 4 signal tally or €500 MRR.
-
----
-
-## What we finished tonight (2026-07-09)
-
-| Done | Detail |
-|------|--------|
-| Agentic OS debate | Parts **A–S** in profit research doc — Tier 1 runtime, profit paths, five surfaces, 2028 scenarios, Path B chosen |
-| Execution pack | Loom script, landing copy, 3 starter kit outlines, signal log, EU one-pager, Week 2 calendar |
-| Round 6 review | Part S — fixed Loom paths, FAQ boundary, trades SOP gaps, doc_summarize honesty (no approval gate) |
-| Pushed | **`d3fc4b5`** — strategy + operator guide + execution pack + `.env.example` |
-| Claude prompt | [`fable-week2-operator-prompt.md`](./fable-week2-operator-prompt.md) — tasks A–G for Bucket A writing |
-
-**Not committed (local only):** `drivers.json` (gmail on), `edit-log.jsonl`, inbox scratch notes, GLM/fable scratch prompts.
+**Strategy:** **OSS + LinkedIn + IRT credibility** — not Stripe, not buyer Phase 0. Lead with **local flight recorder**; SIEM export optional. **Tier C honesty:** no visibility into unmanaged Cursor/ChatGPT without CASB.
 
 ---
 
-## Tomorrow — start here (pick one track)
+## What we built (2026-07-11 sessions — Weeks 1–4)
 
-### Track 1 — Day 1 not done yet (priority)
+### Week 1–2 — Core
+| Shipped | Path / detail |
+|---------|----------------|
+| Approval events | `run/approval_granted`, `run/approval_denied` in `service.py` |
+| Tool arg hashing | `arguments_sha256` on **all** tool calls + denials (`host.py`) |
+| Canonical normalizer | `core/audit/canonical.py` → schema v1.0.0 |
+| JSONL forwarder | `core/bus/audit_exporter.py` bus subscriber |
+| Replay CLI | `blackbox replay <thread_id>` |
+| Config | `BLACKBOX_OPERATOR_ID`, `BLACKBOX_AUDIT_*` in `config.py` |
+| Schema doc | `docs/agent-audit-event-schema.md` |
 
-1. `scripts\blackbox.bat start` → http://127.0.0.1:8000 · confirm **Live** pill
-2. [operator guide §4](./blackbox-operator-guide.md): one real `customer_reply` → edit → approve
-3. Create `vault/10-SOPs/os-log.md` row 1
-4. **Plus:** one non-email skill (`summarize_meeting` or `doc_summarize`) on real work — Path B requirement
-5. Create `vault/10-SOPs/signal-log.md` from [execution pack §4](./blackbox-path-b-execution-pack-2026-07.md)
+### Week 3 — Homelab + webhook
+| Shipped | Path / detail |
+|---------|----------------|
+| Pluggable sinks | `core/audit/sinks.py` — file, webhook, multi |
+| Loki stack | `docker-compose.loki.yml` + `infra/loki/alloy.config` |
+| Homelab doc | `docs/integrations/loki-homelab.md` |
+| LogQL detections | `docs/integrations/detections-loki.md` (3 rules) |
 
-### Track 2 — Day 1 already done → Week 2 Monday (execution pack §6)
+### Week 4 — Enterprise adapters
+| Shipped | Path / detail |
+|---------|----------------|
+| Elastic ECS | `core/audit/adapters/ecs.py` + `ElasticEcsSink` |
+| Splunk HEC | `core/audit/adapters/splunk.py` + `SplunkHecSink` |
+| Multi-sink modes | `BLACKBOX_AUDIT_SINK=file,elastic,splunk` or `all` |
+| Docs | `elastic-ecs.md`, `splunk-hec.md`, `detections-elastic.md`, `detections-splunk.md` |
 
-1. Paste [fable-week2-operator-prompt.md](./fable-week2-operator-prompt.md) into Claude → **Task A** (trades starter kit full markdown)
-2. Or write `vault-templates/trades/` yourself using pack §3.1
-3. **No Bucket B code** unless a paying pilot blocks on Gmail Drafts
+### Tests
+**257 passed, 2 skipped** (orchestrator) — includes `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`.
+
+---
+
+## Architecture (one line)
+
+```
+Skills/MCP → EventBus → outbox (SQLite, never drop)
+                      → audit_exporter → file | webhook | Elastic | Splunk
+```
+
+- **SoR:** `apps/orchestrator/data/events.db`
+- **Forward file:** `apps/orchestrator/data/audit-forward.jsonl`
+- **Wire:** `api/main.py` starts `audit_exporter` alongside `outbox_persister`
+
+---
+
+## Env cheat sheet (`apps/orchestrator/.env`)
+
+```text
+BLACKBOX_OPERATOR_ID=home-lab
+BLACKBOX_AUDIT_EXPORT_ENABLED=1
+BLACKBOX_AUDIT_SINK=file                    # file | webhook | both | elastic | splunk | all | comma-separated
+
+# Optional webhook
+BLACKBOX_AUDIT_WEBHOOK_URL=http://127.0.0.1:8080/ingest
+
+# Optional Elastic
+BLACKBOX_AUDIT_ELASTIC_URL=https://elastic.example:9200
+BLACKBOX_AUDIT_ELASTIC_INDEX=logs-agentaudit
+BLACKBOX_ELASTIC_API_KEY=id:secret
+
+# Optional Splunk HEC
+BLACKBOX_AUDIT_SPLUNK_HEC_URL=https://splunk.example:8088
+BLACKBOX_SPLUNK_HEC_TOKEN=...
+```
+
+---
+
+## Tomorrow — start here (pick one)
+
+### Track A — Dogfood + demo (recommended)
+
+1. `scripts\blackbox.bat start` → run any skill with tool use
+2. `Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5`
+3. `blackbox replay <thread_id>` from dashboard/logs
+4. Optional homelab: `docker compose -f docker-compose.loki.yml up -d` → Grafana http://localhost:3001 (admin / `agentaudit`)
+
+### Track B — Week 5 code (next build slice)
+
+1. **AAT hash-chain export** — optional SHA-256 chain on `blackbox export --audit` (v1.1)
+2. **HTML timeline export** — IR narrative from replay module
+3. **Sigma detection pack** — `docs/integrations/sigma/` or separate repo stub
+4. **README reposition** — AgentAudit hero; Obsidian/email → `examples/`
+
+### Track C — LinkedIn / OSS launch prep
+
+1. 60s Loom: deny → approve → JSONL line → Loki Explore
+2. README limitations paragraph (Tier C) — copy in GLM Part K
+3. License decision: **Apache-2.0** (GLM recommendation)
+4. Do **not** overclaim CASB coverage
+
+---
+
+## Not built yet (defer)
+
+| Item | Notes |
+|------|-------|
+| Per-event hash chain in outbox | Pack-level SHA-256 only today |
+| OTel logs exporter | v2 |
+| GCP Logging → Chronicle adapter | v1.1 docs-only OK first |
+| MCP schema pinning + SIEM alert | v1.1 |
+| `blackbox export --audit` CLI flag | Week 5 |
+| Passive Cursor/Copilot monitoring | Rejected scope |
+| Stripe / consumer SaaS | Rejected for v1 |
 
 ---
 
@@ -50,32 +128,29 @@
 
 | Decision | Value |
 |----------|--------|
-| Path | **B** — broadened horizontal |
-| Marketing hero | Comms (`customer_reply`) |
-| Demo tab 2 | Document intake (honest: auto-archive, no approval gate today) |
-| Bucket B #1 | Week 4 tally: ≥2/3 on one surface → swap; tie → Gmail Drafts; then Stripe, then wizard |
-| Compound bet | Vault + edit-log + HITL — never weaken for packaging |
-| Y1 realistic ARR | €25–40K Path B band (Cursor-adjusted) |
-| Success gate Month 6 | €500 MRR OR 3 paying pilots OR 2/3 screen-share wins across ≥2 surfaces |
+| Product identity | **AgentAudit** — flight recorder + SIEM-ready, not Langfuse clone |
+| Launch order | Solo replay/JSONL first → Loki homelab → enterprise adapters |
+| SIEM scope | **Vendor-neutral** — Elastic, Splunk, Loki, webhook; Google = one adapter row |
+| Tier C | README must say unmanaged copilots need CASB/gateway |
+| Compound bet | Outbox never drops; forwarders best-effort |
+| License (pending commit) | Apache-2.0 recommended |
+| Email/inbox hero | **Deprioritized** — skills remain as examples |
+| Commit policy | **Only when operator asks** |
 
 ---
 
-## Repo truth reminders (from Part S)
+## Key file map
 
-- Dashboard: **The Armory · Desk** → skill card → **Task input** → **Execute**
-- Edit-log: `vault/.system/feedback/edit-log.jsonl` (not vault root)
-- Archive drafts: `30-Archive/drafts/`
-- `customer_reply` hardcodes: `10-SOPs/customer-tone.md`, `shipping-faq.md`, `returns-policy.md`
-- Trades kit **must** include shipping-faq + returns-policy (even trades-appropriate stubs)
-- FAQ copy: vault local; task+SOP text → your LLM; Gmail API when Gmail skills used
-
----
-
-## Fable 7 baseline (unchanged)
-
-- **54/100 (D)** · habit **12/100** · build freeze until 4 green weeks
-- **Moratorium:** no new Fable/strategy sessions until **Week 2 Friday** (14 os-log rows)
-- Tests: ~238 passed, 1 skipped @ `bf7b717`+
+| Task | Path |
+|------|------|
+| Canonical schema | `core/audit/canonical.py` |
+| Sinks | `core/audit/sinks.py` |
+| Elastic / Splunk map | `core/audit/adapters/ecs.py`, `splunk.py` |
+| Bus forwarder | `core/bus/audit_exporter.py` |
+| Replay | `core/audit/replay.py`, CLI `blackbox replay` |
+| Tool audit | `core/drivers/host.py` |
+| Approvals | `core/execution/service.py` → `resolve_approval()` |
+| Loki compose | `docker-compose.loki.yml`, `infra/loki/alloy.config` |
 
 ---
 
@@ -85,28 +160,33 @@
 |------|----------|
 | Secrets | `apps/orchestrator/.env` |
 | Gmail enabled | `vault/.system/drivers.json` |
-| Flywheel | `vault/.system/feedback/edit-log.jsonl` |
-| Dogfood log | `vault/10-SOPs/os-log.md` (create Day 1) |
-| Signal log | `vault/10-SOPs/signal-log.md` (create Week 2) |
+| Audit JSONL | `apps/orchestrator/data/audit-forward.jsonl` |
+| Outbox | `apps/orchestrator/data/events.db` |
 
 ---
 
 ## Resume prompt for Cursor
 
 ```
-Continue BLACKBOX from docs/tomorrow-handoff.md. Master @ d3fc4b5.
-Path B locked; debate closed until Week 4 tally. Round 6 clear — Week 2 shipping.
-If Day 1 not done: operator guide §4 + os-log + one non-email skill first.
-If Day 1 done: help write vault-templates/trades/ (Task A) or follow execution pack §6.
-No Bucket B code unless paying pilot. Do not commit drivers.json, .env, edit-log.jsonl.
+Continue AgentAudit from docs/tomorrow-handoff.md.
+Weeks 1–4 implemented: canonical schema, replay CLI, JSONL/webhook/Elastic/Splunk sinks, Loki homelab compose + docs. 257 tests pass.
+Next: Week 5 (AAT hash-chain export, HTML timeline, Sigma pack, README reposition) OR dogfood Loki stack + LinkedIn demo.
+Do not commit unless I ask. Tier C honesty in any public README.
 ```
 
 ---
 
 ## Resume prompt for Claude
 
-Paste [`fable-week2-operator-prompt.md`](./fable-week2-operator-prompt.md) — start with: *"Day 1 ritual done? Which task A–G first?"*
+**Launch assets (recommended):** Paste [`claude-agentaudit-launch-sequence-prompt.md`](./claude-agentaudit-launch-sequence-prompt.md) — start with **#1 README reposition** unless dogfood done and you want Loom/Sigma.
+
+**Broader context:** [`claude-agentaudit-continuation-prompt.md`](./claude-agentaudit-continuation-prompt.md) + attach `tomorrow-handoff.md`.
+
+- **GLM verdict:** Go — solo-first flight recorder + reference IR data model; not full governance platform
+- **Default homelab SIEM:** Grafana Loki + Alloy
+- **Enterprise default adapters:** Elastic ECS, Splunk HEC (now shipped)
+- **Devil's advocate conceded:** SQLite OK if JSONL + hash export is the IR artifact
 
 ---
 
-*Updated 2026-07-09 night · prior push `d3fc4b5` · next session: 2026-07-10*
+*Updated 2026-07-11 night · AgentAudit Weeks 1–4 complete in working tree · uncommitted*

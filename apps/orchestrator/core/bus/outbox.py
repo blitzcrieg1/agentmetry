@@ -83,6 +83,16 @@ class EventOutbox:
             ).fetchall()
         return self._rows_to_dicts(rows)
 
+    def read_by_thread_id(self, thread_id: str, *, limit: int = 10_000) -> list[dict[str, Any]]:
+        """Return events for one LangGraph thread / correlation id, ordered by seq."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT seq, ts, topic, session_id, thread_id, payload FROM events "
+                "WHERE thread_id = ? ORDER BY seq LIMIT ?",
+                (thread_id, limit),
+            ).fetchall()
+        return self._rows_to_dicts(rows)
+
     @staticmethod
     def _rows_to_dicts(rows) -> list[dict[str, Any]]:
         out = []

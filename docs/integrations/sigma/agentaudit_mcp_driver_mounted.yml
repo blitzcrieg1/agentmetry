@@ -1,0 +1,38 @@
+# AgentAudit Sigma rule — MCP driver mounted (supply chain)
+# Ported from detections-loki.md R3.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+---
+title: AgentAudit - MCP Driver Mounted
+id: d4f9a036-5e78-4c12-9043-0b2a6d3e8f04
+status: experimental
+description: >
+  A new or re-mounted MCP server joined the governed host. Legitimate on a
+  configured remount, but an unexpected mount — especially a remote HTTP/SSE
+  source — can indicate config drift or a shadow driver (OWASP MCP supply-chain).
+  Compare against the pinned vault/.system/drivers.json.
+references:
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agent-audit-event-schema.md
+author: AgentAudit
+date: 2026-07-12
+logsource:
+  product: agentaudit
+  service: governed-host
+detection:
+  selection:
+    action.type: config_change        # [verify against live JSONL] Loki label: action_type
+    action.outcome: success           # [verify against live JSONL] Loki label: action_outcome
+    source_topic: 'driver/mounted'    # [verify against live JSONL] confirm this field is forwarded, not dropped
+  condition: selection
+fields:
+  - mcp.server_id                     # [verify against live JSONL] confirm mcp.* is present on config_change events
+  - mcp.tools
+  - actor.id
+  - host_id
+falsepositives:
+  - Expected driver remount after `blackbox doctor --fix` or an intentional drivers.json edit
+  - Normal boot-time mount of drivers already pinned in drivers.json
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1554

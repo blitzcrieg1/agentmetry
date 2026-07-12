@@ -67,4 +67,15 @@ async def test_send_draft_tool_call_includes_hash(monkeypatch: pytest.MonkeyPatc
     assert payload["arguments_sha256"] == expected
     assert payload["draft_id"] == "draft-abc"
 
+    captured.clear()
+    await host.call_tool(
+        "fake.echo",
+        {"message": "hi"},
+        skill_config={"name": "customer_reply", "tools": ["fake.*"]},
+        session_id="s2",
+        thread_id="t2",
+    )
+    echo_payload = [p for topic, p, _, _ in captured if topic == TOOL_CALLED][0]
+    assert "arguments_sha256" in echo_payload
+
     await host.unmount_all()

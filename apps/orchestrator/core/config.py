@@ -64,6 +64,37 @@ class Settings(BaseSettings):
     active_loop_archive_days: int = 7
     active_loop_auto_archive: bool = True
     gmail_send_enabled: bool = False  # Phase 4-E — requires explicit unlock
+    # AgentAudit — operator identity + SIEM-ready JSONL forwarder
+    operator_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPERATOR_ID", "BLACKBOX_OPERATOR_ID"),
+    )
+    audit_export_enabled: bool = True
+    audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
+    audit_sink: str = "file"  # file | webhook | both | elastic | splunk | all | comma-separated
+    audit_webhook_url: str = ""
+    audit_webhook_timeout_seconds: float = 5.0
+    audit_elastic_url: str = ""
+    audit_elastic_index: str = "logs-agentaudit"
+    audit_elastic_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ELASTIC_API_KEY",
+            "BLACKBOX_ELASTIC_API_KEY",
+        ),
+    )
+    audit_elastic_verify_tls: bool = True
+    audit_splunk_hec_url: str = ""
+    audit_splunk_hec_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPLUNK_HEC_TOKEN",
+            "BLACKBOX_SPLUNK_HEC_TOKEN",
+        ),
+    )
+    audit_splunk_index: str = "main"
+    audit_splunk_sourcetype: str = "agentaudit:json"
+    audit_splunk_verify_tls: bool = True
 
 
 settings = Settings()

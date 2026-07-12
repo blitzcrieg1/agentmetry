@@ -1,97 +1,221 @@
-<p align="center">
-  <img src="docs/assets/blackbox-hero.png" alt="BLACKBOX Agentic OS — state machine execution environment with durable state, agent workflows, and mission control" width="720" />
-</p>
+# AgentAudit
 
-# BLACKBOX — Obsidian-Cortex Agentic OS
+**A local, governed flight recorder for AI agents.** Every tool call, every denial, every human approval — recorded to a durable log you own, replayable on demand, and forwardable to the SIEM you already run (or a free Loki homelab).
 
-A state machine execution environment where **durable state**, **agent workflows**, and **mission control** come together — Obsidian is the non-volatile state ledger, LangGraph orchestrates agent workflows, and the dashboard is mission control.
+> Built on **BLACKBOX** (`agentic-os`) — a local agent runtime with an MCP driver host, a forced human-in-the-loop approval gate, and a durable event bus. AgentAudit is the audit layer on top: it turns "the agent did something at 02:00" into a line you can grep, replay, and detect on.
 
-**For personal or small-business rollout** (non-technical): see [docs/implementation-guide.md](docs/implementation-guide.md).  
-**Operator setup + Day 1:** [docs/blackbox-operator-guide.md](docs/blackbox-operator-guide.md).  
-**SMB pain points & product fit:** [docs/smb-pain-research.md](docs/smb-pain-research.md).  
-**Future concepts backlog** (Woo/Gmail, verticals, drivers): [docs/future-concepts.md](docs/future-concepts.md).  
-**Vertical success research:** [docs/vertical-opportunities.md](docs/vertical-opportunities.md).  
-**Tomorrow handoff (session state):** [docs/tomorrow-handoff.md](docs/tomorrow-handoff.md).  
-**Fable build prompt (plugin / recovery / sandbox):** [docs/fable-continuation-prompt.md](docs/fable-continuation-prompt.md).  
-**Fable session output (2026-07-04):** [docs/fable-session-notes.md](docs/fable-session-notes.md).  
-**Product audit (2026-07):** [docs/product-audit-2026-07.md](docs/product-audit-2026-07.md).  
-**Compliance Trust-Kit:** [docs/compliance/README.md](docs/compliance/README.md).  
-**Gmail driver (draft-only):** [docs/gmail-driver.md](docs/gmail-driver.md).  
-**Obsidian plugin:** [apps/obsidian-plugin/README.md](apps/obsidian-plugin/README.md).
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for the homelab SIEM · **257 tests passing, 2 skipped**
 
-## Quick Start (Local — Gemini, no Docker)
+---
 
-Recommended setup. Uses Google Gemini for LLM + embeddings and in-memory semantic RAG.
+## Why this exists
+
+When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. AgentAudit records the run as it happens:
+
+- **What tool** ran, on **which MCP server**, with a **SHA-256 of the arguments** (arguments themselves are redacted by default)
+- **Every denial** — a tool the agent tried to call but the allowlist blocked
+- **Every approval** — what a human granted or rejected, and when
+- A **`correlation_id`** (the LangGraph thread) tying the whole run together
+
+The record is a plain JSONL line and a durable SQLite outbox. No vendor cloud in the path. If you want it in Loki, Elastic, or Splunk, it forwards there too — but the audit trail exists whether or not you ever stand up a SIEM.
+
+---
+
+## What it captures (canonical schema v1.0.0)
+
+Every governed run emits typed events. The wire format is documented in [`docs/agent-audit-event-schema.md`](docs/agent-audit-event-schema.md).
+
+| Bus topic | `action.type` | Default `action.outcome` |
+|-----------|---------------|--------------------------|
+| `run/started` | `session_start` | `success` |
+| `run/completed` | `session_end` | `success` |
+| `run/failed` | `session_end` | `error` |
+| `run/terminated` | `session_end` | `denied` |
+| `run/approval_required` | `approval_request` | `pending` |
+| `run/approval_granted` | `approval_response` | `success` |
+| `run/approval_denied` | `approval_response` | `denied` |
+| `run/tool_called` | `tool_called` | `success` |
+| `run/tool_denied` | `tool_called` | `denied` |
+| `driver/mounted` | `config_change` | `success` |
+| `driver/failed` | `config_change` | `error` |
+
+One `run/tool_called` line looks like:
+
+```json
+{
+  "schema_version": "1.0.0",
+  "correlation_id": "thread-8892",
+  "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
+  "actor": {"type": "user", "id": "dev_01", "role": "operator"},
+  "action": {"type": "tool_called", "outcome": "success"},
+  "agent": {"name": "blackbox", "skill_id": "customer_reply"},
+  "tool": {"qualified": "vault_fs.read_file", "server": "vault_fs",
+           "input_hash": "e3b0c442...b855", "parameters_redacted": true},
+  "model": {"id": "gemini-2.5-flash-lite", "provider": "gemini"}
+}
+```
+
+---
+
+## Adoption ladder
+
+Start at L0. You never have to leave it. Each rung up is optional and independent.
+
+| Level | What you run | Who it's for |
+|-------|--------------|--------------|
+| **L0** | `events.db` (SQLite outbox) + `blackbox replay <thread_id>` + dashboard | Everyone — works out of the box |
+| **L1** | `audit-forward.jsonl` file sink | Solo operators, tinkerers who grep |
+| **L2** | Docker **Loki + Grafana** homelab | Learning a SIEM for free |
+| **L3** | **Webhook** → Vector / Fluent Bit | Small teams with a pipeline |
+| **L4** | **Elastic ECS** + **Splunk HEC** | Enterprise / IRT with existing tooling |
+
+The SQLite outbox is the **system of record** and never drops events. Forwarders (L1–L4) are best-effort on top of it — if your SIEM is down, the outbox still has the full run and `replay` still works.
+
+---
+
+## Coverage — read this before you trust it
+
+AgentAudit records agents that run **through this host's governed pipeline**. It is honest about what it cannot see.
+
+| Tier | Setup | AgentAudit coverage |
+|------|-------|---------------------|
+| **A** | Agent runs through the BLACKBOX governed host (MCP driver host + approval gate) | **Full** — tool calls, denials, approvals, `correlation_id`, arg hashes |
+| **B** | Agent reaches tools via an API proxy / AI gateway you route through | **Partial** — same schema **if** the proxy emits events; you wire it |
+| **C** | Unmanaged ChatGPT, Cursor with auto-approve, browser copilots on the same machine | **Not visible.** This is a CASB / secure-web-gateway problem, not an agent-audit one |
+
+**AgentAudit is Tier A remediation — a flight recorder for the agents you govern. It is not a Tier C shadow-AI spy, and it does not replace a CASB.** If your problem is unmanaged copilots, you need network/endpoint policy; this won't catch them and won't pretend to.
+
+---
+
+## Quick start (the audit path)
+
+Local, Gemini for the LLM, no Docker required for L0–L1.
 
 ```powershell
 # 1. Configure
 copy .env.example apps\orchestrator\.env
-# Edit apps\orchestrator\.env — set GEMINI_API_KEY
+# Edit apps\orchestrator\.env — set GEMINI_API_KEY, BLACKBOX_OPERATOR_ID, and:
+#   BLACKBOX_AUDIT_EXPORT_ENABLED=1
+#   BLACKBOX_AUDIT_SINK=file
 
-# 2. Orchestrator
+# 2. Install + start
 cd apps\orchestrator
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -e ".[dev]"
-uvicorn api.main:app --reload --port 8000
+cd ..\..
+scripts\blackbox.bat start          # detached; waits for health
 
-# 3. Dashboard (new terminal)
-cd apps\dashboard
-npm install
-npm run dev
+# 3. Run any governed skill (dashboard at http://127.0.0.1:8000, or the API),
+#    then replay it and tail the audit log:
+blackbox replay <thread_id>                         # ASCII timeline from events.db
+Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5
 ```
 
-Open http://localhost:3000
+You now have an L0 + L1 audit trail. Every governed run is in `events.db` and appended to `audit-forward.jsonl`.
 
-System Status should show **Gemini: up** and **RAG: semantic memory**.
+### Forward to a SIEM (optional)
 
-After the first setup, `scripts\start-dev.bat` launches both processes in one step
-(no Docker required). Orchestrator logs persist to `apps\orchestrator\data\logs\orchestrator.log`.
+| Sink | Env |
+|------|-----|
+| **File (default)** | `BLACKBOX_AUDIT_SINK=file` |
+| **Webhook** | `BLACKBOX_AUDIT_SINK=webhook` + `BLACKBOX_AUDIT_WEBHOOK_URL=...` |
+| **Elastic ECS** | `BLACKBOX_AUDIT_SINK=elastic` + `BLACKBOX_AUDIT_ELASTIC_URL` + `BLACKBOX_ELASTIC_API_KEY` |
+| **Splunk HEC** | `BLACKBOX_AUDIT_SINK=splunk` + `BLACKBOX_AUDIT_SPLUNK_HEC_URL` + `BLACKBOX_SPLUNK_HEC_TOKEN` |
+| **Several at once** | `BLACKBOX_AUDIT_SINK=file,elastic,splunk` or `all` |
 
-## Single-process mode (one port, no dev server)
-
-For always-on local use, serve the whole app from one process. `scripts\serve.bat`
-builds the dashboard into a static export and hosts both the UI and API from
-uvicorn on `http://localhost:8000`:
+### Free homelab SIEM (L2)
 
 ```powershell
-scripts\serve.bat
+docker compose -f docker-compose.loki.yml up -d
+# Grafana → http://localhost:3001  (admin / agentaudit)
+# Explore: {job="agent-audit"} | json
 ```
 
-Under the hood it runs `npm run build` (with `NEXT_PUBLIC_SAME_ORIGIN=true` so the
-UI calls the API on whatever origin served it — LAN and phone access just work)
-and the orchestrator mounts `apps/dashboard/out/` at `/`. No second terminal, no
-CORS or port juggling. Rebuild the export after changing dashboard code; the
-two-terminal `start-dev.bat` flow remains best for hot-reload development.
+Full walkthroughs and detection rules:
 
-## blackbox CLI
+| Stack | Setup | Detections |
+|-------|-------|------------|
+| **Loki (free)** | [loki-homelab.md](docs/integrations/loki-homelab.md) | [detections-loki.md](docs/integrations/detections-loki.md) |
+| **Elastic ECS** | [elastic-ecs.md](docs/integrations/elastic-ecs.md) | [detections-elastic.md](docs/integrations/detections-elastic.md) |
+| **Splunk HEC** | [splunk-hec.md](docs/integrations/splunk-hec.md) | [detections-splunk.md](docs/integrations/detections-splunk.md) |
+| **Sigma (portable)** | [sigma/README.md](docs/integrations/sigma/README.md) | YAML rules for any Sigma target |
 
-`scripts\blackbox.bat` (or `blackbox` inside the orchestrator venv) manages the
-appliance:
+---
+
+## CLI
+
+`scripts\blackbox.bat` (or `blackbox` inside the orchestrator venv):
 
 | Command | What it does |
 |---------|--------------|
-| `blackbox start [--host 0.0.0.0]` | Start the orchestrator detached (no window), wait for health |
-| `blackbox stop` | Stop it (kills the process tree; state recovers on next start) |
-| `blackbox status` | Health, LLM/RAG mode, note count, Flash budget, pending approvals |
-| `blackbox doctor [--fix]` | Preflight: vault, python, portable `drivers.json` ( `--fix` rewrites path tokens) |
-| `blackbox recovery [--dismiss-all] [--resume PATH]` | List stale active-loop notes; resume orphans from checkpoint |
-| `blackbox stats --days 7` | Per-skill usage and dogfood go/no-go metrics |
-| `blackbox export --evidence --from DATE --to DATE` | Tamper-evident audit pack (JSON + SHA-256) → `vault/30-Archive/exports/` |
-| `blackbox verify <evidence.json>` | Recompute integrity hash on an evidence export |
-| `blackbox logs [-n 50] [-f]` | Tail the rotating orchestrator log |
-| `blackbox backup [--out X]` | Zip vault (runtime dirs included) + all data stores to `backups/` — SQLite snapshotted consistently even while running |
-| `blackbox restore <zip>` | Restore a backup (refuses while running; auto-backs-up current state first) |
-| `blackbox install` | Register at-logon autostart via Task Scheduler (user session, so toasts work) |
-| `blackbox uninstall` | Remove the scheduled task |
+| `blackbox start` / `stop` / `status` | Run the orchestrator detached; check health, LLM mode, pending approvals |
+| `blackbox replay <thread_id>` | ASCII audit timeline for one run, from `events.db` |
+| `blackbox export --evidence --from DATE --to DATE` | Tamper-evident batch pack (JSON + SHA-256) → `vault/30-Archive/exports/` |
+| `blackbox verify <evidence.json>` | Recompute the integrity hash on an evidence export |
+| `blackbox doctor [--fix]` | Preflight: python, vault, portable `drivers.json` paths |
+| `blackbox recovery [--resume PATH]` | List stale runs; resume orphans from checkpoint |
+| `blackbox logs [-f]` / `backup` / `restore` | Tail logs; snapshot / restore all state stores |
 
-## Optional services (Docker)
+> **Note:** `blackbox export --evidence` is a **batch compliance pack** (its own format, with hashes). The **live audit stream** is the canonical JSONL described above. A dedicated `blackbox export --audit` with a per-run hash chain is on the roadmap, not yet shipped.
 
-Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without
-them on in-memory RAG and SQLite. To start them, run `scripts\start-services.bat`
-or use the full compose stack below.
+---
 
-Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+## Architecture
+
+```
+Skills / MCP tools
+        │
+   EventBus  ──►  events.db  (SQLite outbox — system of record, never drops)
+        │
+   audit_exporter  ──►  file | webhook | Elastic | Splunk   (best-effort forwarders)
+```
+
+- **Governed host** (`core/drivers/host.py`) — mounts MCP drivers, enforces per-skill tool allowlists, hashes every tool argument
+- **Approval gate** (`core/execution/service.py`) — human-in-the-loop interrupts; grants and denials are audit events
+- **Canonical normalizer** (`core/audit/canonical.py`) — bus events → schema v1.0.0
+- **Sinks** (`core/audit/sinks.py`, `core/audit/adapters/`) — file, webhook, Elastic ECS, Splunk HEC
+- **Replay** (`core/audit/replay.py`) — reconstructs a run timeline from the outbox
+
+---
+
+## Tests
+
+```powershell
+cd apps\orchestrator
+pip install -e ".[dev]"
+pytest -q
+```
+
+**257 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`.
+
+---
+
+## Examples & extensions
+
+BLACKBOX ships example skills that exercise the governed host — they are **demonstrations of the audit pipeline, not the product**. Each produces the same canonical audit trail as anything else.
+
+- **Document intake** — drop a PDF/DOCX, get a structured summary (`doc_summarize`)
+- **Meeting notes → actions** (`summarize_meeting`), **weekly review** (`weekly_review`)
+- **Governed email drafting** — read a thread, draft a reply, human approves before anything is written back; nothing auto-sends (`customer_reply`, draft-only, Gmail driver ships disabled)
+- **Obsidian vault** as the local knowledge/store surface, with a companion plugin
+
+These live under the skill definitions in `vault/.system/skill-definitions/` and the docs below. If you're here for the flight recorder, you can ignore all of them — they just give you traffic to audit.
+
+Older product framing (SMB/inbox positioning) is retained for reference in [`docs/`](docs/) but is **not** the current direction.
+
+---
+
+## License
+
+Apache-2.0. Contributions, schema feedback, and detection rules welcome — especially from IRT/SOC folks who can tell me where the schema falls short of a real investigation.
+
+<details>
+<summary>Advanced / optional — Docker stack, dashboard dev, full env reference</summary>
+
+### Optional services (Docker)
+
+Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without them on in-memory RAG and SQLite. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ```bash
 cp .env.example .env
@@ -100,9 +224,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open http://localhost:3000
-
-Docker starts Qdrant, PostgreSQL, Ollama, orchestrator, and dashboard. Pass `GEMINI_API_KEY` via compose env or a `.env` file at repo root.
+Open http://localhost:3000 — Docker starts Qdrant, PostgreSQL, Ollama, orchestrator, and dashboard.
 
 Optional Ollama models (if not using Gemini):
 
@@ -111,198 +233,35 @@ docker exec -it agentic-os-ollama-1 ollama pull llama3.2
 docker exec -it agentic-os-ollama-1 ollama pull nomic-embed-text
 ```
 
-## Skills
+For always-on local use without a separate dashboard dev server, `scripts\serve.bat` builds the dashboard and hosts UI + API from uvicorn on port 8000.
 
-| Skill | Graph | Description |
-|-------|-------|-------------|
-| `gmail_inbox_brief` | pipeline | Morning inbox summary (cron trigger) |
-| `customer_reply` | email_reply | Gmail thread → vault SOPs → draft → HITL → Gmail draft (no send) |
-| `doc_summarize` | pipeline | PDF/DOCX via docs driver → structured archive summary |
-| `summarize_note` | pipeline | Read any vault note, archive a summary |
-| `summarize_meeting` | meeting | Meeting notes → decisions and action items |
-| `inbox_triage` | pipeline | Classify a note — category, urgency, suggested action |
-| `follow_up_draft` | pipeline | Follow-up email from vault context |
-| `margin_compare` | pipeline | Deterministic margin math via margin MCP |
-| `lead_gen` | Python | B2B outreach with human approval gate |
-| `weekly_review` | Python | Weekly vault review and priorities |
+### Environment reference
 
-Skill YAML lives in `vault/.system/skill-definitions/`. Shared context:
-`GOALS.md`, `AGENTS.md`, FTS5 keyword search, RAG, and optional `sop_paths`
-(full SOP text injected before retrieval — used by `customer_reply`).
-
-## Daily Stack (dogfood ritual)
-
-Operator rhythm in `vault/.system/GOALS.md`:
-
-| Time | Loop |
-|------|------|
-| **08:00** | `gmail_inbox_brief` (cron) |
-| **Day** | Drop PDF/DOCX in `00-Inbox/` → `doc_summarize` |
-| **14:00** | `customer_reply` / follow-ups (manual) |
-| **17:00** | Meeting summarize / day-close |
-
-Success gate: **4 consecutive green dogfood weeks** before enabling send-after-approve.
-
-## Adding a New Skill (no Python)
-
-Drop a YAML file in `vault/.system/skill-definitions/` and click **Reload Skills**
-(or `POST /api/v1/skills/reload`):
-
-```yaml
-name: my_skill
-graph: pipeline                 # compiled into a checkpointed LangGraph
-tools: [vault_fs.read_note]     # per-skill tool allowlist (closed by default)
-nodes: [research, draft, critic, human_approval, finalize]
-node_tools:                     # declarative tool calls; results usable in prompts
-  research:
-    - tool: vault_fs.read_note
-      args: {path: "{user_input}"}
-      output: note_text
-node_prompts:
-  draft: "Write a response based on:\n{note_text}"
-max_cost_per_run: 0.10          # pre-step gate stops the run before overspend
-```
-
-`critic` + `human_approval` are optional reserved steps: including them adds a
-confidence-scored approval interrupt. Complex branching graphs can still be
-written in Python and registered in `core/graphs/registry.py`.
-
-## Drivers (MCP tools)
-
-Tool capability comes from MCP servers mounted at boot from
-`vault/.system/drivers.json` (operator-owned; agents cannot write it).
-
-Paths use portable tokens — `{PYTHON}`, `{ORCHESTRATOR_ROOT}`, `{VAULT_PATH}` —
-expanded at mount time. Run `blackbox doctor --fix` after cloning on a new machine.
-
-| Driver | Ships | Tools |
-|--------|-------|-------|
-| `vault_fs` | enabled | Read-only vault notes |
-| `margin` | enabled | Deterministic margin math |
-| `docs` | enabled | PDF/DOCX text extraction (`pypdf`, `python-docx`) |
-| `gmail` | **disabled** | `list_threads`, `get_thread`, `create_draft`, `send_draft`* |
-| `search` | disabled | Web search (Serper/Tavily) |
-| `fs` / `shell` | disabled | npx examples |
-
-\* `send_draft` is shadow-built for Phase 4-E but **disabled** until
-`BLACKBOX_GMAIL_SEND_ENABLED=1` after the 4-green-week gate. Default flow is
-draft-only; operator sends manually from Gmail.
-
-- Driver subprocess env is **allowlist-only**; skills opt in via YAML `tools:`.
-- Inspect with `GET /api/v1/drivers/`; remount with `POST /api/v1/drivers/remount`.
-
-## Autonomy
-
-Vault watch triggers in `vault/.system/trigger-rules/`:
-
-- **`00-Inbox/*.md`** → `summarize_note` (meeting-tagged notes → `summarize_meeting`)
-- **`00-Inbox/*.{pdf,docx}`** → `doc_summarize`
-- **`gmail-morning-brief`** cron → `gmail_inbox_brief`
-
-When only the interactive Flash reserve remains, autonomous runs park as
-`budget_defer` interrupts and resume when the daily budget resets. Terminal
-active-loop notes older than 7 days auto-archive to `30-Archive/active-loops/`
-on boot.
-
-## Architecture
-
-- **vault/** — Obsidian vault with skill definitions, knowledge base, and archive
-- **apps/orchestrator/** — FastAPI + LangGraph backend with RAG and WebSocket streaming
-- **apps/dashboard/** — Next.js mission control with React Flow graph visualization
-
-## API Endpoints
-
-| Endpoint | Auth | Description |
-|----------|------|-------------|
-| `GET /api/v1/health` | Open | System status (vault, Qdrant, Gemini, Postgres) |
-| `GET /api/v1/telemetry` | Open | Historical execution stats |
-| `GET /api/v1/vault/tree` | Open | Vault folder/file listing |
-| `GET /api/v1/vault/notes/{path}` | Open | Read a vault note (path-jailed) |
-| `GET /api/v1/skills/` | Open | List skills + registered graphs |
-| `GET /api/v1/runs/` | Open | Run history from the audit log (paged, newest first) |
-| `GET /api/v1/runs/{thread_id}/events` | Open | Per-run node execution trace |
-| `GET /api/v1/events/?since=N` | Open | Durable event outbox replay (dashboard reconnect) |
-| `GET /api/v1/skills/interrupts` | Open | Pending interrupts (approval, budget, degraded, exec) |
-| `GET /api/v1/drivers/` | Open | Mounted MCP drivers and their tool namespaces |
-| `POST /api/v1/drivers/remount` | API key | Re-read drivers.json and remount |
-| `POST /api/v1/skills/reload` | API key | Re-scan vault skill definitions |
-| `POST /api/v1/skills/execute` | API key | Run a skill |
-| `POST /api/v1/skills/approve` | API key | Approve/reject paused skill |
-| `POST /api/v1/vault/reindex` | API key | Full vault reindex |
-| `WS /ws/{session_id}` | Open | Real-time telemetry stream |
-
-Set `BLACKBOX_API_KEY` in orchestrator `.env` and `NEXT_PUBLIC_BLACKBOX_API_KEY` in dashboard env to enable auth. Leave empty for open local dev.
-
-## Environment
-
-See `.env.example` for all configuration options. Key variables:
+See `.env.example` for all options. Key variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BLACKBOX_LLM_PROVIDER` | `gemini` | LLM backend: `gemini`, `ollama`, or `mock` |
-| `BLACKBOX_ALLOW_MOCK` | `false` | Permit mock fallback when no real provider is available (archived as `mock-dry-run`) |
+| `BLACKBOX_ALLOW_MOCK` | `false` | Permit mock fallback when no real provider is available |
 | `GEMINI_API_KEY` | — | Google AI Studio API key |
-| `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash-lite` | Generation model (see `.env.example` for 3.1 Flash Lite preset) |
+| `BLACKBOX_GEMINI_MODEL` | `gemini-2.5-flash-lite` | Generation model |
 | `BLACKBOX_GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | RAG embedding model |
 | `BLACKBOX_API_KEY` | empty | Optional API key for mutating endpoints |
 | `BLACKBOX_USE_POSTGRES` | `false` | Use PostgreSQL for telemetry + checkpoints |
 | `BLACKBOX_VAULT_PATH` | `./vault` | Obsidian vault location |
+| `BLACKBOX_OPERATOR_ID` | empty | Actor id in canonical audit events |
+| `BLACKBOX_AUDIT_EXPORT_ENABLED` | `true` | Enable audit forwarder |
+| `BLACKBOX_AUDIT_SINK` | `file` | `file`, `webhook`, `elastic`, `splunk`, comma-separated, or `all` |
+| `BLACKBOX_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | JSONL forward file |
+| `BLACKBOX_AUDIT_WEBHOOK_URL` | empty | Generic JSON POST sink |
+| `BLACKBOX_AUDIT_ELASTIC_URL` | empty | Elasticsearch cluster URL |
+| `BLACKBOX_ELASTIC_API_KEY` | empty | Elastic API key (`id:secret`) |
+| `BLACKBOX_AUDIT_SPLUNK_HEC_URL` | empty | Splunk HEC base URL |
+| `BLACKBOX_SPLUNK_HEC_TOKEN` | empty | Splunk HEC token |
 | `BLACKBOX_COST_ALERT_THRESHOLD` | `1.0` | Session cost alert in USD |
-| `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget (free tier ~20 RPD) |
-| `BLACKBOX_GEMINI_FLASH_INTERACTIVE_RESERVE` | `8` | Calls kept for manual runs; autonomous runs pause below this |
-| `BLACKBOX_KERNEL_BACKGROUND_RUN_LIMIT` | `2` | Concurrent background runs; interactive runs are never queued |
-| `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` (after 4 green dogfood weeks) |
-| `BLACKBOX_ACTIVE_LOOP_ARCHIVE_DAYS` | `7` | Auto-archive resolved loops from `20-Active-Loops/` |
-| `BLACKBOX_ACTIVE_LOOP_AUTO_ARCHIVE` | `true` | Disable to skip boot-time loop cleanup |
+| `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget |
+| `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` after dogfood gate |
 
-## Production Features
+Further docs: [operator guide](docs/blackbox-operator-guide.md) · [Obsidian plugin](apps/obsidian-plugin/README.md) · [compliance Trust-Kit](docs/compliance/README.md) · [session handoff](docs/tomorrow-handoff.md)
 
-- **Durable checkpoints** — LangGraph state persisted to SQLite (`data/checkpoints.db`) or Postgres
-- **Pending approval recovery** — Paused threads survive orchestrator restarts
-- **Persistent embedding cache** — Vectors cached in SQLite (`data/embeddings.db`); semantic
-  memory rehydrates on restart with zero Gemini calls, and batch embedding
-  (`batchEmbedContents`) indexes new content in one API call per ~100 chunks
-- **No silent mock output** — Runs fail visibly when no LLM provider is configured;
-  closeout notes record which provider produced them, and opted-in mock runs are
-  archived as `mock-dry-run`, never as success
-- **Append-only archive** — Closeout notes are timestamped per run with thread id;
-  they are never overwritten
-- **Gemini token/cost tracking** — Real usage metadata from API responses
-- **Kernel token scheduler** — Every LLM/embed call is a priority-ordered kernel
-  grant: interactive runs preempt queued background work at both the call and
-  run level; pacing respects free-tier RPM limits
-- **Interrupt Vector Table** — Budget- and degradation-deferred autonomous runs
-  queue durably and resume unattended when the gate clears; approvals, budget
-  defers, and exec denials all share one recovery surface
-- **Event bus with durable outbox** — Every runtime event flows through an
-  in-process bus into SQLite; reconnecting dashboards replay what they missed
-  instead of gapping
-- **Daily Flash budget** — Successful Gemini calls are counted per UTC day
-  (`data/budget.db`); autonomous runs defer once only the interactive reserve
-  remains, with a live meter in the dashboard and `/health`
-- **Run history & node traces** — Every run and node event persists to JSONL,
-  surfaced via `/api/v1/runs/` and the dashboard Run History card
-- **Autonomous runs are visible** — A global event feed streams vault-trigger
-  and cron activity into mission control as it happens
-- **Incremental vault indexing** — File watcher re-indexes only changed notes;
-  triggered skills receive the full content of the note that fired them
-- **Path-jailed vault reads** — Prevents directory traversal outside vault root
-- **Logs on disk** — Rotating orchestrator log at `data/logs/orchestrator.log`
-- **Evidence export v1.1** — `blackbox export --evidence` bundles runs, approvals,
-  tool calls, SOP version hashes, provider metadata, and drivers snapshot with
-  SHA-256 integrity (`blackbox verify`)
-- **Compliance Trust-Kit** — [docs/compliance/](docs/compliance/) maps existing IVT,
-  outbox, and evidence export to deployer-side AI Act / ISO alignment (docs only,
-  not legal advice)
-- **Approval keyboard shortcuts** — Dashboard: `a` approve, `Shift+a` all, `r` reject
-
-## Tests
-
-```bash
-cd apps/orchestrator
-pip install -e ".[dev]"
-pip install pypdf python-docx   # optional: docs driver / doc_summarize
-pytest
-```
-
-~220 tests (1 skipped without optional doc deps).
+</details>

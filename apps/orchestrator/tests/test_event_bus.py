@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
+import pytest
+
 from api.ws_bridge import ws_event_bridge
+from core.bus.audit_exporter import audit_exporter
 from core.bus.bridges import outbox_persister
 from core.bus.bus import EventBus
 from core.bus.events import LLM_TOKEN, RUN_COMPLETED, RUN_STARTED, Event
@@ -56,6 +60,29 @@ def test_outbox_roundtrip(tmp_path: Path):
     assert len(events) == 1
     assert events[0]["topic"] == RUN_COMPLETED
     assert events[0]["payload"] == {"cost": 0.1}
+
+
+async def test_audit_exporter_writes_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from core.bus.audit_exporter import audit_exporter
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
+    monkeypatch.setattr(settings, "audit_sink", "file")
+    monkeypatch.setattr(settings, "audit_webhook_url", "")
+
+    bus = EventBus()
+    task = asyncio.create_task(audit_exporter(bus, enabled=True))
+    await asyncio.sleep(0)
+
+    bus.publish(RUN_STARTED, {"type": "execution_started", "skill": "x"}, thread_id="t1")
+    bus.publish(LLM_TOKEN, {"type": "token"}, session_id="s1")
+    await asyncio.sleep(0.05)
+    task.cancel()
+
+    export_path = tmp_path / "audit-forward.jsonl"
+    lines = export_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["action"]["type"] == "session_start"
 
 
 async def test_persister_excludes_tokens(tmp_path: Path):

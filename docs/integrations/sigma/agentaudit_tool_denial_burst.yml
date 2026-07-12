@@ -1,0 +1,56 @@
+# AgentAudit Sigma rule — Tool denial burst
+# Ported from detections-loki.md R1. Correlation rule: base selection + event_count.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+---
+title: AgentAudit - Denied Tool Call
+id: 6f1a2c30-9b44-4d1e-8a7c-1e0b5a2d9f01
+status: experimental
+description: >
+  A governed agent attempted a tool call that the host allowlist blocked.
+  A single denial is informational; the burst correlation below escalates it.
+references:
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agent-audit-event-schema.md
+author: AgentAudit
+date: 2026-07-12
+logsource:
+  product: agentaudit
+  service: governed-host
+detection:
+  selection:
+    action.type: tool_called          # [verify against live JSONL] Loki label: action_type
+    action.outcome: denied            # [verify against live JSONL] Loki label: action_outcome
+  condition: selection
+fields:
+  - correlation_id
+  - tool.qualified
+  - actor.id
+  - action.reason
+falsepositives:
+  - A newly edited skill YAML with a too-narrow tools allowlist (benign misconfig)
+  - Operator intentionally testing allowlist boundaries
+level: low
+tags:
+  - attack.execution
+  - attack.t1059
+---
+# Correlation: 5+ denials within 1 minute (mirrors LogQL `>= 5 [1m]`).
+# Grouped by actor.id; the original LogQL was global (any session) — adjust
+# group-by or remove it to match that exactly. [verify against live JSONL]
+title: AgentAudit - Tool Denial Burst
+id: b2d7e814-3c56-4a90-9f21-7c8e4d1a6b02
+status: experimental
+description: Five or more denied tool calls within one minute — possible injection, policy probing, or a broken allowlist.
+correlation:
+  type: event_count
+  rules:
+    - 6f1a2c30-9b44-4d1e-8a7c-1e0b5a2d9f01
+  group-by:
+    - actor.id
+  timespan: 1m
+  condition:
+    gte: 5
+level: medium
+tags:
+  - attack.execution
+  - attack.t1059
