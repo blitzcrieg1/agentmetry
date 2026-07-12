@@ -1,0 +1,9 @@
+# gitleaks config — keep the default rule set, allowlist known synthetic fixtures.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic secret-shaped fixtures used to test command-secret scrubbing (no real credentials)."
+paths = [
+  '''apps/orchestrator/tests/test_redaction\.py''',
+]
