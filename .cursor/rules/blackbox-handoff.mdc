@@ -3,15 +3,15 @@ description: BLACKBOX — compact always-on pointer (full detail in scoped rules
 alwaysApply: true
 ---
 
-# BLACKBOX — Quick pointer
+# AgentAudit — Quick pointer
 
-**Obsidian-Cortex Agentic OS** — governed local agent runtime. Vault in → skills → approve → archive.
+**Local flight recorder for governed agent tool-use.** BLACKBOX is the engine name only.
 
-- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master` · **`2a4510d`**
+- **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
 - **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q`
-- **Handoff:** `docs/tomorrow-handoff.md` · **Operator guide:** `docs/blackbox-operator-guide.md` · **Dogfood:** `docs/dogfood-scorecard-v1.md`
-- **Skills:** 16+ YAML/Python skills · flywheel: `vault/.system/feedback/edit-log.jsonl`
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **299 passed**, 2 skipped
+- **Handoff:** `docs/tomorrow-handoff.md` · **Validate:** `docs/agentaudit-dogfood-checklist.md`
+- **Tier B:** `docs/external-agent-audit.md` · Cursor `.cursor/hooks.json` · Codex `.codex/hooks.json` · `scripts/agentaudit_ingest.py`
 - **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
 - **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
 
@@ -19,37 +19,32 @@ alwaysApply: true
 
 | Task | Path |
 |---|---|
-| **Day 1 onboarding** | `docs/blackbox-operator-guide.md` (§4 customer_reply) · K-beauty vertical: `docs/personal-step-by-step.md` |
 | Execute skill | `apps/orchestrator/core/execution/service.py` → `run_skill()` |
-| Flywheel capture | `core/learning/flywheel.py` → `edit-log.jsonl` on approve-with-edit |
-| Webhook ingress | `api/routes/ingress.py` · `core/ingress/webhook.py` · `POST /api/v1/ingress` |
+| Audit canonical + ingest | `core/audit/canonical.py`, `external.py`, `ingest.py` |
+| Ingest API + tail | `api/routes/audit.py` |
 | Triggers | `core/scheduler/triggers.py` |
 | Graphs | `core/graphs/registry.py` |
 | Interrupts | `core/kernel/interrupts.py` |
 | LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
 | Vault I/O | `core/memory/obsidian_client.py` |
-| Skills YAML | `vault/.system/skill-definitions/` |
-| Approval Inbox UI | `apps/dashboard/components/mission-control.tsx`, `approval-inbox-card.tsx` |
-| Plugin | `apps/obsidian-plugin/src/main.ts` |
-| Gmail MCP (read+draft) | `apps/orchestrator/tools/gmail_server.py` · ships **disabled** · local enable in `drivers.json` |
-| Margin MCP | `apps/orchestrator/tools/margin_server.py` · `margin_compare` skill |
-| Docs MCP | `apps/orchestrator/tools/docs_server.py` · `doc_summarize` skill |
-| Telegram channel | `core/channels/telegram.py` · ships **disabled** |
+| Skills YAML | `vault/.system/skill-definitions/` · demo: `audit_demo` |
+| Dashboard flight recorder | `apps/dashboard/components/flight-recorder-panel.tsx` |
+| Hook client | `scripts/agentaudit_ingest.py` |
+| MCP audit proxy | `apps/orchestrator/tools/mcp_audit_proxy.py` |
+| Gmail MCP | ships **disabled** · local enable in `drivers.json` (never commit) |
 
-## Next (operator — Week 1 dogfood — **build freeze** · **no Fable until Week 2 Fri**)
+## Next (operator)
 
-1. **Day 1:** ritual + create `vault/10-SOPs/os-log.md`
-2. **By Friday:** 3 edit-log rows → live `sop_drift_review`
-3. **Once:** ingress smoke test
-4. **`blackbox stats --days 7`** · overall **54/100** · go/no-go **3.5/5**
-
-Full ritual: `docs/dogfood-scorecard-v1.md`
+1. **Validate:** `python scripts/agentaudit_ingest.py selftest` + `audit_demo` on dashboard
+2. **Tier B:** restart Cursor → real hook event in flight recorder
+3. **Loom / LinkedIn** only after checklist is GREEN
+4. **Kill gate:** no new drivers/features until Tier A+B dogfood is credible
 
 ## Docs
 
-- Audit: `docs/product-audit-2026-07.md`
-- Fable ↔ Cursor: `docs/fable-cursor-synergy-prompt.md`
-- Full handoff detail: scoped rules `blackbox-orchestrator.mdc`, `blackbox-dashboard-plugin.mdc`, `blackbox-vault-docs.mdc`
+- Schema: `docs/agent-audit-event-schema.md`
+- GLM Tier B research: `docs/glm-52-external-agent-audit-results.md`
+- Full handoff: scoped rules `blackbox-orchestrator.mdc`, `blackbox-dashboard-plugin.mdc`, `blackbox-vault-docs.mdc`
 
 ## Preferences
 

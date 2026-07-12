@@ -34,7 +34,7 @@ class IngestToolBody(BaseModel):
 class ExternalIngestBody(BaseModel):
     """Adapter payload — normalized to canonical v1.1 on ingest."""
 
-    source_app: str = Field(..., description="cursor | claude | antigravity | mcp_proxy")
+    source_app: str = Field(..., description="cursor | claude | antigravity | codex | mcp_proxy")
     event_type: str = Field(
         ...,
         description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response",

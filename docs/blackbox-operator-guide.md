@@ -1,5 +1,7 @@
 # BLACKBOX — Operator getting-started guide
 
+> **Superseded for AgentAudit.** Start with root [README](../README.md) and [agentaudit-dogfood-checklist.md](./agentaudit-dogfood-checklist.md). Below is the legacy inbox-autopilot path (`customer_reply`, edit-log flywheel) — skills remain as examples, not the product hero.
+
 **Repo:** `master` @ `bf7b717` · **Suite:** ~238 tests passing (Windows 11 local, 1 optional-dep skip) · **Audience:** you, tomorrow morning at 08:00, coffee in one hand, real customer email in the other.
 
 Read this once end-to-end. Then keep it open on §4 for Day 1 and §5/§9 forever.
@@ -401,7 +403,7 @@ The skill drafts are only as good as the policies it reads. Live SOPs and what e
 
 **Moratorium:** no more Fable/assessment sessions until **Week 2 Friday**. The next legitimate review input is 14 rows in `os-log.md`, not another prompt.
 
-Full gate + decision tree: [`dogfood-scorecard-v1.md`](./dogfood-scorecard-v1.md). Latest rating: [`fable-7-progress-rating-2026-07-09.md`](./fable-7-progress-rating-2026-07-09.md).
+Full validation checklist: [`agentaudit-dogfood-checklist.md`](./agentaudit-dogfood-checklist.md).
 
 ---
 

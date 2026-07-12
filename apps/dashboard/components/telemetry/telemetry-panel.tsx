@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DogfoodingTile } from "@/components/telemetry/dogfooding-tile";
 import { InterruptPanel } from "@/components/telemetry/interrupt-panel";
 import { PendingApprovalsPanel } from "@/components/telemetry/pending-approvals-panel";
 import { RecoveryPanel } from "@/components/telemetry/recovery-panel";
@@ -82,7 +81,6 @@ function DevSidebar() {
   return (
     <div className="flex flex-col gap-4 h-full">
       <ServiceStatusPanel />
-      <DogfoodingTile />
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">

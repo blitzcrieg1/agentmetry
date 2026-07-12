@@ -10,12 +10,13 @@ interface AuditStatus {
   by_source: Record<string, number>;
 }
 
-const SOURCE_ORDER = ["blackbox", "cursor", "claude", "antigravity", "mcp_proxy"] as const;
+const SOURCE_ORDER = ["blackbox", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
 
 const SOURCE_SHORT: Record<string, string> = {
   blackbox: "BB",
   cursor: "Cu",
   claude: "Cl",
+  codex: "Cx",
   antigravity: "Ag",
   mcp_proxy: "MCP",
 };

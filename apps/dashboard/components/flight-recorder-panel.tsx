@@ -16,7 +16,7 @@ export interface AuditEvent {
   actor?: { id?: string };
 }
 
-const ALL_SOURCES = ["blackbox", "cursor", "claude", "antigravity", "mcp_proxy"] as const;
+const ALL_SOURCES = ["blackbox", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
 
 function eventSourceApp(event: AuditEvent): string {
   if (event.source?.app) return event.source.app;
@@ -28,6 +28,7 @@ const SOURCE_LABELS: Record<string, string> = {
   blackbox: "BLACKBOX",
   cursor: "Cursor",
   claude: "Claude",
+  codex: "Codex",
   antigravity: "Antigravity",
   mcp_proxy: "MCP",
 };

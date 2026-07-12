@@ -6,7 +6,7 @@ POST adapter events to the local orchestrator ingest API.
 Environment:
   AGENTAUDIT_URL            default http://127.0.0.1:8000
   BLACKBOX_API_KEY          optional X-API-Key header
-  AGENTAUDIT_SOURCE_APP     cursor | claude | antigravity | mcp_proxy
+  AGENTAUDIT_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
 """
 
 from __future__ import annotations
@@ -375,6 +375,100 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
     return None
 
 
+def _codex_tool_context(tool_name: str, tool_input: Any) -> tuple[str, str, dict[str, Any]]:
+    clean = redact_arguments(tool_input if isinstance(tool_input, dict) else {"value": tool_input})
+    name = str(tool_name or "unknown")
+    if name == "Bash":
+        return "shell.run", "shell", clean
+    if name == "apply_patch":
+        return "codex.apply_patch", "codex", clean
+    if name.startswith("mcp__"):
+        parts = name.split("__")
+        if len(parts) >= 3:
+            server, tool = parts[1], parts[2]
+            qualified = tool if "." in tool else f"{server}.{tool}"
+            return qualified, server, clean
+        return name, "mcp", clean
+    return f"codex.{name}", "codex", clean
+
+
+def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    """OpenAI Codex CLI hooks — schema aligned with Claude Code (session_id, tool_name, tool_input)."""
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", "turn_id", default=""))
+    session_id = str(_pick(data, "session_id", default=correlation))
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tool_input = _pick(data, "tool_input", default={})
+    model_id = str(_pick(data, "model", default=""))
+    permission_mode = str(_pick(data, "permission_mode", default=""))
+    initiator = _initiator_from_hook(hook_name, data)
+
+    base: dict[str, Any] = {
+        "correlation_id": correlation,
+        "session_id": session_id,
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+    }
+    if model_id:
+        base["model"] = {"id": model_id, "provider": "openai"}
+
+    if hook_name == "SessionStart":
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_start",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "reason": str(_pick(data, "source", default="startup")),
+        }
+
+    if hook_name in ("Stop", "SubagentStop"):
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_end",
+        }
+
+    if hook_name == "UserPromptSubmit":
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_start",
+            "reason": "user_prompt",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    qualified, server, clean = _codex_tool_context(tool_name, tool_input)
+
+    if hook_name in ("PreToolUse", "PermissionRequest"):
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "approval_request",
+            "outcome": "pending",
+            "reason": f"hook:{hook_name};permission_mode:{permission_mode or 'default'}",
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    if hook_name == "PostToolUse":
+        event_type, outcome, reason = _after_outcome(data)
+        if data.get("tool_response") is not None and outcome == "success":
+            reason = reason or "tool_completed"
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": event_type,
+            "outcome": outcome,
+            "reason": reason,
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    return None
+
+
 def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     hook_name = str(data.get("hook_event_name") or data.get("event") or hook_name)
     correlation = str(_pick(data, "conversationId", "conversation_id", default=""))
@@ -439,12 +533,16 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     source = _source_app()
     if source == "claude":
         payload = map_claude_hook(hook_name, data)
+    elif source == "codex":
+        payload = map_codex_hook(hook_name, data)
     elif source == "antigravity":
         payload = map_antigravity_hook(hook_name, data)
     elif source == "cursor":
         payload = map_cursor_hook(hook_name, data)
     elif "conversationId" in data:  # auto-detect when env unset
         payload = map_antigravity_hook(hook_name, data)
+    elif _pick(data, "model", default="") and hook_name[:1].isupper():
+        payload = map_codex_hook(hook_name, data)
     elif hook_name[:1].isupper():
         payload = map_claude_hook(hook_name, data)
     else:
@@ -471,7 +569,8 @@ def hook_main(hook_name: str) -> int:
     # operator explicitly opts in via AGENTAUDIT_ENFORCE=allow|deny|ask.
     enforce = os.environ.get("AGENTAUDIT_ENFORCE", "").strip().lower()
     if enforce in ("allow", "deny", "ask") and (
-        hook_name in CURSOR_BLOCKING or hook_name == "PreToolUse"
+        hook_name in CURSOR_BLOCKING
+        or hook_name in ("PreToolUse", "PermissionRequest")
     ):
         print(json.dumps({"permission": enforce}))
 
@@ -511,8 +610,8 @@ def cli_main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # python scripts/agentaudit_ingest.py [cursor|claude|antigravity] hook <EventName>
-    if len(sys.argv) >= 2 and sys.argv[1] in ("cursor", "claude", "antigravity"):
+    # python scripts/agentaudit_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
+    if len(sys.argv) >= 2 and sys.argv[1] in ("cursor", "claude", "antigravity", "codex"):
         os.environ["AGENTAUDIT_SOURCE_APP"] = sys.argv[1]
         if len(sys.argv) >= 4 and sys.argv[2] == "hook":
             sys.exit(hook_main(sys.argv[3]))

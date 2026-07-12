@@ -55,6 +55,41 @@ def test_antigravity_post_tool():
     assert payload["tool"]["qualified"] == "antigravity.run_command"
 
 
+def test_codex_bash_post_tool():
+    payload = ingest.map_codex_hook("PostToolUse", {
+        "session_id": "codex-sess-1",
+        "tool_name": "Bash",
+        "tool_input": {"command": "echo hi"},
+        "model": "gpt-5.4-codex",
+    })
+    assert payload["source_app"] == "codex"
+    assert payload["tool"]["qualified"] == "shell.run"
+    assert payload["model"]["id"] == "gpt-5.4-codex"
+
+
+def test_codex_permission_request():
+    payload = ingest.map_codex_hook("PermissionRequest", {
+        "session_id": "codex-sess-2",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rm -rf /tmp/x"},
+        "permission_mode": "default",
+        "model": "gpt-5.4-codex",
+    })
+    assert payload["event_type"] == "approval_request"
+    assert payload["outcome"] == "pending"
+
+
+def test_codex_mcp_tool_name():
+    payload = ingest.map_codex_hook("PostToolUse", {
+        "session_id": "s1",
+        "tool_name": "mcp__vault_fs__read_note",
+        "tool_input": {"path": "foo.md"},
+        "model": "gpt-5.4-codex",
+    })
+    assert payload["tool"]["qualified"] == "vault_fs.read_note"
+    assert payload["tool"]["server"] == "vault_fs"
+
+
 def test_redact_and_hash_stable():
     h1 = ingest.hash_arguments({"a": 1, "token": "x"})
     h2 = ingest.hash_arguments({"a": 1, "token": "y"})

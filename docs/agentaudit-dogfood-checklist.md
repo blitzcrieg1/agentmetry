@@ -1,83 +1,70 @@
-# AgentAudit — dogfood checklist
+# AgentAudit — validation checklist
 
-**Run this before recording the Loom (#3) and before writing Sigma rules (#5).** The point is to see the audit trail on *real* traffic so the demo and the detections match live field names — not the schema doc's example values.
+**Run this before recording the Loom and before writing Sigma rules.** Confirm the audit trail on real traffic so the demo and detections match live field names — not the schema doc's example values.
 
-**Zero Gemini option:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env` for audit-only dogfood (`BLACKBOX_LLM_PROVIDER=mock`). Tool + approval events are real; draft text is placeholder. Use Gemini or Ollama only for the Loom take — see [dependency audit](./agentaudit-dependency-audit.md).
+**Zero-cloud profile:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env` (`BLACKBOX_LLM_PROVIDER=mock`). Tool + approval events are real; no cloud keys required.
 
-Time budget: ~20 minutes. One pass. Log the result at the bottom.
+Time budget: ~20 minutes.
 
 ---
 
 ## 0. Preflight
 
-- ☐ `.env` has `BLACKBOX_OPERATOR_ID` set to a real value (not blank — this becomes `actor.id` in every event)
+- ☐ `.env` has `BLACKBOX_OPERATOR_ID` set (becomes `actor.id` in every event)
 - ☐ `.env` has `BLACKBOX_AUDIT_EXPORT_ENABLED=1` and `BLACKBOX_AUDIT_SINK=file`
-- ☐ `scripts\blackbox.bat doctor` — all green (python, vault, portable `drivers.json`)
-- ☐ `scripts\blackbox.bat start` then `scripts\blackbox.bat status` — Gemini up, not degraded
+- ☐ `scripts\blackbox.bat doctor` — all green
+- ☐ `scripts\blackbox.bat start` then hard-refresh dashboard at `http://127.0.0.1:8000`
 
 ```powershell
-# Confirm the audit env actually loaded (should print your operator id + sink)
-scripts\blackbox.bat status
-```
-
-**Note the starting line count** so you can prove it grew:
-
-```powershell
+python scripts/agentaudit_ingest.py selftest   # Tier B round-trip (optional but recommended)
 $before = (Get-Content apps\orchestrator\data\audit-forward.jsonl -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
 "audit-forward.jsonl before: $before lines"
 ```
 
 ---
 
-## 1. Generate two runs (one approved, one denied)
+## 1. Tier A — `audit_demo` (approve + reject)
 
-You want **both approval outcomes** plus a **tool call** in the log. The `customer_reply` skill forces a human approval on every run (`approval_threshold: 1.1`) and calls `vault_fs.read_note` — so two runs of it, approved once and rejected once, cover the events that matter.
+The default dashboard skill. One governed tool call + approval gate — no inbox, no Gmail, no LLM draft required on mock profile.
 
-Open the dashboard at `http://127.0.0.1:8000` → **The Armory · Desk**.
+Open dashboard → **Run** → **AgentAudit Demo**.
 
-- ☐ **Run 1 — approve.** Run `customer_reply` (default input is fine, or any note in `00-Inbox/`). When the approval interrupt appears, **approve** it.
-  - Expected events: `run/tool_called` (vault_fs), `run/approval_required`, `run/approval_granted`, `run/completed`.
-  - **Note the `thread_id`** shown in the run (you'll replay it).
-- ☐ **Run 2 — reject.** Run `customer_reply` again. When the approval interrupt appears, **reject** it.
-  - Expected events: `run/tool_called`, `run/approval_required`, `run/approval_denied`.
-  - Note this `thread_id` too.
+- ☐ **Run 1 — approve.** Tool gate shows `vault_fs.read_note` + args hash (no empty box, no confidence %). Approve.
+  - Expected: `tool_called`, `approval_request`, `approval_response`/`success`, `session_end`
+  - Note `thread_id`
+- ☐ **Run 2 — reject.** Run again, reject at the gate.
+  - Expected: `tool_called`, `approval_request`, `approval_response`/`denied`
 
-> Optional (nice-to-have, not required): to also see a **`run/tool_denied`** event, run any skill whose YAML `tools:` allowlist does *not* include a tool it tries to call — the governed host blocks it and emits a denial. Skip if you don't have one handy; the two approval runs are enough for a green result.
-
-### Track A vs Track B — which skill to dogfood with
-
-- **Track A — `customer_reply` on mock.** Uses `.env.agentaudit-demo`. Proves the trail (tool + approval events) with zero setup. Good for a quick "is the recorder working" check.
-- **Track B — `audit_demo` on Ollama (preferred for the Loom).** Uses `.env.agentaudit-ollama`. A purpose-built, no-cloud, no-PII skill: one tool call + approval, nothing else on screen. This is the cleanest thing to record and the honest air-gapped story. Run it once first to confirm the approval interrupt renders (see the audit_demo risk note in the dependency audit).
+Flight recorder (center panel) should list events with `correlation_id` and truncated `input_hash`.
 
 ---
 
-## 2. Verify the trail
+## 2. Tier B — Cursor hooks (optional, same session)
 
-### 2a. Line count grew
+- ☐ Restart Cursor after pull (`.cursor/hooks.json` must load)
+- ☐ Run a shell command in this repo from Cursor
+- ☐ `GET /api/v1/audit/tail?sources=cursor&limit=5` shows the event
+- ☐ Header freshness badge goes green; source dot for Cursor lights up
+- ☐ Kill orchestrator → fire hook → silent fail, Cursor unharmed (proves why selftest matters)
+
+Full adapter guide: [`external-agent-audit.md`](./external-agent-audit.md).
+
+---
+
+## 3. Verify the trail
+
+### 3a. Line count grew
 
 ```powershell
 $after = (Get-Content apps\orchestrator\data\audit-forward.jsonl | Measure-Object -Line).Lines
 "audit-forward.jsonl after: $after lines (was $before)"
 ```
 
-- ☐ `$after` > `$before` by several lines
+- ☐ `$after` > `$before`
 
-### 2b. Every line is valid JSON
-
-```powershell
-$bad = 0
-Get-Content apps\orchestrator\data\audit-forward.jsonl | ForEach-Object {
-  try { $null = $_ | ConvertFrom-Json } catch { $bad++; Write-Host "BAD LINE: $_" }
-}
-"invalid JSON lines: $bad"
-```
-
-- ☐ `invalid JSON lines: 0`
-
-### 2c. The events you expect are present with real field values
+### 3b. Valid JSON + expected events
 
 ```powershell
-# Show action.type / outcome / tool / actor for the last ~12 events
 Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 12 |
   ForEach-Object { $_ | ConvertFrom-Json } |
   Select-Object `
@@ -89,106 +76,56 @@ Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 12 |
   Format-Table -AutoSize
 ```
 
-- ☐ At least one row with `type=approval_response`, `outcome=success` (your approve)
-- ☐ At least one row with `type=approval_response`, `outcome=denied` (your reject)
-- ☐ At least one row with `type=tool_called` and a non-empty `tool` (e.g. `vault_fs.read_note`)
-- ☐ `actor` shows your `BLACKBOX_OPERATOR_ID` on every row (not blank, not `local`)
-- ☐ `corr` (correlation_id) is populated and matches your run `thread_id`s
+- ☐ ≥1 `approval_response` / `success` and ≥1 / `denied`
+- ☐ ≥1 `tool_called` with `tool.qualified` and 64-char `input_hash`
+- ☐ `actor.id` = your operator id
 
-### 2d. Tool arg hash is present
-
-```powershell
-# input_hash should be a 64-char hex on tool_called events
-Get-Content apps\orchestrator\data\audit-forward.jsonl |
-  ForEach-Object { $_ | ConvertFrom-Json } |
-  Where-Object { $_.action.type -eq 'tool_called' } |
-  Select-Object -Last 3 @{n='tool';e={$_.tool.qualified}}, @{n='hash';e={$_.tool.input_hash}}
-```
-
-- ☐ `hash` is a 64-char hex string, not empty (this is the redacted arg fingerprint)
-
-### 2e. Replay reconstructs the run
+### 3c. Replay
 
 ```powershell
 scripts\blackbox.bat replay <thread_id_from_run_1>
 ```
 
-- ☐ Timeline is human-readable, ordered, and shows the tool call + approval for that run
-- ☐ The `correlation_id` in the replay matches the JSONL rows for the same run
+- ☐ Readable timeline; `correlation_id` matches JSONL
 
 ---
 
-## 3. Optional — Loki homelab (L2), only if demoing it
+## 4. Optional — Loki homelab (L2)
 
-```powershell
-docker compose -f docker-compose.loki.yml up -d
-# Wait ~30s, then Grafana → http://localhost:3001  (admin / agentaudit)
-# Explore query:
-#   {job="agent-audit"} | json
-```
-
-- ☐ Grafana + Loki + Alloy come up clean on first try
-- ☐ Your two runs appear in Explore, JSON-parsed, fields queryable
-
-> **Kill rule:** if the Loki stack doesn't come up clean in one attempt, **cut it from the Loom.** The `replay` CLI + JSONL is a complete demo on its own. Loki is the "yes it plugs into your SIEM" proof, not the hero.
+Only if demoing SIEM export. **Kill rule:** if stack doesn't come up in one attempt, cut from Loom — JSONL + replay is enough.
 
 ---
 
-## Green / red summary
+## Green / red
 
-**GREEN (proceed to Loom + Sigma):** all of —
-- ☐ JSONL line count grew, 0 invalid lines
-- ☐ ≥1 `approval_response`/`success` **and** ≥1 `approval_response`/`denied`
-- ☐ ≥1 `tool_called` with a non-empty `tool.qualified` and a 64-char `input_hash`
-- ☐ `actor.id` = your operator id on every event
-- ☐ `replay` shows a readable timeline with matching `correlation_id`
+**GREEN:** JSONL grew · valid JSON · approve + deny approval events · tool_called + hash · actor.id set · replay OK · (Tier B) cursor event if claiming external ingest
 
-**RED (stop and fix before recording anything):**
-- ✗ Empty or missing `audit-forward.jsonl` → check `BLACKBOX_AUDIT_EXPORT_ENABLED=1` and `BLACKBOX_AUDIT_SINK=file`, restart
-- ✗ Any invalid JSON line → schema/serialization bug in the sink — fix before Sigma rules are written against it
-- ✗ `approval_granted`/`approval_denied` absent after you clicked approve/reject → the approval events aren't wiring into the audit exporter; this is the single most important thing to fix, it's the whole product
-- ✗ `input_hash` empty on tool calls → arg hashing not firing in `core/drivers/host.py`
-- ✗ `actor.id` blank or `local` → `BLACKBOX_OPERATOR_ID` not loaded
+**RED:** missing JSONL · broken approval wiring · empty `input_hash` · blank `actor.id` · hooks claimed but no cursor events after selftest passes
 
 ---
 
 ## Log template
 
-Append one block per dogfood session. This is the record that says "the schema the Loom and Sigma rules target was observed on real traffic on this date."
-
 ```
-### Dogfood run — YYYY-MM-DD
-- Operator id: <value>
-- Skills run: customer_reply (approve), customer_reply (reject)
-- thread_ids: <t1>, <t2>
-- JSONL: <before> → <after> lines, 0 invalid
-- approval_response success/denied: Y / Y
-- tool_called present + input_hash 64-hex: Y
-- actor.id correct on all events: Y
-- replay readable + correlation_id matches: Y
-- Loki demoed: Y / N (cut if not clean)
+### Validation — YYYY-MM-DD
+- Operator id:
+- Tier A thread_ids: <approve>, <reject>
+- Tier B cursor events: Y / N
+- JSONL: <before> → <after>, 0 invalid
 - Result: GREEN / RED
-- Notes:
 ```
 
 ---
 
-### Dogfood run — 2026-07-12 (GREEN)
+### Validation — 2026-07-12 (GREEN — Tier A)
 
 - Operator id: `home-lab`
-- Profile: `.env.agentaudit-demo` (mock, zero cloud)
-- Skills run: `audit_demo` (approve), `audit_demo` (reject)
-- thread_ids: `e4808307-ce42-4c7d-a36d-53481cafcbb9` (approve), `a0822c37-24f8-406f-8519-4578c75417f8` (reject)
+- Profile: `.env.agentaudit-demo`
+- Skills: `audit_demo` approve + reject
+- thread_ids: `e4808307-…`, `a0822c37-…`
 - JSONL: 89 → 103 lines, 0 invalid
-- approval_response success/denied: Y / Y
-- tool_called present + input_hash 64-hex: Y
-- actor.id correct on all events: Y
-- replay readable + correlation_id matches: Y (use `$env:PYTHONIOENCODING='utf-8'` on Windows for box-drawing chars)
-- Approval modal body: empty draft — **functional, ship as-is** (Case 1)
-- Loki demoed: N (cut Beat 4 for Loom)
 - Result: **GREEN**
-- Notes: Loom skill = `audit_demo`. Archive path on approve: `30-Archive/audit-demo/2026-07-12-094400-audit_demo-e4808307.md`
 
 ---
 
-*Companion to the AgentAudit launch sequence: README (#1) → this checklist (#2) → Loom (#3) → LinkedIn (#4) → Sigma pack (#5) → hash-chain spec (#6). Detection field names in #5 must match what this checklist observed live.*
+*Companion: README → this checklist → Loom → LinkedIn → Sigma pack.*

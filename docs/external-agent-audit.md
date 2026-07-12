@@ -5,7 +5,7 @@ AgentAudit records **governed BLACKBOX runs (Tier A)** and **external agents you
 ## Architecture
 
 ```
-Cursor / Claude / Antigravity / MCP clients
+Cursor / Claude / Codex / Antigravity / MCP clients
         ↓ hooks or mcp_audit_proxy.py
   scripts/agentaudit_ingest.py
         ↓ POST /api/v1/audit/ingest
@@ -73,6 +73,24 @@ python scripts/agentaudit_ingest.py antigravity hook PostToolUse
 ```
 
 Transcript fallback: `<app_data>/brain/<conversationId>/.system_generated/logs/transcript.jsonl`.
+
+## OpenAI Codex CLI
+
+Project hooks ship in `.codex/hooks.json` (or merge `adapters/codex/hooks.agentaudit.json` into `~/.codex/hooks.json`). Codex uses nested matcher groups — see [OpenAI Codex hooks docs](https://developers.openai.com/codex/hooks).
+
+Events wired: `SessionStart`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`.
+
+```powershell
+python scripts/agentaudit_ingest.py codex hook PostToolUse
+python scripts/agentaudit_ingest.py selftest
+# AGENTAUDIT_SOURCE_APP=codex for codex-specific selftest
+```
+
+**First run:** Codex requires you to **trust** new hooks — open `/hooks` in the Codex CLI and approve the AgentAudit hook definitions (hash-based trust model). Untrusted hooks are skipped silently.
+
+**Bonus:** Codex hook stdin includes `model` (active model slug) — one of the few Tier B adapters that can populate `model.id` in the canonical event.
+
+**Coverage gaps (honest):** `PreToolUse`/`PostToolUse` may not fire for every tool path (`unified_exec`, some MCP, `WebSearch`) — see OpenAI docs. Audit what you can observe; don't claim full coverage.
 
 ## Cursor (expanded — GLM research validated)
 

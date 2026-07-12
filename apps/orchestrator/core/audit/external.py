@@ -12,9 +12,9 @@ from core.audit.hashing import arguments_sha256
 from core.audit.run_context import actor_from_initiator, build_initiator
 from core.config import settings
 
-ExternalApp = Literal["cursor", "claude", "antigravity", "mcp_proxy", "blackbox"]
+ExternalApp = Literal["cursor", "claude", "antigravity", "codex", "mcp_proxy", "blackbox"]
 
-KNOWN_EXTERNAL_APPS = frozenset({"cursor", "claude", "antigravity", "mcp_proxy"})
+KNOWN_EXTERNAL_APPS = frozenset({"cursor", "claude", "antigravity", "codex", "mcp_proxy"})
 
 _HOST_ID = socket.gethostname()
 

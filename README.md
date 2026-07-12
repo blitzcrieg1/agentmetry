@@ -157,6 +157,7 @@ scripts\blackbox.bat start
 python scripts\agentaudit_ingest.py selftest          # round-trip ingest check
 # Restart Cursor after pull — .cursor/hooks.json calls the ingest client
 # Claude: merge adapters/claude/settings.agentaudit.json into ~/.claude/settings.json
+# Codex: trust hooks in /hooks after merge — adapters/codex/hooks.agentaudit.json → ~/.codex/hooks.json
 # Antigravity: merge adapters/antigravity/hooks.agentaudit.json into .agents/hooks.json
 ```
 
