@@ -7,6 +7,7 @@ Environment:
   AGENTAUDIT_URL            default http://127.0.0.1:8000
   BLACKBOX_API_KEY          optional X-API-Key header
   AGENTAUDIT_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
+  AGENTAUDIT_LOG_COMMANDS   1 = keep shell command text in audit (see also BLACKBOX_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import json
 import os
 import sys
 import urllib.request
+from urllib.error import URLError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,8 @@ REDACT_KEYS = frozenset({
     "token", "api_key", "apikey", "password", "secret", "authorization",
     "anthropic_api_key", "openai_api_key",
 })
+
+COMMAND_MAX_LEN = 4096
 
 CURSOR_BEFORE = frozenset({
     "beforeShellExecution", "beforeMCPExecution", "preToolUse", "beforeReadFile",
@@ -60,18 +64,139 @@ def _pick(d: dict[str, Any], *keys: str, default: Any = "") -> Any:
     return default
 
 
+def _json_object_snippets(text: str) -> list[str]:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return [text[start : end + 1]]
+    return []
+
+
+def _stdin_decode_candidates(raw: bytes) -> list[tuple[str, str]]:
+    """Return (text, encoding_label) attempts for hook stdin bytes."""
+    if not raw.strip():
+        return []
+
+    blobs: list[tuple[bytes, str]] = [(raw, "utf-8")]
+    if raw.startswith(b"\xff\xfe"):
+        blobs.append((raw[2:], "utf-16-le-bom"))
+    elif raw.startswith(b"\xfe\xff"):
+        blobs.append((raw[2:], "utf-16-be-bom"))
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        blobs.append((raw[3:], "utf-8-bom"))
+    elif len(raw) >= 4 and raw[1:2] == b"\x00" and raw[3:4] == b"\x00":
+        blobs.append((raw, "utf-16-le"))
+
+    candidates: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for blob, preferred in blobs:
+        encodings: list[str] = []
+        if preferred.endswith("-bom"):
+            encodings.append(preferred.replace("-bom", ""))
+        elif preferred == "utf-16-le":
+            encodings.append("utf-16-le")
+        encodings.extend(["utf-8", "utf-16-le", "utf-16", "cp1252", "latin-1"])
+        for enc in encodings:
+            try:
+                text = blob.decode(enc).strip("\ufeff").strip("\x00")
+            except UnicodeDecodeError:
+                continue
+            key = text[:120]
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((text, enc))
+    return candidates
+
+
 def read_hook_stdin() -> tuple[dict[str, Any], bool]:
-    """Read hook JSON from stdin; use raw bytes on Windows (Cursor UTF-8 bug)."""
+    """Read hook JSON from stdin; tolerate Windows UTF-16 / BOM / wrapper corruption."""
     raw = sys.stdin.buffer.read()
     if not raw.strip():
         return {}, False
-    try:
-        return json.loads(raw.decode("utf-8")), False
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        try:
-            return json.loads(raw.decode("utf-8", errors="replace")), True
-        except json.JSONDecodeError:
-            return {"_raw_hex": raw.hex()[:2000]}, True
+
+    for text, enc in _stdin_decode_candidates(raw):
+        snippets = [text, *_json_object_snippets(text)]
+        seen_snippets: set[str] = set()
+        for snippet in snippets:
+            if snippet in seen_snippets:
+                continue
+            seen_snippets.add(snippet)
+            try:
+                parsed = json.loads(snippet)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            extracted = snippet != text
+            non_utf8 = enc not in ("utf-8", "utf-8-bom")
+            if non_utf8:
+                parsed["_stdin_encoding"] = enc
+            return parsed, extracted or non_utf8
+
+    return {"_raw_hex": raw.hex()[:2000], "_raw_len": len(raw)}, True
+
+
+def _repo_env_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "apps" / "orchestrator" / ".env"
+
+
+def _read_repo_env(key: str) -> str:
+    path = _repo_env_path()
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            k, _, v = line.partition("=")
+            if k.strip() == key:
+                return v.strip().strip('"').strip("'")
+    return ""
+
+
+def _log_commands_enabled() -> bool:
+    for raw in (
+        os.environ.get("AGENTAUDIT_LOG_COMMANDS", ""),
+        _read_repo_env("AGENTAUDIT_LOG_COMMANDS"),
+        _read_repo_env("BLACKBOX_AUDIT_LOG_COMMANDS"),
+    ):
+        if raw.strip().lower() in ("1", "true", "yes", "on"):
+            return True
+    return False
+
+
+def _log_full_args_enabled() -> bool:
+    for raw in (
+        os.environ.get("AGENTAUDIT_LOG_FULL_ARGS", ""),
+        _read_repo_env("AGENTAUDIT_LOG_FULL_ARGS"),
+        _read_repo_env("BLACKBOX_AUDIT_LOG_FULL_ARGS"),
+    ):
+        if raw.strip().lower() in ("1", "true", "yes", "on"):
+            return True
+    return False
+
+
+def extract_command(args: Any, qualified: str = "") -> str | None:
+    """Pull shell command text from tool args (Bash, run_command, shell.run, etc.)."""
+    if isinstance(args, dict):
+        for key in ("command", "cmd", "script", "CommandLine"):
+            val = args.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+        
+        for key in ("path", "filepath", "file_path", "AbsolutePath", "TargetFile", "target_path"):
+            val = args.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+    q = (qualified or "").lower()
+    if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
+        if isinstance(args, dict):
+            val = args.get("value")
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+    return None
 
 
 def redact_arguments(args: Any) -> dict[str, Any]:
@@ -96,15 +221,25 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
 
     Args are hashed *inside the hook process* so redacted-plaintext arguments
     never cross the wire to the orchestrator. The stored event keeps only the
-    64-hex digest.
+    64-hex digest unless AGENTAUDIT_LOG_COMMANDS / BLACKBOX_AUDIT_LOG_COMMANDS
+    is set — then shell ``command`` text is kept alongside the hash.
     """
     if not payload:
         return payload
     tool = payload.get("tool")
     if isinstance(tool, dict) and "arguments" in tool:
         args = tool.pop("arguments")
+        qualified = str(tool.get("qualified") or "")
         if not tool.get("input_hash"):
             tool["input_hash"] = hash_arguments(args)
+        
+        if _log_full_args_enabled():
+            tool["arguments"] = redact_arguments(args if isinstance(args, dict) else {"value": args})
+
+        if _log_full_args_enabled() or _log_commands_enabled():
+            cmd = extract_command(args, qualified)
+            if cmd:
+                tool["command"] = cmd
     return payload
 
 
@@ -138,13 +273,14 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            resp.read()
-        return True
-    except Exception as exc:
-        if not quiet:
-            print(f"agentaudit ingest failed: {exc}", file=sys.stderr)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_body = response.read().decode("utf-8")
+            if response.status != 200:
+                print(f"AgentAudit ingest HTTP {response.status}: {res_body}")
+    except URLError as exc:
+        print(f"AgentAudit ingest connection failed: {exc.reason}", file=sys.stderr)
         return False
+    return True
 
 
 def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
@@ -212,9 +348,9 @@ def _initiator_from_hook(hook_name: str, data: dict[str, Any]) -> str:
 
 
 def _cursor_tool_context(hook_name: str, data: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
-    tool_name = str(_pick(data, "tool_name", "tool", "name", default="unknown"))
-    mcp_server = str(_pick(data, "mcp_server", "server", default=""))
-    args = _pick(data, "tool_input", "arguments", "input", default=None)
+    tool_name = str(_pick(data, "tool_name", "toolName", "tool", "name", default="unknown"))
+    mcp_server = str(_pick(data, "mcp_server", "mcpServer", "server", default=""))
+    args = _pick(data, "tool_input", "toolInput", "arguments", "input", default=None)
     if args is None and "command" in data:
         args = {"command": data["command"]}
     clean = redact_arguments(args)
@@ -230,9 +366,12 @@ def _cursor_tool_context(hook_name: str, data: dict[str, Any]) -> tuple[str, str
 
 
 def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    hook_name = str(data.get("hook_event_name") or hook_name)
-    correlation = str(_pick(data, "conversation_id", "generation_id", "session_id", default=""))
-    session_id = str(_pick(data, "session_id", "conversation_id", default=""))
+    hook_name = str(_pick(data, "hook_event_name", "hookEventName", default=hook_name))
+    correlation = str(_pick(
+        data, "conversation_id", "conversationId", "generation_id", "generationId",
+        "session_id", "sessionId", default="",
+    ))
+    session_id = str(_pick(data, "session_id", "sessionId", "conversation_id", "conversationId", default=""))
     initiator = _initiator_from_hook(hook_name, data)
 
     if hook_name == "sessionStart":
@@ -469,14 +608,31 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
     return None
 
 
+def _antigravity_tool_from_data(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Parse Antigravity 2.0 (toolCall) and legacy (toolName/toolInput) stdin."""
+    tool_call = data.get("toolCall")
+    if isinstance(tool_call, dict):
+        name = str(tool_call.get("name") or "unknown")
+        raw_args = tool_call.get("args") if isinstance(tool_call.get("args"), dict) else {}
+        args = dict(raw_args)
+        if "CommandLine" in args and "command" not in args:
+            args["command"] = args["CommandLine"]
+        if "Cwd" in args and "cwd" not in args:
+            args["cwd"] = args["Cwd"]
+        return name, args
+    name = str(_pick(data, "tool_name", "toolName", default="unknown"))
+    raw = _pick(data, "tool_input", "toolInput", default={})
+    return name, raw if isinstance(raw, dict) else {}
+
+
 def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     hook_name = str(data.get("hook_event_name") or data.get("event") or hook_name)
     correlation = str(_pick(data, "conversationId", "conversation_id", default=""))
     session_id = correlation
-    tool_name = str(_pick(data, "tool_name", "toolName", default="unknown"))
-    args = _pick(data, "tool_input", "toolInput", default={})
-    clean = redact_arguments(args)
+    tool_name, raw_args = _antigravity_tool_from_data(data)
+    clean = redact_arguments(raw_args)
     is_hitl = tool_name in ("ask_permission", "ask_question")
+    has_tool = tool_name != "unknown" or isinstance(data.get("toolCall"), dict)
 
     if hook_name in ("PreInvocation", "sessionStart"):
         return {
@@ -498,13 +654,13 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
             "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
         }
 
-    if hook_name == "PreToolUse":
-        event_type = "approval_request" if is_hitl else "approval_request"
+    if hook_name == "PreToolUse" and has_tool:
+        event_type = "approval_request" if is_hitl else "tool_called"
         return {
             "source_app": "antigravity",
             "adapter": "antigravity_hook",
             "event_type": event_type,
-            "outcome": "pending",
+            "outcome": "pending" if is_hitl else "success",
             "reason": f"hook:{hook_name};hitl:{is_hitl}",
             "correlation_id": correlation,
             "session_id": session_id,
@@ -514,17 +670,30 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
 
     if hook_name in ("PostToolUse", "PostInvocation"):
         event_type, outcome, reason = _after_outcome(data)
-        return {
-            "source_app": "antigravity",
-            "adapter": "antigravity_hook",
-            "event_type": event_type,
-            "outcome": outcome,
-            "reason": reason,
-            "correlation_id": correlation,
-            "session_id": session_id,
-            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
-            "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
-        }
+        step = data.get("stepIdx")
+        if has_tool:
+            return {
+                "source_app": "antigravity",
+                "adapter": "antigravity_hook",
+                "event_type": event_type,
+                "outcome": outcome,
+                "reason": reason,
+                "correlation_id": correlation,
+                "session_id": session_id,
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+                "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
+            }
+        if hook_name == "PostToolUse" and correlation:
+            return {
+                "source_app": "antigravity",
+                "adapter": "antigravity_hook",
+                "event_type": event_type,
+                "outcome": outcome,
+                "reason": f"step:{step};{reason}".strip(";"),
+                "correlation_id": correlation,
+                "session_id": session_id,
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+            }
 
     return None
 
@@ -548,7 +717,39 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     else:
         payload = map_cursor_hook(hook_name, data)
     # Hash tool args in-process so plaintext never crosses the wire.
-    return _hash_tool_args(payload)
+    payload = _hash_tool_args(payload)
+    adapter_override = os.environ.get("AGENTAUDIT_ADAPTER", "").strip()
+    if payload and adapter_override:
+        payload["adapter"] = adapter_override
+    return payload
+
+
+def _emit_hook_stdout(hook_name: str) -> None:
+    """Antigravity requires JSON on stdout; Cursor/Codex use permission when enforcing."""
+    source = _source_app()
+    enforce = os.environ.get("AGENTAUDIT_ENFORCE", "").strip().lower()
+
+    if source == "antigravity":
+        if hook_name == "PreToolUse":
+            decision = {"allow": "allow", "deny": "deny", "ask": "ask"}.get(enforce, "allow")
+            print(json.dumps({"decision": decision}))
+        elif hook_name in ("PostToolUse", "PostInvocation", "PreInvocation"):
+            print("{}")
+        elif hook_name == "Stop":
+            print(json.dumps({"decision": "stop"}))
+        return
+
+    if enforce in ("allow", "deny", "ask") and (
+        hook_name in CURSOR_BLOCKING
+        or hook_name in ("PreToolUse", "PermissionRequest")
+    ):
+        print(json.dumps({"permission": enforce}))
+
+
+def _hook_debug_path() -> Path:
+    data_dir = Path(__file__).resolve().parent.parent / "apps" / "orchestrator" / "data"
+    source = _source_app() or "hook"
+    return data_dir / f"{source}-hook-debug.log"
 
 
 def hook_main(hook_name: str) -> int:
@@ -556,23 +757,22 @@ def hook_main(hook_name: str) -> int:
     if decode_error:
         data["_stdin_decode_error"] = True
 
+    if os.environ.get("AGENTAUDIT_HOOK_DEBUG", "").strip().lower() in ("1", "true", "yes"):
+        debug_path = _hook_debug_path()
+        try:
+            with debug_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"{_utc_now()} {hook_name} stdin={json.dumps(data)[:2000]}\n")
+        except OSError:
+            pass
+
     payload = map_hook(hook_name, data)
     if payload:
         if decode_error:
             payload["reason"] = (payload.get("reason", "") + ";stdin_decode_error").strip(";")
         post_ingest(payload, quiet=True)
 
-    # Observe-only by default. AgentAudit records; it must never change the
-    # IDE's enforcement decision. Emitting {"permission":"allow"} here would
-    # auto-approve a tool call the user would otherwise be prompted to review —
-    # a security regression for an audit tool. Only emit a decision when the
-    # operator explicitly opts in via AGENTAUDIT_ENFORCE=allow|deny|ask.
-    enforce = os.environ.get("AGENTAUDIT_ENFORCE", "").strip().lower()
-    if enforce in ("allow", "deny", "ask") and (
-        hook_name in CURSOR_BLOCKING
-        or hook_name in ("PreToolUse", "PermissionRequest")
-    ):
-        print(json.dumps({"permission": enforce}))
+    # Observe-only: Antigravity still needs {"decision":"allow"} on PreToolUse stdout.
+    _emit_hook_stdout(hook_name)
 
     return 0
 

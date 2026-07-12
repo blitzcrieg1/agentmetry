@@ -121,14 +121,20 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
 
     if tool_qualified:
         server = str(tool_block.get("server") or driver_name or source_app)
+        command = str(tool_block.get("command") or "").strip()
+        redaction = "hash+command" if command else "hash"
         event["tool"] = {
             "name": tool_name or tool_qualified,
             "qualified": tool_qualified,
             "server": server,
-            "input_redaction": "hash",
+            "input_redaction": redaction,
             "input_hash": input_hash,
-            "parameters_redacted": True,
+            "parameters_redacted": not bool(command) and not isinstance(tool_block.get("arguments"), dict),
         }
+        if command:
+            event["tool"]["command"] = command[:4096]
+        if isinstance(tool_block.get("arguments"), dict):
+            event["tool"]["arguments"] = tool_block.get("arguments")
 
     gated = payload.get("gated_action")
     if isinstance(gated, dict) and gated.get("tool"):

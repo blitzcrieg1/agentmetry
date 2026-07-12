@@ -115,3 +115,58 @@ def test_audit_status_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     body = TestClient(app).get("/api/v1/audit/status").json()
     assert body["enabled"] is False
     assert body["last_event_utc"] is None
+
+
+def test_audit_tail_pagination_before_utc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    jsonl = tmp_path / "audit-forward.jsonl"
+    events = [
+        {"schema_version": "1.1.0", "event_id": f"e{i}", "correlation_id": f"t{i}",
+         "timestamp_utc": f"2026-07-12T10:0{i}:00+00:00",
+         "action": {"type": "tool_called", "outcome": "success"}}
+        for i in range(5)
+    ]
+    jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    from api.main import app
+
+    client = TestClient(app)
+    latest = client.get("/api/v1/audit/tail?limit=2&scope=runs").json()
+    assert len(latest["events"]) == 2
+    assert latest["events"][-1]["event_id"] == "e4"
+    assert latest["pagination"]["has_older"] is True
+    assert latest["pagination"]["has_newer"] is False
+
+    older = client.get(
+        "/api/v1/audit/tail",
+        params={"limit": 2, "scope": "runs", "before_utc": "2026-07-12T10:03:00+00:00"},
+    ).json()
+    assert len(older["events"]) == 2
+    assert older["events"][0]["event_id"] == "e1"
+    assert older["events"][1]["event_id"] == "e2"
+    assert older["pagination"]["has_older"] is True
+    assert older["pagination"]["has_newer"] is True
+
+
+def test_audit_tail_pagination_after_utc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    jsonl = tmp_path / "audit-forward.jsonl"
+    events = [
+        {"schema_version": "1.1.0", "event_id": f"e{i}", "correlation_id": f"t{i}",
+         "timestamp_utc": f"2026-07-12T10:0{i}:00+00:00",
+         "action": {"type": "tool_called", "outcome": "success"}}
+        for i in range(4)
+    ]
+    jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    from api.main import app
+
+    newer = TestClient(app).get(
+        "/api/v1/audit/tail",
+        params={"limit": 2, "scope": "runs", "after_utc": "2026-07-12T10:01:00+00:00"},
+    ).json()
+    assert len(newer["events"]) == 2
+    assert newer["events"][0]["event_id"] == "e2"
+    assert newer["events"][1]["event_id"] == "e3"
+    assert newer["pagination"]["has_newer"] is False
+    assert newer["pagination"]["has_older"] is True

@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import io
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 _REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO / "scripts"))
 
 import agentaudit_ingest as ingest  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _isolate_repo_env(monkeypatch):
+    """Prevent live apps/orchestrator/.env from changing hash/log behavior in tests."""
+    monkeypatch.setattr(ingest, "_read_repo_env", lambda _key: "")
 
 def test_cursor_before_mcp_maps_approval_request():
     payload = ingest.map_cursor_hook("beforeMCPExecution", {
@@ -53,6 +62,35 @@ def test_antigravity_post_tool():
     })
     assert payload["source_app"] == "antigravity"
     assert payload["tool"]["qualified"] == "antigravity.run_command"
+
+
+def test_antigravity_v2_pre_tool_use_run_command(monkeypatch):
+    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "antigravity")
+    payload = ingest.map_hook("PreToolUse", {
+        "toolCall": {
+            "name": "run_command",
+            "args": {
+                "CommandLine": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5",
+                "Cwd": r"C:\Users\spiro\.gemini\antigravity\scratch",
+            },
+        },
+        "conversationId": "ec33ebf9-0cba-4100-8142-c61503f6c587",
+        "stepIdx": 3,
+    })
+    assert payload is not None
+    assert payload["tool"]["qualified"] == "antigravity.run_command"
+    assert len(payload["tool"]["input_hash"]) == 64
+
+
+def test_antigravity_v2_post_tool_use_step_only():
+    payload = ingest.map_antigravity_hook("PostToolUse", {
+        "conversationId": "ec33ebf9-0cba-4100-8142-c61503f6c587",
+        "stepIdx": 3,
+        "error": "",
+    })
+    assert payload is not None
+    assert payload["event_type"] == "tool_called"
+    assert "step:3" in payload["reason"]
 
 
 def test_codex_bash_post_tool():
@@ -107,7 +145,81 @@ def test_map_hook_hashes_and_strips_plaintext_args(monkeypatch):
     assert payload is not None
     assert "arguments" not in payload["tool"]
     assert len(payload["tool"]["input_hash"]) == 64
+    assert "command" not in payload["tool"]
 
+
+def test_map_hook_keeps_command_when_enabled(monkeypatch):
+    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "codex")
+    monkeypatch.setenv("AGENTAUDIT_LOG_COMMANDS", "1")
+    payload = ingest.map_hook("PostToolUse", {
+        "session_id": "s1",
+        "tool_name": "Bash",
+        "tool_input": {"command": "pytest -q"},
+    })
+    assert payload is not None
+    assert payload["tool"]["command"] == "pytest -q"
+    assert "arguments" not in payload["tool"]
+
+
+def test_read_hook_stdin_utf16_le(monkeypatch):
+    payload = {"conversation_id": "utf16", "command": "Get-Location", "exit_code": 0}
+    raw = json.dumps(payload).encode("utf-16-le")
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(raw)})())
+
+    data, decode_error = ingest.read_hook_stdin()
+    assert data["command"] == "Get-Location"
+    assert decode_error is True  # non-utf-8 encoding used
+
+
+def test_read_hook_stdin_utf16_le_bom(monkeypatch):
+    payload = {"conversation_id": "bom", "command": "dir"}
+    raw = b"\xff\xfe" + json.dumps(payload).encode("utf-16-le")
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(raw)})())
+
+    data, decode_error = ingest.read_hook_stdin()
+    assert data["command"] == "dir"
+
+
+def test_read_hook_stdin_empty():
+    old = sys.stdin
+    sys.stdin = type("S", (), {"buffer": io.BytesIO(b"")})()
+    try:
+        data, decode_error = ingest.read_hook_stdin()
+        assert data == {}
+        assert decode_error is False
+    finally:
+        sys.stdin = old
+
+
+def test_extract_command_all_adapters():
+    assert ingest.extract_command({"command": "dir"}, "shell.run") == "dir"
+    assert ingest.extract_command({"command": "ls"}, "antigravity.run_command") == "ls"
+    assert ingest.extract_command({"path": "x.md"}, "Read") == "x.md"
+
+
+def test_map_hook_full_args_redacts_secrets(monkeypatch):
+    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTAUDIT_LOG_FULL_ARGS", "1")
+    payload = ingest.map_hook("postToolUse", {
+        "conversation_id": "c1",
+        "tool_name": "Shell",
+        "tool_input": {"command": "echo hi", "token": "secret"},
+    })
+    assert payload is not None
+    assert payload["tool"]["arguments"]["token"] == "<redacted>"
+    assert payload["tool"]["arguments"]["command"] == "echo hi"
+    assert payload["tool"]["command"] == "echo hi"
+
+
+def test_adapter_override_from_env(monkeypatch):
+    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "antigravity")
+    monkeypatch.setenv("AGENTAUDIT_ADAPTER", "antigravity_transcript")
+    payload = ingest.map_hook("PreToolUse", {
+        "toolCall": {"name": "run_command", "args": {"CommandLine": "dir"}},
+        "conversationId": "c1",
+    })
+    assert payload is not None
+    assert payload["adapter"] == "antigravity_transcript"
 
 def test_after_hook_flags_failure(monkeypatch):
     """A failed tool must not be logged as success (F3)."""

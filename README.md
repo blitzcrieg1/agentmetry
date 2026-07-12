@@ -6,7 +6,7 @@
 
 > **Two pipes, your choice:** run inference locally (Ollama/mock) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
 
-`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **299 tests passing, 2 skipped**
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **317 tests passing, 2 skipped**
 
 ---
 
@@ -150,17 +150,32 @@ You now have an L0 + L1 audit trail. Every governed run is in `events.db` and ap
 
 ### Tier B — external IDE agents (Cursor, Claude, Codex, Antigravity)
 
-Wire lifecycle hooks into the same JSONL flight recorder. Requires orchestrator on `:8000`.
-
-| Platform | Project hooks (in repo) |
-|----------|-------------------------|
-| Cursor | `.cursor/hooks.json` |
-| Claude Code | `.claude/settings.json` |
-| Codex CLI | `.codex/hooks.json` (trust via `/hooks`) |
-| Antigravity | `.agents/hooks.json` |
+Wire lifecycle hooks and transcript watchers into the same JSONL flight recorder. **Start the orchestrator once** — it installs global Cursor hooks and spawns the Antigravity transcript watcher automatically.
 
 ```powershell
-scripts\blackbox.bat start
+scripts\start-dev.bat          # orchestrator :8000 + dashboard :3000
+# or: scripts\blackbox.bat start
+```
+
+| Platform | Install target | Boot behavior |
+|----------|----------------|---------------|
+| **Cursor** | `%USERPROFILE%\.cursor\hooks.json` (all workspaces) | Rewritten on orchestrator boot |
+| **Antigravity** | `~/.gemini/config/hooks.json` + transcript watcher | Watcher spawned by orchestrator |
+| **Claude Code** | merge `adapters/claude/settings.agentaudit.json` | Manual once |
+| **Codex CLI** | merge `adapters/codex/hooks.agentaudit.json` | Manual once + `/hooks` trust |
+
+One-time after first install: **fully quit Cursor** so global hooks load. Then every project you open logs tool/shell/MCP events when the orchestrator is on `:8000`.
+
+Optional installers (idempotent):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
+```
+
+Verify round-trip:
+
+```powershell
 foreach ($src in @("cursor","claude","codex","antigravity")) {
   $env:AGENTAUDIT_SOURCE_APP = $src
   python scripts/agentaudit_ingest.py selftest
@@ -168,7 +183,9 @@ foreach ($src in @("cursor","claude","codex","antigravity")) {
 Remove-Item Env:\AGENTAUDIT_SOURCE_APP -ErrorAction SilentlyContinue
 ```
 
-Full guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Dashboard freshness badge shows **last event N min ago** — stale means hooks or ingest failed silently.
+**Dashboard flight recorder** (`http://localhost:3000`): filter by source (Cursor, Antigravity, …), search command/hash text, time windows, and **Older / Newer** pagination through the JSONL tail.
+
+Full guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Freshness badge shows **last event N min ago** — stale means hooks or ingest failed silently.
 
 ### Forward to a SIEM (optional)
 
@@ -243,7 +260,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-**299 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_external_ingest.py`.
+**317 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_audit_tail.py`, `test_external_ingest.py`, `test_agentaudit_ingest_client.py`, `test_hook_bootstrap.py`.
 
 ---
 
@@ -308,6 +325,7 @@ See `.env.example` for all options. Key variables:
 | `BLACKBOX_AUDIT_SINK` | `file` | `file`, `webhook`, `elastic`, `splunk`, comma-separated, or `all` |
 | `BLACKBOX_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | JSONL forward file |
 | `BLACKBOX_AUDIT_INGEST_ENABLED` | `true` | Accept `POST /api/v1/audit/ingest` (Tier B) |
+| `BLACKBOX_AUDIT_LOG_COMMANDS` | `0` | Keep shell command text in Tier B events (see also `BLACKBOX_AUDIT_LOG_FULL_ARGS`) |
 | `BLACKBOX_AUDIT_INGEST_URL` | `http://127.0.0.1:8000` | Base URL for hook client selftest |
 | `BLACKBOX_AUDIT_WEBHOOK_URL` | empty | Generic JSON POST sink |
 | `BLACKBOX_AUDIT_ELASTIC_URL` | empty | Elasticsearch cluster URL |

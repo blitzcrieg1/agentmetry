@@ -14,9 +14,15 @@ Cursor / Claude / Codex / Antigravity / MCP clients
   Dashboard flight recorder (source badges)
 ```
 
-## Quick start — Cursor (project hooks)
+## Quick start — Cursor (global hooks)
 
-Hooks ship in `.cursor/hooks.json`. They call `scripts/agentaudit_ingest.py` on tool and session events.
+Hooks install to **`~/.cursor/hooks.json`** — every workspace, not just this repo. The orchestrator rewrites them on boot; you can also run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
+```
+
+**One-time:** fully quit Cursor after install so hooks load. Then any project you open logs to AgentAudit when the orchestrator is on `:8000`.
 
 **Requirements:**
 
@@ -24,7 +30,7 @@ Hooks ship in `.cursor/hooks.json`. They call `scripts/agentaudit_ingest.py` on 
 2. `BLACKBOX_AUDIT_EXPORT_ENABLED=1` (default)
 3. Optional: `BLACKBOX_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
 
-Restart Cursor after pulling hooks so they load (Hooks tab in settings).
+Restart Cursor after pulling hooks so they load (Hooks tab in settings). Global hooks live in `%USERPROFILE%\.cursor\hooks.json`.
 
 ## Ingest API
 
@@ -67,10 +73,19 @@ Restart Claude Code after pull. Transcript fallback: `~/.claude/projects/<encode
 
 ## Google Antigravity
 
-Project hooks ship in **`.agents/hooks.json`** (or merge `adapters/antigravity/hooks.agentaudit.json`). camelCase stdin (`conversationId`, `toolName`, `toolInput`).
+Antigravity 2.0 often runs from **`~/.gemini/antigravity/scratch`**, not your repo — project `.agents/hooks.json` is **not** loaded there. Install **global** hooks once:
 
 ```powershell
-python scripts/agentaudit_ingest.py antigravity hook PostToolUse
+powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
+# Restart Antigravity
+```
+
+That writes `~/.gemini/config/hooks.json` with absolute paths to `agentaudit_ingest.py`. Antigravity 2.0 stdin uses `toolCall.name` + `toolCall.args.CommandLine` (commands captured on **PreToolUse** / `run_command`).
+
+Project-only (when workspace **is** `agentic-os`): merge `adapters/antigravity/hooks.agentaudit.json` into `.agents/hooks.json`.
+
+```powershell
+python scripts/agentaudit_ingest.py antigravity hook PreToolUse
 $env:AGENTAUDIT_SOURCE_APP="antigravity"; python scripts/agentaudit_ingest.py selftest
 ```
 
@@ -102,7 +117,7 @@ Project hooks in `.cursor/hooks.json` now include **before** and **after** gatin
 - `afterShellExecution` / `afterMCPExecution` / `postToolUse` → `tool_called`
 - `sessionStart` / `sessionEnd` / `stop`
 
-**Windows:** ingest reads `sys.stdin.buffer` (UTF-8 corruption workaround). Invoke via `python.exe` directly — avoid PATH `bash` → WSL.
+**Windows:** hooks must invoke `python.exe` **directly** (no `.cmd` wrapper — batch files drop stdin). Reinstall: `scripts\install_cursor_hooks.ps1`. Ingest tries UTF-8, UTF-16-LE, and BOM variants on stdin.
 
 Research reference: [`docs/glm-52-external-agent-audit-results.md`](./glm-52-external-agent-audit-results.md) (full GLM deliverable).
 
@@ -126,7 +141,7 @@ AgentAudit's external hooks are **observe-only by default** — they record, the
 - **Approval *requests* are observed directly** — an `ask` on a `before*`/`PreToolUse` hook becomes an `approval_request` (pending).
 - **Approval *responses* are inferred, not natively reported.** No IDE emits "the human clicked approve." AgentAudit infers it: a tool that *runs* after an `ask` (a matching `tool_called`) yields an `approval_response` marked **`reason: inferred:tool_ran_after_ask`**; an `ask` still pending at session end yields an inferred **denied**. These events are explicitly flagged as inferred — treat them as strong evidence, not a native signal.
 
-**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed to the orchestrator. Plaintext arguments do not cross the wire from the hook. (The raw `/api/v1/audit/ingest` API still accepts `arguments` for manual `send` use and hashes them server-side.)
+**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed by default. Set `BLACKBOX_AUDIT_LOG_COMMANDS=1` in `apps/orchestrator/.env` (or `AGENTAUDIT_LOG_COMMANDS=1` in the hook environment) to also record **shell command text** (`command` field) for Bash / `run_command` / `shell.run` tools across Cursor, Claude, Codex, and Antigravity. Other args stay hashed; secrets in `command` are not redacted — use only on machines you own.
 
 ## MCP proxy (any client)
 
@@ -149,6 +164,7 @@ Point Cursor/Claude MCP config at the proxy command instead of the raw server.
 |----------|---------|---------|
 | `AGENTAUDIT_URL` | `http://127.0.0.1:8000` | Ingest base URL |
 | `AGENTAUDIT_SOURCE_APP` | `cursor` | Default source in hook mapper |
+| `AGENTAUDIT_LOG_COMMANDS` | *(off)* | `1` = store shell command text in audit (also reads `BLACKBOX_AUDIT_LOG_COMMANDS` from `apps/orchestrator/.env`) |
 | `BLACKBOX_API_KEY` | *(empty)* | Auth header for ingest |
 | `BLACKBOX_AUDIT_INGEST_ENABLED` | `1` | Kill switch |
 

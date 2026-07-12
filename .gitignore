@@ -44,5 +44,12 @@ data/
 # Logs
 *.log
 
+# Tier B — machine-local hook wrappers (install scripts regenerate)
+scripts/agentaudit_*_hook.cmd
+
+# Local driver toggles (never commit enabled/disabled state)
+vault/.system/drivers.json
+vault/.system/feedback/
+
 # Backups
 backups/

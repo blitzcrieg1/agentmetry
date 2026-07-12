@@ -37,6 +37,23 @@ def test_build_external_canonical_cursor_tool():
     assert len(out["tool"]["input_hash"]) == 64
 
 
+def test_build_external_canonical_with_command():
+    out = build_external_canonical({
+        "source_app": "antigravity",
+        "event_type": "tool_called",
+        "correlation_id": "ag-1",
+        "tool": {
+            "qualified": "antigravity.run_command",
+            "server": "antigravity",
+            "input_hash": "a" * 64,
+            "command": "pytest -q",
+        },
+    })
+    assert out["tool"]["command"] == "pytest -q"
+    assert out["tool"]["input_redaction"] == "hash+command"
+    assert out["tool"]["parameters_redacted"] is False
+
+
 def test_build_external_claude_session():
     out = build_external_canonical({
         "source_app": "claude",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,6 +30,7 @@ class IngestToolBody(BaseModel):
     server: str = ""
     arguments: dict[str, Any] | None = None
     input_hash: str = ""
+    command: str = ""
 
 
 class ExternalIngestBody(BaseModel):
@@ -61,8 +63,21 @@ def _tail_jsonl(path: Path, *, read_lines: int) -> list[dict]:
     if not lines:
         return []
     tail = lines[-read_lines:]
+    return _parse_jsonl_lines(tail)
+
+
+def _read_jsonl(path: Path, *, max_lines: int = 50_000) -> list[dict]:
+    if not path.is_file():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) > max_lines:
+        lines = lines[-max_lines:]
+    return _parse_jsonl_lines(lines)
+
+
+def _parse_jsonl_lines(lines: list[str]) -> list[dict]:
     events: list[dict] = []
-    for line in tail:
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -71,6 +86,29 @@ def _tail_jsonl(path: Path, *, read_lines: int) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return events
+
+
+def _parse_event_ts(event: dict[str, Any]) -> datetime | None:
+    ts = event.get("timestamp_utc")
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _parse_query_ts(value: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid timestamp: {value}") from exc
 
 
 def _event_source_app(event: dict[str, Any]) -> str:
@@ -91,7 +129,7 @@ def _filter_events(
     scope: Literal["runs", "all"],
     session_id: str | None,
     sources: set[str] | None,
-    limit: int,
+    since_minutes: int | None,
 ) -> list[dict]:
     if scope == "runs":
         events = [
@@ -108,7 +146,66 @@ def _filter_events(
             if e.get("session_id") == session_id
             or _event_source_app(e) != "blackbox"
         ]
-    return events[-limit:]
+    if since_minutes is not None and since_minutes > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+
+        def _after_cutoff(event: dict) -> bool:
+            dt = _parse_event_ts(event)
+            if dt is None:
+                return True
+            return dt >= cutoff
+
+        events = [e for e in events if _after_cutoff(e)]
+    return events
+
+
+def _sort_events(events: list[dict]) -> list[dict]:
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+
+    def _key(event: dict) -> tuple[datetime, str]:
+        ts = _parse_event_ts(event) or epoch
+        eid = str(event.get("event_id") or "")
+        return (ts, eid)
+
+    return sorted(events, key=_key)
+
+
+def _paginate_events(
+    events: list[dict],
+    *,
+    limit: int,
+    before_utc: str | None,
+    after_utc: str | None,
+) -> tuple[list[dict], dict[str, Any]]:
+    sorted_events = _sort_events(events)
+    if before_utc and after_utc:
+        raise HTTPException(status_code=400, detail="Use only one of before_utc or after_utc")
+
+    if before_utc:
+        cutoff = _parse_query_ts(before_utc)
+        pool = [e for e in sorted_events if (ts := _parse_event_ts(e)) and ts < cutoff]
+        page = pool[-limit:]
+        has_older = len(pool) > limit
+        has_newer = True
+    elif after_utc:
+        cutoff = _parse_query_ts(after_utc)
+        pool = [e for e in sorted_events if (ts := _parse_event_ts(e)) and ts > cutoff]
+        page = pool[:limit]
+        has_older = True
+        has_newer = len(pool) > limit
+    else:
+        page = sorted_events[-limit:]
+        has_older = len(sorted_events) > limit
+        has_newer = False
+
+    pagination = {
+        "has_older": has_older,
+        "has_newer": has_newer,
+        "oldest_utc": page[0].get("timestamp_utc") if page else None,
+        "newest_utc": page[-1].get("timestamp_utc") if page else None,
+        "count": len(page),
+    }
+    return page, pagination
 
 
 @router.post("/ingest", dependencies=[Depends(require_api_key)])
@@ -151,29 +248,54 @@ async def audit_tail(
         None,
         description="Comma-separated source apps: blackbox,cursor,claude,antigravity,mcp_proxy",
     ),
+    since_minutes: int | None = Query(
+        None,
+        ge=1,
+        le=10080,
+        description="Only events within the last N minutes",
+    ),
+    before_utc: str | None = Query(
+        None,
+        description="Return events strictly before this ISO timestamp (page older)",
+    ),
+    after_utc: str | None = Query(
+        None,
+        description="Return events strictly after this ISO timestamp (page newer)",
+    ),
 ):
     """Return canonical audit events from the local JSONL forwarder."""
     path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
-        return {"events": [], "path": str(path), "enabled": False}
+        return {"events": [], "path": str(path), "enabled": False, "pagination": {"has_older": False, "has_newer": False, "count": 0}}
 
     source_set: set[str] | None = None
     if sources:
         source_set = {s.strip().lower() for s in sources.split(",") if s.strip()}
 
     try:
-        read_lines = max(limit * 20, 400)
-        raw = _tail_jsonl(path, read_lines=read_lines)
-        events = _filter_events(
+        if before_utc or after_utc:
+            raw = _read_jsonl(path)
+        else:
+            read_lines = max(limit * 20, 400)
+            raw = _tail_jsonl(path, read_lines=read_lines)
+        filtered = _filter_events(
             raw,
             scope=scope,
             session_id=session_id,
             sources=source_set,
-            limit=limit,
+            since_minutes=since_minutes,
         )
+        events, pagination = _paginate_events(
+            filtered,
+            limit=limit,
+            before_utc=before_utc,
+            after_utc=after_utc,
+        )
+    except HTTPException:
+        raise
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"events": events, "path": str(path), "enabled": True}
+    return {"events": events, "path": str(path), "enabled": True, "pagination": pagination}
 
 
 @router.get("/status")

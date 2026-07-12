@@ -106,6 +106,32 @@ async def lifespan(app: FastAPI):
     from core.drivers.host import get_mcp_host
 
     mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
+
+    from core.audit.hook_bootstrap import bootstrap_tier_b_hooks
+
+    try:
+        hook_paths = bootstrap_tier_b_hooks()
+        if hook_paths.get("cursor"):
+            logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
+    except Exception as exc:
+        logger.warning("Tier B hook bootstrap failed: %s", exc)
+
+    # Launch transcript watcher for Antigravity in the background
+    import subprocess
+    import sys
+    watcher_process = None
+    try:
+        watcher_path = Path(__file__).resolve().parents[3] / "scripts" / "antigravity_transcript_watcher.py"
+        if watcher_path.exists():
+            watcher_process = subprocess.Popen(
+                [sys.executable, str(watcher_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info("Started Antigravity transcript watcher (PID: %s)", watcher_process.pid)
+    except Exception as exc:
+        logger.warning("Failed to start Antigravity transcript watcher: %s", exc)
+
     yield
     if telegram_channel is not None:
         await telegram_channel.stop()
@@ -118,6 +144,8 @@ async def lifespan(app: FastAPI):
     for task in bridge_tasks:
         task.cancel()
     await shutdown_checkpointer()
+    if watcher_process:
+        watcher_process.terminate()
 
 
 app = FastAPI(
