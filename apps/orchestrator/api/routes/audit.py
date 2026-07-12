@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from core.auth import require_api_key
@@ -285,17 +286,34 @@ async def audit_tail(
             sources=source_set,
             since_minutes=since_minutes,
         )
-        events, pagination = _paginate_events(
-            filtered,
-            limit=limit,
-            before_utc=before_utc,
-            after_utc=after_utc,
+        page, pagination = _paginate_events(
+            filtered, limit=limit, before_utc=before_utc, after_utc=after_utc
         )
     except HTTPException:
         raise
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"events": events, "path": str(path), "enabled": True, "pagination": pagination}
+    return {"events": page, "path": str(path), "enabled": True, "pagination": pagination}
+
+
+@router.get("/export/evidence")
+async def audit_export_evidence():
+    """Generate and download a cryptographic evidence pack."""
+    from core.audit.evidence_pack import build_evidence_pack, default_export_path, write_evidence_pack
+    from datetime import datetime, timedelta, timezone
+
+    to_date = datetime.now(timezone.utc)
+    from_date = to_date - timedelta(days=30)  # Export last 30 days
+    
+    pack = build_evidence_pack(from_date, to_date)
+    out_path = default_export_path(from_date, to_date)
+    write_evidence_pack(pack, out_path)
+    
+    return FileResponse(
+        path=out_path,
+        media_type="application/zip",
+        filename=out_path.name,
+    )
 
 
 @router.get("/status")

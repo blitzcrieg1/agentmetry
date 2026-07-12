@@ -1,23 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  CheckCircle2,
-  Code2,
-  Loader2,
-  Radio,
   Shield,
   Wifi,
   WifiOff,
 } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
-import { SkillDeck } from "@/components/skill-deck";
-import { GraphVisualization } from "@/components/graph-viz/graph-visualization";
-import { TelemetryPanel } from "@/components/telemetry/telemetry-panel";
-import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
+import { AnalyticsPanel } from "@/components/analytics-panel";
 import { AuditFreshnessBadge } from "@/components/audit-freshness-badge";
+import { ORCHESTRATOR_URL } from "@/lib/utils";
 
 function terminalLineClass(line: string): string {
   if (line.startsWith("✗") || line.toLowerCase().includes("error") || line.startsWith("Error:")) {
@@ -59,18 +53,9 @@ function CompletedBanner() {
 export function MissionControl() {
   useWebSocket();
 
-  const terminalOutput = useAgentStore((s) => s.terminalOutput);
-  const executionStatus = useAgentStore((s) => s.executionStatus);
-  const wsConnected = useAgentStore((s) => s.wsConnected);
-  const activeSkill = useAgentStore((s) => s.activeSkill);
-  const devMode = useAgentStore((s) => s.devMode);
-  const setDevMode = useAgentStore((s) => s.setDevMode);
-  const terminalRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<"recorder" | "analytics">("recorder");
 
-  useEffect(() => {
-    const el = terminalRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [terminalOutput]);
+  const wsConnected = useAgentStore((s) => s.wsConnected);
 
   return (
     <div className="flex h-screen flex-col">
@@ -78,9 +63,6 @@ export function MissionControl() {
         <div className="flex items-center gap-3">
           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-500/30 shadow-lg shadow-violet-900/30">
             <Shield className="h-5 w-5 text-violet-300" />
-            {executionStatus === "running" ? (
-              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 ring-2 ring-background" />
-            ) : null}
           </div>
           <div>
             <h1 className="text-gradient text-lg font-bold tracking-tight">AgentAudit</h1>
@@ -89,116 +71,47 @@ export function MissionControl() {
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="flex rounded-md border border-zinc-800 p-1 bg-zinc-900/50">
+            <button
+              onClick={() => setActiveTab("recorder")}
+              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
+                activeTab === "recorder" ? "bg-violet-500/20 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Flight Recorder
+            </button>
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
+                activeTab === "analytics" ? "bg-violet-500/20 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Analytics
+            </button>
+          </div>
+
+          <a
+            href={`${ORCHESTRATOR_URL}/api/v1/audit/export/evidence`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-950/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500 transition-colors hover:text-zinc-300"
+            title="Download cryptographically signed compliance pack"
+          >
+            Export Pack
+          </a>
           <AuditFreshnessBadge />
-          <DevModeToggle enabled={devMode} onChange={setDevMode} />
           <ConnectionPill connected={wsConnected} />
-          {activeSkill && executionStatus !== "idle" ? (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              <Radio className="mr-1 inline h-3 w-3 text-violet-400" />
-              {activeSkill.replace(/_/g, " ")}
-            </span>
-          ) : null}
-          <StatusBadge status={executionStatus} />
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="glass-panel w-72 shrink-0 overflow-y-auto border-r border-zinc-800/60 p-4">
-          <SkillDeck />
-        </aside>
-
-        <main className="flex flex-1 flex-col gap-4 overflow-hidden p-5">
-          {devMode ? (
-            <>
-              {executionStatus === "waiting_for_input" ? (
-                <div className="shrink-0">
-                  <ApprovalInboxCard />
-                </div>
-              ) : null}
-              <div className="min-h-0 flex-1">
-                <GraphVisualization />
-              </div>
-              <div className="glass-panel h-52 shrink-0 overflow-hidden rounded-xl border-zinc-800/60">
-                <div className="flex items-center gap-2 border-b border-zinc-800/60 bg-zinc-950/50 px-3 py-2">
-                  <div className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/80" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-green-500/80" />
-                  <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    agent terminal
-                  </span>
-                </div>
-                <div
-                  ref={terminalRef}
-                  className="h-[calc(100%-36px)] overflow-y-auto bg-zinc-950/50 p-3 font-mono text-xs leading-relaxed"
-                >
-                  {terminalOutput.length === 0 ? (
-                    <span className="text-muted-foreground/70">
-                      Ready. Select a skill to begin.
-                    </span>
-                  ) : (
-                    terminalOutput.map((line, i) => (
-                      <div
-                        key={i}
-                        className={`animate-fade-in-up ${terminalLineClass(line)}`}
-                        style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}
-                      >
-                        {line}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
+      <div className="flex min-h-0 flex-1 bg-zinc-950">
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-black/40 p-4 sm:p-6">
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-              {executionStatus === "waiting_for_input" ? (
-                <div className="shrink-0">
-                  <ApprovalInboxCard />
-                </div>
-              ) : executionStatus === "running" ? (
-                <div className="shrink-0">
-                  <RunningState skill={activeSkill} />
-                </div>
-              ) : executionStatus === "completed" ? (
-                <div className="shrink-0">
-                  <CompletedBanner />
-                </div>
-              ) : null}
-
-              <FlightRecorderPanel />
+              {activeTab === "recorder" ? <FlightRecorderPanel /> : <AnalyticsPanel />}
             </div>
-          )}
         </main>
-
-        <aside className="glass-panel w-72 shrink-0 overflow-y-auto border-l border-zinc-800/60 p-4">
-          <TelemetryPanel />
-        </aside>
       </div>
     </div>
-  );
-}
-
-function DevModeToggle({
-  enabled,
-  onChange,
-}: {
-  enabled: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!enabled)}
-      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
-        enabled
-          ? "border-violet-500/40 bg-violet-950/50 text-violet-300"
-          : "border-zinc-700/60 bg-zinc-950/40 text-zinc-500 hover:text-zinc-300"
-      }`}
-      title="Show LangGraph pipeline and raw terminal"
-    >
-      <Code2 className="h-3 w-3" />
-      Dev
-    </button>
   );
 }
 
@@ -213,26 +126,6 @@ function ConnectionPill({ connected }: { connected: boolean }) {
     >
       {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
       {connected ? "Live" : "Offline"}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    idle: "bg-muted/80 text-muted-foreground border-border",
-    running: "bg-violet-500/20 text-violet-300 border-violet-500/40 animate-pulse",
-    waiting_for_input: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-    completed: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-    failed: "bg-red-500/20 text-red-300 border-red-500/40",
-  };
-
-  return (
-    <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium capitalize ${
-        colors[status] || colors.idle
-      }`}
-    >
-      {status.replace(/_/g, " ")}
     </span>
   );
 }

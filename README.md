@@ -6,7 +6,7 @@
 
 > **Two pipes, your choice:** run inference locally (Ollama/mock) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
 
-`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **317 tests passing, 2 skipped**
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **335 tests passing, 2 skipped**
 
 ---
 
@@ -106,86 +106,61 @@ For a fully local setup, use [`apps/orchestrator/.env.agentaudit-ollama`](apps/o
 
 ---
 
-## Quick start
+## Installation & Quick Start
 
-### Primary — air-gapped (Ollama + local audit)
+You can run AgentAudit entirely locally (Ollama/Mock) or with a cloud LLM (Gemini). **Either way, the audit trail never leaves your machine.**
 
-Nothing leaves the box. Inference on a local model, audit local.
+### 1. Prerequisites
+- **Python 3.10+**
+- **Node.js 18+**
+- *(Optional)* [Ollama](https://ollama.com/) if you want fully air-gapped local inference.
+
+### 2. Core Setup (One-time)
+Open a terminal in the root of the repository:
 
 ```powershell
-# 0. One time: install Ollama (https://ollama.com), then:
-ollama pull llama3.2
-
-# 1. Use the air-gapped profile
-copy apps\orchestrator\.env.agentaudit-ollama apps\orchestrator\.env
-# edit BLACKBOX_OPERATOR_ID to your handle
-
-# 2. Install + start
+# 1. Setup the Python Orchestrator
 cd apps\orchestrator
-python -m venv .venv; .\.venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -e ".[dev]"
+copy .env.agentaudit-demo .env  # Use the mock profile for zero-setup testing
 cd ..\..
-scripts\blackbox.bat start
 
-# 3. Run the audit demo skill (tool call + approval, no cloud), then replay
-#    (dashboard http://127.0.0.1:8000 → Run → AgentAudit Demo)
-blackbox replay <thread_id>
-Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5
+# 2. Setup the Next.js Dashboard
+cd apps\dashboard
+npm install
+cd ..\..
 ```
 
-### Secondary — dev/test (mock, zero setup)
+*(Note: To use a real model instead of mock data, edit `apps/orchestrator/.env` and set `BLACKBOX_LLM_PROVIDER=gemini` or `ollama`.)*
 
-No Ollama, no keys. Placeholder drafts; the audit trail is real.
+### 3. Boot the Flight Recorder
+Launch the orchestrator and the dashboard together. This also automatically spawns the background transcript watcher for Antigravity.
 
 ```powershell
-copy apps\orchestrator\.env.agentaudit-demo apps\orchestrator\.env
-scripts\blackbox.bat start
+scripts\start-dev.bat
 ```
+*Your dashboard is now live at [http://localhost:3000](http://localhost:3000).*
 
-### Tertiary — optional cloud inference (Gemini BYOK)
-
-Prefer a hosted model for richer drafts? Set `BLACKBOX_LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in `.env`. This sends **prompts** to Google (Pipe 1); your **audit trail stays local** (Pipe 2) unless you add a network sink. Not the default, not required.
-
-You now have an L0 + L1 audit trail. Every governed run is in `events.db` and appended to `audit-forward.jsonl`.
-
-### Tier B — external IDE agents (Cursor, Claude, Codex, Antigravity)
-
-Wire lifecycle hooks and transcript watchers into the same JSONL flight recorder. **Start the orchestrator once** — it installs global Cursor hooks and spawns the Antigravity transcript watcher automatically.
+### 4. Wire up your IDEs (Tier B Hooks)
+To capture events from Cursor, Claude Code, or Codex, you need to install their lifecycle hooks. **You only need to do this once.** Keep the orchestrator (`start-dev.bat`) running, open a new PowerShell window, and run:
 
 ```powershell
-scripts\start-dev.bat          # orchestrator :8000 + dashboard :3000
-# or: scripts\blackbox.bat start
-```
-
-| Platform | Install target | Boot behavior |
-|----------|----------------|---------------|
-| **Cursor** | `%USERPROFILE%\.cursor\hooks.json` (all workspaces) | Rewritten on orchestrator boot |
-| **Antigravity** | `~/.gemini/config/hooks.json` + transcript watcher | Watcher spawned by orchestrator |
-| **Claude Code** | merge `adapters/claude/settings.agentaudit.json` | Manual once |
-| **Codex CLI** | merge `adapters/codex/hooks.agentaudit.json` | Manual once + `/hooks` trust |
-
-One-time after first install: **fully quit Cursor** so global hooks load. Then every project you open logs tool/shell/MCP events when the orchestrator is on `:8000`.
-
-Optional installers (idempotent):
-
-```powershell
+# Install Cursor hooks (Applies to all workspaces)
 powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
-powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
+
+# Install Claude Code hooks
+powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
+
+# Codex CLI: Manually merge adapters/codex/hooks.agentaudit.json into your config,
+# making sure to use the ABSOLUTE path to scripts/agentaudit_ingest.py.
 ```
 
-Verify round-trip:
+*(After installing, fully quit and restart Cursor/Claude for the hooks to load).*
 
-```powershell
-foreach ($src in @("cursor","claude","codex","antigravity")) {
-  $env:AGENTAUDIT_SOURCE_APP = $src
-  python scripts/agentaudit_ingest.py selftest
-}
-Remove-Item Env:\AGENTAUDIT_SOURCE_APP -ErrorAction SilentlyContinue
-```
-
-**Dashboard flight recorder** (`http://localhost:3000`): filter by source (Cursor, Antigravity, …), search command/hash text, time windows, and **Older / Newer** pagination through the JSONL tail.
-
-Full guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Freshness badge shows **last event N min ago** — stale means hooks or ingest failed silently.
+### 5. Verify the Connection
+Go to your IDE and ask your AI agent to read a file or run a simple command. You should instantly see the event populate in your dashboard under the **Flight Recorder** tab!
 
 ### Forward to a SIEM (optional)
 
@@ -260,7 +235,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-**317 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_audit_tail.py`, `test_external_ingest.py`, `test_agentaudit_ingest_client.py`, `test_hook_bootstrap.py`.
+**335 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_audit_tail.py`, `test_external_ingest.py`, `test_agentaudit_ingest_client.py`, `test_hook_bootstrap.py`.
 
 ---
 

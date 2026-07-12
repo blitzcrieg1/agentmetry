@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from core.audit.alerts import AlertWebhookSink
 from core.audit.canonical import normalize_outbox_row
-from core.audit.sinks import build_audit_sinks, parse_sink_modes
+from core.audit.sinks import MultiAuditSink, build_audit_sinks, parse_sink_modes
 from core.bus.bus import EventBus, bus
 from core.bus.events import Event, LLM_TOKEN
 from core.config import settings
@@ -66,14 +67,29 @@ async def audit_exporter(
         splunk_sourcetype=settings.audit_splunk_sourcetype,
         splunk_verify_tls=settings.audit_splunk_verify_tls,
     )
-    if sink is None:
+    if sink is None and not settings.audit_alert_webhook_url.strip():
         logger.warning(
             "Audit export enabled but no sinks configured "
             "(check BLACKBOX_AUDIT_SINK and backend credentials)"
         )
         return
 
+    # Add Alert Sink if configured
+    if settings.audit_alert_webhook_url.strip():
+        alert_sink = AlertWebhookSink(
+            settings.audit_alert_webhook_url.strip(),
+            timeout_seconds=settings.audit_webhook_timeout_seconds,
+        )
+        if sink is None:
+            sink = alert_sink
+        elif isinstance(sink, MultiAuditSink):
+            sink.sinks.append(alert_sink)
+        else:
+            sink = MultiAuditSink([sink, alert_sink])
+
     targets = _describe_sink_targets(modes)
+    if settings.audit_alert_webhook_url.strip():
+        targets.append(f"alerts:{settings.audit_alert_webhook_url.strip()}")
     logger.info("Audit export sinks → %s", ", ".join(targets))
 
     sub = bus_.subscribe("audit-export", exclude={LLM_TOKEN})

@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     audit_splunk_verify_tls: bool = True
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"
+    audit_alert_webhook_url: str = ""
 
 
 settings = Settings()

@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from core.audit.hashing import arguments_sha256
+from core.audit.mitre import get_mitre_mapping
 from core.audit.run_context import actor_from_initiator, resolve_initiator
 from core.bus.events import (
     DRIVER_FAILED,
@@ -119,6 +120,9 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
             "input_hash": args_hash,
             "parameters_redacted": True,
         }
+        mitre = get_mitre_mapping(tool_qualified)
+        if mitre:
+            event["tool"]["mitre"] = mitre
 
     if topic == RUN_WAITING:
         gated = payload.get("gated_action")

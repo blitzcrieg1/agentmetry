@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Play,
   Radio,
   Search,
@@ -129,7 +130,7 @@ function outcomeDot(outcome?: string): string {
     case "error":
       return "bg-red-400";
     case "pending":
-      return "bg-amber-400";
+      return "bg-amber-400 animate-pulse";
     default:
       return "bg-zinc-500";
   }
@@ -261,7 +262,15 @@ function EventRow({ event, highlight }: { event: AuditEvent; highlight: boolean 
         ) : null}
       </button>
       {open ? (
-        <div className="border-t border-zinc-800/60 px-3 py-2">
+        <div className="relative border-t border-zinc-800/60 px-3 py-2">
+          <button
+            type="button"
+            className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+            onClick={() => copyText(JSON.stringify(event, null, 2))}
+          >
+            <Copy className="h-3 w-3" />
+            Copy raw JSON
+          </button>
           <AuditJsonView value={event} />
         </div>
       ) : null}
@@ -311,7 +320,14 @@ export function FlightRecorderPanel() {
   const [atLatest, setAtLatest] = useState(true);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [timeWindowIdx, setTimeWindowIdx] = useState(1);
   const [outcomeFilters, setOutcomeFilters] = useState({
     success: true,
@@ -432,7 +448,7 @@ export function FlightRecorderPanel() {
   }, [atLatest, fetchPage]);
 
   const filteredEvents = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedSearchQuery.trim().toLowerCase();
     return events.filter((ev) => {
       if (sourceFilter !== "all" && eventSourceApp(ev) !== sourceFilter) return false;
       const type = ev.action?.type ?? "";
@@ -448,7 +464,7 @@ export function FlightRecorderPanel() {
       if (q && !eventSearchHaystack(ev).includes(q)) return false;
       return true;
     });
-  }, [events, sourceFilter, eventTypeFilter, outcomeFilters, searchQuery]);
+  }, [events, sourceFilter, eventTypeFilter, outcomeFilters, debouncedSearchQuery]);
 
   const toggleOutcome = (key: keyof typeof outcomeFilters) => {
     setOutcomeFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -468,13 +484,34 @@ export function FlightRecorderPanel() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-300"
-            onClick={() => void fetchTail()}
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500 transition hover:text-zinc-300"
+              onClick={() => {
+                if (filteredEvents.length === 0) return;
+                const jsonl = filteredEvents.map((ev) => JSON.stringify(ev)).join("\n");
+                const blob = new Blob([jsonl], { type: "application/jsonl" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `audit-export-${new Date().toISOString()}.jsonl`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              title="Export current view to JSONL"
+            >
+              <Download className="h-3 w-3" />
+              Export JSONL
+            </button>
+            <button
+              type="button"
+              className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-300"
+              onClick={() => void fetchTail()}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div className="relative">
