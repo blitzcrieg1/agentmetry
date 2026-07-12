@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py claude hook SessionStart",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py claude hook PreToolUse",
+        "matcher": ".*",
+        "timeout": 10
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py claude hook PostToolUse",
+        "matcher": ".*",
+        "timeout": 10
+      }
+    ],
+    "Notification": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py claude hook Notification",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python scripts/agentaudit_ingest.py claude hook Stop",
+        "timeout": 10
+      }
+    ]
+  }
+}

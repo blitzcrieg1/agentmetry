@@ -54,22 +54,24 @@ Canonical output adds:
 "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"}
 ```
 
-## Claude Code / desktop
+## Claude Code
 
-Merge `adapters/claude/settings.agentaudit.json` into `~/.claude/settings.json` (or project settings). Uses PascalCase events: `PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`, `Notification`.
+Project hooks ship in **`.claude/settings.json`** (or merge `adapters/claude/settings.agentaudit.json` into `~/.claude/settings.json`). PascalCase events: `PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`, `Notification`.
 
 ```powershell
 python scripts/agentaudit_ingest.py claude hook PreToolUse
+$env:AGENTAUDIT_SOURCE_APP="claude"; python scripts/agentaudit_ingest.py selftest
 ```
 
-Supplement: tail transcript JSONL at `~/.claude/projects/<encoded-path>/<session-id>.jsonl` for full chain-of-custody if a hook is missed.
+Restart Claude Code after pull. Transcript fallback: `~/.claude/projects/<encoded-path>/<session-id>.jsonl`.
 
 ## Google Antigravity
 
-Merge `adapters/antigravity/hooks.agentaudit.json` into workspace `.agents/hooks.json` or `~/.gemini/config/`. Uses camelCase stdin (`conversationId`, `toolName`, `toolInput`).
+Project hooks ship in **`.agents/hooks.json`** (or merge `adapters/antigravity/hooks.agentaudit.json`). camelCase stdin (`conversationId`, `toolName`, `toolInput`).
 
 ```powershell
 python scripts/agentaudit_ingest.py antigravity hook PostToolUse
+$env:AGENTAUDIT_SOURCE_APP="antigravity"; python scripts/agentaudit_ingest.py selftest
 ```
 
 Transcript fallback: `<app_data>/brain/<conversationId>/.system_generated/logs/transcript.jsonl`.

@@ -39,13 +39,46 @@ Flight recorder (center panel) should list events with `correlation_id` and trun
 
 ---
 
-## 2. Tier B — Cursor hooks (optional, same session)
+## 2. Tier B — all IDE adapters (Cursor, Claude, Codex, Antigravity)
 
-- ☐ Restart Cursor after pull (`.cursor/hooks.json` must load)
-- ☐ Run a shell command in this repo from Cursor
-- ☐ `GET /api/v1/audit/tail?sources=cursor&limit=5` shows the event
-- ☐ Header freshness badge goes green; source dot for Cursor lights up
-- ☐ Kill orchestrator → fire hook → silent fail, Cursor unharmed (proves why selftest matters)
+Project hooks ship in-repo:
+
+| Platform | Path |
+|----------|------|
+| Cursor | `.cursor/hooks.json` |
+| Claude Code | `.claude/settings.json` |
+| Codex CLI | `.codex/hooks.json` |
+| Antigravity | `.agents/hooks.json` |
+
+**Selftest** (each source — expect GREEN):
+
+```powershell
+foreach ($src in @("cursor","claude","codex","antigravity")) {
+  $env:AGENTAUDIT_SOURCE_APP = $src
+  python scripts/agentaudit_ingest.py selftest
+}
+Remove-Item Env:\AGENTAUDIT_SOURCE_APP -ErrorAction SilentlyContinue
+```
+
+**Real hooks** (Loom gate — need `*_hook`, not `*_selftest`):
+
+- ☐ **Cursor** — restart Cursor → run a shell command in this repo
+- ☐ **Claude Code** — restart Claude / open this repo → run any tool (Read, Bash, MCP)
+- ☐ **Codex CLI** — `/hooks` trust AgentAudit → run one Bash command
+- ☐ **Antigravity** — open workspace → run one tool (`run_command`, etc.)
+
+```powershell
+function Show-Tail($src) {
+  Write-Host "`n=== $src ===" -ForegroundColor Cyan
+  Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=$src&limit=5" |
+    ForEach-Object { $_.events } |
+    Select-Object timestamp_utc, @{n='adapter';e={$_.source.adapter}}, @{n='tool';e={$_.tool.qualified}}
+}
+Show-Tail cursor; Show-Tail claude; Show-Tail codex; Show-Tail antigravity
+```
+
+- ☐ Freshness badge shows dots for sources you exercised
+- ☐ Kill-test: stop orchestrator → hook silent-fails, IDE unharmed
 
 Full adapter guide: [`external-agent-audit.md`](./external-agent-audit.md).
 
