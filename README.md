@@ -6,7 +6,7 @@
 
 > Built on **BLACKBOX** (`agentic-os`) — a local agent runtime with an MCP driver host, a forced human-in-the-loop approval gate, and a durable event bus. AgentAudit is the audit layer on top: it turns "the agent did something at 02:00" into a line you can grep, replay, and detect on.
 
-`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for the homelab SIEM · **257 tests passing, 2 skipped**
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for the homelab SIEM · **299 tests passing, 2 skipped**
 
 ---
 
@@ -23,7 +23,7 @@ The record is a plain JSONL line and a durable SQLite outbox. No vendor cloud in
 
 ---
 
-## What it captures (canonical schema v1.0.0)
+## What it captures (canonical schema v1.1.0)
 
 Every governed run emits typed events. The wire format is documented in [`docs/agent-audit-event-schema.md`](docs/agent-audit-event-schema.md).
 
@@ -45,7 +45,7 @@ One `run/tool_called` line looks like:
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "correlation_id": "thread-8892",
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
@@ -82,8 +82,8 @@ AgentAudit records agents that run **through this host's governed pipeline**. It
 | Tier | Setup | AgentAudit coverage |
 |------|-------|---------------------|
 | **A** | Agent runs through the BLACKBOX governed host (MCP driver host + approval gate) | **Full** — tool calls, denials, approvals, `correlation_id`, arg hashes |
-| **B** | Agent reaches tools via an API proxy / AI gateway you route through | **Partial** — same schema **if** the proxy emits events; you wire it |
-| **C** | Unmanaged ChatGPT, Cursor with auto-approve, browser copilots on the same machine | **Not visible.** This is a CASB / secure-web-gateway problem, not an agent-audit one |
+| **B** | Agent reaches tools via hooks, MCP proxy, or `POST /api/v1/audit/ingest` | **Partial → full for wired events** — same JSONL schema; see [`docs/external-agent-audit.md`](docs/external-agent-audit.md) |
+| **C** | Unmanaged ChatGPT, Cursor with hooks off, browser copilots on the same machine | **Not visible.** CASB / secure-web-gateway territory |
 
 **AgentAudit is Tier A remediation — a flight recorder for the agents you govern. It is not a Tier C shadow-AI spy, and it does not replace a CASB.** If your problem is unmanaged copilots, you need network/endpoint policy; this won't catch them and won't pretend to.
 
@@ -128,7 +128,7 @@ cd ..\..
 scripts\blackbox.bat start
 
 # 3. Run the audit demo skill (tool call + approval, no cloud), then replay
-#    (dashboard http://127.0.0.1:8000 → The Armory · Desk → "AgentAudit Demo")
+#    (dashboard http://127.0.0.1:8000 → Run → AgentAudit Demo)
 blackbox replay <thread_id>
 Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5
 ```
@@ -147,6 +147,20 @@ scripts\blackbox.bat start
 Prefer a hosted model for richer drafts? Set `BLACKBOX_LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in `.env`. This sends **prompts** to Google (Pipe 1); your **audit trail stays local** (Pipe 2) unless you add a network sink. Not the default, not required.
 
 You now have an L0 + L1 audit trail. Every governed run is in `events.db` and appended to `audit-forward.jsonl`.
+
+### Tier B — Cursor / Claude / Antigravity (external IDE agents)
+
+Wire IDE lifecycle hooks into the same JSONL flight recorder. Requires the orchestrator running on `:8000`.
+
+```powershell
+scripts\blackbox.bat start
+python scripts\agentaudit_ingest.py selftest          # round-trip ingest check
+# Restart Cursor after pull — .cursor/hooks.json calls the ingest client
+# Claude: merge adapters/claude/settings.agentaudit.json into ~/.claude/settings.json
+# Antigravity: merge adapters/antigravity/hooks.agentaudit.json into .agents/hooks.json
+```
+
+Full adapter guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Dashboard header shows **last event N min ago** — if hooks fail silently, the badge goes stale.
 
 ### Forward to a SIEM (optional)
 
@@ -207,7 +221,7 @@ Skills / MCP tools
 
 - **Governed host** (`core/drivers/host.py`) — mounts MCP drivers, enforces per-skill tool allowlists, hashes every tool argument
 - **Approval gate** (`core/execution/service.py`) — human-in-the-loop interrupts; grants and denials are audit events
-- **Canonical normalizer** (`core/audit/canonical.py`) — bus events → schema v1.0.0
+- **Canonical normalizer** (`core/audit/canonical.py`) — bus events → schema v1.1.0
 - **Sinks** (`core/audit/sinks.py`, `core/audit/adapters/`) — file, webhook, Elastic ECS, Splunk HEC
 - **Replay** (`core/audit/replay.py`) — reconstructs a run timeline from the outbox
 
@@ -221,7 +235,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-**257 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`.
+**299 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_external_ingest.py`.
 
 ---
 
@@ -287,6 +301,8 @@ See `.env.example` for all options. Key variables:
 | `BLACKBOX_AUDIT_EXPORT_ENABLED` | `true` | Enable audit forwarder |
 | `BLACKBOX_AUDIT_SINK` | `file` | `file`, `webhook`, `elastic`, `splunk`, comma-separated, or `all` |
 | `BLACKBOX_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | JSONL forward file |
+| `BLACKBOX_AUDIT_INGEST_ENABLED` | `true` | Accept `POST /api/v1/audit/ingest` (Tier B) |
+| `BLACKBOX_AUDIT_INGEST_URL` | `http://127.0.0.1:8000` | Base URL for hook client selftest |
 | `BLACKBOX_AUDIT_WEBHOOK_URL` | empty | Generic JSON POST sink |
 | `BLACKBOX_AUDIT_ELASTIC_URL` | empty | Elasticsearch cluster URL |
 | `BLACKBOX_ELASTIC_API_KEY` | empty | Elastic API key (`id:secret`) |

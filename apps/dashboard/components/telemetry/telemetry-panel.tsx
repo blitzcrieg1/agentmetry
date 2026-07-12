@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RunHistory } from "@/components/telemetry/run-history";
-import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 import { DogfoodingTile } from "@/components/telemetry/dogfooding-tile";
 import { InterruptPanel } from "@/components/telemetry/interrupt-panel";
 import { PendingApprovalsPanel } from "@/components/telemetry/pending-approvals-panel";
 import { RecoveryPanel } from "@/components/telemetry/recovery-panel";
+import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 
 interface AuditHealth {
   llm_provider?: string;
@@ -67,8 +66,6 @@ function OperatorSidebar() {
           </p>
         </CardContent>
       </Card>
-
-      <RunHistory />
     </div>
   );
 }
@@ -109,7 +106,6 @@ function DevSidebar() {
       <PendingApprovalsPanel />
       <InterruptPanel />
       <RecoveryPanel />
-      <RunHistory />
       {topNotes.length > 0 ? (
         <Card>
           <CardHeader className="pb-2">

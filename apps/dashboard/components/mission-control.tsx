@@ -17,6 +17,7 @@ import { GraphVisualization } from "@/components/graph-viz/graph-visualization";
 import { TelemetryPanel } from "@/components/telemetry/telemetry-panel";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
+import { AuditFreshnessBadge } from "@/components/audit-freshness-badge";
 
 function terminalLineClass(line: string): string {
   if (line.startsWith("✗") || line.toLowerCase().includes("error") || line.startsWith("Error:")) {
@@ -30,98 +31,6 @@ function terminalLineClass(line: string): string {
   if (line.startsWith("▶") || line.startsWith("Launching")) return "text-violet-300/90";
   if (line.startsWith("Task:")) return "text-muted-foreground";
   return "text-foreground/85";
-}
-
-interface ActivityItem {
-  id: string;
-  tone: "neutral" | "success" | "warn" | "error" | "active" | "magic" | "tool";
-  text: string;
-}
-
-function parseActivityFeed(lines: string[]): ActivityItem[] {
-  const items: ActivityItem[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("[") && line.includes("]")) continue;
-
-    let tone: ActivityItem["tone"] = "neutral";
-    let text = line;
-
-    if (line.startsWith("🔧 Tool:")) {
-      text = line.replace("🔧 Tool:", "Tool called:").trim();
-      tone = "tool";
-    } else if (line.startsWith("⛔ Tool denied:")) {
-      text = line.replace("⛔ Tool denied:", "Tool denied:").trim();
-      tone = "warn";
-    } else if (line.startsWith("▶ Execution started:")) {
-      text = `Started ${line.replace("▶ Execution started: ", "")}`;
-      tone = "active";
-    } else if (line.startsWith("Launching skill:")) {
-      text = `Running ${line.replace("Launching skill: ", "").replace(/\.\.\.$/, "")}`;
-      tone = "active";
-    } else if (line.startsWith("Task:")) {
-      text = `Input: ${line.replace("Task: ", "")}`;
-    } else if (line.startsWith("Context loaded:")) {
-      text = `Loaded ${line.replace("Context loaded: ", "")} from vault`;
-    } else if (line.startsWith("⚠ Approval required")) {
-      text = "Approval required — decision will be recorded";
-      tone = "warn";
-    } else if (line.startsWith("✓ Approved") || line.startsWith("✓ Completed")) {
-      text = line.startsWith("✓ Approved")
-        ? "Approved — recorded"
-        : "Completed — recorded";
-      tone = "success";
-    } else if (line.startsWith("✗")) {
-      text = line.replace("✗ ", "");
-      tone = "error";
-    } else if (line.startsWith("✨")) {
-      text = line.replace("✨ ", "");
-      tone = "magic";
-    } else if (line.startsWith("⚠")) {
-      text = line.replace("⚠ ", "");
-      tone = "warn";
-    }
-
-    items.push({ id: `${i}-${text.slice(0, 24)}`, tone, text });
-  }
-
-  return items.slice(-12);
-}
-
-function ActivityFeed({ lines }: { lines: string[] }) {
-  const items = parseActivityFeed(lines);
-
-  if (items.length === 0) return null;
-
-  const toneClass: Record<ActivityItem["tone"], string> = {
-    neutral: "text-zinc-400",
-    success: "text-emerald-400/90",
-    warn: "text-amber-400/90",
-    error: "text-red-400/90",
-    active: "text-violet-300/90",
-    magic: "text-violet-100",
-    tool: "text-sky-400/90",
-  };
-
-  return (
-    <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/50 p-4">
-      <p className="mb-3 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-        Activity
-      </p>
-      <ul className="space-y-2">
-        {items.map((item) => (
-            <li
-              key={item.id}
-              className={`flex items-start gap-2 text-sm ${toneClass[item.tone]}`}
-            >
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
-              <span>{item.text}</span>
-            </li>
-          ))}
-      </ul>
-    </div>
-  );
 }
 
 function RunningState({ skill }: { skill: string | null }) {
@@ -180,6 +89,7 @@ export function MissionControl() {
         </div>
 
         <div className="flex items-center gap-3">
+          <AuditFreshnessBadge />
           <DevModeToggle enabled={devMode} onChange={setDevMode} />
           <ConnectionPill connected={wsConnected} />
           {activeSkill && executionStatus !== "idle" ? (

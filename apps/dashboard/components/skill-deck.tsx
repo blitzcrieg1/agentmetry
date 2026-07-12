@@ -96,15 +96,14 @@ export function SkillDeck() {
           id: s.id || s.name,
         }));
         setSkills(loaded);
-        const preferred =
-          loaded.find((s) => s.id === HERO_SKILL) ||
-          loaded.find((s) => s.id === "summarize_note") ||
-          loaded[0];
+        const preferred = loaded.find((s) => s.id === HERO_SKILL);
         if (preferred) {
           setActiveSkill(preferred.id);
           const defaultInput = defaultInputForSkill(preferred);
           setUserInput(defaultInput);
           setLastUserInput(defaultInput);
+        } else if (loaded[0]) {
+          setActiveSkill(loaded[0].id);
         }
       })
       .catch(() => appendTerminal("⚠ Could not load skills from orchestrator"));
