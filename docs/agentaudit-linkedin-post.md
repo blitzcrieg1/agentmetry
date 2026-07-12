@@ -12,7 +12,7 @@
 >
 > Most agent stacks keep nothing you'd hand an incident responder. So I built a small open-source thing for the ones I actually govern.
 >
-> **AgentAudit** is a local flight recorder for AI agents. Every tool call, every denial, every human approval becomes one JSON line you own — with the correlation id that ties the run together, the tool that ran, the outcome, and a SHA-256 of the arguments. Replay any run from the local outbox. Forward it to Loki, Elastic, Splunk, or a webhook if you want — or keep it as plain JSONL and grep it.
+> **AgentAudit** is a local flight recorder for AI agents. Every tool call, every denial, every human approval becomes one JSON line you own — with the correlation id that ties the run together, the tool that ran, the outcome, and a SHA-256 of the arguments. Replay any run from the local outbox. Run inference locally with Ollama or bring your own cloud key — either way the audit trail stays on your machine. Forward it to Loki, Elastic, Splunk, or a webhook if you want — or keep it as plain JSONL and grep it.
 >
 > One honest boundary: it records agents that run *through* the host. Unmanaged ChatGPT, Cursor on auto-approve, browser copilots on the same machine — it does **not** see those. That's a CASB / secure-web-gateway problem, not this. AgentAudit is Tier A remediation, not a shadow-AI spy.
 >
@@ -31,7 +31,7 @@
 
 > When an agent runs a tool at 2am, can you prove what it did?
 >
-> **AgentAudit** — an open-source local flight recorder for AI agents. Tool calls, denials, and approvals become JSONL you own: correlation id, tool, outcome, SHA-256 of the args. Replay any run locally; forward to Loki / Elastic / Splunk / webhook if you want one.
+> **AgentAudit** — an open-source local flight recorder for AI agents. Tool calls, denials, and approvals become JSONL you own: correlation id, tool, outcome, SHA-256 of the args. Replay any run locally; run inference locally with Ollama or bring your own cloud key — either way the audit trail stays on your machine. Forward to Loki / Elastic / Splunk / webhook if you want one.
 >
 > Honest boundary: it records agents that run *through* the governed host. Unmanaged ChatGPT/Cursor/browser copilots on the same box — it doesn't see those; that's CASB territory, not this.
 >

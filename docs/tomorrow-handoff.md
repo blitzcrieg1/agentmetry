@@ -1,16 +1,17 @@
 # Tomorrow Handoff — AgentAudit OSS (resume 2026-07-12)
 
-**Read this first.** Product identity pivoted from Path B / consumer SaaS to **AgentAudit** — solo-first governed agent flight recorder with SIEM-agnostic forwarders. Implementation **Weeks 1–4 done in repo (uncommitted unless operator asked).**
+**Read this first.** Product identity pivoted to **AgentAudit**. **Committed:** `c00171b` (README + Weeks 1–4 + launch docs). Dependency audit + mock profile may be local until next commit.
 
 | Link | Purpose |
 |------|---------|
+| [claude-agentaudit-airgap-prompt.md](./claude-agentaudit-airgap-prompt.md) | **Ollama + audit_demo** — privacy-first deliverables for Cursor |
+| [agentaudit-dependency-audit.md](./agentaudit-dependency-audit.md) | **Do I need Gemini?** — mock profile, tier table |
 | [agent-audit-event-schema.md](./agent-audit-event-schema.md) | Canonical JSON, env vars, topic mapping |
 | [integrations/loki-homelab.md](./integrations/loki-homelab.md) | Free homelab SIEM (Docker) |
 | [integrations/elastic-ecs.md](./integrations/elastic-ecs.md) | Enterprise Elastic adapter |
 | [integrations/splunk-hec.md](./integrations/splunk-hec.md) | Splunk HEC adapter |
 | [glm-52-agentaudit-siem-research-prompt.md](./glm-52-agentaudit-siem-research-prompt.md) | GLM research prompt (already run) |
-| [claude-agentaudit-launch-sequence-prompt.md](./claude-agentaudit-launch-sequence-prompt.md) | **Launch drafting** — README → dogfood → Loom → LinkedIn → Sigma (sequenced) |
-| [claude-agentaudit-continuation-prompt.md](./claude-agentaudit-continuation-prompt.md) | Broader pivot context + Week 5 tasks |
+| [claude-agentaudit-do-everything-prompt.md](./claude-agentaudit-do-everything-prompt.md) | **Launch session** — dogfood → Loom → LinkedIn |
 
 **Strategy:** **OSS + LinkedIn + IRT credibility** — not Stripe, not buyer Phase 0. Lead with **local flight recorder**; SIEM export optional. **Tier C honesty:** no visibility into unmanaged Cursor/ChatGPT without CASB.
 
@@ -87,12 +88,22 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
 
 ## Tomorrow — start here (pick one)
 
-### Track A — Dogfood + demo (recommended)
+**Launch session:** [`claude-agentaudit-do-everything-prompt.md`](./claude-agentaudit-do-everything-prompt.md)
 
-1. `scripts\blackbox.bat start` → run any skill with tool use
-2. `Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5`
-3. `blackbox replay <thread_id>` from dashboard/logs
-4. Optional homelab: `docker compose -f docker-compose.loki.yml up -d` → Grafana http://localhost:3001 (admin / `agentaudit`)
+### Track A — Dogfood on mock (recommended tonight)
+
+```powershell
+copy apps\orchestrator\.env.agentaudit-demo apps\orchestrator\.env
+# Set BLACKBOX_OPERATOR_ID=your-id in .env
+scripts\blackbox.bat start
+# Two customer_reply runs: approve one, reject one
+blackbox replay <thread_id>
+Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5
+```
+
+Switch to Gemini (Profile B in dependency audit) only for the **Loom take**.
+
+**Already committed:** `c00171b` — README + Weeks 1–4 audit code + launch docs.
 
 ### Track B — Week 5 code (next build slice)
 
@@ -178,9 +189,9 @@ Do not commit unless I ask. Tier C honesty in any public README.
 
 ## Resume prompt for Claude
 
-**Launch assets (recommended):** Paste [`claude-agentaudit-launch-sequence-prompt.md`](./claude-agentaudit-launch-sequence-prompt.md) — start with **#1 README reposition** unless dogfood done and you want Loom/Sigma.
+**Launch assets (recommended):** Paste [`claude-agentaudit-do-everything-prompt.md`](./claude-agentaudit-do-everything-prompt.md) — full guided session (dogfood → Loom → LinkedIn → Sigma → LICENSE).
 
-**Broader context:** [`claude-agentaudit-continuation-prompt.md`](./claude-agentaudit-continuation-prompt.md) + attach `tomorrow-handoff.md`.
+**Draft-only (pre-ship):** [`claude-agentaudit-launch-sequence-prompt.md`](./claude-agentaudit-launch-sequence-prompt.md)
 
 - **GLM verdict:** Go — solo-first flight recorder + reference IR data model; not full governance platform
 - **Default homelab SIEM:** Grafana Loki + Alloy

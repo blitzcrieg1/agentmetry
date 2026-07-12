@@ -2,6 +2,8 @@
 
 **Run this before recording the Loom (#3) and before writing Sigma rules (#5).** The point is to see the audit trail on *real* traffic so the demo and the detections match live field names — not the schema doc's example values.
 
+**Zero Gemini option:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env` for audit-only dogfood (`BLACKBOX_LLM_PROVIDER=mock`). Tool + approval events are real; draft text is placeholder. Use Gemini or Ollama only for the Loom take — see [dependency audit](./agentaudit-dependency-audit.md).
+
 Time budget: ~20 minutes. One pass. Log the result at the bottom.
 
 ---
@@ -41,6 +43,11 @@ Open the dashboard at `http://127.0.0.1:8000` → **The Armory · Desk**.
   - Note this `thread_id` too.
 
 > Optional (nice-to-have, not required): to also see a **`run/tool_denied`** event, run any skill whose YAML `tools:` allowlist does *not* include a tool it tries to call — the governed host blocks it and emits a denial. Skip if you don't have one handy; the two approval runs are enough for a green result.
+
+### Track A vs Track B — which skill to dogfood with
+
+- **Track A — `customer_reply` on mock.** Uses `.env.agentaudit-demo`. Proves the trail (tool + approval events) with zero setup. Good for a quick "is the recorder working" check.
+- **Track B — `audit_demo` on Ollama (preferred for the Loom).** Uses `.env.agentaudit-ollama`. A purpose-built, no-cloud, no-PII skill: one tool call + approval, nothing else on screen. This is the cleanest thing to record and the honest air-gapped story. Run it once first to confirm the approval interrupt renders (see the audit_demo risk note in the dependency audit).
 
 ---
 

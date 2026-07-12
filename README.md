@@ -2,6 +2,8 @@
 
 **A local, governed flight recorder for AI agents.** Every tool call, every denial, every human approval — recorded to a durable log you own, replayable on demand, and forwardable to the SIEM you already run (or a free Loki homelab).
 
+> **Two pipes, your choice:** run inference locally (Ollama) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
+
 > Built on **BLACKBOX** (`agentic-os`) — a local agent runtime with an MCP driver host, a forced human-in-the-loop approval gate, and a durable event bus. AgentAudit is the audit layer on top: it turns "the agent did something at 02:00" into a line you can grep, replay, and detect on.
 
 `Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for the homelab SIEM · **257 tests passing, 2 skipped**
@@ -87,30 +89,62 @@ AgentAudit records agents that run **through this host's governed pipeline**. It
 
 ---
 
-## Quick start (the audit path)
+## Two pipes: inference vs audit
 
-Local, Gemini for the LLM, no Docker required for L0–L1.
+AgentAudit has two independent data paths. Conflating them is the most common misread, so it's stated plainly:
+
+| | **Pipe 1 — inference** | **Pipe 2 — audit** |
+|---|---|---|
+| What flows | The prompt/content sent to an LLM to draft, critique, or summarize | Tool calls, denials, approvals, driver mounts |
+| Where it goes | Your **chosen provider**: local Ollama, mock, or a cloud API (Gemini) | `events.db` (SQLite outbox) + `audit-forward.jsonl` — **local by default** |
+| Leaves the box? | **Only if you choose a cloud provider.** Ollama and mock never leave the machine | **No** — unless you deliberately set a network sink (webhook/Elastic/Splunk) |
+| Contains prompts? | Yes — that's the point of the call | **No.** Tool arguments are **hashed**; prompts are not on tool events |
+
+**The audit trail is a separate decision from the inference provider.** You can send prompts to Gemini and still keep an entirely local audit record — or run fully air-gapped with Ollama so neither pipe leaves the box. If you choose Gemini, be honest with yourself: your **prompts** go to Google. Your **audit export** does not.
+
+For a fully local setup, use [`apps/orchestrator/.env.agentaudit-ollama`](apps/orchestrator/.env.agentaudit-ollama).
+
+---
+
+## Quick start
+
+### Primary — air-gapped (Ollama + local audit)
+
+Nothing leaves the box. Inference on a local model, audit local.
 
 ```powershell
-# 1. Configure
-copy .env.example apps\orchestrator\.env
-# Edit apps\orchestrator\.env — set GEMINI_API_KEY, BLACKBOX_OPERATOR_ID, and:
-#   BLACKBOX_AUDIT_EXPORT_ENABLED=1
-#   BLACKBOX_AUDIT_SINK=file
+# 0. One time: install Ollama (https://ollama.com), then:
+ollama pull llama3.2
+
+# 1. Use the air-gapped profile
+copy apps\orchestrator\.env.agentaudit-ollama apps\orchestrator\.env
+# edit BLACKBOX_OPERATOR_ID to your handle
 
 # 2. Install + start
 cd apps\orchestrator
-python -m venv .venv
-.\.venv\Scripts\activate
+python -m venv .venv; .\.venv\Scripts\activate
 pip install -e ".[dev]"
 cd ..\..
-scripts\blackbox.bat start          # detached; waits for health
+scripts\blackbox.bat start
 
-# 3. Run any governed skill (dashboard at http://127.0.0.1:8000, or the API),
-#    then replay it and tail the audit log:
-blackbox replay <thread_id>                         # ASCII timeline from events.db
+# 3. Run the audit demo skill (tool call + approval, no cloud), then replay
+#    (dashboard http://127.0.0.1:8000 → The Armory · Desk → "AgentAudit Demo")
+blackbox replay <thread_id>
 Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 5
 ```
+
+### Secondary — dev/test (mock, zero setup)
+
+No Ollama, no keys. Placeholder drafts; the audit trail is real.
+
+```powershell
+copy apps\orchestrator\.env.agentaudit-demo apps\orchestrator\.env
+scripts\blackbox.bat start
+```
+
+### Tertiary — optional cloud inference (Gemini BYOK)
+
+Prefer a hosted model for richer drafts? Set `BLACKBOX_LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in `.env`. This sends **prompts** to Google (Pipe 1); your **audit trail stays local** (Pipe 2) unless you add a network sink. Not the default, not required.
 
 You now have an L0 + L1 audit trail. Every governed run is in `events.db` and appended to `audit-forward.jsonl`.
 
@@ -263,5 +297,7 @@ See `.env.example` for all options. Key variables:
 | `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` after dogfood gate |
 
 Further docs: [operator guide](docs/blackbox-operator-guide.md) · [Obsidian plugin](apps/obsidian-plugin/README.md) · [compliance Trust-Kit](docs/compliance/README.md) · [session handoff](docs/tomorrow-handoff.md)
+
+**Audit-only / zero-cloud dogfood:** copy [`apps/orchestrator/.env.agentaudit-demo`](apps/orchestrator/.env.agentaudit-demo) → `.env` — mock LLM, no Gemini. Details: [dependency audit](docs/agentaudit-dependency-audit.md).
 
 </details>

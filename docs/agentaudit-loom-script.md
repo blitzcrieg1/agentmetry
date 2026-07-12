@@ -35,7 +35,7 @@ Redact on screen: nothing here shows customer PII — `customer_reply` on a samp
 **Screen:** stay on the dashboard; let the paused approval sit there as the visual.
 
 **Say:**
-> "This is AgentAudit — a local flight recorder for the agents you actually govern. One honest caveat up front: it records agents that run *through* this host. Unmanaged ChatGPT or Cursor on the same box? That's a CASB problem, not this."
+> "This is AgentAudit — a local flight recorder for the agents you actually govern. Inference here runs on a local model, so nothing leaves this box. One honest caveat: it records agents that run *through* this host. Unmanaged ChatGPT or Cursor on the same machine? That's a CASB problem, not this."
 
 ### Beat 3 — The demo (0:16–0:50)
 
