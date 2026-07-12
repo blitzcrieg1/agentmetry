@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from core.audit.canonical import normalize_arguments_for_audit
+from core.audit.run_context import audit_payload, record_tool_call
 from core.bus.bus import bus
 from core.bus.events import DRIVER_FAILED, DRIVER_MOUNTED, TOOL_CALLED, TOOL_DENIED
 from core.config import settings
@@ -226,6 +227,7 @@ class MCPHost:
                 "skill": skill_name,
                 "reason": "tool_exec_approval",
                 "arguments_sha256": normalize_arguments_for_audit(arguments),
+                **audit_payload(thread_id),
             }, session_id=session_id, thread_id=thread_id)
             raise
         except Exception:
@@ -235,6 +237,7 @@ class MCPHost:
                 "skill": skill_name,
                 "reason": "not_allowed",
                 "arguments_sha256": normalize_arguments_for_audit(arguments),
+                **audit_payload(thread_id),
             }, session_id=session_id, thread_id=thread_id)
             raise
 
@@ -243,11 +246,14 @@ class MCPHost:
             raise RuntimeError(f"Driver '{meta.driver}' is not mounted")
 
         result = await driver.session.call_tool(meta.name, arguments)
+        args_hash = normalize_arguments_for_audit(arguments)
+        record_tool_call(thread_id, qualified, args_hash)
         payload: dict[str, Any] = {
             "type": "tool_called",
             "tool": qualified,
             "skill": skill_name,
-            "arguments_sha256": normalize_arguments_for_audit(arguments),
+            "arguments_sha256": args_hash,
+            **audit_payload(thread_id),
         }
         if qualified == "gmail.send_draft":
             payload["draft_id"] = arguments.get("draft_id")

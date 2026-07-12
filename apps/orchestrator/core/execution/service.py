@@ -9,6 +9,12 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from core.audit.run_context import (
+    audit_payload,
+    clear_run_context,
+    last_gated_action,
+    set_thread_initiator,
+)
 from core.bus.bus import bus
 from core.bus.events import (
     ALERT_COST,
@@ -341,7 +347,9 @@ def _budget_exceeded_result(
         "thread_id": thread_id,
         "error": f"Cost ${cost:.4f} exceeded max ${max_cost:.4f}",
         "status": "budget_exceeded",
+        **audit_payload(thread_id, triggered_by),
     }, session_id=session_id, thread_id=thread_id)
+    clear_run_context(thread_id)
     return {
         "status": "budget_exceeded",
         "thread_id": thread_id,
@@ -456,7 +464,9 @@ async def _finalize_execution(
             "output_tokens": final_state.get("output_tokens", 0),
             "latency_ms": latency,
         },
+        **audit_payload(thread_id, triggered_by),
     }, session_id=session_id, thread_id=thread_id)
+    clear_run_context(thread_id)
 
     return {
         "status": status_label,
@@ -502,11 +512,14 @@ async def resolve_approval(
             "type": "approval_denied",
             "thread_id": thread_id,
             "skill": pending["skill_name"],
+            **audit_payload(thread_id),
         }, session_id=pending["session_id"], thread_id=thread_id)
         bus.publish(RUN_TERMINATED, {
             "type": "execution_terminated",
             "thread_id": thread_id,
+            **audit_payload(thread_id),
         }, session_id=pending["session_id"], thread_id=thread_id)
+        clear_run_context(thread_id)
         telemetry.log_execution(thread_id, pending["skill_name"], "terminated")
         return {"status": "terminated", "thread_id": thread_id}
 
@@ -536,6 +549,7 @@ async def resolve_approval(
         "thread_id": thread_id,
         "skill": pending["skill_name"],
         "edited": edited,
+        **audit_payload(thread_id),
     }, session_id=pending["session_id"], thread_id=thread_id)
 
     await graph.aupdate_state(
@@ -661,6 +675,7 @@ async def run_skill(
         start = time.time()
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
+        set_thread_initiator(thread_id, triggered_by)
 
         skill_config = obsidian.read_skill_config(skill_name)
         if not skill_config:
@@ -715,6 +730,7 @@ async def run_skill(
             "context_sources": context_sources,
             "nodes": skill_config.get("nodes", []),
             "triggered_by": triggered_by,
+            **audit_payload(thread_id, triggered_by),
         }, session_id=session_id, thread_id=thread_id)
 
         try:
@@ -771,13 +787,19 @@ async def run_skill(
                     "waiting",
                     output=state_values.get("draft", ""),
                 )
-                bus.publish(RUN_WAITING, {
+                waiting_payload: dict[str, Any] = {
                     "type": "approval_required",
                     "thread_id": thread_id,
+                    "skill": skill_name,
                     "draft": state_values.get("draft", ""),
                     "confidence": state_values.get("confidence_score", 0.0),
                     "status": "waiting_for_input",
-                }, session_id=session_id, thread_id=thread_id)
+                    **audit_payload(thread_id, triggered_by),
+                }
+                gated = last_gated_action(thread_id)
+                if gated:
+                    waiting_payload["gated_action"] = gated
+                bus.publish(RUN_WAITING, waiting_payload, session_id=session_id, thread_id=thread_id)
                 _maybe_cost_alert(session_id, run_cost)
                 log_run({
                     "thread_id": thread_id,
@@ -834,5 +856,7 @@ async def run_skill(
                 "type": "execution_failed",
                 "thread_id": thread_id,
                 "error": str(e),
+                **audit_payload(thread_id, triggered_by),
             }, session_id=session_id, thread_id=thread_id)
+            clear_run_context(thread_id)
             return {"status": "failed", "thread_id": thread_id, "error": str(e)}

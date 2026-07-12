@@ -1,4 +1,4 @@
-"""Map durable outbox rows to AgentAudit canonical events (schema v1.0.0)."""
+"""Map durable outbox rows to AgentAudit canonical events (schema v1.1.0)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from core.audit.hashing import arguments_sha256
+from core.audit.run_context import actor_from_initiator, resolve_initiator
 from core.bus.events import (
     DRIVER_FAILED,
     DRIVER_MOUNTED,
@@ -14,15 +15,15 @@ from core.bus.events import (
     RUN_APPROVAL_GRANTED,
     RUN_COMPLETED,
     RUN_FAILED,
-    RUN_STARTED,
     RUN_TERMINATED,
+    RUN_STARTED,
     RUN_WAITING,
     TOOL_CALLED,
     TOOL_DENIED,
 )
 from core.config import settings
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 _HOST_ID = socket.gethostname()
 
@@ -43,15 +44,20 @@ _TOPIC_ACTION: dict[str, tuple[str, str]] = {
 _AUDIT_TOPICS = frozenset(_TOPIC_ACTION)
 
 
-def _operator_id() -> str:
-    return settings.operator_id.strip() or "local"
-
-
 def _split_tool(qualified: str) -> tuple[str, str]:
     if "." in qualified:
         driver, name = qualified.split(".", 1)
         return driver, name
     return "", qualified
+
+
+def _approval_actor(initiator: dict[str, str]) -> dict[str, str]:
+    """Human operator resolves the gate; run initiator stays on the same event."""
+    return actor_from_initiator({
+        "actor_type": "human",
+        "trigger": "manual",
+        "operator_id": initiator.get("operator_id") or "",
+    })
 
 
 def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -61,6 +67,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     payload = row.get("payload") or {}
+    thread_id = str(row.get("thread_id") or "")
     action_type, default_outcome = _TOPIC_ACTION[topic]
     reason = str(payload.get("reason") or payload.get("error") or "")
     outcome = default_outcome
@@ -73,20 +80,24 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
     tool_qualified = str(payload.get("tool") or "")
     driver_name, tool_name = _split_tool(tool_qualified)
 
+    initiator = resolve_initiator(payload, thread_id)
+
+    if topic in (RUN_APPROVAL_GRANTED, RUN_APPROVAL_DENIED):
+        actor = _approval_actor(initiator)
+    else:
+        actor = actor_from_initiator(initiator)
+
     event: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
         "seq": row.get("seq"),
         "session_id": row.get("session_id") or "",
-        "correlation_id": row.get("thread_id") or "",
+        "correlation_id": thread_id,
         "timestamp_utc": row.get("ts") or "",
         "host_id": _HOST_ID,
         "source_topic": topic,
-        "actor": {
-            "type": "user",
-            "id": _operator_id(),
-            "role": "operator",
-        },
+        "initiator": initiator,
+        "actor": actor,
         "action": {
             "type": action_type,
             "outcome": outcome,
@@ -109,11 +120,22 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
             "parameters_redacted": True,
         }
 
+    if topic == RUN_WAITING:
+        gated = payload.get("gated_action")
+        if isinstance(gated, dict) and gated.get("tool"):
+            event["gated_action"] = {
+                "tool": str(gated.get("tool") or ""),
+                "server": str(gated.get("server") or ""),
+                "input_hash": str(gated.get("input_hash") or ""),
+            }
+
     if topic in (DRIVER_MOUNTED, DRIVER_FAILED):
         event["mcp"] = {
             "server_id": str(payload.get("driver") or ""),
             "tools": payload.get("tools") or [],
         }
+        event["initiator"] = resolve_initiator({"triggered_by": "manual"})
+        event["actor"] = actor_from_initiator(event["initiator"])
 
     if topic == RUN_APPROVAL_GRANTED and payload.get("edited"):
         event["action"]["reason"] = "approved_with_edit"

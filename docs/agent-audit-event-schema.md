@@ -1,4 +1,4 @@
-# AgentAudit event schema (v1.0.0)
+# AgentAudit event schema (v1.1.0)
 
 Canonical JSON events for governed agent runs. The orchestrator writes these to:
 
@@ -51,11 +51,21 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
 
 `correlation_id` maps to LangGraph `thread_id`. `session_id` is the dashboard/WebSocket session.
 
+### v1.1 additions (additive)
+
+| Field | When present | Purpose |
+|-------|--------------|---------|
+| `initiator` | All audited run events | Server-derived run origin: `{actor_type, trigger, operator_id}` |
+| `gated_action` | `approval_request` | Binds the gate to `{tool, server, input_hash}` |
+| `actor.type` | Derived | `user` for human-initiated runs; `agent` for cron/vault/ingress |
+
+`initiator.actor_type` is set at `run_skill` from the call site (`manual`, `cron`, `vault_watch`, `ingress`, …) — never from client headers. `approval_response` events keep the run's `initiator` but set `actor.type=user` (the operator who clicked approve/reject).
+
 ## Example (`run/tool_called`)
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "event_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "seq": 42,
   "session_id": "sess-abc",
@@ -63,6 +73,7 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "host_id": "dev-laptop",
   "source_topic": "run/tool_called",
+  "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
   "action": {"type": "tool_called", "outcome": "success", "reason": ""},
   "agent": {"name": "blackbox", "skill_id": "customer_reply"},
@@ -75,6 +86,23 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
     "parameters_redacted": true
   },
   "model": {"id": "gemini-2.5-flash-lite", "provider": "gemini"}
+}
+```
+
+## Example (`run/approval_required` with gate binding)
+
+```json
+{
+  "schema_version": "1.1.0",
+  "correlation_id": "thread-8892",
+  "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},
+  "action": {"type": "approval_request", "outcome": "pending", "reason": ""},
+  "agent": {"name": "blackbox", "skill_id": "audit_demo"},
+  "gated_action": {
+    "tool": "vault_fs.read_file",
+    "server": "vault_fs",
+    "input_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
 }
 ```
 
