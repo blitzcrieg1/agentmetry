@@ -24,6 +24,14 @@ export interface TelemetryMetrics {
   latencyMs: number;
 }
 
+export interface PendingTool {
+  qualified: string;
+  server?: string;
+  input_hash?: string;
+}
+
+export type ApprovalKind = "draft" | "tool_gate";
+
 export interface Skill {
   id: string;
   name: string;
@@ -44,6 +52,10 @@ interface AgentStore {
   metrics: TelemetryMetrics;
   approvalDraft: string;
   approvalConfidence: number;
+  approvalKind: ApprovalKind | null;
+  pendingTool: PendingTool | null;
+  lastUserInput: string;
+  lastToolCalled: string | null;
   memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
   runsRefreshKey: number;
@@ -59,7 +71,16 @@ interface AgentStore {
   appendStreamToken: (node: string, token: string) => void;
   clearTerminal: () => void;
   updateMetrics: (partial: Partial<TelemetryMetrics>) => void;
-  setApproval: (draft: string, confidence: number) => void;
+  setApproval: (
+    draft: string,
+    confidence: number,
+    meta?: {
+      approvalKind?: ApprovalKind;
+      pendingTool?: PendingTool | null;
+    }
+  ) => void;
+  setLastUserInput: (input: string) => void;
+  setLastToolCalled: (tool: string | null) => void;
   clearApproval: () => void;
   incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
@@ -86,6 +107,10 @@ export const useAgentStore = create<AgentStore>((set) => ({
   },
   approvalDraft: "",
   approvalConfidence: 0,
+  approvalKind: null,
+  pendingTool: null,
+  lastUserInput: "",
+  lastToolCalled: null,
   memoryHeatmap: {},
   wsConnected: false,
   runsRefreshKey: 0,
@@ -124,9 +149,22 @@ export const useAgentStore = create<AgentStore>((set) => ({
   clearTerminal: () => set({ terminalOutput: [] }),
   updateMetrics: (partial) =>
     set((state) => ({ metrics: { ...state.metrics, ...partial } })),
-  setApproval: (draft, confidence) =>
-    set({ approvalDraft: draft, approvalConfidence: confidence }),
-  clearApproval: () => set({ approvalDraft: "", approvalConfidence: 0 }),
+  setApproval: (draft, confidence, meta) =>
+    set({
+      approvalDraft: draft,
+      approvalConfidence: confidence,
+      approvalKind: meta?.approvalKind ?? null,
+      pendingTool: meta?.pendingTool ?? null,
+    }),
+  setLastUserInput: (input) => set({ lastUserInput: input }),
+  setLastToolCalled: (tool) => set({ lastToolCalled: tool }),
+  clearApproval: () =>
+    set({
+      approvalDraft: "",
+      approvalConfidence: 0,
+      approvalKind: null,
+      pendingTool: null,
+    }),
   incrementMemoryAccess: (path) =>
     set((state) => ({
       memoryHeatmap: {
@@ -149,6 +187,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
         metrics: { inputTokens: 0, outputTokens: 0, cost: 0, contextUsagePercent: 0, latencyMs: 0 },
         approvalDraft: "",
         approvalConfidence: 0,
+        approvalKind: null,
+        pendingTool: null,
       };
     }),
   clearPipelineView: () => set({ graphNodes: [], executionStatus: "idle" }),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiPost } from "@/lib/api";
@@ -19,6 +19,54 @@ interface SkillDefinition {
   default_input?: string;
 }
 
+const HERO_SKILL = "audit_demo";
+
+function SkillCard({
+  skill,
+  activeSkill,
+  isRunning,
+  onSelect,
+  onRun,
+}: {
+  skill: SkillDefinition;
+  activeSkill: string | null;
+  isRunning: boolean;
+  onSelect: () => void;
+  onRun: () => void;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer transition-all duration-300 hover:border-violet-500/40 ${
+        activeSkill === skill.id
+          ? "border-violet-500/60 bg-violet-950/20"
+          : "border-border/60 bg-card/50"
+      }`}
+      onClick={onSelect}
+    >
+      <CardHeader className="p-3 pb-1">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Zap className="h-4 w-4 text-primary" />
+          {skill.display_name || skill.name}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 pt-0">
+        <p className="text-xs text-muted-foreground mb-2">{skill.description}</p>
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={isRunning}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRun();
+          }}
+        >
+          {isRunning && activeSkill === skill.id ? "Running..." : "Run"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SkillDeck() {
   const skills = useAgentStore((s) => s.skills);
   const setSkills = useAgentStore((s) => s.setSkills);
@@ -26,12 +74,15 @@ export function SkillDeck() {
   const setActiveSkill = useAgentStore((s) => s.setActiveSkill);
   const executionStatus = useAgentStore((s) => s.executionStatus);
   const sessionId = useAgentStore((s) => s.sessionId);
+  const devMode = useAgentStore((s) => s.devMode);
   const setExecutionStatus = useAgentStore((s) => s.setExecutionStatus);
   const clearTerminal = useAgentStore((s) => s.clearTerminal);
   const reset = useAgentStore((s) => s.reset);
   const appendTerminal = useAgentStore((s) => s.appendTerminal);
+  const setLastUserInput = useAgentStore((s) => s.setLastUserInput);
 
   const [userInput, setUserInput] = useState("");
+  const [examplesOpen, setExamplesOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${ORCHESTRATOR_URL}/api/v1/skills/`)
@@ -45,18 +96,19 @@ export function SkillDeck() {
           id: s.id || s.name,
         }));
         setSkills(loaded);
-        if (loaded.length > 0) {
-          // The tool-using YAML skill is the demo path — select it by default.
-          const preferred =
-            loaded.find((s) => s.id === "gmail_inbox_brief") ||
-            loaded.find((s) => s.id === "summarize_note") ||
-            loaded[0];
+        const preferred =
+          loaded.find((s) => s.id === HERO_SKILL) ||
+          loaded.find((s) => s.id === "summarize_note") ||
+          loaded[0];
+        if (preferred) {
           setActiveSkill(preferred.id);
-          setUserInput(defaultInputForSkill(preferred));
+          const defaultInput = defaultInputForSkill(preferred);
+          setUserInput(defaultInput);
+          setLastUserInput(defaultInput);
         }
       })
       .catch(() => appendTerminal("⚠ Could not load skills from orchestrator"));
-  }, [setSkills, setActiveSkill, appendTerminal]);
+  }, [setSkills, setActiveSkill, appendTerminal, setLastUserInput]);
 
   const runSkill = async (skillId: string) => {
     const skill = skills.find((s) => s.id === skillId);
@@ -67,6 +119,7 @@ export function SkillDeck() {
     reset(nodes);
     clearTerminal();
     setExecutionStatus("running");
+    setLastUserInput(input);
     appendTerminal(`Launching skill: ${skillId}...`);
     appendTerminal(`Task: ${input}`);
 
@@ -95,68 +148,85 @@ export function SkillDeck() {
   const selectSkill = (skillId: string) => {
     setActiveSkill(skillId);
     const skill = skills.find((s) => s.id === skillId);
-    if (skill) setUserInput(defaultInputForSkill(skill));
+    if (skill) {
+      const input = defaultInputForSkill(skill);
+      setUserInput(input);
+      setLastUserInput(input);
+    }
   };
 
   const isRunning = executionStatus === "running";
+  const hero = skills.find((s) => s.id === HERO_SKILL);
+  const legacy = skills.filter((s) => s.id !== HERO_SKILL);
 
   return (
     <div className="flex flex-col gap-4 h-full">
       <div>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          The Armory <span className="text-muted-foreground/60">· Desk</span>
+          Run
         </h2>
 
         <div className="mb-3">
-          <label className="text-xs text-muted-foreground mb-1 block">Task input</label>
+          <label className="text-xs text-muted-foreground mb-1 block">Input path</label>
           <textarea
             className="w-full h-20 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            placeholder="Describe what the agent should do..."
+            onChange={(e) => {
+              setUserInput(e.target.value);
+              setLastUserInput(e.target.value);
+            }}
+            placeholder="00-Inbox/audit-demo-note.md"
             disabled={isRunning}
           />
         </div>
 
-        <div className="space-y-2">
-          {skills.map((skill) => (
-            <Card
-              key={skill.id}
-              className={`cursor-pointer transition-all duration-300 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-900/10 ${
-                activeSkill === skill.id
-                  ? "border-violet-500/60 bg-violet-950/20 shadow-md shadow-violet-900/15"
-                  : "border-border/60 bg-card/50"
-              }`}
-              onClick={() => selectSkill(skill.id)}
+        {hero ? (
+          <SkillCard
+            skill={hero}
+            activeSkill={activeSkill}
+            isRunning={isRunning}
+            onSelect={() => selectSkill(hero.id)}
+            onRun={() => runSkill(hero.id)}
+          />
+        ) : null}
+
+        {devMode && legacy.length > 0 ? (
+          <div className="mt-4">
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              onClick={() => setExamplesOpen(!examplesOpen)}
             >
-              <CardHeader className="p-3 pb-1">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-primary" />
-                  {skill.display_name || skill.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 pt-0">
-                <p className="text-xs text-muted-foreground mb-2">{skill.description}</p>
-                <Button
-                  size="sm"
-                  className="w-full"
-                  disabled={isRunning}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    runSkill(skill.id);
-                  }}
-                >
-                  {isRunning && activeSkill === skill.id ? "Running..." : "Execute"}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              {examplesOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Example skills (legacy) · {legacy.length}
+            </button>
+            {examplesOpen ? (
+              <div className="space-y-2">
+                {legacy.map((skill) => (
+                  <SkillCard
+                    key={skill.id}
+                    skill={skill}
+                    activeSkill={activeSkill}
+                    isRunning={isRunning}
+                    onSelect={() => selectSkill(skill.id)}
+                    onRun={() => runSkill(skill.id)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-auto">
-        <MemoryNavigator />
-      </div>
+      {devMode ? (
+        <div className="mt-auto">
+          <MemoryNavigator />
+        </div>
+      ) : null}
     </div>
   );
 }

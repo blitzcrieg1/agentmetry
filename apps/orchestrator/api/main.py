@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.audit import router as audit_router
 from api.routes.drivers import router as drivers_router
 from api.routes.events import router as events_router
 from api.routes.ingress import router as ingress_router
@@ -147,6 +148,7 @@ app.include_router(vault_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

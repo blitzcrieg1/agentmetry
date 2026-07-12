@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import {
   CheckCircle2,
   Code2,
-  Inbox,
   Loader2,
   Radio,
+  Shield,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -16,6 +16,7 @@ import { SkillDeck } from "@/components/skill-deck";
 import { GraphVisualization } from "@/components/graph-viz/graph-visualization";
 import { TelemetryPanel } from "@/components/telemetry/telemetry-panel";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
+import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
 
 function terminalLineClass(line: string): string {
   if (line.startsWith("✗") || line.toLowerCase().includes("error") || line.startsWith("Error:")) {
@@ -33,7 +34,7 @@ function terminalLineClass(line: string): string {
 
 interface ActivityItem {
   id: string;
-  tone: "neutral" | "success" | "warn" | "error" | "active" | "magic";
+  tone: "neutral" | "success" | "warn" | "error" | "active" | "magic" | "tool";
   text: string;
 }
 
@@ -43,12 +44,17 @@ function parseActivityFeed(lines: string[]): ActivityItem[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith("[") && line.includes("]")) continue;
-    if (line.startsWith("🔧") || line.startsWith("⛔")) continue;
 
     let tone: ActivityItem["tone"] = "neutral";
     let text = line;
 
-    if (line.startsWith("▶ Execution started:")) {
+    if (line.startsWith("🔧 Tool:")) {
+      text = line.replace("🔧 Tool:", "Tool called:").trim();
+      tone = "tool";
+    } else if (line.startsWith("⛔ Tool denied:")) {
+      text = line.replace("⛔ Tool denied:", "Tool denied:").trim();
+      tone = "warn";
+    } else if (line.startsWith("▶ Execution started:")) {
       text = `Started ${line.replace("▶ Execution started: ", "")}`;
       tone = "active";
     } else if (line.startsWith("Launching skill:")) {
@@ -59,12 +65,12 @@ function parseActivityFeed(lines: string[]): ActivityItem[] {
     } else if (line.startsWith("Context loaded:")) {
       text = `Loaded ${line.replace("Context loaded: ", "")} from vault`;
     } else if (line.startsWith("⚠ Approval required")) {
-      text = "Draft ready for your review";
+      text = "Approval required — decision will be recorded";
       tone = "warn";
     } else if (line.startsWith("✓ Approved") || line.startsWith("✓ Completed")) {
       text = line.startsWith("✓ Approved")
-        ? "Approved and archived to vault"
-        : "Completed and archived to vault";
+        ? "Approved — recorded"
+        : "Completed — recorded";
       tone = "success";
     } else if (line.startsWith("✗")) {
       text = line.replace("✗ ", "");
@@ -95,6 +101,7 @@ function ActivityFeed({ lines }: { lines: string[] }) {
     error: "text-red-400/90",
     active: "text-violet-300/90",
     magic: "text-violet-100",
+    tool: "text-sky-400/90",
   };
 
   return (
@@ -103,20 +110,7 @@ function ActivityFeed({ lines }: { lines: string[] }) {
         Activity
       </p>
       <ul className="space-y-2">
-        {items.map((item) =>
-          item.tone === "magic" ? (
-            <li
-              key={item.id}
-              className="animate-fade-in-up rounded-lg border border-violet-400/40 bg-gradient-to-r from-violet-600/20 via-fuchsia-500/10 to-emerald-500/20 px-4 py-3 shadow-[0_0_24px_rgba(139,92,246,0.25)] ring-1 ring-violet-400/20"
-            >
-              <p className="text-sm font-semibold text-transparent bg-gradient-to-r from-violet-100 via-fuchsia-100 to-emerald-200 bg-clip-text drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]">
-                ✨ {item.text}
-              </p>
-              <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-emerald-300/90">
-                Compounding intelligence
-              </p>
-            </li>
-          ) : (
+        {items.map((item) => (
             <li
               key={item.id}
               className={`flex items-start gap-2 text-sm ${toneClass[item.tone]}`}
@@ -124,24 +118,8 @@ function ActivityFeed({ lines }: { lines: string[] }) {
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
               <span>{item.text}</span>
             </li>
-          )
-        )}
+          ))}
       </ul>
-    </div>
-  );
-}
-
-function InboxZeroState() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800/80 bg-zinc-950/30 px-8 py-16 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-900/80 ring-1 ring-zinc-800">
-        <Inbox className="h-7 w-7 text-zinc-500" />
-      </div>
-      <h2 className="text-xl font-semibold text-zinc-200">Inbox zero</h2>
-      <p className="mt-2 max-w-sm text-sm text-zinc-500">
-        Ready for the next customer reply. Pick a skill from the armory and run it — drafts
-        land here for approval.
-      </p>
     </div>
   );
 }
@@ -151,7 +129,7 @@ function RunningState({ skill }: { skill: string | null }) {
     <div className="flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-950/20 px-5 py-4">
       <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
       <div>
-        <p className="text-sm font-medium text-violet-200">Working on it</p>
+        <p className="text-sm font-medium text-violet-200">Run in progress</p>
         <p className="text-xs text-zinc-500 capitalize">
           {(skill || "skill").replace(/_/g, " ")} is running…
         </p>
@@ -164,7 +142,7 @@ function CompletedBanner() {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-950/20 px-5 py-4">
       <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-      <p className="text-sm text-emerald-200">Draft approved and archived to vault</p>
+      <p className="text-sm text-emerald-200">Run approved — recorded to the audit trail</p>
     </div>
   );
 }
@@ -189,20 +167,15 @@ export function MissionControl() {
     <div className="flex h-screen flex-col">
       <header className="glass-panel relative z-20 flex items-center justify-between border-b border-zinc-800/60 px-6 py-3">
         <div className="flex items-center gap-3">
-          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg ring-1 ring-violet-500/30 shadow-lg shadow-violet-900/30">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/blackbox-logo.png"
-              alt="BLACKBOX"
-              className="h-full w-full object-cover"
-            />
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-500/30 shadow-lg shadow-violet-900/30">
+            <Shield className="h-5 w-5 text-violet-300" />
             {executionStatus === "running" ? (
               <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 ring-2 ring-background" />
             ) : null}
           </div>
           <div>
-            <h1 className="text-gradient text-lg font-bold tracking-tight">BLACKBOX</h1>
-            <p className="text-xs text-muted-foreground">Approval Inbox</p>
+            <h1 className="text-gradient text-lg font-bold tracking-tight">AgentAudit</h1>
+            <p className="text-xs text-muted-foreground">Flight recorder for governed agents</p>
           </div>
         </div>
 
@@ -250,7 +223,7 @@ export function MissionControl() {
                 >
                   {terminalOutput.length === 0 ? (
                     <span className="text-muted-foreground/70">
-                      Ready. Select a skill from The Armory to begin.
+                      Ready. Select a skill to begin.
                     </span>
                   ) : (
                     terminalOutput.map((line, i) => (
@@ -267,18 +240,22 @@ export function MissionControl() {
               </div>
             </>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               {executionStatus === "waiting_for_input" ? (
-                <ApprovalInboxCard />
-              ) : executionStatus === "idle" ? (
-                <InboxZeroState />
+                <div className="shrink-0">
+                  <ApprovalInboxCard />
+                </div>
               ) : executionStatus === "running" ? (
-                <RunningState skill={activeSkill} />
+                <div className="shrink-0">
+                  <RunningState skill={activeSkill} />
+                </div>
               ) : executionStatus === "completed" ? (
-                <CompletedBanner />
-              ) : executionStatus === "failed" ? null : null}
+                <div className="shrink-0">
+                  <CompletedBanner />
+                </div>
+              ) : null}
 
-              <ActivityFeed lines={terminalOutput} />
+              <FlightRecorderPanel />
             </div>
           )}
         </main>

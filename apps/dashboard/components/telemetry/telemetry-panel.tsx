@@ -4,40 +4,79 @@ import { useEffect, useState } from "react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RunHistory } from "@/components/telemetry/run-history";
+import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 import { DogfoodingTile } from "@/components/telemetry/dogfooding-tile";
 import { InterruptPanel } from "@/components/telemetry/interrupt-panel";
 import { PendingApprovalsPanel } from "@/components/telemetry/pending-approvals-panel";
 import { RecoveryPanel } from "@/components/telemetry/recovery-panel";
-import { RunHistory } from "@/components/telemetry/run-history";
-import { ServiceStatusPanel } from "@/components/telemetry/service-status";
 
-interface HistoricalStats {
-  backend: string;
-  total_runs: number;
-  success_rate: number;
-  total_cost: number;
-  avg_latency_ms: number;
-  recent_runs?: Array<{
-    skill: string;
-    status: string;
-    cost: number;
-    latency_ms: number;
-    created: string | null;
-  }>;
+interface AuditHealth {
+  llm_provider?: string;
+  modes?: { llm?: string; rag?: string };
+  vault?: { status?: string; notes?: number };
 }
 
-export function TelemetryPanel() {
+function OperatorSidebar() {
+  const wsConnected = useAgentStore((s) => s.wsConnected);
+  const [health, setHealth] = useState<AuditHealth | null>(null);
+
+  useEffect(() => {
+    fetch(`${ORCHESTRATOR_URL}/api/v1/health`)
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => setHealth(null));
+    const interval = setInterval(() => {
+      fetch(`${ORCHESTRATOR_URL}/api/v1/health`)
+        .then((r) => r.json())
+        .then(setHealth)
+        .catch(() => setHealth(null));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const llm = health?.llm_provider || health?.modes?.llm || "—";
+
+  return (
+    <div className="flex flex-col gap-4 h-full">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center justify-between">
+            Audit status
+            <span
+              className={`h-2 w-2 rounded-full ${wsConnected ? "bg-emerald-500" : "bg-red-500"}`}
+              title={wsConnected ? "Live" : "Offline"}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Inference</span>
+            <span className="font-mono capitalize">{llm}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Audit export</span>
+            <span className="font-mono text-emerald-400">file · local</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Vault notes</span>
+            <span className="font-mono">{health?.vault?.notes ?? "—"}</span>
+          </div>
+          <p className="pt-1 text-[10px] leading-relaxed text-muted-foreground">
+            Pipe 2 (audit) stays on-box. Qdrant/Gemini down is normal on the mock profile.
+          </p>
+        </CardContent>
+      </Card>
+
+      <RunHistory />
+    </div>
+  );
+}
+
+function DevSidebar() {
   const metrics = useAgentStore((s) => s.metrics);
   const memoryHeatmap = useAgentStore((s) => s.memoryHeatmap);
   const wsConnected = useAgentStore((s) => s.wsConnected);
-  const [history, setHistory] = useState<HistoricalStats | null>(null);
-
-  useEffect(() => {
-    fetch(`${ORCHESTRATOR_URL}/api/v1/telemetry`)
-      .then((r) => r.json())
-      .then(setHistory)
-      .catch(() => setHistory(null));
-  }, [metrics.cost]);
 
   const topNotes = Object.entries(memoryHeatmap)
     .sort(([, a], [, b]) => b - a)
@@ -50,101 +89,46 @@ export function TelemetryPanel() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
-            Session Telemetry
-            <span
-              className={`h-2 w-2 rounded-full ${wsConnected ? "bg-green-500" : "bg-red-500"}`}
-            />
+            Session
+            <span className={`h-2 w-2 rounded-full ${wsConnected ? "bg-green-500" : "bg-red-500"}`} />
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <MetricRow label="Input Tokens" value={metrics.inputTokens.toLocaleString()} />
-          <MetricRow label="Output Tokens" value={metrics.outputTokens.toLocaleString()} />
-          <MetricRow label="Cost" value={`$${metrics.cost.toFixed(4)}`} />
-          <MetricRow label="Latency" value={`${metrics.latencyMs}ms`} />
-
-          <div>
-            <div className="flex justify-between text-xs text-muted-foreground mb-1">
-              <span>Context Window</span>
-              <span>{metrics.contextUsagePercent}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-500 rounded-full"
-                style={{ width: `${Math.min(metrics.contextUsagePercent, 100)}%` }}
-              />
-            </div>
+        <CardContent className="space-y-2 text-xs font-mono">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Tokens in/out</span>
+            <span>
+              {metrics.inputTokens}/{metrics.outputTokens}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Cost</span>
+            <span>${metrics.cost.toFixed(4)}</span>
           </div>
         </CardContent>
       </Card>
-
-      {history && history.total_runs > 0 && (
+      <PendingApprovalsPanel />
+      <InterruptPanel />
+      <RecoveryPanel />
+      <RunHistory />
+      {topNotes.length > 0 ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex justify-between">
-              History
-              <span className="text-xs font-normal text-muted-foreground">
-                {history.backend}
-              </span>
-            </CardTitle>
+            <CardTitle className="text-sm">Memory heatmap</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <MetricRow label="Total Runs" value={String(history.total_runs)} />
-            <MetricRow
-              label="Success Rate"
-              value={`${(history.success_rate * 100).toFixed(0)}%`}
-            />
-            <MetricRow label="Total Cost" value={`$${history.total_cost.toFixed(4)}`} />
-            {history.recent_runs?.slice(0, 3).map((run, i) => (
-              <div key={i} className="flex justify-between text-muted-foreground font-mono">
-                <span className="truncate">{run.skill}</span>
-                <span className={run.status === "failed" ? "text-red-400" : "text-green-400"}>
-                  {run.status}
-                </span>
+          <CardContent className="space-y-2 text-xs text-muted-foreground">
+            {topNotes.map(([path, count]) => (
+              <div key={path} className="truncate">
+                {path} ({count})
               </div>
             ))}
           </CardContent>
         </Card>
-      )}
-
-      <PendingApprovalsPanel />
-
-      <InterruptPanel />
-
-      <RecoveryPanel />
-
-      <RunHistory />
-
-      <Card className="flex-1">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Memory Heatmap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {topNotes.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No notes accessed yet</p>
-          ) : (
-            <div className="space-y-2">
-              {topNotes.map(([path, count]) => (
-                <div key={path} className="flex items-center gap-2">
-                  <div
-                    className="h-3 rounded-sm bg-primary/60"
-                    style={{ width: `${Math.min(count * 20, 100)}%`, minWidth: 8 }}
-                  />
-                  <span className="text-xs text-muted-foreground truncate">{path}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      ) : null}
     </div>
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono">{value}</span>
-    </div>
-  );
+export function TelemetryPanel() {
+  const devMode = useAgentStore((s) => s.devMode);
+  return devMode ? <DevSidebar /> : <OperatorSidebar />;
 }

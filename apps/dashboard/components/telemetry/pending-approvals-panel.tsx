@@ -145,9 +145,11 @@ export function PendingApprovalsPanel() {
               onChange={() => toggle(item.thread_id)}
             />
             <span className="truncate flex-1">{item.skill_name}</span>
-            <span className="text-muted-foreground">
-              {(item.confidence * 100).toFixed(0)}%
-            </span>
+            {item.draft?.trim() ? (
+              <span className="text-muted-foreground">draft</span>
+            ) : (
+              <span className="text-violet-400/80">tool gate</span>
+            )}
           </label>
         ))}
         <p className="text-[10px] text-muted-foreground/70 pt-0.5">

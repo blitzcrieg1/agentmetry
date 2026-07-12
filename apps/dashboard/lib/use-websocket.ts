@@ -32,6 +32,7 @@ export function useWebSocket() {
   const setExecutionStatus = useAgentStore((s) => s.setExecutionStatus);
   const setThreadId = useAgentStore((s) => s.setThreadId);
   const setApproval = useAgentStore((s) => s.setApproval);
+  const setLastToolCalled = useAgentStore((s) => s.setLastToolCalled);
   const updateMetrics = useAgentStore((s) => s.updateMetrics);
   const setGraphNodes = useAgentStore((s) => s.setGraphNodes);
   const appendStreamToken = useAgentStore((s) => s.appendStreamToken);
@@ -94,6 +95,7 @@ export function useWebSocket() {
           break;
 
         case "tool_called":
+          setLastToolCalled(data.tool);
           appendTerminal(`🔧 Tool: ${data.tool}`);
           break;
 
@@ -104,19 +106,20 @@ export function useWebSocket() {
 
         case "approval_required":
           setExecutionStatus("waiting_for_input");
-          setApproval(data.draft, data.confidence);
+          setApproval(data.draft ?? "", data.confidence ?? 0, {
+            approvalKind: data.approval_kind,
+            pendingTool: data.pending_tool ?? null,
+          });
           updateNode("human_approval", "waiting");
           updateNode("critic", "completed");
-          appendTerminal(
-            `⚠ Approval required (confidence: ${(data.confidence * 100).toFixed(0)}%)`
-          );
+          appendTerminal("⚠ Approval required — decision will be recorded");
           break;
 
         case "execution_completed":
           setExecutionStatus("completed");
           updateNode("finalize", "completed");
           if (data.metrics) applyMetrics(data.metrics);
-          appendTerminal(`✓ Completed — archived to ${data.archive_path}`);
+          appendTerminal(`✓ Completed — recorded to audit trail`);
           bumpRunsRefresh();
           schedulePipelineClear();
           break;
@@ -206,6 +209,7 @@ export function useWebSocket() {
     setExecutionStatus,
     setThreadId,
     setApproval,
+    setLastToolCalled,
     updateMetrics,
     setGraphNodes,
     appendStreamToken,
