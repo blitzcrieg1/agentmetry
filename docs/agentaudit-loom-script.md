@@ -98,7 +98,7 @@ blackbox replay e4808307-ce42-4c7d-a36d-53481cafcbb9
 - "can you prove what it did?"
 - "one line per event" / "JSONL you own"
 - "the correlation id ties the run together"
-- "a SHA-256 of the arguments" (never say the args themselves are logged — they're hashed/redacted)
+- "a SHA-256 of the arguments" (true for the Tier A `audit_demo` shown here — no shell command). NOTE: if you show a Tier B shell event (Bash from Cursor/Claude) with command logging on, the actual command IS captured (secrets scrubbed) — narrate that honestly as "the command that ran, secrets scrubbed," don't say "just a hash")
 - "records agents through this host — not unmanaged copilots; that's a CASB problem"
 - "grep it, replay it, or write detections on it"
 

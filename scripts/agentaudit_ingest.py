@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.request
 from urllib.error import URLError
@@ -210,6 +211,42 @@ def redact_arguments(args: Any) -> dict[str, Any]:
     return {"value": args}
 
 
+# Inline mirror of core/audit/redaction.py — the standalone hook cannot import
+# from apps/orchestrator/core. KEEP THESE PATTERNS IN SYNC (see test).
+_SECRET_PATTERNS = [
+    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+"), r"\1<redacted>"),
+    (re.compile(r"(?i)(authorization:\s*)\S+"), r"\1<redacted>"),
+    (re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@"), r"\1<redacted>@"),
+    (re.compile(r"(?i)(-{1,2}(?:password|token|secret|api[-_]?key|pwd)[=\s]+)\S+"), r"\1<redacted>"),
+    (
+        re.compile(
+            r"(?i)\b(password|passwd|pwd|token|secret|api[-_]?key|apikey|access[-_]?key)\s*[=:]\s*[^\s;&|\"']+"
+        ),
+        r"\1=<redacted>",
+    ),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<redacted-aws-key>"),
+    (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), "<redacted-key>"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "<redacted-gh-token>"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
+]
+
+
+def scrub_command(text: Any) -> Any:
+    """Mask inline secrets in a command string before it is stored/sent."""
+    if not isinstance(text, str) or not text:
+        return text
+    out = text
+    for pattern, repl in _SECRET_PATTERNS:
+        out = pattern.sub(repl, out)
+    return out
+
+
+def scrub_arg_values(args: Any) -> Any:
+    if not isinstance(args, dict):
+        return args
+    return {k: (scrub_command(v) if isinstance(v, str) else v) for k, v in args.items()}
+
+
 def hash_arguments(args: Any) -> str:
     clean = redact_arguments(args if isinstance(args, dict) else {"value": args})
     blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str)
@@ -234,12 +271,14 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
             tool["input_hash"] = hash_arguments(args)
         
         if _log_full_args_enabled():
-            tool["arguments"] = redact_arguments(args if isinstance(args, dict) else {"value": args})
+            tool["arguments"] = scrub_arg_values(
+                redact_arguments(args if isinstance(args, dict) else {"value": args})
+            )
 
         if _log_full_args_enabled() or _log_commands_enabled():
             cmd = extract_command(args, qualified)
             if cmd:
-                tool["command"] = cmd
+                tool["command"] = scrub_command(cmd)
     return payload
 
 

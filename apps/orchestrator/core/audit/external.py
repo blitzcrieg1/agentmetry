@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from core.audit.canonical import SCHEMA_VERSION
 from core.audit.hashing import arguments_sha256
+from core.audit.redaction import scrub_arg_values, scrub_secrets
 from core.audit.run_context import actor_from_initiator, build_initiator
 from core.config import settings
 
@@ -132,9 +133,9 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             "parameters_redacted": not bool(command) and not isinstance(tool_block.get("arguments"), dict),
         }
         if command:
-            event["tool"]["command"] = command[:4096]
+            event["tool"]["command"] = scrub_secrets(command)[:4096]
         if isinstance(tool_block.get("arguments"), dict):
-            event["tool"]["arguments"] = tool_block.get("arguments")
+            event["tool"]["arguments"] = scrub_arg_values(tool_block.get("arguments"))
 
     gated = payload.get("gated_action")
     if isinstance(gated, dict) and gated.get("tool"):
