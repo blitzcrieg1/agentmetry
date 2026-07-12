@@ -1,12 +1,12 @@
 # AgentAudit
 
-**A local, governed flight recorder for AI agents.** Every tool call, every denial, every human approval — recorded to a durable log you own, replayable on demand, and forwardable to the SIEM you already run (or a free Loki homelab).
+**Local flight recorder for governed AI agent tool-use.** Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own. Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.
 
-> **Two pipes, your choice:** run inference locally (Ollama) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
+> **Repo:** `agentic-os` · **Engine:** BLACKBOX (governed LangGraph + MCP host) · **Tier B:** Cursor, Claude Code, Codex CLI, Antigravity via lifecycle hooks
 
-> Built on **BLACKBOX** (`agentic-os`) — a local agent runtime with an MCP driver host, a forced human-in-the-loop approval gate, and a durable event bus. AgentAudit is the audit layer on top: it turns "the agent did something at 02:00" into a line you can grep, replay, and detect on.
+> **Two pipes, your choice:** run inference locally (Ollama/mock) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
 
-`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for the homelab SIEM · **299 tests passing, 2 skipped**
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **299 tests passing, 2 skipped**
 
 ---
 
@@ -82,7 +82,7 @@ AgentAudit records agents that run **through this host's governed pipeline**. It
 | Tier | Setup | AgentAudit coverage |
 |------|-------|---------------------|
 | **A** | Agent runs through the BLACKBOX governed host (MCP driver host + approval gate) | **Full** — tool calls, denials, approvals, `correlation_id`, arg hashes |
-| **B** | Agent reaches tools via hooks, MCP proxy, or `POST /api/v1/audit/ingest` | **Partial → full for wired events** — same JSONL schema; see [`docs/external-agent-audit.md`](docs/external-agent-audit.md) |
+| **B** | IDE hooks (Cursor, Claude, Codex, Antigravity), MCP proxy, or `POST /api/v1/audit/ingest` | **Partial → full for wired events** — same JSONL schema; see [`docs/external-agent-audit.md`](docs/external-agent-audit.md) |
 | **C** | Unmanaged ChatGPT, Cursor with hooks off, browser copilots on the same machine | **Not visible.** CASB / secure-web-gateway territory |
 
 **AgentAudit is Tier A remediation — a flight recorder for the agents you govern. It is not a Tier C shadow-AI spy, and it does not replace a CASB.** If your problem is unmanaged copilots, you need network/endpoint policy; this won't catch them and won't pretend to.
@@ -148,20 +148,27 @@ Prefer a hosted model for richer drafts? Set `BLACKBOX_LLM_PROVIDER=gemini` and 
 
 You now have an L0 + L1 audit trail. Every governed run is in `events.db` and appended to `audit-forward.jsonl`.
 
-### Tier B — Cursor / Claude / Antigravity (external IDE agents)
+### Tier B — external IDE agents (Cursor, Claude, Codex, Antigravity)
 
-Wire IDE lifecycle hooks into the same JSONL flight recorder. Requires the orchestrator running on `:8000`.
+Wire lifecycle hooks into the same JSONL flight recorder. Requires orchestrator on `:8000`.
+
+| Platform | Project hooks (in repo) |
+|----------|-------------------------|
+| Cursor | `.cursor/hooks.json` |
+| Claude Code | `.claude/settings.json` |
+| Codex CLI | `.codex/hooks.json` (trust via `/hooks`) |
+| Antigravity | `.agents/hooks.json` |
 
 ```powershell
 scripts\blackbox.bat start
-python scripts\agentaudit_ingest.py selftest          # round-trip ingest check
-# Restart Cursor after pull — .cursor/hooks.json calls the ingest client
-# Claude: merge adapters/claude/settings.agentaudit.json into ~/.claude/settings.json
-# Codex: trust hooks in /hooks after merge — adapters/codex/hooks.agentaudit.json → ~/.codex/hooks.json
-# Antigravity: merge adapters/antigravity/hooks.agentaudit.json into .agents/hooks.json
+foreach ($src in @("cursor","claude","codex","antigravity")) {
+  $env:AGENTAUDIT_SOURCE_APP = $src
+  python scripts/agentaudit_ingest.py selftest
+}
+Remove-Item Env:\AGENTAUDIT_SOURCE_APP -ErrorAction SilentlyContinue
 ```
 
-Full adapter guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Dashboard header shows **last event N min ago** — if hooks fail silently, the badge goes stale.
+Full guide: [`docs/external-agent-audit.md`](docs/external-agent-audit.md). Dashboard freshness badge shows **last event N min ago** — stale means hooks or ingest failed silently.
 
 ### Forward to a SIEM (optional)
 
