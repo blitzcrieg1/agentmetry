@@ -60,16 +60,29 @@ Canonical output adds:
 "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"}
 ```
 
-## Claude Code
+## Claude Code (boot-installed + global)
 
-Project hooks ship in **`.claude/settings.json`** (or merge `adapters/claude/settings.agentaudit.json` into `~/.claude/settings.json`). PascalCase events: `PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`, `Notification`.
+**Launch-and-forget, like Cursor.** On orchestrator boot, `bootstrap_tier_b_hooks()` **merges** AgentAudit hooks into `~/.claude/settings.json` — every Claude Code project is audited, no per-repo setup. The merge is **non-destructive** (`theme`, `permissions`, `mcpServers`, `env`, and any existing hooks are preserved) and **idempotent** (re-run never duplicates). Never overwrites the file; if it can't parse your settings.json it skips rather than clobber.
+
+Manual install / re-install:
 
 ```powershell
-python scripts/agentaudit_ingest.py claude hook PreToolUse
-$env:AGENTAUDIT_SOURCE_APP="claude"; python scripts/agentaudit_ingest.py selftest
+powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
+# then FULLY QUIT and reopen Claude Code so global settings load
 ```
 
-Restart Claude Code after pull. Transcript fallback: `~/.claude/projects/<encoded-path>/<session-id>.jsonl`.
+Events (PascalCase): `SessionStart`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`. Template: `adapters/claude/settings.agentaudit.json` (nested `event -> [{hooks:[{type,command}]}]` schema).
+
+```powershell
+$env:AGENTAUDIT_SOURCE_APP="claude"; python scripts/agentaudit_ingest.py selftest   # GREEN
+# then run any tool in Claude Code and confirm a real hook fired:
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=claude&limit=10" |
+  Select -ExpandProperty events |
+  Select timestamp_utc, @{n='adapter';e={$_.source.adapter}}, @{n='tool';e={$_.tool.qualified}}
+# success = adapter `claude_hook` with a real tool (not claude_selftest)
+```
+
+Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool ran), same as Cursor; Claude hook payloads do **not** carry the model slug, so `model.id` shows the app name, not `claude-sonnet`. A transcript-watcher fallback (`~/.claude/projects/<encoded>/<session>.jsonl`) is **deferred** — hooks already cover every tool call and a watcher would double-log.
 
 ## Google Antigravity
 

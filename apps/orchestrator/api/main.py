@@ -113,6 +113,8 @@ async def lifespan(app: FastAPI):
         hook_paths = bootstrap_tier_b_hooks()
         if hook_paths.get("cursor"):
             logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
+        if hook_paths.get("claude"):
+            logger.info("Global Claude hooks ready: %s", hook_paths["claude"])
     except Exception as exc:
         logger.warning("Tier B hook bootstrap failed: %s", exc)
 
