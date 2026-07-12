@@ -1,39 +1,25 @@
 ---
-description: BLACKBOX vault, skills, triggers, product docs
+description: AgentAudit vault and docs
 globs: vault/**,docs/**
 alwaysApply: false
 ---
 
-# Vault + product docs
+# Vault + docs
 
-## Skills (9)
+## Shipped skill
 
-Python graphs: lead_gen, summarize_meeting, weekly_review.
-
-YAML pipelines: summarize_note, inbox_triage, supplier_intake, client_brief, follow_up_draft, supplier_research (needs search driver).
-
-## Autonomy
-
-Drop `.md` in `00-Inbox/` → `inbox-note-summarize` (meeting tag → meeting rule). Budget defer → IVT resume.
-
-## Pipeline skill template
-
-```yaml
-name: my_skill
-graph: pipeline
-tools: [vault_fs.read_note]
-nodes: [draft, human_approval, finalize]  # optional gate
-max_cost_per_run: 0.15
-```
+- `audit_demo` — pipeline graph, one governed tool call, human approval gate
 
 ## Vault layout
 
-`00-Inbox/` · `10-Knowledge/` · `20-Active-Loops/` (system) · `30-Archive/` (system) · `.system/skill-definitions/`
+`00-Inbox/` · `20-Active-Loops/` (runtime) · `30-Archive/` (runtime) · `.system/skill-definitions/`
 
-Use `Set-Content -Encoding utf8` on Windows — not `echo >` (UTF-16 breaks RAG).
+Driver config: copy `drivers.json.example` → `drivers.json` (gitignored).
 
-## Strategy docs
+Use `Set-Content -Encoding utf8` on Windows — not `echo >` (UTF-16 breaks file reads).
 
-- `docs/agentaudit-dogfood-checklist.md` — pre-Loom validation
+## Key docs
+
+- `docs/agentaudit-dogfood-checklist.md` — validation
 - `docs/external-agent-audit.md` — Tier B IDE hooks
 - `docs/agent-audit-event-schema.md` — canonical JSON v1.1

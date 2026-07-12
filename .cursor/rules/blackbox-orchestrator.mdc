@@ -1,42 +1,37 @@
 ---
-description: BLACKBOX orchestrator — kernel, API, drivers, Gemini
+description: AgentAudit orchestrator — audit pipeline, governed host, MCP
 globs: apps/orchestrator/**
 alwaysApply: false
 ---
 
 # Orchestrator context
 
-## AOS subsystems (shipped — do not re-implement)
+## Core subsystems (shipped — do not re-implement)
 
-| ID | Status | Path |
-|----|--------|------|
-| s1 Scheduler | ✅ | `core/kernel/scheduler.py` |
-| s2 Event bus + outbox | ✅ | `core/bus/` |
-| s3 IVT | ✅ | `core/kernel/interrupts.py` |
-| s4 MCP drivers | ✅ | `core/drivers/`, `vault/.system/drivers.json` |
-| s5 Sandbox Tier 0+1 | ✅ | `core/sandbox/tier1.py` |
-| Recovery | ✅ | `core/execution/recovery.py` (dismiss only — no mid-run resume) |
+| Area | Path |
+|------|------|
+| Audit canonical + ingest | `core/audit/` |
+| Event bus + outbox | `core/bus/` |
+| MCP driver host | `core/drivers/`, `vault/.system/drivers.json.example` |
+| Governed runs | `core/execution/service.py`, `core/graphs/pipeline_graph.py` |
+| Approval interrupts | `core/kernel/interrupts.py` |
+| Tier B hook bootstrap | `core/audit/hook_bootstrap.py` |
 
-**Ground rules:** one process; MCP replaces tools not graphs; keep `registry.py`; no Docker default.
+**Ground rules:** one process; MCP replaces tools not graphs; keep `registry.py` (pipeline only); no Docker default.
 
 ## Drivers
 
-- `vault_fs` enabled · `search` ships disabled (`tools/search_server.py`, Serper/Tavily)
+- Shipped example: `vault_fs` only in `drivers.json.example`
+- Operator copy: `drivers.json.example` → `drivers.json` (gitignored)
 - Closed by default: skill YAML `tools:` allowlist
-- Exec-tagged → IVT `TOOL_EXEC_APPROVAL`; Tier 1 approve: `POST /api/v1/skills/interrupts/{id}/approve`
 
 ## API quick reference
 
-- `GET /api/v1/runs/stats?window_days=7` — dogfooding go/no-go
-- `GET /api/v1/skills/pending` · `POST /api/v1/skills/approve` · `POST /api/v1/skills/approve/batch`
-- `GET /api/v1/skills/recovery` · `POST /api/v1/skills/recovery/resolve`
+- `GET /api/v1/audit/tail` · `POST /api/v1/audit/ingest` · `GET /api/v1/audit/status`
+- `POST /api/v1/skills/execute` · `POST /api/v1/skills/approve` (Tier A demo)
 - `GET /api/v1/health`
 
-## Gemini
+## Demo skill
 
-- Default `gemini-2.5-flash-lite`; per-model budget ledger counts every API attempt
-- Degraded auto-clears after retry window; vault text UTF-8/UTF-16 tolerant in RAG
-
-## Shipped trust features
-
-Append-only archives, mock guard, trigger note injection, embedding cache, vault watcher, `blackbox` CLI (+ `blackbox stats`, `blackbox recovery`).
+- `audit_demo` — tool-only read + human approval, no cloud LLM required
+- Run via API/CLI; flight recorder shows Tier A + Tier B events in JSONL

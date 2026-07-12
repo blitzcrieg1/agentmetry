@@ -164,9 +164,9 @@ async def test_run_skill_stops_mid_graph_on_budget(monkeypatch: pytest.MonkeyPat
     vault = tmp_path / "vault"
     skill_dir = vault / ".system" / "skill-definitions"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "summarize_meeting.yaml").write_text(
-        "name: summarize_meeting\ngraph: summarize_meeting\n"
-        "max_cost_per_run: 0.05\nnodes: [ingest, extract, summarize, finalize]\n",
+    (skill_dir / "budget_demo.yaml").write_text(
+        "name: budget_demo\ngraph: pipeline\n"
+        "max_cost_per_run: 0.05\nnodes: [plan, draft, finalize]\n",
         encoding="utf-8",
     )
 
@@ -186,7 +186,7 @@ async def test_run_skill_stops_mid_graph_on_budget(monkeypatch: pytest.MonkeyPat
 
         return llm, merge_llm_usage(state, llm)
 
-    monkeypatch.setattr("core.graphs.meeting_graph.graph_call_llm", expensive_call)
+    monkeypatch.setattr("core.graphs.pipeline_graph.graph_call_llm", expensive_call)
 
     await init_checkpointer()
     obsidian = ObsidianClient(vault)
@@ -201,7 +201,7 @@ async def test_run_skill_stops_mid_graph_on_budget(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(service, "log_run", lambda event: None)
     monkeypatch.setattr(service, "append_vault_run_log", lambda line: None)
 
-    result = await service.run_skill("summarize_meeting", "notes", "sess-budget")
+    result = await service.run_skill("budget_demo", "notes", "sess-budget")
 
     await shutdown_checkpointer()
     assert result["status"] == "budget_exceeded"

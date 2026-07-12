@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Shield,
   Wifi,
@@ -12,43 +12,6 @@ import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
 import { AuditFreshnessBadge } from "@/components/audit-freshness-badge";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
-
-function terminalLineClass(line: string): string {
-  if (line.startsWith("✗") || line.toLowerCase().includes("error") || line.startsWith("Error:")) {
-    return "text-red-400/90";
-  }
-  if (line.startsWith("✓") || line.includes("completed") || line.includes("approved")) {
-    return "text-emerald-400/90";
-  }
-  if (line.startsWith("✨")) return "text-violet-100 drop-shadow-[0_0_6px_rgba(167,139,250,0.6)]";
-  if (line.startsWith("⚠")) return "text-amber-400/90";
-  if (line.startsWith("▶") || line.startsWith("Launching")) return "text-violet-300/90";
-  if (line.startsWith("Task:")) return "text-muted-foreground";
-  return "text-foreground/85";
-}
-
-function RunningState({ skill }: { skill: string | null }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-950/20 px-5 py-4">
-      <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
-      <div>
-        <p className="text-sm font-medium text-violet-200">Run in progress</p>
-        <p className="text-xs text-zinc-500 capitalize">
-          {(skill || "skill").replace(/_/g, " ")} is running…
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function CompletedBanner() {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-950/20 px-5 py-4">
-      <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-      <p className="text-sm text-emerald-200">Run approved — recorded to the audit trail</p>
-    </div>
-  );
-}
 
 export function MissionControl() {
   useWebSocket();

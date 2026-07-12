@@ -1,50 +1,44 @@
 ---
-description: BLACKBOX — compact always-on pointer (full detail in scoped rules)
+description: AgentAudit — compact always-on pointer
 alwaysApply: true
 ---
 
 # AgentAudit — Quick pointer
 
-**Local flight recorder for governed agent tool-use.** BLACKBOX is the engine name only.
+**Local flight recorder for governed agent tool-use.** BLACKBOX is the internal engine name.
 
 - **Repo:** github.com/blitzcrieg1/agentic-os · branch `master`
-- **Run:** `scripts\blackbox.bat start` → `:8000` · secrets in `apps/orchestrator/.env`
-- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q` → **299 passed**, 2 skipped
-- **Handoff:** `docs/tomorrow-handoff.md` · **Validate:** `docs/agentaudit-dogfood-checklist.md`
-- **Tier B:** `docs/external-agent-audit.md` · Cursor `.cursor/hooks.json` · Codex `.codex/hooks.json` · `scripts/agentaudit_ingest.py`
-- **Resume:** orphans resume from checkpoint — `blackbox recovery --resume <path>` · opt-in boot: `BLACKBOX_AUTO_RESUME=1`
-- **Kernel is DONE** — do not re-build scheduler, bus, IVT, MCP host, budget, recovery, batch approve, plugin WS status
+- **Run:** `scripts\start-dev.bat` → orchestrator `:8000` + dashboard `:3000`
+- **Tests:** `cd apps\orchestrator && pip install -e ".[dev]" && pytest -q`
+- **Validate:** `docs/agentaudit-dogfood-checklist.md`
+- **Tier B:** `docs/external-agent-audit.md` · global hooks via `core/audit/hook_bootstrap.py` · `scripts/agentaudit_ingest.py`
 
 ## File map (start here — do not re-explore)
 
 | Task | Path |
 |---|---|
-| Execute skill | `apps/orchestrator/core/execution/service.py` → `run_skill()` |
-| Audit canonical + ingest | `core/audit/canonical.py`, `external.py`, `ingest.py` |
-| Ingest API + tail | `api/routes/audit.py` |
-| Triggers | `core/scheduler/triggers.py` |
-| Graphs | `core/graphs/registry.py` |
-| Interrupts | `core/kernel/interrupts.py` |
-| LLM + budget | `core/llm/client.py`, `core/kernel/scheduler.py` |
-| Vault I/O | `core/memory/obsidian_client.py` |
-| Skills YAML | `vault/.system/skill-definitions/` · demo: `audit_demo` |
-| Dashboard flight recorder | `apps/dashboard/components/flight-recorder-panel.tsx` |
-| Hook client | `scripts/agentaudit_ingest.py` |
-| MCP audit proxy | `apps/orchestrator/tools/mcp_audit_proxy.py` |
-| Gmail MCP | ships **disabled** · local enable in `drivers.json` (never commit) |
+| Tier B ingest | `scripts/agentaudit_ingest.py`, `api/routes/audit.py`, `core/audit/ingest.py` |
+| Audit canonical | `core/audit/canonical.py`, `external.py`, `sinks.py` |
+| Flight recorder UI | `apps/dashboard/components/flight-recorder-panel.tsx` |
+| Tier A demo skill | `vault/.system/skill-definitions/audit_demo.yaml` |
+| Governed execution | `core/execution/service.py` → `run_skill()` |
+| MCP host + allowlists | `core/drivers/host.py`, `vault/.system/drivers.json.example` |
+| Hook bootstrap | `core/audit/hook_bootstrap.py` |
 
-## Next (operator)
+## First boot
 
-1. **Validate:** `python scripts/agentaudit_ingest.py selftest` + `audit_demo` on dashboard
-2. **Tier B:** restart Cursor → real hook event in flight recorder
-3. **Loom / LinkedIn** only after checklist is GREEN
-4. **Kill gate:** no new drivers/features until Tier A+B dogfood is credible
+```powershell
+copy vault\.system\drivers.json.example vault\.system\drivers.json
+copy apps\orchestrator\.env.agentaudit-demo apps\orchestrator\.env
+scripts\start-dev.bat
+python scripts\agentaudit_ingest.py selftest
+```
 
 ## Docs
 
 - Schema: `docs/agent-audit-event-schema.md`
-- GLM Tier B research: `docs/glm-52-external-agent-audit-results.md`
-- Full handoff: scoped rules `blackbox-orchestrator.mdc`, `blackbox-dashboard-plugin.mdc`, `blackbox-vault-docs.mdc`
+- Tier B hooks: `docs/external-agent-audit.md`
+- Compliance: `docs/compliance/README.md`
 
 ## Preferences
 

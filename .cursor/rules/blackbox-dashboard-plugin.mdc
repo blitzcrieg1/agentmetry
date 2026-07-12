@@ -1,27 +1,23 @@
 ---
-description: BLACKBOX dashboard and Obsidian plugin
-globs: apps/dashboard/**,apps/obsidian-plugin/**
+description: AgentAudit dashboard — flight recorder + analytics
+globs: apps/dashboard/**
 alwaysApply: false
 ---
 
-# Dashboard + plugin
+# Dashboard
 
-## Dashboard
+Next.js 14 · Zustand · WebSocket (live badge) · REST polling for audit tail.
 
-Next.js 14 · React Flow · Zustand · WebSocket · served with orchestrator in single-process mode.
+## Panels
 
-Panels: flight recorder, telemetry, pending approvals (batch checkboxes), recovery.
-
-## Obsidian plugin v0.2
-
-- Build: `cd apps/obsidian-plugin && npm run deploy` → `vault/.obsidian/plugins/blackbox/`
-- Commands: Summarize/Triage active note, Run skill picker, Review pending, Approve/Reject all pending
-- **Live status:** WebSocket `/ws/global` → status bar `BB ⚙ <skill>…` (lifecycle events only; additive to 30s health/pending poll; reconnects on drop/settings change)
-- Settings: orchestrator URL, API key · `main.js` gitignored in source tree
+- **Flight Recorder** — `flight-recorder-panel.tsx` → `/api/v1/audit/tail`
+- **Analytics** — `analytics-panel.tsx` → outcome/source/MITRE charts
+- **Export Pack** — link to `/api/v1/audit/export/evidence`
 
 ## Verify UI changes
 
 ```powershell
 cd apps\dashboard && npm run build
-cd apps\obsidian-plugin && npm run typecheck && npm run deploy
 ```
+
+Dev: `scripts\start-dev.bat` serves dashboard on `:3000`.

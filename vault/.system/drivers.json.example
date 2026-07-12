@@ -1,0 +1,16 @@
+{
+  "drivers": [
+    {
+      "name": "vault_fs",
+      "transport": "stdio",
+      "command": "{PYTHON}",
+      "args": [
+        "{ORCHESTRATOR_ROOT}/tools/vault_fs_server.py",
+        "{VAULT_PATH}"
+      ],
+      "env_allow": [],
+      "tags": [],
+      "enabled": true
+    }
+  ]
+}

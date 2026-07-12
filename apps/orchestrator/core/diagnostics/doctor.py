@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,9 +82,18 @@ def run_doctor(
     else:
         report.warn("env", f"No {env_file} — copy from .env.example if needed")
 
+    example_path = vault / ".system" / "drivers.json.example"
     if not drivers_path.is_file():
-        report.fail("drivers", f"Missing {drivers_path}")
-        return report
+        if fix_drivers and example_path.is_file():
+            shutil.copy(example_path, drivers_path)
+            report.ok("drivers", f"Created {drivers_path.name} from drivers.json.example")
+        else:
+            report.fail(
+                "drivers",
+                f"Missing {drivers_path.name} — copy vault/.system/drivers.json.example "
+                f"to vault/.system/drivers.json (or run `blackbox doctor --fix`)",
+            )
+            return report
 
     try:
         raw = json.loads(drivers_path.read_text(encoding="utf-8"))
@@ -132,14 +142,6 @@ def run_doctor(
     data_dir = orch / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     report.ok("data", f"Data directory {data_dir}")
-
-    if settings.gmail_send_enabled:
-        report.warn(
-            "gmail_send",
-            "BLACKBOX_GMAIL_SEND_ENABLED=1 — send_draft is LIVE (Phase 4-E)",
-        )
-    else:
-        report.ok("gmail_send", "send_draft shadow-built but disabled (draft-only mode)")
 
     return report
 

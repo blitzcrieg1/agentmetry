@@ -36,10 +36,10 @@ class FakeRAG:
 
 
 SKILL_YAML = {
-    "name": "lead_gen",
-    "display_name": "Lead Gen",
+    "name": "approval_demo",
+    "display_name": "Approval Demo",
     "description": "test skill",
-    "graph": "lead_gen",
+    "graph": "pipeline",
     # Mock critic output has no CONFIDENCE line → defaults to 0.85 < 0.9,
     # so every run pauses at the approval gate.
     "approval_threshold": 0.9,
@@ -52,7 +52,7 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     vault = tmp_path / "vault"
     skill_dir = vault / ".system" / "skill-definitions"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "lead_gen.yaml").write_text(yaml.dump(SKILL_YAML), encoding="utf-8")
+    (skill_dir / "approval_demo.yaml").write_text(yaml.dump(SKILL_YAML), encoding="utf-8")
 
     monkeypatch.setattr(settings, "llm_provider", "mock")
     (tmp_path / "data").mkdir()
@@ -71,8 +71,6 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     pending_store = PendingThreadStore(db_url)
     pending_threads: dict = {}
 
-    # The service and the skills route both bind these singletons by name;
-    # approval resolution itself lives in the service module only.
     for module in (service, skills_route):
         monkeypatch.setattr(module, "obsidian", obsidian)
         monkeypatch.setattr(module, "pending_threads", pending_threads)
@@ -93,7 +91,7 @@ async def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 async def test_low_confidence_run_pauses_for_approval(wired):
-    result = await service.run_skill("lead_gen", "draft outreach", "sess-1")
+    result = await service.run_skill("approval_demo", "draft outreach", "sess-1")
 
     assert result["status"] == "waiting_for_input"
     thread_id = result["thread_id"]
@@ -106,7 +104,7 @@ async def test_low_confidence_run_pauses_for_approval(wired):
 
 
 async def test_approve_resumes_and_archives(wired):
-    result = await service.run_skill("lead_gen", "draft outreach", "sess-2")
+    result = await service.run_skill("approval_demo", "draft outreach", "sess-2")
     thread_id = result["thread_id"]
 
     outcome = await approve_skill(ApprovalRequest(thread_id=thread_id, approved=True))
@@ -119,11 +117,11 @@ async def test_approve_resumes_and_archives(wired):
     assert len(archives) == 1
     content = archives[0].read_text(encoding="utf-8")
     assert f"thread_id: {thread_id}" in content
-    assert "mock-dry-run" in content  # provider provenance survives to the ledger
+    assert "mock-dry-run" in content
 
 
 async def test_reject_terminates_and_writes_crash_report(wired):
-    result = await service.run_skill("lead_gen", "draft outreach", "sess-3")
+    result = await service.run_skill("approval_demo", "draft outreach", "sess-3")
     thread_id = result["thread_id"]
 
     outcome = await approve_skill(ApprovalRequest(thread_id=thread_id, approved=False))
@@ -139,17 +137,15 @@ async def test_reject_terminates_and_writes_crash_report(wired):
 
 
 async def test_recover_pending_threads_after_restart(wired):
-    result = await service.run_skill("lead_gen", "draft outreach", "sess-4")
+    result = await service.run_skill("approval_demo", "draft outreach", "sess-4")
     thread_id = result["thread_id"]
 
-    # Simulate a restart: in-memory pending map is gone, SQLite row remains.
     wired.pending_threads.clear()
 
     recovered = await service.recover_pending_threads()
     assert recovered == 1
     assert thread_id in wired.pending_threads
 
-    # And the recovered thread is still approvable.
     outcome = await approve_skill(ApprovalRequest(thread_id=thread_id, approved=True))
     assert outcome["status"] == "approved"
 
@@ -161,20 +157,20 @@ async def test_approve_unknown_thread_is_404(wired):
 
 
 async def test_batch_approve_resolves_all(wired):
-    t1 = (await service.run_skill("lead_gen", "a", "b1"))["thread_id"]
-    t2 = (await service.run_skill("lead_gen", "b", "b1"))["thread_id"]
+    t1 = (await service.run_skill("approval_demo", "a", "b1"))["thread_id"]
+    t2 = (await service.run_skill("approval_demo", "b", "b1"))["thread_id"]
 
     out = await batch_approve(BatchApprovalRequest(thread_ids=[t1, t2], approved=True))
 
     assert out["requested"] == 2 and out["resolved"] == 2
     assert {r["status"] for r in out["results"]} == {"approved"}
     assert t1 not in wired.pending_threads and t2 not in wired.pending_threads
-    assert len(list((wired.vault / "30-Archive").glob("*lead_gen*.md"))) == 2
+    assert len(list((wired.vault / "30-Archive").glob("*approval_demo*.md"))) == 2
 
 
 async def test_batch_reject_terminates_all(wired):
-    t1 = (await service.run_skill("lead_gen", "a", "b2"))["thread_id"]
-    t2 = (await service.run_skill("lead_gen", "b", "b2"))["thread_id"]
+    t1 = (await service.run_skill("approval_demo", "a", "b2"))["thread_id"]
+    t2 = (await service.run_skill("approval_demo", "b", "b2"))["thread_id"]
 
     out = await batch_approve(BatchApprovalRequest(thread_ids=[t1, t2], approved=False))
 
@@ -184,7 +180,7 @@ async def test_batch_reject_terminates_all(wired):
 
 
 async def test_batch_isolates_failures(wired):
-    good = (await service.run_skill("lead_gen", "a", "b3"))["thread_id"]
+    good = (await service.run_skill("approval_demo", "a", "b3"))["thread_id"]
 
     out = await batch_approve(
         BatchApprovalRequest(thread_ids=[good, "does-not-exist"], approved=True)
@@ -194,5 +190,4 @@ async def test_batch_isolates_failures(wired):
     by_thread = {r["thread_id"]: r for r in out["results"]}
     assert by_thread[good]["status"] == "approved"
     assert by_thread["does-not-exist"]["status"] == "error"
-    # The valid thread still resolved despite the bad one in the same call.
     assert good not in wired.pending_threads

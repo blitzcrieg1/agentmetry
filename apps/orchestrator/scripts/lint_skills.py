@@ -14,10 +14,6 @@ SKILLS_DIR = _REPO / "vault" / ".system" / "skill-definitions"
 REQUIRED = ("name", "graph")
 KNOWN_GRAPHS = {
     "pipeline",
-    "email_reply",
-    "lead_gen",
-    "summarize_meeting",
-    "weekly_review",
 }
 
 

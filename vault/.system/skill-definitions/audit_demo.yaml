@@ -22,8 +22,7 @@ nodes:
   - archive
 
 # Confidence caps at 1.0, so a threshold above it forces EVERY run through the
-# approval gate — matches the customer_reply pattern. Nothing archives without
-# an explicit yes.
+# approval gate. Nothing archives without an explicit yes.
 approval_threshold: 1.1
 
 # The single governed tool call. Its arguments are hashed into the audit event.

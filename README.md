@@ -1,15 +1,26 @@
 # AgentAudit
 
-**Local flight recorder for governed AI agent tool-use.** Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own. Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.
+**Local flight recorder for AI agent tool-use.** Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own. Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.
 
-> **Repo:** `agentic-os` · **Engine:** BLACKBOX (governed LangGraph + MCP host) · **Tier B:** Cursor, Claude Code, Codex CLI, Antigravity via lifecycle hooks
+> **Two tiers:** **Tier A** — governed runs through the built-in host (MCP allowlists + approval gate). **Tier B** — Cursor, Claude Code, Codex CLI, and Antigravity via lifecycle hooks. Same canonical schema either way.
 
-> **Two pipes, your choice:** run inference locally (Ollama/mock) or bring your own cloud key — either way the **audit trail stays on your machine** by default.
+> **Audit stays local by default.** Inference (Ollama, mock, or a cloud key) is a separate choice — the flight recorder does not leave your machine unless you point a sink at a SIEM.
 
-`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **335 tests passing, 2 skipped**
+`Apache-2.0` · Windows/Linux · Python + SQLite · optional Docker for homelab SIEM · **233 tests passing**
 
 ---
 
+## What's in this repo
+
+| Component | Path | Role |
+|-----------|------|------|
+| Orchestrator | `apps/orchestrator/` | Audit pipeline, governed host, ingest API |
+| Dashboard | `apps/dashboard/` | Flight Recorder + Analytics UI |
+| Hook client | `scripts/agentaudit_ingest.py` | Tier B stdin → `POST /api/v1/audit/ingest` |
+| Demo skill | `vault/.system/skill-definitions/audit_demo.yaml` | Tier A dogfood without a cloud LLM |
+| Driver template | `vault/.system/drivers.json.example` | Copy to `drivers.json` on first boot |
+
+---
 ## Why this exists
 
 When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. AgentAudit records the run as it happens:
@@ -50,7 +61,7 @@ One `run/tool_called` line looks like:
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
   "action": {"type": "tool_called", "outcome": "success"},
-  "agent": {"name": "blackbox", "skill_id": "customer_reply"},
+  "agent": {"name": "blackbox", "skill_id": "audit_demo"},
   "tool": {"qualified": "vault_fs.read_file", "server": "vault_fs",
            "input_hash": "e3b0c442...b855", "parameters_redacted": true},
   "model": {"id": "gemini-2.5-flash-lite", "provider": "gemini"}
@@ -127,7 +138,10 @@ pip install -e ".[dev]"
 copy .env.agentaudit-demo .env  # Use the mock profile for zero-setup testing
 cd ..\..
 
-# 2. Setup the Next.js Dashboard
+# 2. Local driver config (gitignored — copy from committed example)
+copy vault\.system\drivers.json.example vault\.system\drivers.json
+
+# 3. Setup the Next.js Dashboard
 cd apps\dashboard
 npm install
 cd ..\..
@@ -160,8 +174,13 @@ powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 *(After installing, fully quit and restart Cursor/Claude for the hooks to load).*
 
 ### 5. Verify the Connection
-Go to your IDE and ask your AI agent to read a file or run a simple command. You should instantly see the event populate in your dashboard under the **Flight Recorder** tab!
 
+```powershell
+# Tier B selftest (orchestrator must be running)
+python scripts\agentaudit_ingest.py selftest
+```
+
+Then in your IDE, ask the agent to read a file or run a simple command. Events should appear in the dashboard **Flight Recorder** tab within a few seconds.
 ### Forward to a SIEM (optional)
 
 | Sink | Env |
@@ -212,19 +231,24 @@ Full walkthroughs and detection rules:
 ## Architecture
 
 ```
-Skills / MCP tools
-        │
-   EventBus  ──►  events.db  (SQLite outbox — system of record, never drops)
-        │
-   audit_exporter  ──►  file | webhook | Elastic | Splunk   (best-effort forwarders)
+Tier A (governed host)                Tier B (external IDEs)
+Skills / MCP tools                    Cursor / Claude / Codex hooks
+        │                                      │
+   EventBus ──► events.db (SQLite)             POST /audit/ingest
+        │                                      │
+        └──────────────┬───────────────────────┘
+                       ▼
+              audit-forward.jsonl  ──►  Dashboard (Flight Recorder)
+                       │
+              file | webhook | Elastic | Splunk  (optional forwarders)
 ```
 
 - **Governed host** (`core/drivers/host.py`) — mounts MCP drivers, enforces per-skill tool allowlists, hashes every tool argument
 - **Approval gate** (`core/execution/service.py`) — human-in-the-loop interrupts; grants and denials are audit events
+- **External ingest** (`core/audit/ingest.py`) — normalizes Tier B hook payloads into the same schema
 - **Canonical normalizer** (`core/audit/canonical.py`) — bus events → schema v1.1.0
 - **Sinks** (`core/audit/sinks.py`, `core/audit/adapters/`) — file, webhook, Elastic ECS, Splunk HEC
-- **Replay** (`core/audit/replay.py`) — reconstructs a run timeline from the outbox
-
+- **Replay** (`core/audit/replay.py`) — reconstructs a Tier A run timeline from the outbox
 ---
 
 ## Tests
@@ -235,20 +259,20 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-**335 passing, 2 skipped** (the skips need optional `python-docx` / `pypdf`). Audit coverage lives in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_audit_tail.py`, `test_external_ingest.py`, `test_agentaudit_ingest_client.py`, `test_hook_bootstrap.py`.
+**233 passing** (audit coverage in `test_agent_audit.py`, `test_replay.py`, `test_audit_sinks.py`, `test_audit_tail.py`, `test_external_ingest.py`, `test_agentaudit_ingest_client.py`, `test_hook_bootstrap.py`).
 
 ---
 
 ## Examples & extensions
 
-BLACKBOX ships example skills that exercise the governed host — they are **demonstrations of the audit pipeline, not the product**. Each produces the same canonical audit trail as anything else.
+AgentAudit ships one demo skill — `audit_demo` — to exercise the governed host without a cloud LLM:
 
-- **Document intake** — drop a PDF/DOCX, get a structured summary (`doc_summarize`)
-- **Meeting notes → actions** (`summarize_meeting`), **weekly review** (`weekly_review`)
-- **Governed email drafting** — read a thread, draft a reply, human approves before anything is written back; nothing auto-sends (`customer_reply`, draft-only, Gmail driver ships disabled)
-- **Obsidian vault** as the local knowledge/store surface, with a companion plugin
+- **Tier A:** `audit_demo` reads a vault note via `vault_fs`, hits the human-approval gate, archives — every step lands in the audit trail
+- **Tier B:** Cursor, Claude Code, Codex, and Antigravity hooks write the same JSONL schema via `POST /api/v1/audit/ingest`
 
-These live under the skill definitions in `vault/.system/skill-definitions/`. If you're here for the flight recorder, you can ignore all of them — they just give you traffic to audit.
+If you only need external IDE capture, Tier B works standalone. Tier A adds evidence packs, replay, and approval-gated tool governance.
+
+Skill definition: `vault/.system/skill-definitions/audit_demo.yaml`
 
 ---
 
@@ -261,8 +285,7 @@ Apache-2.0. Contributions, schema feedback, and detection rules welcome — espe
 
 ### Optional services (Docker)
 
-Qdrant, PostgreSQL, and Ollama are optional accelerators — BLACKBOX runs without them on in-memory RAG and SQLite. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-
+Qdrant, PostgreSQL, and Ollama are optional — AgentAudit runs without them on SQLite. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 ```bash
 cp .env.example .env
 # Set GEMINI_API_KEY in .env for the orchestrator service
@@ -309,10 +332,8 @@ See `.env.example` for all options. Key variables:
 | `BLACKBOX_SPLUNK_HEC_TOKEN` | empty | Splunk HEC token |
 | `BLACKBOX_COST_ALERT_THRESHOLD` | `1.0` | Session cost alert in USD |
 | `BLACKBOX_GEMINI_FLASH_DAILY_LIMIT` | `20` | Daily Flash request budget |
-| `BLACKBOX_GMAIL_SEND_ENABLED` | `false` | Phase 4-E: allow `gmail.send_draft` after dogfood gate |
 
-Further docs: [validation checklist](docs/agentaudit-dogfood-checklist.md) · [Tier B hooks](docs/external-agent-audit.md) · [Obsidian plugin](apps/obsidian-plugin/README.md) · [compliance Trust-Kit](docs/compliance/README.md) · [session handoff](docs/tomorrow-handoff.md)
-
+Further docs: [validation checklist](docs/agentaudit-dogfood-checklist.md) · [Tier B hooks](docs/external-agent-audit.md) · [compliance Trust-Kit](docs/compliance/README.md)
 **Audit-only / zero-cloud dogfood:** copy [`apps/orchestrator/.env.agentaudit-demo`](apps/orchestrator/.env.agentaudit-demo) → `.env` — mock LLM, no Gemini. Details: [dependency audit](docs/agentaudit-dependency-audit.md).
 
 </details>

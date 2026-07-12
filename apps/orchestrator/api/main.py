@@ -151,8 +151,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="BLACKBOX Agentic OS",
-    description="Obsidian-Cortex State Machine Execution Environment",
+    title="AgentAudit",
+    description="Local flight recorder for governed AI agent tool-use",
     version="0.2.0",
     lifespan=lifespan,
 )

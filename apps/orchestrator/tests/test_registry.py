@@ -14,17 +14,26 @@ from core.memory.obsidian_client import ObsidianClient
 def registry(tmp_path: Path):
     skill_dir = tmp_path / ".system" / "skill-definitions"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "weekly_review.yaml").write_text(
+    (skill_dir / "audit_demo.yaml").write_text(
         """
-name: weekly_review
-display_name: Weekly Review
+name: audit_demo
+display_name: AgentAudit Demo
 description: Test skill
-graph: weekly_review
+graph: pipeline
+tools:
+  - vault_fs.read_note
+tool_only_nodes:
+  - read
 nodes:
-  - collect
-  - analyze
-  - prioritize
-  - finalize
+  - read
+  - human_approval
+  - archive
+node_tools:
+  read:
+    - tool: vault_fs.read_note
+      args:
+        path: "{user_input}"
+      output: note_text
 """.strip(),
         encoding="utf-8",
     )
@@ -34,11 +43,10 @@ nodes:
     return reg
 
 
-def test_weekly_review_registered(registry: SkillRegistry):
-    assert "weekly_review" in registry.list_registered()
+def test_audit_demo_registered(registry: SkillRegistry):
+    assert "audit_demo" in registry.list_registered()
 
 
 def test_available_graph_types():
     types = SkillRegistry.available_graph_types()
-    assert "lead_gen" in types
-    assert "weekly_review" in types
+    assert types == ["pipeline"]
