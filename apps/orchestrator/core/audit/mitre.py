@@ -5,23 +5,23 @@ from __future__ import annotations
 # Basic mappings for common tools used by AI agents
 MITRE_MAPPINGS = {
     # Execution
-    "os.run_command": {"tactic": "Execution (TA0002)", "technique": "Command and Scripting Interpreter (T1059)"},
+    "run_command": {"tactic": "Execution (TA0002)", "technique": "Command and Scripting Interpreter (T1059)"},
     "shell.run": {"tactic": "Execution (TA0002)", "technique": "Command and Scripting Interpreter (T1059)"},
     "bash": {"tactic": "Execution (TA0002)", "technique": "Command and Scripting Interpreter (T1059)"},
     
     # Collection
-    "vault_fs.read_file": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
-    "os.read_file": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
-    "str_replace_editor.view": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
+    "read_file": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
+    "view_file": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
+    "grep_search": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"},
     
     # Impact / Data Manipulation
-    "vault_fs.write_file": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
-    "os.write_file": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
-    "str_replace_editor.edit": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
+    "write_file": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
+    "write_to_file": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
+    "replace_file_content": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
+    "multi_replace_file_content": {"tactic": "Impact (TA0040)", "technique": "Data Destruction/Manipulation (T1485/T1565)"},
     
     # Discovery
-    "vault_fs.list_dir": {"tactic": "Discovery (TA0007)", "technique": "File and Directory Discovery (T1083)"},
-    "os.list_dir": {"tactic": "Discovery (TA0007)", "technique": "File and Directory Discovery (T1083)"},
+    "list_dir": {"tactic": "Discovery (TA0007)", "technique": "File and Directory Discovery (T1083)"},
 }
 
 def get_mitre_mapping(tool_name: str) -> dict[str, str] | None:

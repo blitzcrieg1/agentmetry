@@ -57,9 +57,12 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
 |-------|--------------|---------|
 | `initiator` | All audited run events | Server-derived run origin: `{actor_type, trigger, operator_id}` |
 | `gated_action` | `approval_request` | Binds the gate to `{tool, server, input_hash}` |
+| `dlp` | `tool_called` (when `outcome` is `denied` or `mode` is `log`) | Records DLP scanner matches: `{rule_id, mode, pattern_type}` |
 | `actor.type` | Derived | `user` for human-initiated runs; `agent` for cron/vault/ingress |
 
 `initiator.actor_type` is set at `run_skill` from the call site (`manual`, `cron`, `vault_watch`, `ingress`, …) — never from client headers. `approval_response` events keep the run's `initiator` but set `actor.type=user` (the operator who clicked approve/reject).
+
+**Note on DLP**: When an execution is blocked by the local Regex/YARA scanner, `action.outcome` is set to `denied` and `action.reason` is set to `dlp:<rule_id>`. The specific match data is logged in the `dlp` block.
 
 ## Example (`run/tool_called`)
 

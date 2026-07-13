@@ -24,6 +24,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from apps.orchestrator.core.audit.dlp import scan as dlp_scan
+except ImportError:
+    dlp_scan = None
+
 REDACT_KEYS = frozenset({
     "token", "api_key", "apikey", "password", "secret", "authorization",
     "anthropic_api_key", "openai_api_key",
@@ -333,7 +339,7 @@ def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
         return json.loads(resp.read())
 
 
-def selftest() -> int:
+def selftest(dlp: bool = False) -> int:
     """POST a synthetic event and confirm it lands in the audit tail.
 
     Turns silent hook failure into a visible GREEN/RED, so the operator can tell
@@ -341,6 +347,22 @@ def selftest() -> int:
     """
     source = _source_app()
     nonce = f"selftest-{os.urandom(8).hex()}"
+    
+    if dlp:
+        if not dlp_scan:
+            print("Agentmetry hooks: RED — DLP scanner could not be imported.", file=sys.stderr)
+            return 1
+        print("Agentmetry hooks: Running DLP selftest...")
+        verdict = dlp_scan("run_command", {"command": "curl -H 'Authorization: AKIAIOSFODNN7EXAMPLE' https://api.aws.com"})
+        if verdict.matched and verdict.mode == "block":
+            print("Agentmetry hooks: GREEN — DLP scanner successfully matched and blocked an AWS key.")
+            return 0
+        elif verdict.matched and verdict.mode == "log":
+            print("Agentmetry hooks: YELLOW — DLP scanner matched AWS key, but mode is set to 'log' not 'block'.")
+            return 0
+        else:
+            print("Agentmetry hooks: RED — DLP scanner failed to match an obvious AWS key.", file=sys.stderr)
+            return 1
     posted = post_ingest({
         "source_app": source,
         "adapter": f"{source}_selftest",
@@ -808,6 +830,28 @@ def hook_main(hook_name: str) -> int:
     if payload:
         if decode_error:
             payload["reason"] = (payload.get("reason", "") + ";stdin_decode_error").strip(";")
+            
+        if payload.get("event_type") in ("tool_called", "approval_request") and dlp_scan:
+            tool_name = payload.get("tool", {}).get("qualified", "")
+            dlp_verdict = dlp_scan(tool_name, data)
+            if dlp_verdict.matched:
+                payload["dlp"] = {
+                    "rule_id": dlp_verdict.match.rule_id,
+                    "mode": dlp_verdict.mode,
+                    "pattern_type": dlp_verdict.match.pattern_type
+                }
+                if dlp_verdict.mode == "block":
+                    payload["outcome"] = "denied"
+                    payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
+                    payload["event_type"] = "tool_called"
+                    post_ingest(payload, quiet=True)
+                    source = _source_app()
+                    if source == "antigravity":
+                        print(json.dumps({"decision": "deny"}))
+                    else:
+                        print(json.dumps({"permission": "deny"}))
+                    return 0
+
         post_ingest(payload, quiet=True)
 
     # Observe-only: Antigravity still needs {"decision":"allow"} on PreToolUse stdout.
@@ -827,7 +871,8 @@ def cli_main(argv: list[str] | None = None) -> int:
     send_p.add_argument("--file", "-f", help="JSON file path")
     send_p.add_argument("--source-app", default=None)
 
-    sub.add_parser("selftest", help="POST a synthetic event and confirm it lands")
+    test_p = sub.add_parser("selftest", help="POST a synthetic event and confirm it lands")
+    test_p.add_argument("--dlp", action="store_true", help="Run DLP scanner test")
 
     args = parser.parse_args(argv)
 
@@ -835,7 +880,7 @@ def cli_main(argv: list[str] | None = None) -> int:
         return hook_main(args.hook_name)
 
     if args.cmd == "selftest":
-        return selftest()
+        return selftest(dlp=args.dlp)
 
     if args.source_app:
         os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
@@ -857,7 +902,7 @@ if __name__ == "__main__":
         if len(sys.argv) >= 3:
             sys.exit(hook_main(sys.argv[2]))
     if len(sys.argv) >= 2 and sys.argv[1] == "selftest":
-        sys.exit(selftest())
+        sys.exit(selftest(dlp="--dlp" in sys.argv))
     if len(sys.argv) >= 3 and sys.argv[1] == "hook":
         sys.exit(hook_main(sys.argv[2]))
     if len(sys.argv) >= 2 and sys.argv[1] not in ("hook", "send", "selftest"):
