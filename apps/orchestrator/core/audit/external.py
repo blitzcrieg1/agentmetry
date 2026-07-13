@@ -138,7 +138,10 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             event["tool"]["arguments"] = scrub_arg_values(tool_block.get("arguments"))
 
         from core.audit.canonical import get_mitre_mapping
-        mitre = get_mitre_mapping(tool_qualified)
+        # Pass command/args as evidence so a read of a key/secret upgrades to
+        # Credential Access (T1552) instead of generic Collection.
+        evidence = command or tool_block.get("arguments")
+        mitre = get_mitre_mapping(tool_qualified, evidence)
         if mitre:
             event["tool"]["mitre"] = mitre
 

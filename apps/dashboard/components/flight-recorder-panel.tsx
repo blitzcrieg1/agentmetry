@@ -31,7 +31,7 @@ export interface AuditEvent {
   host_id?: string;
   source_topic?: string;
   action?: { type?: string; outcome?: string; reason?: string };
-  tool?: { name?: string; qualified?: string; server?: string; input_hash?: string; command?: string; arguments?: Record<string, unknown>; mitre?: { tactic: string; technique: string } };
+  tool?: { name?: string; qualified?: string; server?: string; input_hash?: string; command?: string; arguments?: Record<string, unknown>; mitre?: { tactic: string; technique: string; tactic_id?: string; technique_id?: string } };
   agent?: { name?: string; skill_id?: string };
   source?: { app?: string; tier?: string; adapter?: string };
   actor?: { type?: string; id?: string; role?: string };
@@ -249,15 +249,22 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   },
   mitre: {
     id: "mitre", label: "Mitre", widthClass: "w-40",
-    render: (e) => (
-      <div className="truncate text-slate-500 dark:text-slate-400 text-sm" title={e.tool?.mitre?.tactic || ""}>
-        {e.tool?.mitre?.tactic ? (
-          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20">
-            {e.tool.mitre.tactic.split(' ')[0]}
+    render: (e) => {
+      const m = e.tool?.mitre;
+      if (!m) return <div className="text-slate-500 dark:text-slate-400 text-sm">—</div>;
+      const cred = m.tactic_id === "TA0006" || m.tactic_id === "TA0010"; // credential access / exfil = high signal
+      return (
+        <div className="truncate text-sm" title={`${m.tactic} — ${m.technique}${m.technique_id ? ` (${m.technique_id})` : ""}`}>
+          <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-mono font-medium ring-1 ring-inset ${
+            cred
+              ? "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/20"
+              : "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20"
+          }`}>
+            {m.technique_id || m.tactic?.split(" ")[0] || "—"}
           </span>
-        ) : "—"}
-      </div>
-    )
+        </div>
+      );
+    }
   },
   command: {
     id: "command", label: "Command", widthClass: "min-w-0 flex-1",
@@ -368,8 +375,9 @@ function EventRow({ event, highlight, onViewSession, columns }: { event: AuditEv
               <div className="flex flex-col gap-1">
                 <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">MITRE ATT&CK</span>
                 <span className="text-slate-800 dark:text-slate-200">
-                  {event.tool.mitre.tactic} 
-                  <span className="text-slate-500 dark:text-slate-400 text-sm ml-1">({event.tool.mitre.technique})</span>
+                  {event.tool.mitre.tactic}
+                  {event.tool.mitre.tactic_id && <span className="text-slate-500 dark:text-slate-400 text-sm ml-1">[{event.tool.mitre.tactic_id}]</span>}
+                  <span className="text-slate-500 dark:text-slate-400 text-sm ml-1">· {event.tool.mitre.technique}{event.tool.mitre.technique_id ? ` (${event.tool.mitre.technique_id})` : ""}</span>
                 </span>
               </div>
             )}

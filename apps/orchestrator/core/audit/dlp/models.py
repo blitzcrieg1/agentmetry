@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -10,6 +10,7 @@ class RuleMeta:
     pattern: str
     category: str
     severity: str
+    validate: str = ""  # optional validator: "luhn" for card numbers
 
 
 @dataclass
@@ -24,4 +25,5 @@ class DlpMatch:
 class DlpVerdict:
     matched: bool
     mode: str = "disable"  # log, block, disable
-    match: Optional[DlpMatch] = None
+    match: Optional[DlpMatch] = None  # first match (back-compat)
+    matches: list[DlpMatch] = field(default_factory=list)  # all matches
