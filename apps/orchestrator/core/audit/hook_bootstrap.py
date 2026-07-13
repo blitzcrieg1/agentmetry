@@ -101,7 +101,8 @@ def _is_our_claude_group(group: Any) -> bool:
     if not isinstance(group, dict):
         return False
     for inner in group.get("hooks", []) or []:
-        if isinstance(inner, dict) and "agentmetry_ingest.py" in str(inner.get("command", "")):
+        cmd = str(inner.get("command", ""))
+        if "agentmetry_ingest.py" in cmd or "agentaudit_ingest.py" in cmd:
             return True
     return False
 

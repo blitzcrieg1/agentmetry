@@ -53,3 +53,6 @@ vault/.system/feedback/
 
 # Backups
 backups/
+
+# Dashboard scratch / scratchpad (never commit)
+apps/dashboard/scratch/
