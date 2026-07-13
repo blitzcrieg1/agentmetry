@@ -26,9 +26,36 @@ from core.bus.events import (
 )
 from core.bus.outbox import EventOutbox, get_outbox
 from core.config import settings
-from core.notifiers.audit import read_runs_between
 
 SCHEMA_VERSION = "1.1"
+
+
+def _runs_jsonl_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "data" / "runs.jsonl"
+
+
+def read_runs_between(start_ts: str, end_ts: str) -> list[dict[str, Any]]:
+    """Return legacy run-ledger rows in [start_ts, end_ts]; [] when file absent.
+
+    The runs.jsonl writer was removed with the legacy orchestrator; this reader
+    stays so evidence packs still include historical rows on older installs.
+    """
+    path = _runs_jsonl_path()
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ts = row.get("ts", "")
+        if start_ts <= ts <= end_ts:
+            rows.append(row)
+    return rows
 
 _COMPLIANCE_MAPPING = {
     "art_12_logging": (

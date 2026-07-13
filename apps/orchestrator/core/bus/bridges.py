@@ -1,12 +1,11 @@
-"""Core-side bus subscribers: durable persistence and vault trigger dispatch."""
+"""Core-side bus subscribers: durable persistence."""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from core.bus.bus import EventBus, bus
-from core.bus.events import LLM_TOKEN, VAULT_FILE_CHANGED
+from core.bus.events import LLM_TOKEN
 from core.bus.outbox import EventOutbox, get_outbox
 
 logger = logging.getLogger(__name__)
@@ -23,24 +22,5 @@ async def outbox_persister(bus_: EventBus = bus, outbox: EventOutbox | None = No
                 ob.append(event)
             except Exception:
                 logger.exception("Outbox write failed for %s", event.topic)
-    finally:
-        bus_.unsubscribe(sub)
-
-
-async def trigger_bridge(bus_: EventBus = bus) -> None:
-    """React to vault changes — replaces the watcher's direct trigger import."""
-    from core.scheduler.triggers import evaluate_vault_triggers
-
-    sub = bus_.subscribe("triggers", topics={VAULT_FILE_CHANGED})
-    try:
-        while True:
-            event = await sub.get()
-            try:
-                await evaluate_vault_triggers(
-                    Path(event.payload["absolute_path"]),
-                    Path(event.payload["vault_path"]),
-                )
-            except Exception:
-                logger.exception("Trigger evaluation failed for %s", event.payload)
     finally:
         bus_.unsubscribe(sub)

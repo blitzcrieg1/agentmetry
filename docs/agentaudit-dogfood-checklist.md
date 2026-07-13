@@ -2,7 +2,7 @@
 
 **Run this before recording the Loom and before writing Sigma rules.** Confirm the audit trail on real traffic so the demo and detections match live field names — not the schema doc's example values.
 
-**Zero-cloud profile:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env` (`BLACKBOX_LLM_PROVIDER=mock`). Tool + approval events are real; no cloud keys required.
+**Zero-cloud profile:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env`. The recorder needs no LLM and no cloud keys — events come from your IDE hooks and the MCP proxy.
 
 Time budget: ~20 minutes.
 
@@ -23,26 +23,24 @@ $before = (Get-Content apps\orchestrator\data\audit-forward.jsonl -ErrorAction S
 
 ---
 
-## 1. Tier A — `audit_demo` (approve + reject)
+## 1. Tier A — MCP proxy (`mcp_audit_proxy.py`)
 
-The default dashboard skill. One governed tool call + approval gate — no inbox, no Gmail, no LLM draft required on mock profile.
+Wrap any stdio MCP server with the audit proxy — every `tools/call` is recorded with a stable session correlation id and an in-proxy argument hash. Simplest check uses the bundled `vault_fs` server:
 
-Trigger a Tier A event via API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/runs/action \
-  -H "X-API-Key: test-secret" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "test_event"}'
+```powershell
+# Point an MCP client (e.g. Cursor's MCP config) at the proxy instead of the raw server:
+python apps/orchestrator/tools/mcp_audit_proxy.py --server vault_fs -- `
+  python apps/orchestrator/tools/vault_fs_server.py .\vault
 ```
 
-- ☐ **Run 1 — approve.** Tool gate shows `vault_fs.read_note` + args hash (no empty box, no confidence %). Approve in the terminal.
-  - Expected: `tool_called`, `approval_request`, `approval_response`/`success`, `session_end`
-  - Note `thread_id`
-- ☐ **Run 2 — reject.** Run again, reject at the gate.
-  - Expected: `tool_called`, `approval_request`, `approval_response`/`denied`
+Then trigger one MCP tool call from the client and verify:
 
-Flight recorder (center panel) should list events with `correlation_id` and truncated `input_hash`.
+- ☐ A `tool_called` event lands with `source.app: mcp_proxy` (`adapter: mcp_audit_proxy`)
+- ☐ `correlation_id` is the per-proxy session id (**not** a bare JSON-RPC id like `"1"`)
+- ☐ `tool.input_hash` is a 64-char hex; no plaintext `arguments` in the event
+- ☐ (If the server errors) a matching `tool_failed` event appears
+
+Flight recorder (center panel) should list the events with `correlation_id` and truncated `input_hash`.
 
 ---
 
@@ -116,14 +114,14 @@ Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 12 |
   Format-Table -AutoSize
 ```
 
-- ☐ ≥1 `approval_response` / `success` and ≥1 / `denied`
+- ☐ ≥1 `approval_request` (from an IDE permission prompt) and, after the tool runs, an `approval_response` flagged `inferred:*`
 - ☐ ≥1 `tool_called` with `tool.qualified` and 64-char `input_hash`
 - ☐ `actor.id` = your operator id
 
 ### 3c. Replay
 
 ```powershell
-scripts\blackbox.bat replay <thread_id_from_run_1>
+scripts\blackbox.bat replay <correlation_id_from_3b>
 ```
 
 - ☐ Readable timeline; `correlation_id` matches JSONL
@@ -138,9 +136,9 @@ Only if demoing SIEM export. **Kill rule:** if stack doesn't come up in one atte
 
 ## Green / red
 
-**GREEN:** JSONL grew · valid JSON · approve + deny approval events · tool_called + hash · actor.id set · replay OK · (Tier B) cursor event if claiming external ingest
+**GREEN:** JSONL grew · valid JSON · approval_request + inferred approval_response present · tool_called + hash · actor.id set · replay OK · (Tier B) cursor event if claiming external ingest
 
-**RED:** missing JSONL · broken approval wiring · empty `input_hash` · blank `actor.id` · hooks claimed but no cursor events after selftest passes
+**RED:** missing JSONL · empty `input_hash` · blank `actor.id` · hooks claimed but no cursor events after selftest passes
 
 ---
 
@@ -149,19 +147,20 @@ Only if demoing SIEM export. **Kill rule:** if stack doesn't come up in one atte
 ```
 ### Validation — YYYY-MM-DD
 - Operator id:
-- Tier A thread_ids: <approve>, <reject>
-- Tier B cursor events: Y / N
+- Tier A (MCP proxy) events: Y / N
+- Tier B cursor/claude events: Y / N
 - JSONL: <before> → <after>, 0 invalid
 - Result: GREEN / RED
 ```
 
 ---
 
-### Validation — 2026-07-12 (GREEN — Tier A)
+### Validation — 2026-07-12 (GREEN — legacy Tier A, pre-pivot)
+
+*Recorded against the since-removed `audit_demo` skill runner; kept as a historical record. New validations use the MCP-proxy Tier A check above.*
 
 - Operator id: `home-lab`
 - Profile: `.env.agentaudit-demo`
-- Skills: `audit_demo` approve + reject
 - thread_ids: `e4808307-…`, `a0822c37-…`
 - JSONL: 89 → 103 lines, 0 invalid
 - Result: **GREEN**

@@ -6,18 +6,17 @@ from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.audit import router as audit_router
 from api.websocket import ws_manager
 from api.ws_bridge import ws_event_bridge
-from core.auth import require_api_key, verify_ws_token
+from core.auth import verify_ws_token
 from core.bus.audit_exporter import audit_exporter
-from core.bus.bridges import outbox_persister, trigger_bridge
+from core.bus.bridges import outbox_persister
 from core.bus.bus import bus
 from core.bus.outbox import get_outbox
-from core.config import settings
 from core.health import get_system_health
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,6 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(ws_event_bridge(), name="ws-bridge"),
         asyncio.create_task(outbox_persister(), name="outbox-persister"),
         asyncio.create_task(audit_exporter(), name="audit-exporter"),
-        asyncio.create_task(trigger_bridge(), name="trigger-bridge"),
     ]
 
     # Drivers mount in the background: a slow npx download must not delay boot.
