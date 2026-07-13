@@ -123,6 +123,44 @@ def test_discovery_below_threshold_is_clean():
     assert "discovery-then-collect" not in _rule_ids(events)
 
 
+# --- approval-denied-then-executed -------------------------------------------
+
+def test_approval_denied_then_executed_fires():
+    events = [
+        _event("2026-07-13T14:00:00Z", action_type="approval_response", outcome="denied", tool="vault_fs.write_file"),
+        _event("2026-07-13T14:00:05Z", action_type="tool_called", outcome="success", tool="vault_fs.write_file"),
+    ]
+    dets = run_detections(events)
+    assert any(d.rule_id == "approval-denied-then-executed" for d in dets)
+    d = next(d for d in dets if d.rule_id == "approval-denied-then-executed")
+    assert d.severity == "critical"
+    assert len(d.event_ids) == 2
+
+
+def test_approval_denied_then_executed_does_not_fire_on_wrong_order():
+    events = [
+        _event("2026-07-13T14:00:00Z", action_type="tool_called", outcome="success", tool="vault_fs.write_file"),
+        _event("2026-07-13T14:00:05Z", action_type="approval_response", outcome="denied", tool="vault_fs.write_file"),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
+def test_approval_denied_then_executed_does_not_fire_on_different_tool():
+    events = [
+        _event("2026-07-13T14:00:00Z", action_type="approval_response", outcome="denied", tool="vault_fs.write_file"),
+        _event("2026-07-13T14:00:05Z", action_type="tool_called", outcome="success", tool="vault_fs.read_file"),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
+def test_approval_denied_then_executed_does_not_fire_on_denied_execution():
+    events = [
+        _event("2026-07-13T14:00:00Z", action_type="approval_response", outcome="denied", tool="vault_fs.write_file"),
+        _event("2026-07-13T14:00:05Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
 # --- engine ------------------------------------------------------------------
 
 def test_empty_session_returns_no_detections():

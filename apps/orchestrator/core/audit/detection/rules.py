@@ -196,8 +196,57 @@ def rule_discovery_then_collect(events: list[dict[str, Any]]) -> list[Detection]
     return []
 
 
+def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Detection]:
+    """A human denied a gated action, and the exact same action executed successfully later.
+    
+    Binds the denial event to the subsequent execution event by matching the qualified tool name
+    (either tool.qualified or gated_action.tool on the denial, matching tool.qualified on the execution).
+    """
+    denied_tools: dict[str, dict[str, Any]] = {}
+    detections: list[Detection] = []
+    
+    for event in events:
+        action_type = _action_type(event)
+        outcome = _outcome(event)
+        
+        if action_type == "approval_response" and outcome == "denied":
+            tool_name = _tool_qualified(event)
+            if not tool_name:
+                gated = event.get("gated_action")
+                if isinstance(gated, dict):
+                    tool_name = str(gated.get("tool") or "")
+            if tool_name:
+                denied_tools[tool_name] = event
+                
+        elif action_type == "tool_called" and outcome == "success":
+            tool_name = _tool_qualified(event)
+            if tool_name and tool_name in denied_tools:
+                denial = denied_tools[tool_name]
+                detections.append(
+                    Detection(
+                        rule_id="approval-denied-then-executed",
+                        title="Denied action was executed",
+                        severity="critical",
+                        summary=(
+                            f"Tool '{tool_name}' was successfully executed after being explicitly "
+                            "denied earlier in the session."
+                        ),
+                        correlation_id=_correlation_id(events),
+                        tactic_ids=["TA0005"],
+                        technique_ids=[],
+                        event_ids=[_event_id(denial), _event_id(event)],
+                        first_seen_utc=_ts(denial),
+                        last_seen_utc=_ts(event),
+                    )
+                )
+                del denied_tools[tool_name]
+                
+    return detections
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
+    rule_approval_denied_then_executed,
 ]
