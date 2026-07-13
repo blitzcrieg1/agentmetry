@@ -67,7 +67,7 @@ export function AuditFreshnessBadge() {
     : stale
       ? "border-amber-500/40 bg-amber-950/30 text-amber-300"
       : recent === 0
-        ? "border-zinc-700/60 bg-zinc-950/40 text-zinc-400"
+        ? "border-slate-700/60 bg-slate-950/40 text-slate-400"
         : "border-emerald-500/30 bg-emerald-950/40 text-emerald-300";
 
   const label = freshnessLabel(minutes, enabled, recent);
@@ -90,14 +90,14 @@ export function AuditFreshnessBadge() {
             <span
               key={src}
               className={`h-1.5 w-1.5 rounded-full ${
-                active ? "bg-emerald-400" : "bg-zinc-600"
+                active ? "bg-emerald-400" : "bg-slate-600"
               }`}
               title={`${src}: ${count} recent`}
             />
           );
         })}
       </span>
-      <span className="hidden text-[9px] uppercase tracking-wider text-zinc-500 lg:inline">
+      <span className="hidden text-[9px] uppercase tracking-wider text-slate-500 lg:inline">
         {SOURCE_ORDER.filter((s) => (bySource[s] ?? 0) > 0)
           .map((s) => SOURCE_SHORT[s] ?? s)
           .join(" · ") || "—"}

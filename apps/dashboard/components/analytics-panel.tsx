@@ -17,6 +17,7 @@ import { Activity } from "lucide-react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import type { AuditEvent } from "./flight-recorder-panel";
+import { ProcessTree } from "./process-tree";
 
 const OUTCOME_COLORS: Record<string, string> = {
   success: "#34d399", // emerald-400
@@ -28,6 +29,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 export function AnalyticsPanel() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<string>("");
 
   useEffect(() => {
     async function fetchAll() {
@@ -90,30 +92,43 @@ export function AnalyticsPanel() {
     return { pieData, sourceData, mitreData, total: events.length };
   }, [events]);
 
+  const uniqueSessions = useMemo(() => {
+    const sessions = new Set<string>();
+    events.forEach(e => {
+      if (e.correlation_id) sessions.add(e.correlation_id);
+    });
+    return Array.from(sessions);
+  }, [events]);
+
+  const treeEvents = useMemo(() => {
+    if (!selectedSession) return [];
+    return events.filter(e => e.correlation_id === selectedSession);
+  }, [events, selectedSession]);
+
   if (loading) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-zinc-800/60 bg-zinc-950/50">
-        <p className="text-sm text-zinc-500">Loading analytics…</p>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-slate-800/60 bg-slate-950/50">
+        <p className="text-sm text-slate-500">Loading analytics…</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-800/60 bg-zinc-950/50 overflow-y-auto">
-      <div className="space-y-2 border-b border-zinc-800/60 px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-800/60 bg-slate-950/50 overflow-y-auto">
+      <div className="space-y-2 border-b border-slate-800/60 px-4 py-3">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-violet-400" />
+          <Activity className="h-4 w-4 text-emerald-400" />
           <div>
-            <p className="text-sm font-semibold text-zinc-100">SIEM Analytics</p>
-            <p className="text-[10px] text-zinc-500">Last {stats.total} events</p>
+            <p className="text-sm font-semibold text-slate-100">SIEM Analytics</p>
+            <p className="text-[10px] text-slate-500">Last {stats.total} events</p>
           </div>
         </div>
       </div>
 
       <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Outcome Ratio */}
-        <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-4 flex flex-col items-center">
-          <h3 className="text-xs font-semibold text-zinc-300 mb-4">Action Outcomes</h3>
+        <div className="rounded-lg border border-slate-800/60 bg-slate-900/30 p-4 flex flex-col items-center">
+          <h3 className="text-xs font-semibold text-slate-300 mb-4">Action Outcomes</h3>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -143,8 +158,8 @@ export function AnalyticsPanel() {
         </div>
 
         {/* Top Talkers */}
-        <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-4">
-          <h3 className="text-xs font-semibold text-zinc-300 mb-4">Activity by Source</h3>
+        <div className="rounded-lg border border-slate-800/60 bg-slate-900/30 p-4">
+          <h3 className="text-xs font-semibold text-slate-300 mb-4">Activity by Source</h3>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.sourceData} layout="vertical" margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
@@ -162,8 +177,8 @@ export function AnalyticsPanel() {
         </div>
 
         {/* MITRE ATT&CK */}
-        <div className="col-span-1 md:col-span-2 rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-4">
-          <h3 className="text-xs font-semibold text-zinc-300 mb-4">MITRE ATT&CK Tactics Detected</h3>
+        <div className="col-span-1 md:col-span-2 rounded-lg border border-slate-800/60 bg-slate-900/30 p-4">
+          <h3 className="text-xs font-semibold text-slate-300 mb-4">MITRE ATT&CK Tactics Detected</h3>
           {stats.mitreData.length > 0 ? (
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -181,9 +196,34 @@ export function AnalyticsPanel() {
             </div>
           ) : (
             <div className="h-48 flex items-center justify-center">
-              <p className="text-xs text-zinc-500">No MITRE tactics logged in this window.</p>
+              <p className="text-xs text-slate-500">No MITRE tactics logged in this window.</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* PROCESS TREE DIAGRAM */}
+      <div className="mt-6 rounded-lg border border-slate-800/60 bg-slate-900/30 p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-300">Session Process Tree</h3>
+          <div className="relative w-64">
+            <input 
+              type="text"
+              list="session-options"
+              className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-md focus:ring-emerald-500 focus:border-emerald-500 block p-2 pr-8"
+              placeholder="Search Session ID..."
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+            />
+            <datalist id="session-options">
+              {uniqueSessions.map(id => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+        <div className="h-[500px] w-full">
+          <ProcessTree events={treeEvents} />
         </div>
       </div>
     </div>

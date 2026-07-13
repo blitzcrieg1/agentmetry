@@ -39,11 +39,11 @@
 
 @layer utilities {
   .glass-panel {
-    @apply border border-border/80 bg-card/70 backdrop-blur-md shadow-xl shadow-black/20;
+    @apply border border-border/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-xl shadow-black/5 dark:shadow-black/20;
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-violet-300 via-fuchsia-200 to-violet-300 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-emerald-700 via-fuchsia-600 to-emerald-700 dark:from-emerald-300 dark:via-fuchsia-200 dark:to-emerald-300 bg-clip-text text-transparent;
   }
 }
 

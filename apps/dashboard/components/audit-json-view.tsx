@@ -8,7 +8,7 @@ export function AuditJsonView({ value }: { value: unknown }) {
   const lines = text.split("\n");
 
   return (
-    <pre className="max-h-48 overflow-auto text-[10px] leading-relaxed">
+    <pre className="max-h-48 overflow-auto text-xs leading-relaxed">
       {lines.map((line, i) => (
         <div key={i} className="whitespace-pre">
           {colorizeLine(line)}
@@ -26,12 +26,12 @@ function colorizeLine(line: string): ReactNode {
       <>
         {indent}
         <span className="text-sky-400">&quot;{key}&quot;</span>
-        <span className="text-zinc-500">:</span>
+        <span className="text-zinc-500 dark:text-zinc-500">:</span>
         {colorizeValue(rest)}
       </>
     );
   }
-  return <span className="text-zinc-400">{line}</span>;
+  return <span className="text-zinc-500 dark:text-zinc-600 dark:text-zinc-400">{line}</span>;
 }
 
 function colorizeValue(fragment: string): ReactNode {
@@ -42,7 +42,7 @@ function colorizeValue(fragment: string): ReactNode {
       return (
         <>
           <span className="text-emerald-400/90">{str[1]}</span>
-          <span className="text-zinc-500">{str[2]}</span>
+          <span className="text-zinc-500 dark:text-zinc-500">{str[2]}</span>
         </>
       );
     }
@@ -51,10 +51,10 @@ function colorizeValue(fragment: string): ReactNode {
     return <span className="text-amber-300/90">{fragment}</span>;
   }
   if (trimmed === "true" || trimmed === "false" || trimmed.startsWith("true,") || trimmed.startsWith("false,")) {
-    return <span className="text-violet-300/90">{fragment}</span>;
+    return <span className="text-violet-700 dark:text-violet-300/90">{fragment}</span>;
   }
   if (trimmed === "null" || trimmed.startsWith("null,")) {
-    return <span className="text-zinc-500">{fragment}</span>;
+    return <span className="text-zinc-500 dark:text-zinc-500">{fragment}</span>;
   }
-  return <span className="text-zinc-400">{fragment}</span>;
+  return <span className="text-zinc-500 dark:text-zinc-600 dark:text-zinc-400">{fragment}</span>;
 }
