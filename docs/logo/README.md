@@ -8,6 +8,6 @@ Radar-ring observability mark + clean sans wordmark for the Agentmetry brand.
 | `agentmetry-logo-white.svg` | README (dark mode), dark backgrounds |
 | `agentmetry-icon.svg` | `currentColor` icon for theming |
 
-**Mark:** three audit-log lines + orange record pulse inside the radar ring.
+**Mark:** stylized **A** monogram with audit-log lines, radar sweep arc, and orange record pulse at the apex.
 
 Dashboard copies live in `apps/dashboard/public/`.
