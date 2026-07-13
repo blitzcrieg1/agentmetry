@@ -56,10 +56,9 @@ def default_config_path() -> Path:
 
 
 class MCPHost:
-    def __init__(self, interrupt_table: Any = None):
+    def __init__(self):
         self._drivers: dict[str, _Driver] = {}
         self._tools: dict[str, ToolMeta] = {}
-        self._interrupt_table = interrupt_table
 
     # ------------------------------------------------------------ lifecycle
 
@@ -213,14 +212,7 @@ class MCPHost:
         try:
             check_tool_allowed(skill_config, qualified, tags=meta.tags)
         except ToolExecApprovalRequired:
-            if self._interrupt_table is not None:
-                self._interrupt_table.raise_tool_exec(
-                    skill_name=skill_name,
-                    session_id=session_id,
-                    tool=qualified,
-                    arguments_summary=str(arguments)[:200],
-                    arguments=arguments,
-                )
+
             bus.publish(TOOL_DENIED, {
                 "type": "tool_denied",
                 "tool": qualified,
@@ -267,7 +259,5 @@ _host: MCPHost | None = None
 def get_mcp_host() -> MCPHost:
     global _host
     if _host is None:
-        from core.execution.context import interrupt_table
-
-        _host = MCPHost(interrupt_table=interrupt_table)
+        _host = MCPHost()
     return _host

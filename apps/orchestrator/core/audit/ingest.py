@@ -125,9 +125,22 @@ def _get_sink():
         splunk_sourcetype=settings.audit_splunk_sourcetype,
         splunk_verify_tls=settings.audit_splunk_verify_tls,
     )
+    from core.audit.alerts import AlertWebhookSink
+    from core.audit.sinks import MultiAuditSink
+
+    if settings.audit_alert_webhook_url.strip():
+        alert_sink = AlertWebhookSink(
+            settings.audit_alert_webhook_url.strip(),
+            timeout_seconds=settings.audit_webhook_timeout_seconds,
+        )
+        if _sink is None:
+            _sink = alert_sink
+        elif isinstance(_sink, MultiAuditSink):
+            _sink._sinks.append(alert_sink)
+        else:
+            _sink = MultiAuditSink([_sink, alert_sink])
+
     return _sink
-
-
 async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate adapter payload, build canonical event, forward to configured sinks."""
     if not settings.audit_ingest_enabled:

@@ -137,6 +137,11 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(tool_block.get("arguments"), dict):
             event["tool"]["arguments"] = scrub_arg_values(tool_block.get("arguments"))
 
+        from core.audit.canonical import get_mitre_mapping
+        mitre = get_mitre_mapping(tool_qualified)
+        if mitre:
+            event["tool"]["mitre"] = mitre
+
     gated = payload.get("gated_action")
     if isinstance(gated, dict) and gated.get("tool"):
         event["gated_action"] = {

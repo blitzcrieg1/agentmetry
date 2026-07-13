@@ -83,7 +83,7 @@ async def audit_exporter(
         if sink is None:
             sink = alert_sink
         elif isinstance(sink, MultiAuditSink):
-            sink.sinks.append(alert_sink)
+            sink._sinks.append(alert_sink)
         else:
             sink = MultiAuditSink([sink, alert_sink])
 

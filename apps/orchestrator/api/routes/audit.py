@@ -234,7 +234,7 @@ async def audit_ingest(body: ExternalIngestBody):
     }
 
 
-@router.get("/tail")
+@router.get("/tail", dependencies=[Depends(require_api_key)])
 async def audit_tail(
     limit: int = Query(50, ge=1, le=500),
     scope: Literal["runs", "all"] = Query(
@@ -296,7 +296,7 @@ async def audit_tail(
     return {"events": page, "path": str(path), "enabled": True, "pagination": pagination}
 
 
-@router.get("/export/evidence")
+@router.get("/export/evidence", dependencies=[Depends(require_api_key)])
 async def audit_export_evidence():
     """Generate and download a cryptographic evidence pack."""
     from core.audit.evidence_pack import build_evidence_pack, default_export_path, write_evidence_pack
@@ -316,7 +316,7 @@ async def audit_export_evidence():
     )
 
 
-@router.get("/status")
+@router.get("/status", dependencies=[Depends(require_api_key)])
 async def audit_status():
     """Freshness + per-source counts so the dashboard can show 'last event N min ago'.
 

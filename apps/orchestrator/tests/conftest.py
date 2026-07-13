@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from core.config import settings
-from core.llm.degraded import llm_degraded
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +16,4 @@ def _no_real_llm(monkeypatch: pytest.MonkeyPatch):
     Also isolates the global degraded flag so one test can't poison the next.
     """
     monkeypatch.setattr(settings, "gemini_api_key", "")
-    llm_degraded.clear()
     yield
-    llm_degraded.clear()

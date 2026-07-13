@@ -76,20 +76,12 @@ export function buildGraphNodes(nodeIds: string[]): GraphNodeState[] {
 export function defaultInputForSkill(skill: { id?: string; name?: string; default_input?: string }): string {
   if (skill.default_input) return skill.default_input;
   const id = skill.id || skill.name || "";
-  if (id === "lead_gen") return "Generate outreach for AI infrastructure prospects from vault context";
-  if (id === "summarize_meeting") return "Summarize the latest meeting notes from the inbox and extract action items";
-  if (id === "weekly_review") return "Review this week's vault activity and produce a prioritized plan for next week";
-  if (id === "gmail_inbox_brief") return "morning inbox brief";
   if (id === "audit_demo") return "00-Inbox/audit-demo-note.md";
-  if (id === "customer_reply") return "00-Inbox/sample-shipping-complaint.md";
-  if (id === "sop_drift_review") return "20";
   return "Describe what the agent should do...";
 }
 
 /** Richer visual pipelines than raw YAML node lists (display only). */
-const VISUAL_PIPELINES: Record<string, string[]> = {
-  gmail_inbox_brief: ["inbox_fetch", "triage", "archive"],
-};
+const VISUAL_PIPELINES: Record<string, string[]> = {};
 
 /** Map backend node ids → dashboard visual node ids. */
 export const NODE_UPDATE_ALIASES: Record<string, string[]> = {
@@ -126,10 +118,6 @@ export function resolveNodeUpdates(
 
 export function nodesForSkill(skill: { nodes?: string[]; id?: string; name?: string }): string[] {
   if (skill.nodes?.length) return skill.nodes;
-  const id = skill.id || skill.name || "";
-  if (id === "lead_gen") return ["planner", "researcher", "writer", "critic", "human_approval", "finalize"];
-  if (id === "summarize_meeting") return ["ingest", "extract", "summarize", "finalize"];
-  if (id === "weekly_review") return ["collect", "analyze", "prioritize", "finalize"];
   return [];
 }
 

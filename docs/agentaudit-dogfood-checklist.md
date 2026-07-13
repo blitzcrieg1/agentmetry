@@ -27,9 +27,16 @@ $before = (Get-Content apps\orchestrator\data\audit-forward.jsonl -ErrorAction S
 
 The default dashboard skill. One governed tool call + approval gate — no inbox, no Gmail, no LLM draft required on mock profile.
 
-Open dashboard → **Run** → **AgentAudit Demo**.
+Trigger a Tier A event via API:
 
-- ☐ **Run 1 — approve.** Tool gate shows `vault_fs.read_note` + args hash (no empty box, no confidence %). Approve.
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/runs/action \
+  -H "X-API-Key: test-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "test_event"}'
+```
+
+- ☐ **Run 1 — approve.** Tool gate shows `vault_fs.read_note` + args hash (no empty box, no confidence %). Approve in the terminal.
   - Expected: `tool_called`, `approval_request`, `approval_response`/`success`, `session_end`
   - Note `thread_id`
 - ☐ **Run 2 — reject.** Run again, reject at the gate.

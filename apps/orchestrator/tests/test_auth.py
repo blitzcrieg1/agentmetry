@@ -15,18 +15,14 @@ def client(monkeypatch):
         yield test_client
 
 
-def test_execute_requires_api_key(client: TestClient):
-    res = client.post(
-        "/api/v1/skills/execute",
-        json={"skill_name": "lead_gen", "user_input": "test", "session_id": "s1"},
-    )
+def test_audit_tail_requires_api_key(client: TestClient):
+    res = client.get("/api/v1/audit/tail")
     assert res.status_code == 401
 
 
-def test_execute_with_valid_key(client: TestClient):
-    res = client.post(
-        "/api/v1/skills/execute",
-        json={"skill_name": "lead_gen", "user_input": "test", "session_id": "s1"},
+def test_audit_tail_with_valid_key(client: TestClient):
+    res = client.get(
+        "/api/v1/audit/tail",
         headers={"X-API-Key": "test-secret"},
     )
     assert res.status_code != 401
