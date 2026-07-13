@@ -40,6 +40,19 @@ export interface AuditEvent {
   mcp?: { server_id?: string; tools?: string[] };
 }
 
+export interface Detection {
+  rule_id: string;
+  title: string;
+  severity: "critical" | "high" | "medium" | "low";
+  summary: string;
+  correlation_id: string;
+  tactic_ids: string[];
+  technique_ids: string[];
+  event_ids: string[];
+  first_seen_utc: string;
+  last_seen_utc: string;
+}
+
 const ALL_SOURCES = ["blackbox", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
 
 const EVENT_TYPES = [
@@ -534,6 +547,7 @@ export function FlightRecorderPanel() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [sessionView, setSessionView] = useState<string | null>(null);
+  const [detections, setDetections] = useState<Detection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<AuditPagination>({
     has_older: false,
@@ -667,14 +681,20 @@ export function FlightRecorderPanel() {
     setSessionView(corrId);
     setAtLatest(false);
     try {
-      const res = await fetch(
-        `${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(corrId)}`,
-        { headers: apiHeaders() },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const [sessionRes, detRes] = await Promise.all([
+        fetch(`${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(corrId)}`, {
+          headers: apiHeaders(),
+        }),
+        fetch(`${ORCHESTRATOR_URL}/api/v1/audit/detections/${encodeURIComponent(corrId)}`, {
+          headers: apiHeaders(),
+        }),
+      ]);
+      if (!sessionRes.ok) throw new Error(`HTTP ${sessionRes.status}`);
+      const data = await sessionRes.json();
       setEvents((data.events ?? []) as AuditEvent[]);
       setPagination({ has_older: false, has_newer: false });
+      // Detections are best-effort: a failed correlation shouldn't hide the trail.
+      setDetections(detRes.ok ? (((await detRes.json()).detections ?? []) as Detection[]) : []);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -685,6 +705,7 @@ export function FlightRecorderPanel() {
 
   const exitSession = useCallback(async () => {
     setSessionView(null);
+    setDetections([]);
     await jumpToLatest();
   }, [jumpToLatest]);
 
@@ -873,15 +894,41 @@ export function FlightRecorderPanel() {
         </div>
 
         {sessionView && (
-          <div className="flex items-center justify-between gap-2 rounded border border-sky-500/30 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-200">
-            <span className="truncate font-mono">Pinned to session <span className="text-sky-300">{sessionView}</span> · full trail</span>
-            <button
-              type="button"
-              onClick={() => void exitSession()}
-              className="shrink-0 rounded border border-sky-500/40 px-2 py-0.5 text-xs transition hover:bg-sky-900/40"
-            >
-              Back to live
-            </button>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 rounded border border-sky-500/30 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-200">
+              <span className="truncate font-mono">Pinned to session <span className="text-sky-300">{sessionView}</span> · full trail</span>
+              <button
+                type="button"
+                onClick={() => void exitSession()}
+                className="shrink-0 rounded border border-sky-500/40 px-2 py-0.5 text-xs transition hover:bg-sky-900/40"
+              >
+                Back to live
+              </button>
+            </div>
+            {detections.map((d) => {
+              const critical = d.severity === "critical" || d.severity === "high";
+              return (
+                <div
+                  key={d.rule_id}
+                  className={`flex flex-wrap items-center gap-2 rounded border px-3 py-1.5 text-sm ${
+                    critical
+                      ? "border-red-500/40 bg-red-950/30 text-red-200"
+                      : "border-amber-500/40 bg-amber-950/20 text-amber-200"
+                  }`}
+                >
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    critical ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"
+                  }`}>
+                    {d.severity}
+                  </span>
+                  <span className="font-medium">{d.title}</span>
+                  <span className="opacity-80">{d.summary}</span>
+                  <span className="ml-auto shrink-0 font-mono text-[11px] opacity-70">
+                    {d.technique_ids.filter(Boolean).join(" → ")}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 

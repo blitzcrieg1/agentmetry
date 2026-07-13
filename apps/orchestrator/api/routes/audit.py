@@ -323,6 +323,33 @@ async def audit_session(
     }
 
 
+@router.get("/detections/{correlation_id}", dependencies=[Depends(require_api_key)])
+async def audit_detections(correlation_id: str):
+    """Run correlated behavioral rules over one session and return detections.
+
+    A detection is a named, ordered pattern of events (e.g. credential access
+    then network egress) — the signal per-event MITRE tags can't express on
+    their own. Scans the whole trail for the session, then correlates.
+    """
+    from core.audit.detection import run_detections
+
+    path = Path(settings.audit_export_path)
+    if not settings.audit_export_enabled:
+        return {"detections": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
+    try:
+        raw = _read_jsonl(path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    events = [e for e in raw if e.get("correlation_id") == correlation_id]
+    detections = run_detections(events)
+    return {
+        "detections": [d.as_dict() for d in detections],
+        "correlation_id": correlation_id,
+        "enabled": True,
+        "count": len(detections),
+    }
+
+
 @router.get("/export/evidence", dependencies=[Depends(require_api_key)])
 async def audit_export_evidence():
     """Generate and download a cryptographic evidence pack."""

@@ -199,3 +199,35 @@ def test_audit_session_empty_for_unknown(audit_client: TestClient):
     body = audit_client.get("/api/v1/audit/session/does-not-exist").json()
     assert body["count"] == 0
     assert body["events"] == []
+
+
+def test_audit_detections_correlate_across_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """credential-access then network egress in one session -> a critical detection."""
+    jsonl = tmp_path / "audit-forward.jsonl"
+    events = [
+        {"event_id": "a", "correlation_id": "sess-D", "timestamp_utc": "2026-07-12T09:00:00+00:00",
+         "initiator": {"actor_type": "autonomous"},
+         "action": {"type": "tool_called", "outcome": "success"},
+         "tool": {"qualified": "shell.cat", "mitre": {"tactic_id": "TA0006", "technique_id": "T1552.004"}}},
+        {"event_id": "b", "correlation_id": "sess-D", "timestamp_utc": "2026-07-12T09:00:05+00:00",
+         "initiator": {"actor_type": "autonomous"},
+         "action": {"type": "tool_called", "outcome": "success"},
+         "tool": {"qualified": "shell.curl", "mitre": {"tactic_id": "TA0011", "technique_id": "T1071.001"}}},
+        {"event_id": "z", "correlation_id": "other", "timestamp_utc": "2026-07-12T09:00:10+00:00",
+         "action": {"type": "tool_called", "outcome": "success"}},
+    ]
+    jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    from api.main import app
+
+    body = TestClient(app).get("/api/v1/audit/detections/sess-D").json()
+    assert body["count"] == 1
+    assert body["detections"][0]["rule_id"] == "credential-exfil"
+    assert body["detections"][0]["severity"] == "critical"
+
+
+def test_audit_detections_empty_for_benign_session(audit_client: TestClient):
+    body = audit_client.get("/api/v1/audit/detections/t1").json()
+    assert body["count"] == 0
+    assert body["detections"] == []
