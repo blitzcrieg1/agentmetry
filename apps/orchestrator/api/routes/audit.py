@@ -296,6 +296,33 @@ async def audit_tail(
     return {"events": page, "path": str(path), "enabled": True, "pagination": pagination}
 
 
+@router.get("/session/{correlation_id}", dependencies=[Depends(require_api_key)])
+async def audit_session(
+    correlation_id: str,
+    limit: int = Query(2000, ge=1, le=10000),
+):
+    """Return every event for one correlation_id across the whole trail.
+
+    The dashboard's in-panel search only sees the loaded window, so viewing a
+    full session — especially an older one — needs a server-side lookup that
+    scans the entire JSONL rather than the last N lines.
+    """
+    path = Path(settings.audit_export_path)
+    if not settings.audit_export_enabled:
+        return {"events": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
+    try:
+        raw = _read_jsonl(path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    matched = _sort_events([e for e in raw if e.get("correlation_id") == correlation_id])
+    return {
+        "events": matched[:limit],
+        "correlation_id": correlation_id,
+        "enabled": True,
+        "count": len(matched),
+    }
+
+
 @router.get("/export/evidence", dependencies=[Depends(require_api_key)])
 async def audit_export_evidence():
     """Generate and download a cryptographic evidence pack."""

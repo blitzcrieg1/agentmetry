@@ -525,6 +525,7 @@ export function FlightRecorderPanel() {
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
+  const [sessionView, setSessionView] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<AuditPagination>({
     has_older: false,
@@ -651,16 +652,45 @@ export function FlightRecorderPanel() {
     }
   }, [fetchPage]);
 
-  useEffect(() => {
+  // Server-side full-session lookup — scans the whole trail, not just the
+  // loaded window, so viewing an older session actually works.
+  const openSession = useCallback(async (corrId: string) => {
     setLoading(true);
-    void fetchTail();
-  }, [fetchTail, runsRefreshKey, timeWindowIdx, devMode, sessionId]);
+    setSessionView(corrId);
+    setAtLatest(false);
+    try {
+      const res = await fetch(
+        `${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(corrId)}`,
+        { headers: apiHeaders() },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setEvents((data.events ?? []) as AuditEvent[]);
+      setPagination({ has_older: false, has_newer: false });
+      setError(null);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const exitSession = useCallback(async () => {
+    setSessionView(null);
+    await jumpToLatest();
+  }, [jumpToLatest]);
 
   useEffect(() => {
-    if (!atLatest) return;
+    if (sessionView) return; // don't clobber a pinned session view
+    setLoading(true);
+    void fetchTail();
+  }, [fetchTail, runsRefreshKey, timeWindowIdx, devMode, sessionId, sessionView]);
+
+  useEffect(() => {
+    if (!atLatest || sessionView) return;
     const timer = window.setInterval(() => void fetchPage("latest"), 8000);
     return () => window.clearInterval(timer);
-  }, [atLatest, fetchPage]);
+  }, [atLatest, fetchPage, sessionView]);
 
   const filteredEvents = useMemo(() => {
     const q = debouncedSearchQuery.trim().toLowerCase();
@@ -695,7 +725,7 @@ export function FlightRecorderPanel() {
               <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Flight recorder</p>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {filteredEvents.length} shown · Tier A + B
-                {!atLatest ? " · viewing history" : ""}
+                {sessionView ? " · pinned to session" : !atLatest ? " · viewing history" : ""}
               </p>
             </div>
           </div>
@@ -834,6 +864,19 @@ export function FlightRecorderPanel() {
           </div>
         </div>
 
+        {sessionView && (
+          <div className="flex items-center justify-between gap-2 rounded border border-sky-500/30 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-200">
+            <span className="truncate font-mono">Pinned to session <span className="text-sky-300">{sessionView}</span> · full trail</span>
+            <button
+              type="button"
+              onClick={() => void exitSession()}
+              className="shrink-0 rounded border border-sky-500/40 px-2 py-0.5 text-xs transition hover:bg-sky-900/40"
+            >
+              Back to live
+            </button>
+          </div>
+        )}
+
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500 dark:text-slate-600" />
           <input
@@ -938,10 +981,7 @@ export function FlightRecorderPanel() {
                 key={eventKey(ev) || `${i}`}
                 event={ev}
                 highlight={!!threadId && ev.correlation_id === threadId}
-                onViewSession={(corrId) => {
-                  setSearchQuery(corrId);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                onViewSession={(corrId) => void openSession(corrId)}
               />
             ))}
           </>

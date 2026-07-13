@@ -170,3 +170,32 @@ def test_audit_tail_pagination_after_utc(tmp_path: Path, monkeypatch: pytest.Mon
     assert newer["events"][1]["event_id"] == "e3"
     assert newer["pagination"]["has_newer"] is False
     assert newer["pagination"]["has_older"] is True
+
+
+def test_audit_session_returns_full_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Server-side lookup returns every event for a correlation_id, in order."""
+    jsonl = tmp_path / "audit-forward.jsonl"
+    events = [
+        {"event_id": "a", "correlation_id": "sess-X", "timestamp_utc": "2026-07-12T09:00:00+00:00",
+         "action": {"type": "session_start", "outcome": "success"}},
+        {"event_id": "b", "correlation_id": "other", "timestamp_utc": "2026-07-12T09:00:30+00:00",
+         "action": {"type": "tool_called", "outcome": "success"}},
+        {"event_id": "c", "correlation_id": "sess-X", "timestamp_utc": "2026-07-12T09:01:00+00:00",
+         "action": {"type": "tool_called", "outcome": "success"}},
+        {"event_id": "d", "correlation_id": "sess-X", "timestamp_utc": "2026-07-12T09:02:00+00:00",
+         "action": {"type": "session_end", "outcome": "success"}},
+    ]
+    jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    from api.main import app
+
+    body = TestClient(app).get("/api/v1/audit/session/sess-X").json()
+    assert body["count"] == 3
+    assert [e["event_id"] for e in body["events"]] == ["a", "c", "d"]  # sorted, no 'other'
+
+
+def test_audit_session_empty_for_unknown(audit_client: TestClient):
+    body = audit_client.get("/api/v1/audit/session/does-not-exist").json()
+    assert body["count"] == 0
+    assert body["events"] == []
