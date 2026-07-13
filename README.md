@@ -353,7 +353,7 @@ The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activit
 | View | Features |
 | ---- | -------- |
 | **Flight Recorder** | Real-time event tail, source badges, outcome filters, expandable row detail, raw JSON view |
-| **Column manager** | Drag-and-drop column layout, toggle model/skill/host/MCP server/reason fields, persisted preferences |
+| **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons — reorder or hide via the Columns settings panel |
 | **Analytics** | Outcome distribution, MITRE tactic chart, session ID search |
 | **Process Tree** | Horizontal React Flow timeline of events within a selected session |
 
@@ -367,11 +367,13 @@ The SQLite outbox is the **system of record** and never drops events. Forwarders
 
 | Sink | Env |
 |------|-----|
-| **File (default)** | `BLACKBOX_AUDIT_SINK=file` |
-| **Webhook** | `BLACKBOX_AUDIT_SINK=webhook` + `BLACKBOX_AUDIT_WEBHOOK_URL=...` |
-| **Elastic ECS** | `BLACKBOX_AUDIT_SINK=elastic` + `BLACKBOX_AUDIT_ELASTIC_URL` + `BLACKBOX_ELASTIC_API_KEY` |
-| **Splunk HEC** | `BLACKBOX_AUDIT_SINK=splunk` + `BLACKBOX_AUDIT_SPLUNK_HEC_URL` + `BLACKBOX_SPLUNK_HEC_TOKEN` |
-| **Alert webhook** | `BLACKBOX_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
+| **File (default)** | `AGENTMETRY_AUDIT_SINK=file` |
+| **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...` |
+| **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
+| **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
+| **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
+
+Legacy `BLACKBOX_*` variables are still accepted as aliases during the transition.
 
 Homelab SIEM with Loki + Grafana:
 
@@ -387,15 +389,17 @@ Integration guides → [docs/integrations/](docs/integrations/)
 
 ## CLI Reference
 
-`scripts\blackbox.bat` (or `blackbox` inside the orchestrator venv):
+`scripts\agentmetry.bat` (or `python -m cli` inside the orchestrator venv):
 
 | Command | What it does |
 |---------|--------------|
-| `blackbox start` / `stop` / `status` | Run the orchestrator detached; check health |
-| `blackbox replay <thread_id>` | ASCII audit timeline for one run, from `events.db` |
-| `blackbox export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
-| `blackbox verify <evidence.json>` | Recompute the integrity hash on an evidence export |
-| `blackbox doctor` | Preflight check for python, paths, etc. |
+| `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
+| `agentmetry replay <thread_id>` | ASCII audit timeline for one run, from `events.db` |
+| `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
+| `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
+| `agentmetry doctor` | Preflight check for python, paths, etc. |
+
+`scripts\blackbox.bat` remains as a legacy alias.
 
 ---
 
@@ -428,7 +432,7 @@ Agentmetry is designed for security-sensitive environments:
 
 - **Local-first** — audit data stays on your machine unless you configure forwarders
 - **Argument hashing by default** — plaintext tool args never leave the hook process
-- **Optional API key** — protect ingest/tail/export endpoints with `BLACKBOX_API_KEY`
+- **Optional API key** — protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
 - **DLP blocking** — stop secrets and PII from reaching tool execution boundaries
 - **Tamper-evident exports** — evidence packs include SHA-256 integrity hashes
 

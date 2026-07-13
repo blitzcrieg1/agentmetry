@@ -38,7 +38,10 @@ class Settings(BaseSettings):
     use_postgres: bool = False
     approval_threshold: float = 0.9
     cost_alert_threshold: float = 1.0
-    api_key: str = ""
+    api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_API_KEY", "BLACKBOX_API_KEY"),
+    )
     context_window_tokens: int = 1_048_576
     gemini_health_cache_seconds: int = 300
     gemini_health_probe: bool = False
@@ -67,28 +70,61 @@ class Settings(BaseSettings):
     # Agentmetry — operator identity + SIEM-ready JSONL forwarder
     operator_id: str = Field(
         default="",
-        validation_alias=AliasChoices("OPERATOR_ID", "BLACKBOX_OPERATOR_ID"),
+        validation_alias=AliasChoices(
+            "OPERATOR_ID",
+            "AGENTMETRY_OPERATOR_ID",
+            "BLACKBOX_OPERATOR_ID",
+        ),
     )
-    audit_export_enabled: bool = True
+    audit_export_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "AGENTMETRY_AUDIT_EXPORT_ENABLED",
+            "BLACKBOX_AUDIT_EXPORT_ENABLED",
+        ),
+    )
     audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
-    audit_sink: str = "file"  # file | webhook | both | elastic | splunk | all | comma-separated
-    audit_webhook_url: str = ""
+    audit_sink: str = Field(
+        default="file",
+        validation_alias=AliasChoices("AGENTMETRY_AUDIT_SINK", "BLACKBOX_AUDIT_SINK"),
+    )
+    audit_webhook_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AGENTMETRY_AUDIT_WEBHOOK_URL",
+            "BLACKBOX_AUDIT_WEBHOOK_URL",
+        ),
+    )
     audit_webhook_timeout_seconds: float = 5.0
-    audit_elastic_url: str = ""
+    audit_elastic_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AGENTMETRY_AUDIT_ELASTIC_URL",
+            "BLACKBOX_AUDIT_ELASTIC_URL",
+        ),
+    )
     audit_elastic_index: str = "logs-agentmetry"
     audit_elastic_api_key: str = Field(
         default="",
         validation_alias=AliasChoices(
             "ELASTIC_API_KEY",
+            "AGENTMETRY_ELASTIC_API_KEY",
             "BLACKBOX_ELASTIC_API_KEY",
         ),
     )
     audit_elastic_verify_tls: bool = True
-    audit_splunk_hec_url: str = ""
+    audit_splunk_hec_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AGENTMETRY_AUDIT_SPLUNK_HEC_URL",
+            "BLACKBOX_AUDIT_SPLUNK_HEC_URL",
+        ),
+    )
     audit_splunk_hec_token: str = Field(
         default="",
         validation_alias=AliasChoices(
             "SPLUNK_HEC_TOKEN",
+            "AGENTMETRY_SPLUNK_HEC_TOKEN",
             "BLACKBOX_SPLUNK_HEC_TOKEN",
         ),
     )
@@ -97,9 +133,18 @@ class Settings(BaseSettings):
     audit_splunk_verify_tls: bool = True
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"
-    audit_alert_webhook_url: str = ""
+    audit_alert_webhook_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL",
+            "BLACKBOX_AUDIT_ALERT_WEBHOOK_URL",
+        ),
+    )
     # Semantic DLP
-    dlp_mode: str = "log"  # log | block | disable
+    dlp_mode: str = Field(
+        default="log",
+        validation_alias=AliasChoices("AGENTMETRY_DLP_MODE", "BLACKBOX_DLP_MODE"),
+    )
     dlp_rules_path: Path = _ORCHESTRATOR_ROOT.parent.parent / "policies" / "dlp" / "manifest.yaml"
     dlp_pii: bool = True
 

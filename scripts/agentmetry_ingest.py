@@ -5,7 +5,7 @@ POST adapter events to the local orchestrator ingest API.
 
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
-  BLACKBOX_API_KEY          optional X-API-Key header
+  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
   AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also BLACKBOX_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
@@ -58,6 +58,13 @@ def _base_url() -> str:
         or os.environ.get("BLACKBOX_AUDIT_INGEST_URL")
         or "http://127.0.0.1:8000"
     ).rstrip("/")
+
+
+def _api_key() -> str:
+    return (
+        os.environ.get("AGENTMETRY_API_KEY", "").strip()
+        or os.environ.get("BLACKBOX_API_KEY", "").strip()
+    )
 
 
 def _source_app() -> str:
@@ -313,7 +320,7 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
     url = f"{_base_url()}/api/v1/audit/ingest"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
-    api_key = os.environ.get("BLACKBOX_API_KEY", "").strip()
+    api_key = _api_key()
     if api_key:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -331,7 +338,7 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
 def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
     url = f"{_base_url()}/api/v1/audit/tail?sources={source_app}&limit={limit}&scope=all"
     headers = {}
-    api_key = os.environ.get("BLACKBOX_API_KEY", "").strip()
+    api_key = _api_key()
     if api_key:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers, method="GET")
@@ -373,7 +380,7 @@ def selftest(dlp: bool = False) -> int:
     if not posted:
         print(
             f"Agentmetry hooks: RED — could not POST to ingest at {_base_url()}. "
-            "Is the orchestrator running? Check AGENTMETRY_URL / BLACKBOX_API_KEY.",
+            "Is the orchestrator running? Check AGENTMETRY_URL / AGENTMETRY_API_KEY.",
             file=sys.stderr,
         )
         return 1
