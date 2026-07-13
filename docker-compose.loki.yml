@@ -1,4 +1,4 @@
-# AgentAudit homelab — Grafana Loki + Alloy + Grafana
+# Agentmetry homelab — Grafana Loki + Alloy + Grafana
 # Standalone stack; does not replace the main docker-compose.yml (orchestrator/dashboard).
 #
 # Prerequisites: BLACKBOX running locally so audit-forward.jsonl is written under
@@ -7,7 +7,7 @@
 # Start:
 #   docker compose -f docker-compose.loki.yml up -d
 #
-# Grafana UI: http://localhost:3001  (admin / agentaudit)
+# Grafana UI: http://localhost:3001  (admin / agentmetry)
 # Loki API:    http://localhost:3100
 
 services:
@@ -26,7 +26,7 @@ services:
       - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: agentaudit
+      GF_SECURITY_ADMIN_PASSWORD: agentmetry
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:
@@ -42,7 +42,7 @@ services:
       - "12345:12345"
     volumes:
       - ./infra/loki/alloy.config:/etc/alloy/config.alloy:ro
-      - ./apps/orchestrator/data:/var/log/agent-audit:ro
+      - ./apps/orchestrator/data:/var/log/agentmetry:ro
     depends_on:
       - loki
     restart: unless-stopped

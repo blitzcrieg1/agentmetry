@@ -29,7 +29,7 @@ class AlertWebhookSink:
         tool_name = tool.get("qualified", "unknown_tool")
         agent_name = canonical.get("agent", {}).get("skill_id") or canonical.get("source", {}).get("app", "unknown_agent")
 
-        text = f"🚨 *AgentAudit Alert*\nAgent `{agent_name}` attempted to run `{tool_name}` but the action resulted in `{outcome}`."
+        text = f"🚨 *Agentmetry Alert*\nAgent `{agent_name}` attempted to run `{tool_name}` but the action resulted in `{outcome}`."
 
         payload = {
             "text": text,
@@ -49,7 +49,7 @@ class AlertWebhookSink:
                 response = await client.post(
                     self._url,
                     json=payload,
-                    headers={"Content-Type": "application/json", "User-Agent": "AgentAudit-Alerts/1.0"},
+                    headers={"Content-Type": "application/json", "User-Agent": "Agentmetry-Alerts/1.0"},
                 )
                 response.raise_for_status()
         except Exception:

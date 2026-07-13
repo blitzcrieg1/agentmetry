@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { Activity } from "lucide-react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { apiHeaders } from "@/lib/api";
 import type { AuditEvent } from "./flight-recorder-panel";
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -31,7 +32,9 @@ export function AnalyticsPanel() {
   useEffect(() => {
     async function fetchAll() {
       try {
-        const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`);
+        const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`, {
+          headers: apiHeaders(),
+        });
         if (res.ok) {
           const data = await res.json();
           setEvents(data.events || []);

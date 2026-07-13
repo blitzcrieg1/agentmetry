@@ -2,7 +2,7 @@
 type: system-context
 updated: 2026-07-12
 ---
-# AgentAudit demo context
+# Agentmetry demo context
 
 Shared context injected into governed skill runs. Edit in Obsidian; changes apply on next execution.
 

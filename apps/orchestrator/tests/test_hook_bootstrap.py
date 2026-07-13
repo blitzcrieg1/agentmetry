@@ -16,7 +16,7 @@ from core.audit.hook_bootstrap import (
 
 
 def test_cursor_hooks_payload_has_all_events(tmp_path: Path):
-    ingest = tmp_path / "agentaudit_ingest.py"
+    ingest = tmp_path / "agentmetry_ingest.py"
     ingest.write_text("# stub", encoding="utf-8")
     payload = cursor_hooks_payload(python="/usr/bin/python3", ingest=ingest)
     assert payload["version"] == 1
@@ -27,7 +27,7 @@ def test_cursor_hooks_payload_has_all_events(tmp_path: Path):
 def test_install_cursor_global_hooks(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
-    ingest = repo / "scripts" / "agentaudit_ingest.py"
+    ingest = repo / "scripts" / "agentmetry_ingest.py"
     ingest.parent.mkdir(parents=True)
     ingest.write_text("# stub", encoding="utf-8")
 
@@ -43,7 +43,7 @@ def test_install_cursor_global_hooks(tmp_path: Path, monkeypatch):
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert "beforeShellExecution" in text
-    assert "agentaudit_ingest.py" in text
+    assert "agentmetry_ingest.py" in text
 
 
 def test_bootstrap_skips_when_ingest_missing(tmp_path: Path, monkeypatch):
@@ -57,7 +57,7 @@ def test_bootstrap_skips_when_ingest_missing(tmp_path: Path, monkeypatch):
 
 def _repo_with_ingest(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
-    ingest = repo / "scripts" / "agentaudit_ingest.py"
+    ingest = repo / "scripts" / "agentmetry_ingest.py"
     ingest.parent.mkdir(parents=True)
     ingest.write_text("# stub", encoding="utf-8")
     return repo
@@ -74,7 +74,7 @@ def test_merge_claude_hooks_preserves_other_keys(tmp_path: Path):
 
 
 def test_merge_claude_hooks_preserves_user_hooks_and_is_idempotent(tmp_path: Path):
-    ingest = tmp_path / "agentaudit_ingest.py"
+    ingest = tmp_path / "agentmetry_ingest.py"
     user_hook = {"hooks": [{"type": "command", "command": "echo mine"}]}
     settings = {"hooks": {"PreToolUse": [user_hook]}}
 
@@ -86,7 +86,7 @@ def test_merge_claude_hooks_preserves_user_hooks_and_is_idempotent(tmp_path: Pat
     # Running again must not duplicate our entry.
     merge_claude_hooks(settings, python="/py", ingest=ingest)
     pre2 = settings["hooks"]["PreToolUse"]
-    ours = [g for g in pre2 if "agentaudit_ingest.py" in str(g)]
+    ours = [g for g in pre2 if "agentmetry_ingest.py" in str(g)]
     assert len(ours) == 1
     assert user_hook in pre2
 
@@ -105,7 +105,7 @@ def test_install_claude_global_hooks_merges_existing_file(tmp_path: Path, monkey
     written = json.loads(path.read_text(encoding="utf-8"))
     assert written["theme"] == "dark"           # preserved
     assert "Stop" in written["hooks"]
-    assert "agentaudit_ingest.py" in str(written["hooks"]["SessionStart"])
+    assert "agentmetry_ingest.py" in str(written["hooks"]["SessionStart"])
 
 
 def test_install_claude_creates_file_when_absent(tmp_path: Path, monkeypatch):

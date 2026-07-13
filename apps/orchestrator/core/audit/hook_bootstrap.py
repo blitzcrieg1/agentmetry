@@ -30,7 +30,7 @@ def _repo_root() -> Path:
 
 def _ingest_script(repo_root: Path | None = None) -> Path:
     root = repo_root or _repo_root()
-    return root / "scripts" / "agentaudit_ingest.py"
+    return root / "scripts" / "agentmetry_ingest.py"
 
 
 def cursor_hooks_payload(*, python: str, ingest: Path) -> dict[str, Any]:
@@ -97,11 +97,11 @@ def _claude_command(event: str, *, python: str, ingest: Path) -> str:
 
 
 def _is_our_claude_group(group: Any) -> bool:
-    """True if a hook group is one AgentAudit installed (idempotency marker)."""
+    """True if a hook group is one Agentmetry installed (idempotency marker)."""
     if not isinstance(group, dict):
         return False
     for inner in group.get("hooks", []) or []:
-        if isinstance(inner, dict) and "agentaudit_ingest.py" in str(inner.get("command", "")):
+        if isinstance(inner, dict) and "agentmetry_ingest.py" in str(inner.get("command", "")):
             return True
     return False
 
@@ -109,7 +109,7 @@ def _is_our_claude_group(group: Any) -> bool:
 def merge_claude_hooks(
     settings: dict[str, Any], *, python: str, ingest: Path
 ) -> dict[str, Any]:
-    """Deep-merge AgentAudit hooks into a Claude settings dict, non-destructively.
+    """Deep-merge Agentmetry hooks into a Claude settings dict, non-destructively.
 
     Preserves every other key (theme, permissions, mcpServers, env) and any
     user hooks; replaces only our own previously-installed entries (idempotent).
@@ -139,7 +139,7 @@ def merge_claude_hooks(
 def install_claude_global_hooks(
     *, repo_root: Path | None = None, python: str | None = None
 ) -> Path | None:
-    """Merge AgentAudit hooks into ~/.claude/settings.json for every Claude project."""
+    """Merge Agentmetry hooks into ~/.claude/settings.json for every Claude project."""
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
     if not ingest.is_file():

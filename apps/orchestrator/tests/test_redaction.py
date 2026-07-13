@@ -12,7 +12,7 @@ from core.audit.redaction import scrub_arg_values, scrub_secrets
 
 _SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
-import agentaudit_ingest as ingest  # noqa: E402
+import agentmetry_ingest as ingest  # noqa: E402
 
 
 SECRET_CASES = [

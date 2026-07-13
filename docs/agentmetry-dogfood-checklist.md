@@ -1,8 +1,8 @@
-# AgentAudit — validation checklist
+# Agentmetry — validation checklist
 
 **Run this before recording the Loom and before writing Sigma rules.** Confirm the audit trail on real traffic so the demo and detections match live field names — not the schema doc's example values.
 
-**Zero-cloud profile:** copy `apps/orchestrator/.env.agentaudit-demo` → `.env`. The recorder needs no LLM and no cloud keys — events come from your IDE hooks and the MCP proxy.
+**Zero-cloud profile:** copy `apps/orchestrator/.env.agentmetry-demo` → `.env`. The recorder needs no LLM and no cloud keys — events come from your IDE hooks and the MCP proxy.
 
 Time budget: ~20 minutes.
 
@@ -16,7 +16,7 @@ Time budget: ~20 minutes.
 - ☐ `scripts\blackbox.bat start` then hard-refresh dashboard at `http://127.0.0.1:8000`
 
 ```powershell
-python scripts/agentaudit_ingest.py selftest   # Tier B round-trip (optional but recommended)
+python scripts/agentmetry_ingest.py selftest   # Tier B round-trip (optional but recommended)
 $before = (Get-Content apps\orchestrator\data\audit-forward.jsonl -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
 "audit-forward.jsonl before: $before lines"
 ```
@@ -59,17 +59,17 @@ Project hooks ship in-repo:
 
 ```powershell
 foreach ($src in @("cursor","claude","codex","antigravity")) {
-  $env:AGENTAUDIT_SOURCE_APP = $src
-  python scripts/agentaudit_ingest.py selftest
+  $env:AGENTMETRY_SOURCE_APP = $src
+  python scripts/agentmetry_ingest.py selftest
 }
-Remove-Item Env:\AGENTAUDIT_SOURCE_APP -ErrorAction SilentlyContinue
+Remove-Item Env:\AGENTMETRY_SOURCE_APP -ErrorAction SilentlyContinue
 ```
 
 **Real hooks** (Loom gate — need `*_hook`, not `*_selftest`):
 
 - ☐ **Cursor** — restart Cursor → run a shell command in this repo
 - ☐ **Claude Code** — restart Claude / open this repo → run any tool (Read, Bash, MCP)
-- ☐ **Codex CLI** — `/hooks` trust AgentAudit → run one Bash command
+- ☐ **Codex CLI** — `/hooks` trust Agentmetry → run one Bash command
 - ☐ **Antigravity** — open workspace → run one tool (`run_command`, etc.)
 
 ```powershell
@@ -85,7 +85,7 @@ Show-Tail cursor; Show-Tail claude; Show-Tail codex; Show-Tail antigravity
 - ☐ Freshness badge shows dots for sources you exercised
 - ☐ Kill-test: stop orchestrator → hook silent-fails, IDE unharmed
 
-Full adapter guide: [`external-agent-audit.md`](./external-agent-audit.md).
+Full adapter guide: [`external-agentmetry.md`](./external-agentmetry.md).
 
 ---
 
@@ -160,7 +160,7 @@ Only if demoing SIEM export. **Kill rule:** if stack doesn't come up in one atte
 *Recorded against the since-removed `audit_demo` skill runner; kept as a historical record. New validations use the MCP-proxy Tier A check above.*
 
 - Operator id: `home-lab`
-- Profile: `.env.agentaudit-demo`
+- Profile: `.env.agentmetry-demo`
 - thread_ids: `e4808307-…`, `a0822c37-…`
 - JSONL: 89 → 103 lines, 0 invalid
 - Result: **GREEN**

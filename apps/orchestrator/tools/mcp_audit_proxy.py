@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Stdio MCP proxy — logs tools/call to AgentAudit ingest, forwards to child MCP server.
+"""Stdio MCP proxy — logs tools/call to Agentmetry ingest, forwards to child MCP server.
 
 Usage:
   python mcp_audit_proxy.py --server vault_fs -- \\
     python tools/vault_fs_server.py /path/to/vault
 
 Configure Cursor/Claude MCP to run this wrapper instead of the raw server command.
-Set AGENTAUDIT_SOURCE_APP=mcp_proxy (default).
+Set AGENTMETRY_SOURCE_APP=mcp_proxy (default).
 
 Correlation: all calls in one proxy process share a per-process session id
-(override with AGENTAUDIT_CORRELATION_ID) — NOT the JSON-RPC request id, which
+(override with AGENTMETRY_CORRELATION_ID) — NOT the JSON-RPC request id, which
 collides across sessions. The JSON-RPC id is used only to match a response to
 its request so a server error becomes a tool_failed event.
 
@@ -34,18 +34,18 @@ _REPO_ROOT = _ORCH_ROOT.parents[1]
 if str(_REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from agentaudit_ingest import hash_arguments, post_ingest  # noqa: E402
+from agentmetry_ingest import hash_arguments, post_ingest  # noqa: E402
 
 # Per-process session id — ties every tool call in this MCP connection together.
 _SESSION_ID = uuid.uuid4().hex
 
 
 def _correlation_id() -> str:
-    return os.environ.get("AGENTAUDIT_CORRELATION_ID", "").strip() or _SESSION_ID
+    return os.environ.get("AGENTMETRY_CORRELATION_ID", "").strip() or _SESSION_ID
 
 
 def _source_app() -> str:
-    return os.environ.get("AGENTAUDIT_SOURCE_APP", "mcp_proxy")
+    return os.environ.get("AGENTMETRY_SOURCE_APP", "mcp_proxy")
 
 
 def _qualified(server_name: str, tool_name: str) -> str:
@@ -181,7 +181,7 @@ async def run_proxy(command: list[str], server_name: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MCP stdio proxy with AgentAudit logging")
+    parser = argparse.ArgumentParser(description="MCP stdio proxy with Agentmetry logging")
     parser.add_argument("--server", required=True, help="MCP server name for qualified tool ids")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="Child command after --")
     args = parser.parse_args()

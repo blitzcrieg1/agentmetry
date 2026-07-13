@@ -2,12 +2,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/openaudit-logo-white.svg">
-    <img src="docs/logo/openaudit-logo-black.svg" alt="OpenAudit" width="360" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/agentmetry-logo-white.svg">
+    <img src="docs/logo/agentmetry-logo-black.svg" alt="Agentmetry" width="360" />
   </picture>
 </p>
 
-<h1>OpenAudit: SIEM for AI Agents</h1>
+<h1>Agentmetry: SIEM for AI Agents</h1>
 
 <p>The open-source framework and flight recorder for AI agent tool-use. Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own. Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
 
@@ -21,14 +21,14 @@
 
 ---
 
-> 🚧 **Public Alpha**: We are actively developing the OpenAudit framework. APIs and integration surfaces may evolve rapidly.
+> 🚧 **Public Alpha**: We are actively developing the Agentmetry framework. APIs and integration surfaces may evolve rapidly.
 
 ---
 
 ## Table of Contents
 
-- [Why OpenAudit?](#why-openaudit)
-- [How OpenAudit Works](#how-openaudit-works)
+- [Why Agentmetry?](#why-agentmetry)
+- [How Agentmetry Works](#how-agentmetry-works)
 - [Coverage & Limitations](#coverage--limitations)
 - [Install & Quick Start](#install--quick-start)
 - [Forwarding to a SIEM](#forwarding-to-a-siem)
@@ -37,9 +37,9 @@
 
 ---
 
-## Why OpenAudit?
+## Why Agentmetry?
 
-When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. OpenAudit records the run as it happens:
+When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. Agentmetry records the run as it happens:
 
 - **What tool** ran, on **which MCP server**, with a **SHA-256 of the arguments** (arguments themselves are redacted by default)
 - **Every denial** — a tool call the IDE or its permission policy blocked
@@ -50,9 +50,9 @@ The record is a plain JSONL line and a durable SQLite outbox. No vendor cloud in
 
 ---
 
-## How OpenAudit Works
+## How Agentmetry Works
 
-OpenAudit captures agent activity through two paths, normalized into one canonical schema:
+Agentmetry captures agent activity through two paths, normalized into one canonical schema:
 
 ```
 IDE lifecycle hooks                     MCP stdio proxy
@@ -69,7 +69,7 @@ Cursor / Claude / Codex / Antigravity   any MCP client (wraps the server command
               file | webhook | Elastic | Splunk  (optional forwarders + alert webhook)
 ```
 
-- **Hook client** (`scripts/agentaudit_ingest.py`) — maps IDE lifecycle events (tool use, permission prompts, sessions) to canonical payloads; hashes arguments and scrubs secrets **in the hook process** before anything crosses the wire
+- **Hook client** (`scripts/agentmetry_ingest.py`) — maps IDE lifecycle events (tool use, permission prompts, sessions) to canonical payloads; hashes arguments and scrubs secrets **in the hook process** before anything crosses the wire
 - **MCP proxy** (`apps/orchestrator/tools/mcp_audit_proxy.py`) — wraps any stdio MCP server; logs every `tools/call` (and error responses) with a stable per-session correlation id
 - **External ingest** (`core/audit/ingest.py`) — normalizes payloads, applies MITRE enrichment, infers approval responses (`inferred:*`), forwards to sinks and the alert webhook
 - **Sinks** (`core/audit/sinks.py`, `core/audit/adapters/`) — file, webhook, Elastic ECS, Splunk HEC
@@ -98,21 +98,21 @@ Every run emits typed events. A single `run/tool_called` line looks like:
 
 ## Coverage & Limitations
 
-OpenAudit records agents you wire in — **IDE hooks** or the **MCP proxy**. It is honest about what it cannot see.
+Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It is honest about what it cannot see.
 
-| Tier | Setup | OpenAudit coverage |
+| Tier | Setup | Agentmetry coverage |
 |------|-------|---------------------|
 | **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture** — every `tools/call` + error responses, arg hashes, session correlation |
 | **B** | IDE hooks (Cursor, Claude, Codex, Antigravity) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
 | **C** | Unmanaged ChatGPT, Cursor with hooks off | **Not visible.** CASB / secure-web-gateway territory |
 
-**OpenAudit is a flight recorder for the agents you govern. It is not a Tier C shadow-AI spy, and it does not replace a CASB.** If your problem is unmanaged copilots, you need network/endpoint policy.
+**Agentmetry is a flight recorder for the agents you govern. It is not a Tier C shadow-AI spy, and it does not replace a CASB.** If your problem is unmanaged copilots, you need network/endpoint policy.
 
 ---
 
 ## Install & Quick Start
 
-You can run OpenAudit entirely locally. The audit trail never leaves your machine unless you explicitly forward it.
+You can run Agentmetry entirely locally. The audit trail never leaves your machine unless you explicitly forward it.
 
 ### 1. Prerequisites
 - **Python 3.10+**
@@ -163,7 +163,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 ### 5. Verify
 
 ```powershell
-python scripts\agentaudit_ingest.py selftest
+python scripts\agentmetry_ingest.py selftest
 ```
 
 Events should appear in the dashboard **Flight Recorder** within a few seconds.
@@ -172,7 +172,7 @@ Events should appear in the dashboard **Flight Recorder** within a few seconds.
 
 ## Forwarding to a SIEM
 
-OpenAudit provides a flexible adoption ladder. The SQLite outbox is the **system of record** and never drops events. Forwarders are best-effort.
+Agentmetry provides a flexible adoption ladder. The SQLite outbox is the **system of record** and never drops events. Forwarders are best-effort.
 
 | Sink | Env |
 |------|-----|
@@ -186,7 +186,7 @@ For a free homelab SIEM, start Loki and Grafana:
 ```powershell
 docker compose -f docker-compose.loki.yml up -d
 # Grafana → http://localhost:3001
-# Explore: {job="agent-audit"} | json
+# Explore: {job="agentmetry"} | json
 ```
 
 ---

@@ -1,4 +1,4 @@
-# AgentAudit — Splunk detection examples
+# Agentmetry — Splunk detection examples
 
 Team-tier searches and alert templates for HEC-ingested events. See [Splunk HEC setup](./splunk-hec.md).
 
@@ -9,7 +9,7 @@ Team-tier searches and alert templates for HEC-ingested events. See [Splunk HEC 
 **Logic:** Five or more denied tool calls in one minute per actor.
 
 ```spl
-index=main sourcetype=agentaudit:json action_outcome=denied action_type=tool_called
+index=main sourcetype=agentmetry:json action_outcome=denied action_type=tool_called
 | stats count as denials by actor_id
 | where denials >= 5
 ```
@@ -23,7 +23,7 @@ index=main sourcetype=agentaudit:json action_outcome=denied action_type=tool_cal
 **Logic:** Same `correlation_id` has approval response and subsequent shell tool success within 10 minutes.
 
 ```spl
-index=main sourcetype=agentaudit:json
+index=main sourcetype=agentmetry:json
 | eval cid=coalesce(correlation_id, 'event.correlation_id')
 | transaction cid maxspan=10m
 | search action_type=approval_response action_type=tool_called action_outcome=success
@@ -37,7 +37,7 @@ Note: `transaction` is approximate; use `blackbox replay` for definitive chain-o
 ## S3 — New MCP driver (config change)
 
 ```spl
-index=main sourcetype=agentaudit:json action_type=config_change
+index=main sourcetype=agentmetry:json action_type=config_change
 | table _time host actor_id event.mcp.server_id
 ```
 

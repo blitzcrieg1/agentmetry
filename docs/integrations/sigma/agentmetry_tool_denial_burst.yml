@@ -1,8 +1,8 @@
-# AgentAudit Sigma rule — Tool denial burst
+# Agentmetry Sigma rule — Tool denial burst
 # Ported from detections-loki.md R1. Correlation rule: base selection + event_count.
 # Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
 ---
-title: AgentAudit - Denied Tool Call
+title: Agentmetry - Denied Tool Call
 id: 6f1a2c30-9b44-4d1e-8a7c-1e0b5a2d9f01
 status: experimental
 description: >
@@ -10,11 +10,11 @@ description: >
   A single denial is informational; the burst correlation below escalates it.
 references:
   - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
-  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agent-audit-event-schema.md
-author: AgentAudit
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agentmetry-event-schema.md
+author: Agentmetry
 date: 2026-07-12
 logsource:
-  product: agentaudit
+  product: agentmetry
   service: governed-host
 detection:
   selection:
@@ -37,7 +37,7 @@ tags:
 # Correlation: 5+ denials within 1 minute (mirrors LogQL `>= 5 [1m]`).
 # Grouped by actor.id; the original LogQL was global (any session) — adjust
 # group-by or remove it to match that exactly. [verify against live JSONL]
-title: AgentAudit - Tool Denial Burst
+title: Agentmetry - Tool Denial Burst
 id: b2d7e814-3c56-4a90-9f21-7c8e4d1a6b02
 status: experimental
 description: Five or more denied tool calls within one minute — possible injection, policy probing, or a broken allowlist.

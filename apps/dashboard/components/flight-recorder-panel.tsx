@@ -19,6 +19,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { apiHeaders } from "@/lib/api";
 import { AuditJsonView } from "@/components/audit-json-view";
 
 export interface AuditEvent {
@@ -362,7 +363,9 @@ export function FlightRecorderPanel() {
             ? buildParams({ after_utc: cursor })
             : buildParams();
 
-      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`);
+      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
+        headers: apiHeaders(),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const page = (data.events ?? []) as AuditEvent[];

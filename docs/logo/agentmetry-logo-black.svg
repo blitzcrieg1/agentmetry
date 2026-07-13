@@ -1,4 +1,4 @@
-<svg width="920" height="187" viewBox="0 0 920 187" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenAudit">
+<svg width="920" height="187" viewBox="0 0 920 187" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agentmetry">
   <g fill="#0F172A">
     <path d="M78.96 175.2C31.2 175.2 0 140.64 0 87.6C0 34.56 31.2 0 78.96 0C126.72 0 157.92 34.56 157.92 87.6C157.92 140.64 126.72 175.2 78.96 175.2ZM78.96 159.6C115.92 159.6 140.16 131.28 140.16 87.6C140.16 43.92 115.92 15.6 78.96 15.6C42 15.6 17.76 43.92 17.76 87.6C17.76 131.28 42 159.6 78.96 159.6Z"/>
     <path d="M124.443 0.560946C167.185 5.21126 194.56 38.4807 194.56 87.6C194.56 136.719 167.185 169.988 124.443 174.638C134.991 170.245 144.216 163.724 151.806 155.308C166.768 138.715 174.92 115.278 174.92 87.6C174.92 59.9219 166.768 36.4846 151.806 19.892C144.216 11.4757 134.991 4.95409 124.443 0.560946Z"/>
@@ -8,5 +8,5 @@
     <rect x="52" y="98" width="48" height="5" rx="2.5" opacity="0.52"/>
     <circle cx="118" cy="87.6" r="7" fill="#EA580C"/>
   </g>
-  <text x="228" y="122" fill="#0F172A" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="92" font-weight="650" letter-spacing="-2.5">OpenAudit</text>
+  <text x="228" y="122" fill="#0F172A" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="92" font-weight="650" letter-spacing="-2.5">Agentmetry</text>
 </svg>

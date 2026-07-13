@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py claude hook SessionStart", "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py claude hook PreToolUse", "timeout": 10 } ] }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py claude hook PostToolUse", "timeout": 10 } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py claude hook Notification", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py claude hook Stop", "timeout": 10 } ] }
+    ]
+  }
+}

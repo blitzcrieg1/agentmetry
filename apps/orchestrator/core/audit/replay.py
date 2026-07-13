@@ -20,7 +20,7 @@ def format_timeline(rows: list[dict[str, Any]], *, thread_id: str) -> str:
     if not rows:
         return f"No audit events for thread_id={thread_id}"
 
-    lines = [f"AgentAudit replay — correlation_id={thread_id}", f"{'─' * 60}"]
+    lines = [f"Agentmetry replay — correlation_id={thread_id}", f"{'─' * 60}"]
 
     for row in rows:
         canonical = normalize_outbox_row(row)

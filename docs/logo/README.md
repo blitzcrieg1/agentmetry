@@ -1,13 +1,13 @@
-# OpenAudit logo assets
+# Agentmetry logo assets
 
-Wordmark and icon inspired by the [OpenSRE](https://github.com/Tracer-Cloud/opensre) visual language: radar-ring observability mark + clean sans wordmark.
+Radar-ring observability mark + clean sans wordmark for the Agentmetry brand.
 
 | File | Use |
 |------|-----|
-| `openaudit-logo-black.svg` | README (light mode), light backgrounds |
-| `openaudit-logo-white.svg` | README (dark mode), dark backgrounds |
-| `openaudit-icon.svg` | `currentColor` icon for theming |
+| `agentmetry-logo-black.svg` | README (light mode), light backgrounds |
+| `agentmetry-logo-white.svg` | README (dark mode), dark backgrounds |
+| `agentmetry-icon.svg` | `currentColor` icon for theming |
 
-**Differentiator:** three audit-log lines + orange record pulse inside the OpenSRE-family radar ring.
+**Mark:** three audit-log lines + orange record pulse inside the radar ring.
 
 Dashboard copies live in `apps/dashboard/public/`.

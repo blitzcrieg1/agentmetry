@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { apiHeaders } from "@/lib/api";
 
 interface AuditStatus {
   enabled: boolean;
@@ -44,7 +45,7 @@ export function AuditFreshnessBadge() {
 
   useEffect(() => {
     const load = () => {
-      fetch(`${ORCHESTRATOR_URL}/api/v1/audit/status`)
+      fetch(`${ORCHESTRATOR_URL}/api/v1/audit/status`, { headers: apiHeaders() })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => setStatus(data))
         .catch(() => setStatus(null));

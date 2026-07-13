@@ -1,4 +1,4 @@
-"""Splunk HEC envelope for AgentAudit canonical events."""
+"""Splunk HEC envelope for Agentmetry canonical events."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def canonical_to_hec_event(
     *,
     index: str,
     sourcetype: str,
-    source: str = "AgentAudit",
+    source: str = "Agentmetry",
 ) -> dict[str, Any]:
     action = canonical.get("action") or {}
     return {

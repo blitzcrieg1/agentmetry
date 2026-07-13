@@ -1,8 +1,8 @@
-# AgentAudit Sigma rule — High-risk (shell/exec) tool success
+# Agentmetry Sigma rule — High-risk (shell/exec) tool success
 # Ported from detections-loki.md R2.
 # Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
 ---
-title: AgentAudit - High-Risk Tool Executed
+title: Agentmetry - High-Risk Tool Executed
 id: c3e8f925-4d67-4b01-8e32-9a1f5c2d7e03
 status: experimental
 description: >
@@ -11,11 +11,11 @@ description: >
   map to an operator-approved run. Verify intent.
 references:
   - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
-  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agent-audit-event-schema.md
-author: AgentAudit
+  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agentmetry-event-schema.md
+author: Agentmetry
 date: 2026-07-12
 logsource:
-  product: agentaudit
+  product: agentmetry
   service: governed-host
 detection:
   selection:

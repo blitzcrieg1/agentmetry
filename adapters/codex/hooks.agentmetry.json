@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/agentaudit_ingest.py codex hook SessionStart",
+            "command": "python scripts/agentmetry_ingest.py codex hook SessionStart",
             "timeout": 10,
-            "statusMessage": "AgentAudit session"
+            "statusMessage": "Agentmetry session"
           }
         ]
       }
@@ -19,9 +19,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/agentaudit_ingest.py codex hook PreToolUse",
+            "command": "python scripts/agentmetry_ingest.py codex hook PreToolUse",
             "timeout": 10,
-            "statusMessage": "AgentAudit pre-tool"
+            "statusMessage": "Agentmetry pre-tool"
           }
         ]
       }
@@ -32,9 +32,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/agentaudit_ingest.py codex hook PermissionRequest",
+            "command": "python scripts/agentmetry_ingest.py codex hook PermissionRequest",
             "timeout": 10,
-            "statusMessage": "AgentAudit permission"
+            "statusMessage": "Agentmetry permission"
           }
         ]
       }
@@ -45,9 +45,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/agentaudit_ingest.py codex hook PostToolUse",
+            "command": "python scripts/agentmetry_ingest.py codex hook PostToolUse",
             "timeout": 10,
-            "statusMessage": "AgentAudit post-tool"
+            "statusMessage": "Agentmetry post-tool"
           }
         ]
       }
@@ -57,9 +57,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/agentaudit_ingest.py codex hook Stop",
+            "command": "python scripts/agentmetry_ingest.py codex hook Stop",
             "timeout": 10,
-            "statusMessage": "AgentAudit stop"
+            "statusMessage": "Agentmetry stop"
           }
         ]
       }

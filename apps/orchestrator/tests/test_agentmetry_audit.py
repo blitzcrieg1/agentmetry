@@ -1,4 +1,4 @@
-"""Tests for AgentAudit canonical normalization and JSONL export."""
+"""Tests for Agentmetry canonical normalization and JSONL export."""
 
 from __future__ import annotations
 

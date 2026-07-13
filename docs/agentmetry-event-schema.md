@@ -1,4 +1,4 @@
-# AgentAudit event schema (v1.1.0)
+# Agentmetry event schema (v1.1.0)
 
 Canonical JSON events for governed agent runs. The orchestrator writes these to:
 
@@ -17,7 +17,7 @@ Set operator identity for multi-user SIEM queries: `BLACKBOX_OPERATOR_ID=dev_01`
 | `BLACKBOX_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | Append-only canonical JSONL |
 | `BLACKBOX_AUDIT_WEBHOOK_URL` | *(empty)* | Generic JSON POST |
 | `BLACKBOX_AUDIT_ELASTIC_URL` | *(empty)* | Elasticsearch cluster URL |
-| `BLACKBOX_AUDIT_ELASTIC_INDEX` | `logs-agentaudit` | Target index |
+| `BLACKBOX_AUDIT_ELASTIC_INDEX` | `logs-agentmetry` | Target index |
 | `BLACKBOX_ELASTIC_API_KEY` | *(empty)* | API key `id:secret` |
 | `BLACKBOX_AUDIT_SPLUNK_HEC_URL` | *(empty)* | Splunk HEC base URL |
 | `BLACKBOX_SPLUNK_HEC_TOKEN` | *(empty)* | HEC token |
@@ -135,10 +135,10 @@ blackbox export --evidence ...  # Batch compliance pack (separate format)
 
 ## Limitations (Tier C)
 
-AgentAudit records:
+Agentmetry records:
 
 - **Tier A** — agents running through the BLACKBOX governed host
-- **Tier B** — external agents you wire in via [`docs/external-agent-audit.md`](./external-agent-audit.md) (Cursor hooks, MCP proxy, ingest API)
+- **Tier B** — external agents you wire in via [`docs/external-agentmetry.md`](./external-agentmetry.md) (Cursor hooks, MCP proxy, ingest API)
 
 It does **not** see unmanaged ChatGPT, Cursor with hooks disabled, or browser copilots without CASB/gateway policy.
 

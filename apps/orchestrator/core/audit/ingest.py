@@ -1,4 +1,4 @@
-"""Ingest external adapter events into AgentAudit sinks (Tier B)."""
+"""Ingest external adapter events into Agentmetry sinks (Tier B)."""
 
 from __future__ import annotations
 

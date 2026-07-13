@@ -1,4 +1,4 @@
-"""Map durable outbox rows to AgentAudit canonical events (schema v1.1.0)."""
+"""Map durable outbox rows to Agentmetry canonical events (schema v1.1.0)."""
 
 from __future__ import annotations
 

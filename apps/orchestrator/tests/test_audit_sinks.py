@@ -1,4 +1,4 @@
-"""Tests for AgentAudit file, webhook, Elastic, and Splunk sinks."""
+"""Tests for Agentmetry file, webhook, Elastic, and Splunk sinks."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ async def test_elastic_sink_posts_ecs_document():
         "tool": {"name": "run", "qualified": "shell.run", "server": "shell"},
         "model": {"id": "gemini", "provider": "gemini"},
     }
-    sink = ElasticEcsSink("https://elastic.test:9200", "logs-agentaudit", "id:secret")
+    sink = ElasticEcsSink("https://elastic.test:9200", "logs-agentmetry", "id:secret")
 
     mock_response = AsyncMock()
     mock_response.raise_for_status = lambda: None
@@ -83,7 +83,7 @@ async def test_elastic_sink_posts_ecs_document():
     body = call_kwargs["json"]
     assert body["event"]["action"] == "tool_called"
     assert body["event"]["outcome"] == "denied"
-    assert body["agentaudit"]["event_id"] == "e1"
+    assert body["agentmetry"]["event_id"] == "e1"
     assert call_kwargs["headers"]["Authorization"] == "ApiKey id:secret"
 
 
@@ -97,7 +97,7 @@ async def test_splunk_sink_posts_hec_envelope():
         "actor": {"id": "u2"},
         "action": {"type": "config_change", "outcome": "success"},
     }
-    sink = SplunkHecSink("https://splunk.test:8088", "hec-token", index="agentaudit")
+    sink = SplunkHecSink("https://splunk.test:8088", "hec-token", index="agentmetry")
 
     mock_response = AsyncMock()
     mock_response.raise_for_status = lambda: None
@@ -110,7 +110,7 @@ async def test_splunk_sink_posts_hec_envelope():
         await sink.emit(canonical)
 
     payload = mock_client.post.await_args.kwargs["json"]
-    assert payload["index"] == "agentaudit"
+    assert payload["index"] == "agentmetry"
     assert payload["event"]["event_id"] == "e2"
     assert payload["fields"]["action_type"] == "config_change"
     assert mock_client.post.await_args.kwargs["headers"]["Authorization"] == "Splunk hec-token"
@@ -144,7 +144,7 @@ def test_canonical_to_hec_event():
             "action": {"type": "tool_called", "outcome": "denied"},
         },
         index="main",
-        sourcetype="agentaudit:json",
+        sourcetype="agentmetry:json",
     )
     assert hec["host"] == "lab"
     assert hec["fields"]["actor_id"] == "solo"
@@ -165,13 +165,13 @@ def test_build_audit_sinks_elastic_and_splunk(tmp_path: Path):
         webhook_url="",
         webhook_timeout_seconds=3.0,
         elastic_url="https://elastic.test",
-        elastic_index="logs-agentaudit",
+        elastic_index="logs-agentmetry",
         elastic_api_key="k:secret",
         elastic_verify_tls=True,
         splunk_hec_url="https://splunk.test:8088",
         splunk_hec_token="token",
         splunk_index="main",
-        splunk_sourcetype="agentaudit:json",
+        splunk_sourcetype="agentmetry:json",
         splunk_verify_tls=True,
     )
     assert isinstance(sink, MultiAuditSink)
@@ -185,12 +185,12 @@ def test_build_audit_sinks_none_when_empty(tmp_path: Path):
         webhook_url="",
         webhook_timeout_seconds=3.0,
         elastic_url="",
-        elastic_index="logs-agentaudit",
+        elastic_index="logs-agentmetry",
         elastic_api_key="",
         elastic_verify_tls=True,
         splunk_hec_url="",
         splunk_hec_token="",
         splunk_index="main",
-        splunk_sourcetype="agentaudit:json",
+        splunk_sourcetype="agentmetry:json",
         splunk_verify_tls=True,
     ) is None

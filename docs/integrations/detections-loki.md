@@ -1,4 +1,4 @@
-# AgentAudit — example Loki / Grafana detections
+# Agentmetry — example Loki / Grafana detections
 
 Canonical events are one JSON object per line. After Alloy's json stage (see `infra/loki/alloy.config`), labels `action_type` and `action_outcome` are available for alert queries.
 
@@ -17,7 +17,7 @@ Create rules in **Grafana → Alerting → Alert rules** with the **Loki** data 
 **LogQL (alert condition):**
 
 ```logql
-sum(count_over_time({job="agent-audit", action_outcome="denied"} [1m])) >= 5
+sum(count_over_time({job="agentmetry", action_outcome="denied"} [1m])) >= 5
 ```
 
 **Example canonical line:**
@@ -46,7 +46,7 @@ sum(count_over_time({job="agent-audit", action_outcome="denied"} [1m])) >= 5
 
 ```logql
 sum(count_over_time(
-  {job="agent-audit", action_type="tool_called", action_outcome="success"}
+  {job="agentmetry", action_type="tool_called", action_outcome="success"}
   | json
   | tool_qualified=~".*shell.*|.*powershell.*|.*exec.*"
   [5m]
@@ -57,7 +57,7 @@ If `tool_qualified` is not extracted as a label, use line filter:
 
 ```logql
 sum(count_over_time(
-  {job="agent-audit", action_type="tool_called", action_outcome="success"}
+  {job="agentmetry", action_type="tool_called", action_outcome="success"}
   |= "shell"
   [5m]
 )) >= 1
@@ -80,7 +80,7 @@ sum(count_over_time(
 **LogQL:**
 
 ```logql
-sum(count_over_time({job="agent-audit", action_type="config_change", action_outcome="success"} [15m])) >= 1
+sum(count_over_time({job="agentmetry", action_type="config_change", action_outcome="success"} [15m])) >= 1
 ```
 
 **Example line:**
@@ -112,4 +112,4 @@ For solo use, a **Grafana OnCall** or simple Slack webhook is enough — no ente
 | Approval bypass | Needs session-scoped correlation (`approval_request` → `tool_called` on same `correlation_id`) — better suited to recording rules or export + offline Sigma |
 | Exfil chain | Sequence of HTTP + file tools — use Loki pattern ingester or Elastic EQL in enterprise adapters |
 
-See also: [agent-audit-event-schema.md](../agent-audit-event-schema.md)
+See also: [agentmetry-event-schema.md](../agentmetry-event-schema.md)

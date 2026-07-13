@@ -52,7 +52,7 @@ def process_line(line, conversation_id):
     if data.get("type") == "PLANNER_RESPONSE" and data.get("source") == "MODEL":
         tool_calls = data.get("tool_calls", [])
         for tool_call in tool_calls:
-            # Construct a synthetic PreToolUse payload for agentaudit_ingest.py
+            # Construct a synthetic PreToolUse payload for agentmetry_ingest.py
             name = tool_call.get("name", "")
             args = tool_call.get("args", {})
             
@@ -73,10 +73,10 @@ def process_line(line, conversation_id):
             print(f"Found tool call: {name}", flush=True)
             
             # Pipe it to the ingest script
-            ingest_script = Path(__file__).parent / "agentaudit_ingest.py"
+            ingest_script = Path(__file__).parent / "agentmetry_ingest.py"
             env = os.environ.copy()
-            env["AGENTAUDIT_SOURCE_APP"] = "antigravity"
-            env["AGENTAUDIT_ADAPTER"] = "antigravity_transcript"
+            env["AGENTMETRY_SOURCE_APP"] = "antigravity"
+            env["AGENTMETRY_ADAPTER"] = "antigravity_transcript"
             
             try:
                 process = subprocess.Popen(

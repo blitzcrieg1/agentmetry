@@ -5,7 +5,7 @@ secrets (bearer tokens, basic-auth URLs, --password values, cloud keys) that
 key-based argument redaction never sees. Scrub those before storage.
 
 Keep the pattern list in sync with the inline mirror in
-`scripts/agentaudit_ingest.py` (the standalone hook cannot import this module).
+`scripts/agentmetry_ingest.py` (the standalone hook cannot import this module).
 """
 
 from __future__ import annotations

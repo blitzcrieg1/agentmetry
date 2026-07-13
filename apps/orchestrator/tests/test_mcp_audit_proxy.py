@@ -53,5 +53,5 @@ def test_success_response_is_not_an_error():
 
 
 def test_correlation_env_override(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_CORRELATION_ID", "fixed-corr")
+    monkeypatch.setenv("AGENTMETRY_CORRELATION_ID", "fixed-corr")
     assert proxy._correlation_id() == "fixed-corr"

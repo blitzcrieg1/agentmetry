@@ -1,4 +1,4 @@
-"""Tests for scripts/agentaudit_ingest.py hook mappers."""
+"""Tests for scripts/agentmetry_ingest.py hook mappers."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO / "scripts"))
 
-import agentaudit_ingest as ingest  # noqa: E402
+import agentmetry_ingest as ingest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +65,7 @@ def test_antigravity_post_tool():
 
 
 def test_antigravity_v2_pre_tool_use_run_command(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "antigravity")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "antigravity")
     payload = ingest.map_hook("PreToolUse", {
         "toolCall": {
             "name": "run_command",
@@ -136,7 +136,7 @@ def test_redact_and_hash_stable():
 
 def test_map_hook_hashes_and_strips_plaintext_args(monkeypatch):
     """Wire path must send input_hash only — never plaintext arguments (F4)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     payload = ingest.map_hook("postToolUse", {
         "conversation_id": "c1",
         "tool_name": "Shell",
@@ -149,8 +149,8 @@ def test_map_hook_hashes_and_strips_plaintext_args(monkeypatch):
 
 
 def test_map_hook_keeps_command_when_enabled(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "codex")
-    monkeypatch.setenv("AGENTAUDIT_LOG_COMMANDS", "1")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "codex")
+    monkeypatch.setenv("AGENTMETRY_LOG_COMMANDS", "1")
     payload = ingest.map_hook("PostToolUse", {
         "session_id": "s1",
         "tool_name": "Bash",
@@ -198,8 +198,8 @@ def test_extract_command_all_adapters():
 
 
 def test_map_hook_full_args_redacts_secrets(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
-    monkeypatch.setenv("AGENTAUDIT_LOG_FULL_ARGS", "1")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_LOG_FULL_ARGS", "1")
     payload = ingest.map_hook("postToolUse", {
         "conversation_id": "c1",
         "tool_name": "Shell",
@@ -212,8 +212,8 @@ def test_map_hook_full_args_redacts_secrets(monkeypatch):
 
 
 def test_adapter_override_from_env(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "antigravity")
-    monkeypatch.setenv("AGENTAUDIT_ADAPTER", "antigravity_transcript")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "antigravity")
+    monkeypatch.setenv("AGENTMETRY_ADAPTER", "antigravity_transcript")
     payload = ingest.map_hook("PreToolUse", {
         "toolCall": {"name": "run_command", "args": {"CommandLine": "dir"}},
         "conversationId": "c1",
@@ -223,7 +223,7 @@ def test_adapter_override_from_env(monkeypatch):
 
 def test_after_hook_flags_failure(monkeypatch):
     """A failed tool must not be logged as success (F3)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     payload = ingest.map_cursor_hook("afterShellExecution", {
         "conversation_id": "c1",
         "command": "false",
@@ -235,7 +235,7 @@ def test_after_hook_flags_failure(monkeypatch):
 
 
 def test_after_hook_success_when_clean(monkeypatch):
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     payload = ingest.map_cursor_hook("afterShellExecution", {
         "conversation_id": "c1",
         "command": "echo hi",
@@ -247,8 +247,8 @@ def test_after_hook_success_when_clean(monkeypatch):
 
 def test_hook_main_observe_only_no_auto_allow(monkeypatch, capsys):
     """Default install must not emit an allow decision (F1 security footgun)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
-    monkeypatch.delenv("AGENTAUDIT_ENFORCE", raising=False)
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
+    monkeypatch.delenv("AGENTMETRY_ENFORCE", raising=False)
     monkeypatch.setattr(ingest, "post_ingest", lambda *a, **k: True)
     monkeypatch.setattr(
         ingest,
@@ -263,7 +263,7 @@ def test_hook_main_observe_only_no_auto_allow(monkeypatch, capsys):
 
 def test_selftest_green(monkeypatch, capsys):
     """Round-trip succeeds when the POSTed nonce comes back in the tail (F5)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     captured: dict[str, str] = {}
 
     def fake_post(payload, **_kw):
@@ -281,14 +281,14 @@ def test_selftest_green(monkeypatch, capsys):
 
 def test_selftest_red_when_post_fails(monkeypatch):
     """RED when the orchestrator is unreachable (F5)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     monkeypatch.setattr(ingest, "post_ingest", lambda *a, **k: False)
     assert ingest.selftest() == 1
 
 
 def test_selftest_red_when_not_in_tail(monkeypatch):
     """RED when the event POSTs but never lands (ingest disabled / sink off)."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     monkeypatch.setattr(ingest, "post_ingest", lambda *a, **k: True)
     monkeypatch.setattr(ingest, "_get_tail", lambda src, limit=50: {"events": []})
     assert ingest.selftest() == 1
@@ -296,8 +296,8 @@ def test_selftest_red_when_not_in_tail(monkeypatch):
 
 def test_hook_main_enforce_opt_in(monkeypatch, capsys):
     """Explicit opt-in still allows emitting a decision."""
-    monkeypatch.setenv("AGENTAUDIT_SOURCE_APP", "cursor")
-    monkeypatch.setenv("AGENTAUDIT_ENFORCE", "allow")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
+    monkeypatch.setenv("AGENTMETRY_ENFORCE", "allow")
     monkeypatch.setattr(ingest, "post_ingest", lambda *a, **k: True)
     monkeypatch.setattr(
         ingest,

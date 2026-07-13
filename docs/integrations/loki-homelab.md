@@ -1,8 +1,8 @@
-# Loki homelab — AgentAudit + free SIEM-lite
+# Loki homelab — Agentmetry + free SIEM-lite
 
 Tail `audit-forward.jsonl` into **Grafana Loki** for solo/homelab monitoring. No cloud account required.
 
-**Prerequisite:** [AgentAudit event schema](../agent-audit-event-schema.md) — orchestrator running with `BLACKBOX_AUDIT_EXPORT_ENABLED=1` (default).
+**Prerequisite:** [Agentmetry event schema](../agentmetry-event-schema.md) — orchestrator running with `BLACKBOX_AUDIT_EXPORT_ENABLED=1` (default).
 
 ---
 
@@ -40,7 +40,7 @@ Services:
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| Grafana | http://localhost:3001 | admin / `agentaudit` |
+| Grafana | http://localhost:3001 | admin / `agentmetry` |
 | Loki | http://localhost:3100 | API only |
 | Alloy | http://localhost:12345 | Tails JSONL → Loki |
 
@@ -58,19 +58,19 @@ Alloy mounts `apps/orchestrator/data/audit-forward.jsonl` read-only (see `infra/
 **Explore** → Loki → query:
 
 ```logql
-{job="agent-audit"}
+{job="agentmetry"}
 ```
 
 Parse JSON fields:
 
 ```logql
-{job="agent-audit"} | json | action_outcome="denied"
+{job="agentmetry"} | json | action_outcome="denied"
 ```
 
 Filter by operator:
 
 ```logql
-{job="agent-audit"} | json | actor_id="home-lab"
+{job="agentmetry"} | json | actor_id="home-lab"
 ```
 
 Replay a single run in BLACKBOX (local, no Loki needed):
@@ -86,19 +86,19 @@ blackbox replay <thread_id>
 **Events over time**
 
 ```logql
-sum(count_over_time({job="agent-audit"} [5m]))
+sum(count_over_time({job="agentmetry"} [5m]))
 ```
 
 **Denials by tool**
 
 ```logql
-sum by (tool_qualified) (count_over_time({job="agent-audit", action_outcome="denied"} | json [1h]))
+sum by (tool_qualified) (count_over_time({job="agentmetry", action_outcome="denied"} | json [1h]))
 ```
 
 **Approvals pending vs granted** (from labels after Alloy json stage)
 
 ```logql
-sum(count_over_time({job="agent-audit", action_type="approval_request"} [24h]))
+sum(count_over_time({job="agentmetry", action_type="approval_request"} [24h]))
 ```
 
 ---
@@ -155,7 +155,7 @@ type = "loki"
 inputs = ["parse"]
 endpoint = "http://localhost:3100"
 encoding.codec = "json"
-labels.job = "agent-audit"
+labels.job = "agentmetry"
 ```
 
 ---
@@ -174,7 +174,7 @@ labels.job = "agent-audit"
     Match             agent.audit
     Host              127.0.0.1
     Port              3100
-    Labels            job=agent-audit
+    Labels            job=agentmetry
 ```
 
 ---

@@ -26,15 +26,15 @@ export function MissionControl() {
         <div className="flex items-center gap-3">
           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900/80 ring-1 ring-zinc-700/60">
             <Image
-              src="/openaudit-icon-white.svg"
-              alt="OpenAudit"
+              src="/agentmetry-icon-white.svg"
+              alt="Agentmetry"
               width={28}
               height={28}
               priority
             />
           </div>
           <div>
-            <h1 className="text-gradient text-lg font-bold tracking-tight">OpenAudit</h1>
+            <h1 className="text-gradient text-lg font-bold tracking-tight">Agentmetry</h1>
             <p className="text-xs text-muted-foreground">SIEM flight recorder for AI agents</p>
           </div>
         </div>

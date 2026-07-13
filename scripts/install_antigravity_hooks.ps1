@@ -1,24 +1,24 @@
-# Install AgentAudit hooks for Google Antigravity 2.0 (global + scratch workspace).
+# Install Agentmetry hooks for Google Antigravity 2.0 (global + scratch workspace).
 #
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Ingest = Join-Path $RepoRoot "scripts\agentaudit_ingest.py"
-$Wrapper = Join-Path $RepoRoot "scripts\agentaudit_antigravity_hook.cmd"
+$Ingest = Join-Path $RepoRoot "scripts\agentmetry_ingest.py"
+$Wrapper = Join-Path $RepoRoot "scripts\agentmetry_antigravity_hook.cmd"
 $Python = (Get-Command python -ErrorAction Stop).Source
 
 @(
     "@echo off",
     "setlocal",
-    "set AGENTAUDIT_SOURCE_APP=antigravity",
-    "set AGENTAUDIT_HOOK_DEBUG=1",
+    "set AGENTMETRY_SOURCE_APP=antigravity",
+    "set AGENTMETRY_HOOK_DEBUG=1",
     "`"$Python`" `"$Ingest`" antigravity hook %1"
 ) | Set-Content -Path $Wrapper -Encoding ascii
 
 $HookCmd = "`"$Wrapper`""
 
-$agentaudit = @{
+$agentmetry = @{
     PreToolUse = @(
         @{
             matcher = "run_command"
@@ -55,12 +55,12 @@ $agentaudit = @{
 function Write-HooksFile($Path) {
     $dir = Split-Path $Path -Parent
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $json = ($agentaudit | ConvertTo-Json -Depth 10)
+    $json = ($agentmetry | ConvertTo-Json -Depth 10)
     [System.IO.File]::WriteAllText($Path, $json, [System.Text.UTF8Encoding]::new($false))
     Write-Host "  -> $Path"
 }
 
-Write-Host "Installing AgentAudit Antigravity hooks..."
+Write-Host "Installing Agentmetry Antigravity hooks..."
 Write-HooksFile (Join-Path $env:USERPROFILE ".gemini\config\hooks.json")
 Write-HooksFile (Join-Path $env:USERPROFILE ".gemini\antigravity\scratch\.agents\hooks.json")
 Write-HooksFile (Join-Path $RepoRoot ".agents\hooks.json")

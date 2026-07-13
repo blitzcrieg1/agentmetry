@@ -1,4 +1,4 @@
-"""Service health for AgentAudit SIEM."""
+"""Service health for Agentmetry SIEM."""
 
 from __future__ import annotations
 

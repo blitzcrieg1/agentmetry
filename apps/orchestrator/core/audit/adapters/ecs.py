@@ -1,4 +1,4 @@
-"""Map AgentAudit canonical events to Elastic Common Schema (ECS) documents."""
+"""Map Agentmetry canonical events to Elastic Common Schema (ECS) documents."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _event_category(action_type: str) -> list[str]:
 
 
 def canonical_to_ecs(canonical: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort ECS 8.x field mapping; full canonical nested under agentaudit."""
+    """Best-effort ECS 8.x field mapping; full canonical nested under agentmetry."""
     action = canonical.get("action") or {}
     actor = canonical.get("actor") or {}
     tool = canonical.get("tool") or {}
@@ -53,15 +53,15 @@ def canonical_to_ecs(canonical: dict[str, Any]) -> dict[str, Any]:
         "trace": {"id": canonical.get("correlation_id")},
         "session": {"id": canonical.get("session_id")},
         "observer": {
-            "type": "agent-audit",
+            "type": "agentmetry",
             "vendor": "blackbox",
-            "product": "AgentAudit",
+            "product": "Agentmetry",
         },
         "agent": {
             "name": agent.get("name"),
             "version": canonical.get("schema_version"),
         },
-        "agentaudit": canonical,
+        "agentmetry": canonical,
     }
 
     if tool:

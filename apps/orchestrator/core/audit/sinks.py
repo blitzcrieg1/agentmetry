@@ -1,4 +1,4 @@
-"""AgentAudit forward sinks — file, webhook, Elastic ECS, Splunk HEC."""
+"""Agentmetry forward sinks — file, webhook, Elastic ECS, Splunk HEC."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class WebhookAuditSink(AuditSink):
                 response = await client.post(
                     self._url,
                     json=canonical,
-                    headers={"Content-Type": "application/json", "User-Agent": "AgentAudit/1.0"},
+                    headers={"Content-Type": "application/json", "User-Agent": "Agentmetry/1.0"},
                 )
                 response.raise_for_status()
         except Exception:
@@ -77,7 +77,7 @@ class ElasticEcsSink(AuditSink):
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"ApiKey {self._api_key}",
-            "User-Agent": "AgentAudit/1.0",
+            "User-Agent": "Agentmetry/1.0",
         }
         try:
             async with httpx.AsyncClient(timeout=self._timeout, verify=self._verify) as client:
@@ -96,7 +96,7 @@ class SplunkHecSink(AuditSink):
         token: str,
         *,
         index: str = "main",
-        sourcetype: str = "agentaudit:json",
+        sourcetype: str = "agentmetry:json",
         timeout_seconds: float = 5.0,
         verify_tls: bool = True,
     ) -> None:
@@ -122,7 +122,7 @@ class SplunkHecSink(AuditSink):
         headers = {
             "Authorization": f"Splunk {self._token}",
             "Content-Type": "application/json",
-            "User-Agent": "AgentAudit/1.0",
+            "User-Agent": "Agentmetry/1.0",
         }
         try:
             async with httpx.AsyncClient(timeout=self._timeout, verify=self._verify) as client:

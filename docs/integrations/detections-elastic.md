@@ -1,4 +1,4 @@
-# AgentAudit — Elastic / Kibana detection examples
+# Agentmetry — Elastic / Kibana detection examples
 
 Team-tier rules for Elasticsearch indices populated by the [Elastic ECS adapter](./elastic-ecs.md).
 
@@ -11,7 +11,7 @@ Team-tier rules for Elasticsearch indices populated by the [Elastic ECS adapter]
 **Kibana rule (ES|QL or threshold):**
 
 ```
-FROM logs-agentaudit*
+FROM logs-agentmetry*
 | WHERE event.outcome == "denied" AND event.action == "tool_called"
 | STATS denial_count = COUNT(*) BY user.id
 | WHERE denial_count > 5
@@ -34,7 +34,7 @@ Threshold: **> 5 events in 1 minute** grouped by `user.id`.
 **Logic:** Successful tool call where service name or tool type indicates shell execution.
 
 ```
-FROM logs-agentaudit*
+FROM logs-agentmetry*
 | WHERE event.action == "tool_called"
   AND event.outcome == "success"
   AND (service.name == "shell" OR tool.type LIKE "*shell*")
@@ -49,12 +49,12 @@ FROM logs-agentaudit*
 **Logic:** Configuration change events (driver mount).
 
 ```
-FROM logs-agentaudit*
+FROM logs-agentmetry*
 | WHERE event.action == "config_change" AND event.outcome == "success"
-| KEEP @timestamp, host.name, agentaudit.mcp.server_id, user.id
+| KEEP @timestamp, host.name, agentmetry.mcp.server_id, user.id
 ```
 
-Compare `agentaudit.mcp.server_id` to approved entries in `vault/.system/drivers.json`.
+Compare `agentmetry.mcp.server_id` to approved entries in `vault/.system/drivers.json`.
 
 ---
 
@@ -66,6 +66,6 @@ Compare `agentaudit.mcp.server_id` to approved entries in `vault/.system/drivers
 | `event.outcome` | `action.outcome` |
 | `trace.id` | `correlation_id` |
 | `user.id` | `actor.id` |
-| `agentaudit.*` | Full canonical JSON |
+| `agentmetry.*` | Full canonical JSON |
 
 See also: [detections-loki.md](./detections-loki.md) for homelab LogQL rules.

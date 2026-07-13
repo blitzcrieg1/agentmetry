@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""AgentAudit Tier B ingest client — Cursor, Claude Code, Antigravity hooks.
+"""Agentmetry Tier B ingest client — Cursor, Claude Code, Antigravity hooks.
 
 POST adapter events to the local orchestrator ingest API.
 
 Environment:
-  AGENTAUDIT_URL            default http://127.0.0.1:8000
+  AGENTMETRY_URL            default http://127.0.0.1:8000
   BLACKBOX_API_KEY          optional X-API-Key header
-  AGENTAUDIT_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
-  AGENTAUDIT_LOG_COMMANDS   1 = keep shell command text in audit (see also BLACKBOX_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
+  AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also BLACKBOX_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
 from __future__ import annotations
@@ -48,14 +48,14 @@ def _utc_now() -> str:
 
 def _base_url() -> str:
     return (
-        os.environ.get("AGENTAUDIT_URL")
+        os.environ.get("AGENTMETRY_URL")
         or os.environ.get("BLACKBOX_AUDIT_INGEST_URL")
         or "http://127.0.0.1:8000"
     ).rstrip("/")
 
 
 def _source_app() -> str:
-    return os.environ.get("AGENTAUDIT_SOURCE_APP", "cursor").lower()
+    return os.environ.get("AGENTMETRY_SOURCE_APP", "cursor").lower()
 
 
 def _pick(d: dict[str, Any], *keys: str, default: Any = "") -> Any:
@@ -159,8 +159,8 @@ def _read_repo_env(key: str) -> str:
 
 def _log_commands_enabled() -> bool:
     for raw in (
-        os.environ.get("AGENTAUDIT_LOG_COMMANDS", ""),
-        _read_repo_env("AGENTAUDIT_LOG_COMMANDS"),
+        os.environ.get("AGENTMETRY_LOG_COMMANDS", ""),
+        _read_repo_env("AGENTMETRY_LOG_COMMANDS"),
         _read_repo_env("BLACKBOX_AUDIT_LOG_COMMANDS"),
     ):
         if raw.strip().lower() in ("1", "true", "yes", "on"):
@@ -170,8 +170,8 @@ def _log_commands_enabled() -> bool:
 
 def _log_full_args_enabled() -> bool:
     for raw in (
-        os.environ.get("AGENTAUDIT_LOG_FULL_ARGS", ""),
-        _read_repo_env("AGENTAUDIT_LOG_FULL_ARGS"),
+        os.environ.get("AGENTMETRY_LOG_FULL_ARGS", ""),
+        _read_repo_env("AGENTMETRY_LOG_FULL_ARGS"),
         _read_repo_env("BLACKBOX_AUDIT_LOG_FULL_ARGS"),
     ):
         if raw.strip().lower() in ("1", "true", "yes", "on"):
@@ -258,7 +258,7 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
 
     Args are hashed *inside the hook process* so redacted-plaintext arguments
     never cross the wire to the orchestrator. The stored event keeps only the
-    64-hex digest unless AGENTAUDIT_LOG_COMMANDS / BLACKBOX_AUDIT_LOG_COMMANDS
+    64-hex digest unless AGENTMETRY_LOG_COMMANDS / BLACKBOX_AUDIT_LOG_COMMANDS
     is set — then shell ``command`` text is kept alongside the hash.
     """
     if not payload:
@@ -315,9 +315,9 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
         with urllib.request.urlopen(req, timeout=10) as response:
             res_body = response.read().decode("utf-8")
             if response.status != 200:
-                print(f"AgentAudit ingest HTTP {response.status}: {res_body}")
+                print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
     except URLError as exc:
-        print(f"AgentAudit ingest connection failed: {exc.reason}", file=sys.stderr)
+        print(f"Agentmetry ingest connection failed: {exc.reason}", file=sys.stderr)
         return False
     return True
 
@@ -346,12 +346,12 @@ def selftest() -> int:
         "adapter": f"{source}_selftest",
         "event_type": "tool_called",
         "correlation_id": nonce,
-        "tool": {"qualified": "agentaudit.selftest", "server": "agentaudit", "input_hash": "0" * 64},
+        "tool": {"qualified": "agentmetry.selftest", "server": "agentmetry", "input_hash": "0" * 64},
     })
     if not posted:
         print(
-            f"AgentAudit hooks: RED — could not POST to ingest at {_base_url()}. "
-            "Is the orchestrator running? Check AGENTAUDIT_URL / BLACKBOX_API_KEY.",
+            f"Agentmetry hooks: RED — could not POST to ingest at {_base_url()}. "
+            "Is the orchestrator running? Check AGENTMETRY_URL / BLACKBOX_API_KEY.",
             file=sys.stderr,
         )
         return 1
@@ -359,16 +359,16 @@ def selftest() -> int:
         body = _get_tail(source)
     except Exception as exc:
         print(
-            f"AgentAudit hooks: YELLOW — event POSTed but tail read failed: {exc}",
+            f"Agentmetry hooks: YELLOW — event POSTed but tail read failed: {exc}",
             file=sys.stderr,
         )
         return 2
     found = any(e.get("correlation_id") == nonce for e in body.get("events", []))
     if found:
-        print(f"AgentAudit hooks: GREEN — synthetic event round-tripped for source '{source}'.")
+        print(f"Agentmetry hooks: GREEN — synthetic event round-tripped for source '{source}'.")
         return 0
     print(
-        "AgentAudit hooks: RED — event POSTed but not found in the audit tail. "
+        "Agentmetry hooks: RED — event POSTed but not found in the audit tail. "
         "Ingest disabled (BLACKBOX_AUDIT_INGEST_ENABLED) or sink misconfigured?",
         file=sys.stderr,
     )
@@ -757,7 +757,7 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = map_cursor_hook(hook_name, data)
     # Hash tool args in-process so plaintext never crosses the wire.
     payload = _hash_tool_args(payload)
-    adapter_override = os.environ.get("AGENTAUDIT_ADAPTER", "").strip()
+    adapter_override = os.environ.get("AGENTMETRY_ADAPTER", "").strip()
     if payload and adapter_override:
         payload["adapter"] = adapter_override
     return payload
@@ -766,7 +766,7 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
 def _emit_hook_stdout(hook_name: str) -> None:
     """Antigravity requires JSON on stdout; Cursor/Codex use permission when enforcing."""
     source = _source_app()
-    enforce = os.environ.get("AGENTAUDIT_ENFORCE", "").strip().lower()
+    enforce = os.environ.get("AGENTMETRY_ENFORCE", "").strip().lower()
 
     if source == "antigravity":
         if hook_name == "PreToolUse":
@@ -796,7 +796,7 @@ def hook_main(hook_name: str) -> int:
     if decode_error:
         data["_stdin_decode_error"] = True
 
-    if os.environ.get("AGENTAUDIT_HOOK_DEBUG", "").strip().lower() in ("1", "true", "yes"):
+    if os.environ.get("AGENTMETRY_HOOK_DEBUG", "").strip().lower() in ("1", "true", "yes"):
         debug_path = _hook_debug_path()
         try:
             with debug_path.open("a", encoding="utf-8") as fh:
@@ -817,7 +817,7 @@ def hook_main(hook_name: str) -> int:
 
 
 def cli_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="AgentAudit external ingest client")
+    parser = argparse.ArgumentParser(description="Agentmetry external ingest client")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     hook_p = sub.add_parser("hook", help="Run as an IDE hook (hook name as arg)")
@@ -838,7 +838,7 @@ def cli_main(argv: list[str] | None = None) -> int:
         return selftest()
 
     if args.source_app:
-        os.environ["AGENTAUDIT_SOURCE_APP"] = args.source_app
+        os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
 
     if args.file:
         payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
@@ -849,9 +849,9 @@ def cli_main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # python scripts/agentaudit_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
+    # python scripts/agentmetry_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
     if len(sys.argv) >= 2 and sys.argv[1] in ("cursor", "claude", "antigravity", "codex"):
-        os.environ["AGENTAUDIT_SOURCE_APP"] = sys.argv[1]
+        os.environ["AGENTMETRY_SOURCE_APP"] = sys.argv[1]
         if len(sys.argv) >= 4 and sys.argv[2] == "hook":
             sys.exit(hook_main(sys.argv[3]))
         if len(sys.argv) >= 3:

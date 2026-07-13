@@ -1,31 +1,19 @@
 [project]
-name = "blackbox-orchestrator"
-version = "0.1.0"
-description = "BLACKBOX Agentic OS — LangGraph orchestrator with Obsidian memory"
+name = "agentmetry-orchestrator"
+version = "0.2.0"
+description = "Agentmetry — SIEM flight recorder for AI agent tool-use"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
-    "langgraph>=0.2.0",
-    "langchain>=0.3.0",
-    "langchain-ollama>=0.2.0",
-    "langchain-community>=0.3.0",
-    "qdrant-client>=1.12.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "pyyaml>=6.0",
-    "python-frontmatter>=1.1.0",
-    "watchdog>=6.0.0",
     "httpx>=0.28.0",
     "websockets>=14.0",
     "sqlalchemy>=2.0.0",
-    "psycopg2-binary>=2.9.0",
-    "langgraph-checkpoint-sqlite>=2.0.0",
     "aiosqlite>=0.20.0",
-    "apscheduler>=3.10.0",
-    "plyer>=2.1.0",
     "mcp>=1.2",
-    "keyring>=24.0",
 ]
 
 [project.optional-dependencies]

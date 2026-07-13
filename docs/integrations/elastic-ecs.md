@@ -1,8 +1,8 @@
-# Elastic ECS — AgentAudit forwarder
+# Elastic ECS — Agentmetry forwarder
 
-Index governed agent audit events into **Elasticsearch** or **Elastic Cloud** using ECS-shaped documents. Full canonical JSON is nested under `agentaudit.*` for forensics.
+Index governed agent audit events into **Elasticsearch** or **Elastic Cloud** using ECS-shaped documents. Full canonical JSON is nested under `agentmetry.*` for forensics.
 
-**Prerequisite:** [Event schema](../agent-audit-event-schema.md)
+**Prerequisite:** [Event schema](../agentmetry-event-schema.md)
 
 ---
 
@@ -15,7 +15,7 @@ BLACKBOX_AUDIT_SINK=file,elastic
 BLACKBOX_OPERATOR_ID=dev_01
 
 BLACKBOX_AUDIT_ELASTIC_URL=https://my-deployment.es.us-central1.gcp.cloud.es.io:443
-BLACKBOX_AUDIT_ELASTIC_INDEX=logs-agentaudit
+BLACKBOX_AUDIT_ELASTIC_INDEX=logs-agentmetry
 BLACKBOX_ELASTIC_API_KEY=base64id:base64key
 BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS=1
 ```
@@ -24,7 +24,7 @@ BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS=1
 |----------|----------|-------------|
 | `BLACKBOX_AUDIT_SINK` | Yes | Include `elastic` (e.g. `file,elastic`) |
 | `BLACKBOX_AUDIT_ELASTIC_URL` | Yes | Cluster URL without trailing slash |
-| `BLACKBOX_AUDIT_ELASTIC_INDEX` | No | Default `logs-agentaudit` |
+| `BLACKBOX_AUDIT_ELASTIC_INDEX` | No | Default `logs-agentmetry` |
 | `BLACKBOX_ELASTIC_API_KEY` | Yes | Elasticsearch API key (`id:secret`) |
 | `BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS` | No | Set `0` for homelab with self-signed certs |
 
@@ -35,20 +35,20 @@ Restart the orchestrator after changing `.env`.
 ## Create API key (Elastic Cloud / self-hosted)
 
 1. **Stack Management → Security → API keys → Create API key**
-2. Name: `agentaudit-forwarder`
-3. Role: `editor` on target index, or custom role with `create_doc` on `logs-agentaudit`
+2. Name: `agentmetry-forwarder`
+3. Role: `editor` on target index, or custom role with `create_doc` on `logs-agentmetry`
 4. Copy the encoded key (`id:api_key`) into `BLACKBOX_ELASTIC_API_KEY`
 
 ---
 
 ## Index template (recommended)
 
-Create index `logs-agentaudit` with ECS mapping, or use a data stream:
+Create index `logs-agentmetry` with ECS mapping, or use a data stream:
 
 ```json
-PUT _index_template/logs-agentaudit
+PUT _index_template/logs-agentmetry
 {
-  "index_patterns": ["logs-agentaudit*"],
+  "index_patterns": ["logs-agentmetry*"],
   "template": {
     "settings": { "number_of_shards": 1 },
     "mappings": {
@@ -58,7 +58,7 @@ PUT _index_template/logs-agentaudit
         "event.outcome": { "type": "keyword" },
         "trace.id": { "type": "keyword" },
         "user.id": { "type": "keyword" },
-        "agentaudit": { "type": "object", "enabled": true }
+        "agentmetry": { "type": "object", "enabled": true }
       }
     }
   }
@@ -88,7 +88,7 @@ After a denied tool call, Elasticsearch receives:
   "trace": { "id": "thread-8892" },
   "tool": { "name": "run", "type": "shell.run" },
   "service": { "name": "shell" },
-  "agentaudit": { "... full canonical event ..." }
+  "agentmetry": { "... full canonical event ..." }
 }
 ```
 
@@ -96,10 +96,10 @@ After a denied tool call, Elasticsearch receives:
 
 ## Kibana queries
 
-**All AgentAudit events:**
+**All Agentmetry events:**
 
 ```
-event.action : * and observer.product : "AgentAudit"
+event.action : * and observer.product : "Agentmetry"
 ```
 
 **Denied tools in last hour:**

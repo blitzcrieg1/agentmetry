@@ -1,4 +1,4 @@
-"""AgentAudit API — JSONL tail + external Tier B ingest."""
+"""Agentmetry API — JSONL tail + external Tier B ingest."""
 
 from __future__ import annotations
 

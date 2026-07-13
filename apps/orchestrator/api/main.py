@@ -106,8 +106,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AgentAudit",
-    description="Local flight recorder for governed AI agent tool-use",
+    title="Agentmetry",
+    description="Open-source SIEM flight recorder for AI agent tool-use",
     version="0.2.0",
     lifespan=lifespan,
 )

@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     active_loop_archive_days: int = 7
     active_loop_auto_archive: bool = True
     gmail_send_enabled: bool = False  # Phase 4-E — requires explicit unlock
-    # AgentAudit — operator identity + SIEM-ready JSONL forwarder
+    # Agentmetry — operator identity + SIEM-ready JSONL forwarder
     operator_id: str = Field(
         default="",
         validation_alias=AliasChoices("OPERATOR_ID", "BLACKBOX_OPERATOR_ID"),
@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     audit_webhook_url: str = ""
     audit_webhook_timeout_seconds: float = 5.0
     audit_elastic_url: str = ""
-    audit_elastic_index: str = "logs-agentaudit"
+    audit_elastic_index: str = "logs-agentmetry"
     audit_elastic_api_key: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
         ),
     )
     audit_splunk_index: str = "main"
-    audit_splunk_sourcetype: str = "agentaudit:json"
+    audit_splunk_sourcetype: str = "agentmetry:json"
     audit_splunk_verify_tls: bool = True
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"

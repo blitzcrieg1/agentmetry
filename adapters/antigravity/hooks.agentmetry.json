@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "python scripts/agentaudit_ingest.py antigravity hook PreToolUse",
+          "command": "python scripts/agentmetry_ingest.py antigravity hook PreToolUse",
           "timeout": 10
         }
       ]
@@ -17,7 +17,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "python scripts/agentaudit_ingest.py antigravity hook PostToolUse",
+          "command": "python scripts/agentmetry_ingest.py antigravity hook PostToolUse",
           "timeout": 10
         }
       ]
@@ -26,7 +26,7 @@
   "Stop": [
     {
       "type": "command",
-      "command": "python scripts/agentaudit_ingest.py antigravity hook Stop",
+      "command": "python scripts/agentmetry_ingest.py antigravity hook Stop",
       "timeout": 10
     }
   ]
