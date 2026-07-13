@@ -1,12 +1,19 @@
 <div align="center">
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/openaudit-logo-white.svg">
+    <img src="docs/logo/openaudit-logo-black.svg" alt="OpenAudit" width="360" />
+  </picture>
+</p>
+
 <h1>OpenAudit: SIEM for AI Agents</h1>
 
 <p>The open-source framework and flight recorder for AI agent tool-use. Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own. Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
 
 <p align="center">
-  <a href="https://github.com/agentic-os/openaudit/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
-  <a href="https://github.com/agentic-os/openaudit/releases"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
+  <a href="https://github.com/blitzcrieg1/agentic-os/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
+  <a href="https://github.com/blitzcrieg1/agentic-os"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform: Windows | Linux">
 </p>
 
@@ -152,6 +159,14 @@ powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 ```
 
 *(After installing, fully quit and restart Cursor/Claude for the hooks to load).*
+
+### 5. Verify
+
+```powershell
+python scripts\agentaudit_ingest.py selftest
+```
+
+Events should appear in the dashboard **Flight Recorder** within a few seconds.
 
 ---
 

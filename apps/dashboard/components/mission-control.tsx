@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
-  Shield,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -24,12 +24,18 @@ export function MissionControl() {
     <div className="flex h-screen flex-col">
       <header className="glass-panel relative z-20 flex items-center justify-between border-b border-zinc-800/60 px-6 py-3">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-500/30 shadow-lg shadow-violet-900/30">
-            <Shield className="h-5 w-5 text-violet-300" />
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900/80 ring-1 ring-zinc-700/60">
+            <Image
+              src="/openaudit-icon-white.svg"
+              alt="OpenAudit"
+              width={28}
+              height={28}
+              priority
+            />
           </div>
           <div>
-            <h1 className="text-gradient text-lg font-bold tracking-tight">AgentAudit</h1>
-            <p className="text-xs text-muted-foreground">Flight recorder for governed agents</p>
+            <h1 className="text-gradient text-lg font-bold tracking-tight">OpenAudit</h1>
+            <p className="text-xs text-muted-foreground">SIEM flight recorder for AI agents</p>
           </div>
         </div>
 

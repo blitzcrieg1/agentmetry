@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentAudit — Flight Recorder",
-  description: "Local flight recorder for governed AI agents — tool calls, denials, and approvals",
-  icons: { icon: "/blackbox-logo.png", apple: "/blackbox-logo.png" },
+  title: "OpenAudit — Flight Recorder",
+  description: "Open-source SIEM flight recorder for AI agent tool-use",
+  icons: { icon: "/openaudit-icon-white.svg", apple: "/openaudit-icon-white.svg" },
 };
 
 export default function RootLayout({
