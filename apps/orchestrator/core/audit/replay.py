@@ -1,4 +1,4 @@
-"""ASCII timeline rendering for `blackbox replay`."""
+"""ASCII timeline rendering for `agentmetry replay`."""
 
 from __future__ import annotations
 

@@ -56,3 +56,6 @@ backups/
 
 # Dashboard scratch / scratchpad (never commit)
 apps/dashboard/scratch/
+
+# Next.js/TS incremental build artifact
+*.tsbuildinfo

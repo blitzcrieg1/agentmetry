@@ -112,16 +112,26 @@ def _parse_query_ts(value: str) -> datetime:
         raise HTTPException(status_code=400, detail=f"Invalid timestamp: {value}") from exc
 
 
+# Events written before the Agentmetry rename carry the legacy first-party name.
+# Normalize on read so an existing trail keeps rendering instead of silently
+# vanishing behind the source filter.
+_LEGACY_SOURCE_APPS = frozenset({"blackbox"})
+
+
+def _normalize_source_app(name: str) -> str:
+    return "agentmetry" if name in _LEGACY_SOURCE_APPS else name
+
+
 def _event_source_app(event: dict[str, Any]) -> str:
     source = event.get("source")
     if isinstance(source, dict) and source.get("app"):
-        return str(source["app"]).lower()
+        return _normalize_source_app(str(source["app"]).lower())
     agent = event.get("agent")
     if isinstance(agent, dict) and agent.get("name"):
-        name = str(agent["name"]).lower()
-        if name != "blackbox":
+        name = _normalize_source_app(str(agent["name"]).lower())
+        if name != "agentmetry":
             return name
-    return "blackbox"
+    return "agentmetry"
 
 
 def _filter_events(
@@ -145,7 +155,7 @@ def _filter_events(
             e
             for e in events
             if e.get("session_id") == session_id
-            or _event_source_app(e) != "blackbox"
+            or _event_source_app(e) != "agentmetry"
         ]
     if since_minutes is not None and since_minutes > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
@@ -243,11 +253,11 @@ async def audit_tail(
     ),
     session_id: str | None = Query(
         None,
-        description="When set, BLACKBOX events filter to session; external apps always shown",
+        description="When set, Agentmetry events filter to session; external apps always shown",
     ),
     sources: str | None = Query(
         None,
-        description="Comma-separated source apps: blackbox,cursor,claude,antigravity,mcp_proxy",
+        description="Comma-separated source apps: agentmetry,cursor,claude,antigravity,mcp_proxy",
     ),
     since_minutes: int | None = Query(
         None,

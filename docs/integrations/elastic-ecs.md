@@ -11,22 +11,22 @@ Index governed agent audit events into **Elasticsearch** or **Elastic Cloud** us
 Add to `apps/orchestrator/.env`:
 
 ```text
-BLACKBOX_AUDIT_SINK=file,elastic
-BLACKBOX_OPERATOR_ID=dev_01
+AGENTMETRY_AUDIT_SINK=file,elastic
+AGENTMETRY_OPERATOR_ID=dev_01
 
-BLACKBOX_AUDIT_ELASTIC_URL=https://my-deployment.es.us-central1.gcp.cloud.es.io:443
-BLACKBOX_AUDIT_ELASTIC_INDEX=logs-agentmetry
-BLACKBOX_ELASTIC_API_KEY=base64id:base64key
-BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS=1
+AGENTMETRY_AUDIT_ELASTIC_URL=https://my-deployment.es.us-central1.gcp.cloud.es.io:443
+AGENTMETRY_AUDIT_ELASTIC_INDEX=logs-agentmetry
+AGENTMETRY_ELASTIC_API_KEY=base64id:base64key
+AGENTMETRY_AUDIT_ELASTIC_VERIFY_TLS=1
 ```
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BLACKBOX_AUDIT_SINK` | Yes | Include `elastic` (e.g. `file,elastic`) |
-| `BLACKBOX_AUDIT_ELASTIC_URL` | Yes | Cluster URL without trailing slash |
-| `BLACKBOX_AUDIT_ELASTIC_INDEX` | No | Default `logs-agentmetry` |
-| `BLACKBOX_ELASTIC_API_KEY` | Yes | Elasticsearch API key (`id:secret`) |
-| `BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS` | No | Set `0` for homelab with self-signed certs |
+| `AGENTMETRY_AUDIT_SINK` | Yes | Include `elastic` (e.g. `file,elastic`) |
+| `AGENTMETRY_AUDIT_ELASTIC_URL` | Yes | Cluster URL without trailing slash |
+| `AGENTMETRY_AUDIT_ELASTIC_INDEX` | No | Default `logs-agentmetry` |
+| `AGENTMETRY_ELASTIC_API_KEY` | Yes | Elasticsearch API key (`id:secret`) |
+| `AGENTMETRY_AUDIT_ELASTIC_VERIFY_TLS` | No | Set `0` for homelab with self-signed certs |
 
 Restart the orchestrator after changing `.env`.
 
@@ -37,7 +37,7 @@ Restart the orchestrator after changing `.env`.
 1. **Stack Management → Security → API keys → Create API key**
 2. Name: `agentmetry-forwarder`
 3. Role: `editor` on target index, or custom role with `create_doc` on `logs-agentmetry`
-4. Copy the encoded key (`id:api_key`) into `BLACKBOX_ELASTIC_API_KEY`
+4. Copy the encoded key (`id:api_key`) into `AGENTMETRY_ELASTIC_API_KEY`
 
 ---
 
@@ -125,6 +125,6 @@ Detections: [detections-elastic.md](./detections-elastic.md)
 | `401 Unauthorized` | Regenerate API key; check `id:secret` format |
 | `403 forbidden` | Grant `create_doc` on index |
 | `index_not_found_exception` | Create index or enable auto-create |
-| TLS errors | `BLACKBOX_AUDIT_ELASTIC_VERIFY_TLS=0` for lab only |
+| TLS errors | `AGENTMETRY_AUDIT_ELASTIC_VERIFY_TLS=0` for lab only |
 
-Local JSONL at `data/audit-forward.jsonl` still writes when `file` is in `BLACKBOX_AUDIT_SINK`.
+Local JSONL at `data/audit-forward.jsonl` still writes when `file` is in `AGENTMETRY_AUDIT_SINK`.

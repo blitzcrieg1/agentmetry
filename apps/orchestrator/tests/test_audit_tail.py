@@ -92,7 +92,7 @@ def test_audit_status_reports_freshness_and_sources(tmp_path: Path, monkeypatch:
         {"schema_version": "1.1.0", "correlation_id": "t1", "timestamp_utc": "2026-07-12T09:00:00+00:00",
          "action": {"type": "tool_called", "outcome": "success"}, "source": {"app": "cursor"}},
         {"schema_version": "1.1.0", "correlation_id": "t2", "timestamp_utc": "2026-07-12T09:05:00+00:00",
-         "action": {"type": "tool_called", "outcome": "success"}, "agent": {"name": "blackbox"}},
+         "action": {"type": "tool_called", "outcome": "success"}, "agent": {"name": "agentmetry"}},
     ]
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
@@ -104,7 +104,7 @@ def test_audit_status_reports_freshness_and_sources(tmp_path: Path, monkeypatch:
     assert body["last_event_utc"] == "2026-07-12T09:05:00+00:00"
     assert body["recent"] == 2
     assert body["by_source"]["cursor"] == 1
-    assert body["by_source"]["blackbox"] == 1
+    assert body["by_source"]["agentmetry"] == 1
 
 
 def test_audit_status_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

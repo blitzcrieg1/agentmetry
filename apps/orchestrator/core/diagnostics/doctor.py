@@ -1,4 +1,4 @@
-"""BLACKBOX doctor — preflight checks and drivers.json portability fixes."""
+"""Agentmetry doctor — preflight checks and drivers.json portability fixes."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def run_doctor(
             report.fail(
                 "drivers",
                 f"Missing {drivers_path.name} — copy vault/.system/drivers.json.example "
-                f"to vault/.system/drivers.json (or run `blackbox doctor --fix`)",
+                f"to vault/.system/drivers.json (or run `agentmetry doctor --fix`)",
             )
             return report
 
@@ -123,7 +123,7 @@ def run_doctor(
             report.warn(
                 "drivers_absolute",
                 f"Machine-specific paths in: {', '.join(absolute_entries)} "
-                "(run `blackbox doctor --fix`)",
+                "(run `agentmetry doctor --fix`)",
             )
     else:
         report.ok("drivers_portable", "drivers.json uses portable path tokens")
@@ -157,11 +157,11 @@ def format_report(report: DoctorReport) -> str:
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="blackbox-doctor")
+    parser = argparse.ArgumentParser(prog="agentmetry-doctor")
     parser.add_argument("--fix", action="store_true", help="rewrite drivers.json to portable tokens")
     args = parser.parse_args(argv)
     report = run_doctor(fix_drivers=args.fix)
-    print("BLACKBOX doctor\n" + format_report(report))
+    print("Agentmetry doctor\n" + format_report(report))
     return report.exit_code
 
 

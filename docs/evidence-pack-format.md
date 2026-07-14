@@ -1,10 +1,10 @@
 # Evidence pack format (v1)
 
-BLACKBOX exports a structured JSON audit artifact for a date range:
+Agentmetry exports a structured JSON audit artifact for a date range:
 
 ```powershell
-blackbox export --evidence --from 2026-07-01 --to 2026-07-31
-blackbox verify vault/30-Archive/exports/evidence-2026-07-01_to_2026-07-31.json
+agentmetry export --evidence --from 2026-07-01 --to 2026-07-31
+agentmetry verify vault/30-Archive/exports/evidence-2026-07-01_to_2026-07-31.json
 ```
 
 Default output: `vault/30-Archive/exports/evidence-<from>_to_<to>.json`
@@ -68,7 +68,7 @@ No running orchestrator required — reads `apps/orchestrator/data/events.db` an
 
 Keys sorted, compact separators (`sort_keys=True`, `separators=(",", ":")`).
 
-Verify with `blackbox verify <file>` — recomputes the hash and compares.
+Verify with `agentmetry verify <file>` — recomputes the hash and compares.
 
 ## Data sources
 

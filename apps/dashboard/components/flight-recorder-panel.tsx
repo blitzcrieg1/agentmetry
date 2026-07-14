@@ -53,7 +53,7 @@ export interface Detection {
   last_seen_utc: string;
 }
 
-const ALL_SOURCES = ["blackbox", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
+const ALL_SOURCES = ["agentmetry", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
 
 const EVENT_TYPES = [
   "session_start",
@@ -99,14 +99,20 @@ function mergeEvents(
   return sortEvents(Array.from(byKey.values()));
 }
 
+// Trails written before the Agentmetry rename carry the legacy first-party name.
+const LEGACY_SOURCE_APPS = new Set(["blackbox"]);
+const normalizeSourceApp = (name: string) =>
+  LEGACY_SOURCE_APPS.has(name) ? "agentmetry" : name;
+
 function eventSourceApp(event: AuditEvent): string {
-  if (event.source?.app) return event.source.app;
-  if (event.agent?.name && event.agent.name !== "blackbox") return event.agent.name;
-  return "blackbox";
+  if (event.source?.app) return normalizeSourceApp(event.source.app);
+  const agent = event.agent?.name ? normalizeSourceApp(event.agent.name) : "";
+  if (agent && agent !== "agentmetry") return agent;
+  return "agentmetry";
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  blackbox: "BLACKBOX",
+  agentmetry: "Agentmetry",
   cursor: "Cursor",
   claude: "Claude",
   codex: "Codex",
@@ -192,7 +198,7 @@ function eventSearchHaystack(event: AuditEvent): string {
 }
 
 function SourceBadge({ app }: { app: string }) {
-  const external = app !== "blackbox";
+  const external = app !== "agentmetry";
   return (
     <span
       className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
@@ -509,7 +515,7 @@ export function FlightRecorderPanel() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("blackbox-columns-v2");
+      const saved = localStorage.getItem("agentmetry-columns-v2");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -521,7 +527,7 @@ export function FlightRecorderPanel() {
 
   const updateColumns = (newCols: ColumnId[]) => {
     setColumns(newCols);
-    localStorage.setItem("blackbox-columns-v2", JSON.stringify(newCols));
+    localStorage.setItem("agentmetry-columns-v2", JSON.stringify(newCols));
   };
 
   const handleDragStart = (e: React.DragEvent, colId: ColumnId) => {

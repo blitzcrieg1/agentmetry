@@ -1,14 +1,14 @@
 # ISO/IEC 42001 — Alignment Mapping (Not Certification)
 
-**Honest scope:** BLACKBOX provides **evidence hooks** so *you* can run an AI management system. We do not certify your organization.
+**Honest scope:** Agentmetry provides **evidence hooks** so *you* can run an AI management system. We do not certify your organization.
 
-Export command: `blackbox export --evidence --from YYYY-MM-DD --to YYYY-MM-DD`
+Export command: `agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD`
 
 ---
 
 ## Control mapping
 
-| ISO 42001 control | BLACKBOX evidence | Substantiation |
+| ISO 42001 control | Agentmetry evidence | Substantiation |
 |-------------------|-------------------|----------------|
 | **A.5.2 AI system life cycle** | `runs[]` + `30-Archive/` closeouts | Each run: skill name, trigger, status, archive path, `sop_version_hash` |
 | **A.5.3 Transparency** | `vault/.system/skill-definitions/*.yaml` | Skills are declarative SOPs, not opaque prompts |

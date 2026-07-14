@@ -141,7 +141,7 @@ def load_resolved_driver_specs(config_path: Path, *, vault_path: Path | None = N
             continue
         if spec.name == "gmail":
             env = dict(spec.env)
-            env["BLACKBOX_GMAIL_SEND_ENABLED"] = "1" if settings.gmail_send_enabled else "0"
+            env["AGENTMETRY_GMAIL_SEND_ENABLED"] = "1" if settings.gmail_send_enabled else "0"
             spec = spec.model_copy(update={"env": env})
         specs.append(spec)
     return specs

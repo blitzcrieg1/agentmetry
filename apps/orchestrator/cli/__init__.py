@@ -1,4 +1,4 @@
-"""blackbox — local ops CLI for the BLACKBOX appliance.
+"""agentmetry — local ops CLI for the Agentmetry appliance.
 
 Commands: start, stop, status, logs, backup, restore, export, verify, install, uninstall.
 Pure stdlib + httpx; never imports the FastAPI app (fast startup, no side effects).
@@ -24,8 +24,8 @@ import httpx
 _ORCH_ROOT = Path(__file__).resolve().parents[1]          # apps/orchestrator
 _REPO_ROOT = _ORCH_ROOT.parents[1]                        # repo root
 _DATA_DIR = _ORCH_ROOT / "data"
-_PID_FILE = _DATA_DIR / "blackbox.pid"
-_TASK_NAME = "BLACKBOX Orchestrator"
+_PID_FILE = _DATA_DIR / "agentmetry.pid"
+_TASK_NAME = "Agentmetry Orchestrator"
 
 # Paths bundled by backup, relative to the repo root.
 _BACKUP_PREFIXES = ("vault/", "apps/orchestrator/data/")
@@ -111,7 +111,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         if _fetch_health(args.port):
-            print(f"BLACKBOX running on {_base_url(args.port, host)} (pid {proc.pid})")
+            print(f"Agentmetry running on {_base_url(args.port, host)} (pid {proc.pid})")
             if host == "0.0.0.0":
                 _print_lan_hint(args.port)
             return 0
@@ -158,13 +158,13 @@ def cmd_stop(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     health = _fetch_health(args.port)
     if health is None:
-        print(f"BLACKBOX: not running ({_base_url(args.port)})")
+        print(f"Agentmetry: not running ({_base_url(args.port)})")
         return 1
 
     modes = health.get("modes", {})
     budget = health.get("budget", {})
     vault = health.get("vault", {})
-    print(f"BLACKBOX: {health.get('status', '?')} on {_base_url(args.port)}")
+    print(f"Agentmetry: {health.get('status', '?')} on {_base_url(args.port)}")
     print(f"  LLM:    {modes.get('llm', '?')}   RAG: {modes.get('rag', '?')}")
     print(f"  Vault:  {vault.get('notes', '?')} notes at {vault.get('path', '?')}")
     if budget:
@@ -191,7 +191,7 @@ def cmd_recovery(args: argparse.Namespace) -> int:
             f"{_base_url(args.port)}/api/v1/skills/recovery", timeout=10.0
         ).json()
     except Exception:
-        print("Not running - start BLACKBOX first (recovery reads via the API).")
+        print("Not running - start Agentmetry first (recovery reads via the API).")
         return 1
 
     items = data.get("recovery", [])
@@ -207,7 +207,7 @@ def cmd_recovery(args: argparse.Namespace) -> int:
     print(f"{len(items)} stale loop note(s).")
 
     headers = {"Content-Type": "application/json"}
-    api_key = os.environ.get("BLACKBOX_API_KEY", "")
+    api_key = os.environ.get("AGENTMETRY_API_KEY", "")
     if api_key:
         headers["X-API-Key"] = api_key
 
@@ -238,8 +238,8 @@ def cmd_recovery(args: argparse.Namespace) -> int:
             print(f"  {item['path']} -> {marker}")
     else:
         print(
-            "Run 'blackbox recovery --dismiss-all' to clear them, or\n"
-            "'blackbox recovery --resume <path>' to resume an orphan from its checkpoint."
+            "Run 'agentmetry recovery --dismiss-all' to clear them, or\n"
+            "'agentmetry recovery --resume <path>' to resume an orphan from its checkpoint."
         )
     return 0
 
@@ -253,7 +253,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
             timeout=10.0,
         ).json()
     except Exception:
-        print("Not running - start BLACKBOX first (stats reads via the API).")
+        print("Not running - start Agentmetry first (stats reads via the API).")
         return 1
 
     print(f"Skills used in the last {data['window_days']} day(s):")
@@ -326,7 +326,7 @@ def create_backup(repo_root: Path = _REPO_ROOT, out_path: Path | None = None) ->
     """
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     if out_path is None:
-        out_path = repo_root / "backups" / f"blackbox-backup-{stamp}.zip"
+        out_path = repo_root / "backups" / f"agentmetry-backup-{stamp}.zip"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     count = 0
@@ -383,7 +383,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
 
 def cmd_restore(args: argparse.Namespace) -> int:
     if _fetch_health(args.port):
-        print("Refusing to restore while BLACKBOX is running — run 'blackbox stop' first.")
+        print("Refusing to restore while Agentmetry is running — run 'agentmetry stop' first.")
         return 1
     zip_path = Path(args.backup_zip)
     if not zip_path.exists():
@@ -405,7 +405,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     if os.name != "nt":
         print("install is Windows-only (Task Scheduler).")
         return 1
-    bat = _REPO_ROOT / "scripts" / "blackbox.bat"
+    bat = _REPO_ROOT / "scripts" / "agentmetry.bat"
     tr = f'cmd /c ""{bat}" start"'
     result = subprocess.run(
         ["schtasks", "/Create", "/TN", _TASK_NAME, "/TR", tr,
@@ -445,7 +445,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     )
 
     if not args.evidence:
-        print("Use: blackbox export --evidence --from YYYY-MM-DD --to YYYY-MM-DD")
+        print("Use: agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD")
         return 1
     if not args.date_from or not args.date_to:
         print("--from and --to are required (YYYY-MM-DD)")
@@ -522,7 +522,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     from core.diagnostics.doctor import format_report, run_doctor
 
     report = run_doctor(fix_drivers=getattr(args, "fix", False))
-    print("BLACKBOX doctor\n" + format_report(report))
+    print("Agentmetry doctor\n" + format_report(report))
     return report.exit_code
 
 
@@ -530,7 +530,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="blackbox", description="BLACKBOX local ops")
+    parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
 

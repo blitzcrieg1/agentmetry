@@ -54,7 +54,7 @@ def canonical_to_ecs(canonical: dict[str, Any]) -> dict[str, Any]:
         "session": {"id": canonical.get("session_id")},
         "observer": {
             "type": "agentmetry",
-            "vendor": "blackbox",
+            "vendor": "agentmetry",
             "product": "Agentmetry",
         },
         "agent": {

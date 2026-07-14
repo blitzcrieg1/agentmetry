@@ -105,7 +105,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
             "reason": reason,
         },
         "agent": {
-            "name": "blackbox",
+            "name": "agentmetry",
             "skill_id": skill,
         },
     }

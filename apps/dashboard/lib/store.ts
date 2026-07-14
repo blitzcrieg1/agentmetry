@@ -4,7 +4,7 @@ import { generateSessionId } from "@/lib/utils";
 
 export type { GraphNodeState, NodeStatus };
 
-const SESSION_STORAGE_KEY = "blackbox-session-id";
+const SESSION_STORAGE_KEY = "agentmetry-session-id";
 
 function initialSessionId(): string {
   // Stable across page reloads so a refresh mid-run keeps streaming events.

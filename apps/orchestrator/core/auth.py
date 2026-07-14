@@ -14,7 +14,7 @@ async def require_api_key(
     request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> None:
-    """Skip auth when BLACKBOX_API_KEY is unset (local dev)."""
+    """Skip auth when AGENTMETRY_API_KEY is unset (local dev)."""
     if not settings.api_key:
         return
 
@@ -29,7 +29,7 @@ async def require_api_key(
 
 
 def verify_ws_token(query_token: str | None, request: Request) -> bool:
-    """Validate WebSocket connection when BLACKBOX_API_KEY is set."""
+    """Validate WebSocket connection when AGENTMETRY_API_KEY is set."""
     if not settings.api_key:
         return True
     token = query_token

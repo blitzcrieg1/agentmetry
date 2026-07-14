@@ -24,7 +24,7 @@ def fake_repo(tmp_path: Path) -> Path:
     (data / "logs").mkdir(parents=True)
     (data / "logs" / "orchestrator.log").write_text("noise", encoding="utf-8")
     (data / "runs.jsonl").write_text('{"skill": "x"}\n', encoding="utf-8")
-    (data / "blackbox.pid").write_text("123", encoding="utf-8")
+    (data / "agentmetry.pid").write_text("123", encoding="utf-8")
 
     conn = sqlite3.connect(str(data / "telemetry.db"))
     with conn:

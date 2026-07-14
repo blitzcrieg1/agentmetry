@@ -30,7 +30,7 @@ index=main sourcetype=agentmetry:json
 | search "shell" OR "powershell"
 ```
 
-Note: `transaction` is approximate; use `blackbox replay` for definitive chain-of-custody.
+Note: `transaction` is approximate; use `agentmetry replay` for definitive chain-of-custody.
 
 ---
 

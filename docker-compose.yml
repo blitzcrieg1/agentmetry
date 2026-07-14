@@ -11,8 +11,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: blackbox
-      POSTGRES_PASSWORD: blackbox
+      POSTGRES_USER: agentmetry
+      POSTGRES_PASSWORD: agentmetry
       POSTGRES_DB: agentic_os
     ports:
       - "5432:5432"
@@ -20,7 +20,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U blackbox -d agentic_os"]
+      test: ["CMD-SHELL", "pg_isready -U agentmetry -d agentic_os"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,15 +40,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      BLACKBOX_VAULT_PATH: /vault
-      BLACKBOX_QDRANT_URL: http://qdrant:6333
-      BLACKBOX_OLLAMA_BASE_URL: http://ollama:11434
-      BLACKBOX_LLM_PROVIDER: ${BLACKBOX_LLM_PROVIDER:-gemini}
-      BLACKBOX_GEMINI_MODEL: ${BLACKBOX_GEMINI_MODEL:-gemini-2.5-flash-lite}
+      AGENTMETRY_VAULT_PATH: /vault
+      AGENTMETRY_QDRANT_URL: http://qdrant:6333
+      AGENTMETRY_OLLAMA_BASE_URL: http://ollama:11434
+      AGENTMETRY_LLM_PROVIDER: ${AGENTMETRY_LLM_PROVIDER:-gemini}
+      AGENTMETRY_GEMINI_MODEL: ${AGENTMETRY_GEMINI_MODEL:-gemini-2.5-flash-lite}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      BLACKBOX_API_KEY: ${BLACKBOX_API_KEY:-}
-      BLACKBOX_USE_POSTGRES: "true"
-      BLACKBOX_POSTGRES_URL: postgresql://blackbox:blackbox@postgres:5432/agentic_os
+      AGENTMETRY_API_KEY: ${AGENTMETRY_API_KEY:-}
+      AGENTMETRY_USE_POSTGRES: "true"
+      AGENTMETRY_POSTGRES_URL: postgresql://agentmetry:agentmetry@postgres:5432/agentic_os
     volumes:
       - ./vault:/vault
       - orchestrator_data:/app/data
@@ -68,7 +68,7 @@ services:
       args:
         NEXT_PUBLIC_ORCHESTRATOR_URL: http://localhost:8000
         NEXT_PUBLIC_WS_URL: ws://localhost:8000
-        NEXT_PUBLIC_BLACKBOX_API_KEY: ${BLACKBOX_API_KEY:-}
+        NEXT_PUBLIC_AGENTMETRY_API_KEY: ${AGENTMETRY_API_KEY:-}
     ports:
       - "3000:3000"
     depends_on:

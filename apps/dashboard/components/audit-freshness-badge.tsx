@@ -11,10 +11,10 @@ interface AuditStatus {
   by_source: Record<string, number>;
 }
 
-const SOURCE_ORDER = ["blackbox", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
+const SOURCE_ORDER = ["agentmetry", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
 
 const SOURCE_SHORT: Record<string, string> = {
-  blackbox: "BB",
+  agentmetry: "BB",
   cursor: "Cu",
   claude: "Cl",
   codex: "Cx",
@@ -78,7 +78,7 @@ export function AuditFreshnessBadge() {
       title={
         enabled
           ? `Audit export on · ${recent} events in tail window`
-          : "Set BLACKBOX_AUDIT_EXPORT_ENABLED=1"
+          : "Set AGENTMETRY_AUDIT_EXPORT_ENABLED=1"
       }
     >
       <span className="text-[10px] font-medium">{label}</span>

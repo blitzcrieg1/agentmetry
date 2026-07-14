@@ -15,7 +15,7 @@ function schedulePipelineClear() {
 
 function wsUrl(sessionId: string): string {
   const base = `${WS_URL}/ws/${sessionId}`;
-  const apiKey = process.env.NEXT_PUBLIC_BLACKBOX_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_AGENTMETRY_API_KEY;
   if (apiKey) {
     return `${base}?token=${encodeURIComponent(apiKey)}`;
   }

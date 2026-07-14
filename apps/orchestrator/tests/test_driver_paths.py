@@ -169,4 +169,4 @@ def test_gmail_send_injects_env_flag(tmp_path: Path, monkeypatch: pytest.MonkeyP
         encoding="utf-8",
     )
     spec = load_resolved_driver_specs(config, vault_path=vault)[0]
-    assert spec.env.get("BLACKBOX_GMAIL_SEND_ENABLED") == "0"
+    assert spec.env.get("AGENTMETRY_GMAIL_SEND_ENABLED") == "0"

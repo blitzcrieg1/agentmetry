@@ -63,7 +63,7 @@ async def test_elastic_sink_posts_ecs_document():
         "schema_version": "1.0.0",
         "actor": {"id": "u1", "role": "operator", "type": "user"},
         "action": {"type": "tool_called", "outcome": "denied", "reason": "not_allowed"},
-        "agent": {"name": "blackbox", "skill_id": "x"},
+        "agent": {"name": "agentmetry", "skill_id": "x"},
         "tool": {"name": "run", "qualified": "shell.run", "server": "shell"},
         "model": {"id": "gemini", "provider": "gemini"},
     }
@@ -126,7 +126,7 @@ def test_canonical_to_ecs_maps_core_fields():
         "seq": 3,
         "actor": {"id": "u", "role": "operator"},
         "action": {"type": "tool_called", "outcome": "success", "reason": ""},
-        "agent": {"name": "blackbox"},
+        "agent": {"name": "agentmetry"},
         "schema_version": "1.0.0",
     })
     assert doc["event"]["action"] == "tool_called"

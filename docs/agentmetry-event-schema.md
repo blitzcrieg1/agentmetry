@@ -5,32 +5,32 @@ Canonical JSON events for governed agent runs. The orchestrator writes these to:
 - **SQLite outbox** — `apps/orchestrator/data/events.db` (system of record)
 - **JSONL forward file** — `apps/orchestrator/data/audit-forward.jsonl` (SIEM/homelab ingest)
 
-Disable JSONL export: `BLACKBOX_AUDIT_EXPORT_ENABLED=0`
+Disable JSONL export: `AGENTMETRY_AUDIT_EXPORT_ENABLED=0`
 
-Set operator identity for multi-user SIEM queries: `BLACKBOX_OPERATOR_ID=dev_01`
+Set operator identity for multi-user SIEM queries: `AGENTMETRY_OPERATOR_ID=dev_01`
 
 ### Forward sinks
 
 | Env | Default | Description |
 |-----|---------|-------------|
-| `BLACKBOX_AUDIT_SINK` | `file` | `file` \| `webhook` \| `both` \| `elastic` \| `splunk` \| `all` \| comma-separated |
-| `BLACKBOX_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | Append-only canonical JSONL |
-| `BLACKBOX_AUDIT_WEBHOOK_URL` | *(empty)* | Generic JSON POST |
-| `BLACKBOX_AUDIT_ELASTIC_URL` | *(empty)* | Elasticsearch cluster URL |
-| `BLACKBOX_AUDIT_ELASTIC_INDEX` | `logs-agentmetry` | Target index |
-| `BLACKBOX_ELASTIC_API_KEY` | *(empty)* | API key `id:secret` |
-| `BLACKBOX_AUDIT_SPLUNK_HEC_URL` | *(empty)* | Splunk HEC base URL |
-| `BLACKBOX_SPLUNK_HEC_TOKEN` | *(empty)* | HEC token |
+| `AGENTMETRY_AUDIT_SINK` | `file` | `file` \| `webhook` \| `both` \| `elastic` \| `splunk` \| `all` \| comma-separated |
+| `AGENTMETRY_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | Append-only canonical JSONL |
+| `AGENTMETRY_AUDIT_WEBHOOK_URL` | *(empty)* | Generic JSON POST |
+| `AGENTMETRY_AUDIT_ELASTIC_URL` | *(empty)* | Elasticsearch cluster URL |
+| `AGENTMETRY_AUDIT_ELASTIC_INDEX` | `logs-agentmetry` | Target index |
+| `AGENTMETRY_ELASTIC_API_KEY` | *(empty)* | API key `id:secret` |
+| `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` | *(empty)* | Splunk HEC base URL |
+| `AGENTMETRY_SPLUNK_HEC_TOKEN` | *(empty)* | HEC token |
 
 Example enterprise multi-sink:
 
 ```text
-BLACKBOX_AUDIT_SINK=file,elastic,splunk
-BLACKBOX_OPERATOR_ID=dev_01
-BLACKBOX_AUDIT_ELASTIC_URL=https://elastic.example:9200
-BLACKBOX_ELASTIC_API_KEY=id:secret
-BLACKBOX_AUDIT_SPLUNK_HEC_URL=https://splunk.example:8088
-BLACKBOX_SPLUNK_HEC_TOKEN=...
+AGENTMETRY_AUDIT_SINK=file,elastic,splunk
+AGENTMETRY_OPERATOR_ID=dev_01
+AGENTMETRY_AUDIT_ELASTIC_URL=https://elastic.example:9200
+AGENTMETRY_ELASTIC_API_KEY=id:secret
+AGENTMETRY_AUDIT_SPLUNK_HEC_URL=https://splunk.example:8088
+AGENTMETRY_SPLUNK_HEC_TOKEN=...
 ```
 
 ## Bus topic → canonical action
@@ -79,7 +79,7 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
   "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
   "action": {"type": "tool_called", "outcome": "success", "reason": ""},
-  "agent": {"name": "blackbox", "skill_id": "customer_reply"},
+  "agent": {"name": "agentmetry", "skill_id": "customer_reply"},
   "tool": {
     "name": "read_file",
     "qualified": "vault_fs.read_file",
@@ -100,7 +100,7 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
   "correlation_id": "thread-8892",
   "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},
   "action": {"type": "approval_request", "outcome": "pending", "reason": ""},
-  "agent": {"name": "blackbox", "skill_id": "audit_demo"},
+  "agent": {"name": "agentmetry", "skill_id": "audit_demo"},
   "gated_action": {
     "tool": "vault_fs.read_file",
     "server": "vault_fs",
@@ -116,13 +116,13 @@ BLACKBOX_SPLUNK_HEC_TOKEN=...
 | Tool arguments | **HASH** | `arguments_sha256` on bus; `tool.input_hash` in canonical |
 | Tool outputs | Not logged on bus v1 | Roadmap |
 | Prompts / drafts | Not on tool events | Approval payloads may contain draft text in outbox only |
-| `actor.id` | PLAIN | From `BLACKBOX_OPERATOR_ID` or `local` |
+| `actor.id` | PLAIN | From `AGENTMETRY_OPERATOR_ID` or `local` |
 
 ## CLI
 
 ```powershell
-blackbox replay <thread_id>     # ASCII timeline from events.db
-blackbox export --evidence ...  # Batch compliance pack (separate format)
+agentmetry replay <thread_id>     # ASCII timeline from events.db
+agentmetry export --evidence ...  # Batch compliance pack (separate format)
 ```
 
 ## SIEM ingest
@@ -140,7 +140,7 @@ blackbox export --evidence ...  # Batch compliance pack (separate format)
 
 Agentmetry records:
 
-- **Tier A** — agents running through the BLACKBOX governed host
+- **Tier A** — agents running through the Agentmetry governed host
 - **Tier B** — external agents you wire in via [`docs/external-agentmetry.md`](./external-agentmetry.md) (Cursor hooks, MCP proxy, ingest API)
 
 It does **not** see unmanaged ChatGPT, Cursor with hooks disabled, or browser copilots without CASB/gateway policy.
@@ -151,4 +151,4 @@ It does **not** see unmanaged ChatGPT, Cursor with hooks disabled, or browser co
 "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"}
 ```
 
-BLACKBOX-native events use `agent.name: "blackbox"` and omit `source` (implicit Tier A).
+Agentmetry-native events use `agent.name: "agentmetry"` and omit `source` (implicit Tier A).

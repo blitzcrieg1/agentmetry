@@ -373,7 +373,7 @@ The SQLite outbox is the **system of record** and never drops events. Forwarders
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
 | **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
 
-Legacy `BLACKBOX_*` variables are still accepted as aliases during the transition.
+Legacy `AGENTMETRY_*` variables are still accepted as aliases during the transition.
 
 Homelab SIEM with Loki + Grafana:
 
@@ -399,7 +399,7 @@ Integration guides → [docs/integrations/](docs/integrations/)
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry doctor` | Preflight check for python, paths, etc. |
 
-`scripts\blackbox.bat` remains as a legacy alias.
+`scripts\agentmetry.bat` remains as a legacy alias.
 
 ---
 

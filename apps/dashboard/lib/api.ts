@@ -4,7 +4,7 @@ export function apiHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  const apiKey = process.env.NEXT_PUBLIC_BLACKBOX_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_AGENTMETRY_API_KEY;
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }

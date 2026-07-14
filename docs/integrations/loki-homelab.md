@@ -2,16 +2,16 @@
 
 Tail `audit-forward.jsonl` into **Grafana Loki** for solo/homelab monitoring. No cloud account required.
 
-**Prerequisite:** [Agentmetry event schema](../agentmetry-event-schema.md) — orchestrator running with `BLACKBOX_AUDIT_EXPORT_ENABLED=1` (default).
+**Prerequisite:** [Agentmetry event schema](../agentmetry-event-schema.md) — orchestrator running with `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default).
 
 ---
 
 ## Quick start (~20 minutes)
 
-### 1 — Run BLACKBOX and generate events
+### 1 — Run Agentmetry and generate events
 
 ```powershell
-scripts\blackbox.bat start
+scripts\agentmetry.bat start
 # Run any skill from the dashboard or Obsidian plugin
 ```
 
@@ -25,7 +25,7 @@ Optional identity for SIEM queries:
 
 ```powershell
 # apps/orchestrator/.env
-BLACKBOX_OPERATOR_ID=home-lab
+AGENTMETRY_OPERATOR_ID=home-lab
 ```
 
 ### 2 — Start the Loki stack
@@ -73,10 +73,10 @@ Filter by operator:
 {job="agentmetry"} | json | actor_id="home-lab"
 ```
 
-Replay a single run in BLACKBOX (local, no Loki needed):
+Replay a single run in Agentmetry (local, no Loki needed):
 
 ```powershell
-blackbox replay <thread_id>
+agentmetry replay <thread_id>
 ```
 
 ---
@@ -123,8 +123,8 @@ Push canonical JSON directly to any HTTP collector (n8n, Vector, Logstash, custo
 
 ```powershell
 # apps/orchestrator/.env
-BLACKBOX_AUDIT_SINK=both
-BLACKBOX_AUDIT_WEBHOOK_URL=http://127.0.0.1:8080/ingest
+AGENTMETRY_AUDIT_SINK=both
+AGENTMETRY_AUDIT_WEBHOOK_URL=http://127.0.0.1:8080/ingest
 ```
 
 `both` = append JSONL **and** POST each event. Use `webhook` for HTTP-only.
@@ -192,5 +192,5 @@ labels.job = "agentmetry"
 
 ## Limitations
 
-- **Tier A only** — events from agents running through BLACKBOX. See schema doc Tier C note.
-- LogQL correlates poorly across long sessions for “approval bypass” — use `blackbox replay <thread_id>` for chain-of-custody until recording rules land in v1.1.
+- **Tier A only** — events from agents running through Agentmetry. See schema doc Tier C note.
+- LogQL correlates poorly across long sessions for “approval bypass” — use `agentmetry replay <thread_id>` for chain-of-custody until recording rules land in v1.1.

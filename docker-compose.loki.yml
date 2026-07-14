@@ -1,7 +1,7 @@
 # Agentmetry homelab — Grafana Loki + Alloy + Grafana
 # Standalone stack; does not replace the main docker-compose.yml (orchestrator/dashboard).
 #
-# Prerequisites: BLACKBOX running locally so audit-forward.jsonl is written under
+# Prerequisites: Agentmetry running locally so audit-forward.jsonl is written under
 # apps/orchestrator/data/
 #
 # Start:

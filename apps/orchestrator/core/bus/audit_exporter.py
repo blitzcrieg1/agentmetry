@@ -47,7 +47,7 @@ async def audit_exporter(
     if enabled is None:
         enabled = settings.audit_export_enabled
     if not enabled:
-        logger.info("Audit export disabled (BLACKBOX_AUDIT_EXPORT_ENABLED=0)")
+        logger.info("Audit export disabled (AGENTMETRY_AUDIT_EXPORT_ENABLED=0)")
         return
 
     modes = parse_sink_modes(settings.audit_sink)
@@ -70,7 +70,7 @@ async def audit_exporter(
     if sink is None and not settings.audit_alert_webhook_url.strip():
         logger.warning(
             "Audit export enabled but no sinks configured "
-            "(check BLACKBOX_AUDIT_SINK and backend credentials)"
+            "(check AGENTMETRY_AUDIT_SINK and backend credentials)"
         )
         return
 

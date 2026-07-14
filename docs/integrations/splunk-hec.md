@@ -9,23 +9,23 @@ POST canonical agent audit events to **Splunk HTTP Event Collector** (HEC). Work
 ## Environment
 
 ```text
-BLACKBOX_AUDIT_SINK=file,splunk
-BLACKBOX_OPERATOR_ID=dev_01
+AGENTMETRY_AUDIT_SINK=file,splunk
+AGENTMETRY_OPERATOR_ID=dev_01
 
-BLACKBOX_AUDIT_SPLUNK_HEC_URL=https://127.0.0.1:8088
-BLACKBOX_SPLUNK_HEC_TOKEN=your-hec-token
-BLACKBOX_AUDIT_SPLUNK_INDEX=main
-BLACKBOX_AUDIT_SPLUNK_SOURCETYPE=agentmetry:json
-BLACKBOX_AUDIT_SPLUNK_VERIFY_TLS=0
+AGENTMETRY_AUDIT_SPLUNK_HEC_URL=https://127.0.0.1:8088
+AGENTMETRY_SPLUNK_HEC_TOKEN=your-hec-token
+AGENTMETRY_AUDIT_SPLUNK_INDEX=main
+AGENTMETRY_AUDIT_SPLUNK_SOURCETYPE=agentmetry:json
+AGENTMETRY_AUDIT_SPLUNK_VERIFY_TLS=0
 ```
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BLACKBOX_AUDIT_SINK` | Yes | Include `splunk` |
-| `BLACKBOX_AUDIT_SPLUNK_HEC_URL` | Yes | HEC base, e.g. `https://splunk:8088` |
-| `BLACKBOX_SPLUNK_HEC_TOKEN` | Yes | HEC token |
-| `BLACKBOX_AUDIT_SPLUNK_INDEX` | No | Default `main` |
-| `BLACKBOX_AUDIT_SPLUNK_SOURCETYPE` | No | Default `agentmetry:json` |
+| `AGENTMETRY_AUDIT_SINK` | Yes | Include `splunk` |
+| `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` | Yes | HEC base, e.g. `https://splunk:8088` |
+| `AGENTMETRY_SPLUNK_HEC_TOKEN` | Yes | HEC token |
+| `AGENTMETRY_AUDIT_SPLUNK_INDEX` | No | Default `main` |
+| `AGENTMETRY_AUDIT_SPLUNK_SOURCETYPE` | No | Default `agentmetry:json` |
 
 URL may be `https://host:8088` or full `.../services/collector/event` — both work.
 
@@ -37,7 +37,7 @@ URL may be `https://host:8088` or full `.../services/collector/event` — both w
 2. Name: `agentmetry`
 3. Source type: `agentmetry:json` (or accept automatic JSON)
 4. Index: `main` (or dedicated `agentmetry`)
-5. Copy token → `BLACKBOX_SPLUNK_HEC_TOKEN`
+5. Copy token → `AGENTMETRY_SPLUNK_HEC_TOKEN`
 
 ---
 
@@ -83,7 +83,7 @@ index=main sourcetype=agentmetry:json action_outcome=denied
 **Replay correlation id locally:**
 
 ```powershell
-blackbox replay thread-abc
+agentmetry replay thread-abc
 ```
 
 Detections: [detections-splunk.md](./detections-splunk.md)
@@ -93,10 +93,10 @@ Detections: [detections-splunk.md](./detections-splunk.md)
 ## Combined sinks
 
 ```text
-BLACKBOX_AUDIT_SINK=file,elastic,splunk
+AGENTMETRY_AUDIT_SINK=file,elastic,splunk
 ```
 
-Or `BLACKBOX_AUDIT_SINK=all` with Elastic + Splunk + webhook env vars set.
+Or `AGENTMETRY_AUDIT_SINK=all` with Elastic + Splunk + webhook env vars set.
 
 ---
 
@@ -105,5 +105,5 @@ Or `BLACKBOX_AUDIT_SINK=all` with Elastic + Splunk + webhook env vars set.
 | Symptom | Fix |
 |---------|-----|
 | `401` / data not indexed | Check HEC token and index allow-list on token |
-| SSL errors on homelab | `BLACKBOX_AUDIT_SPLUNK_VERIFY_TLS=0` |
-| Wrong index | Token may restrict indexes — match `BLACKBOX_AUDIT_SPLUNK_INDEX` |
+| SSL errors on homelab | `AGENTMETRY_AUDIT_SPLUNK_VERIFY_TLS=0` |
+| Wrong index | Token may restrict indexes — match `AGENTMETRY_AUDIT_SPLUNK_INDEX` |

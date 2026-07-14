@@ -1,6 +1,6 @@
 # AI Incident / Safety Record
 
-Copy this into `vault/30-Archive/incidents/` when something goes wrong with a BLACKBOX-assisted workflow.
+Copy this into `vault/30-Archive/incidents/` when something goes wrong with a Agentmetry-assisted workflow.
 
 ---
 
@@ -28,7 +28,7 @@ Describe the incident in plain language (wrong draft, hallucinated fact, wrong c
 |-----------|-------|----------|--------------|
 | | | approved / terminated | |
 
-Pull from dashboard, `runs.jsonl`, or latest `blackbox export --evidence`.
+Pull from dashboard, `runs.jsonl`, or latest `agentmetry export --evidence`.
 
 ---
 

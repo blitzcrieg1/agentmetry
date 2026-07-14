@@ -30,7 +30,7 @@ sum(count_over_time({job="agentmetry", action_outcome="denied"} [1m])) >= 5
 }
 ```
 
-**Triage:** `blackbox replay thread-abc` — check preceding `approval_request` and skill YAML allowlist.
+**Triage:** `agentmetry replay thread-abc` — check preceding `approval_request` and skill YAML allowlist.
 
 ---
 

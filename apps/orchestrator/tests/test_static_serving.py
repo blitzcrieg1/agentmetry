@@ -13,7 +13,7 @@ from api.main import mount_dashboard
 def _fake_export(tmp_path: Path) -> Path:
     out = tmp_path / "out"
     (out / "_next").mkdir(parents=True)
-    (out / "index.html").write_text("<!DOCTYPE html><title>BLACKBOX</title>", encoding="utf-8")
+    (out / "index.html").write_text("<!DOCTYPE html><title>Agentmetry</title>", encoding="utf-8")
     (out / "_next" / "app.js").write_text("console.log('bb')", encoding="utf-8")
     return out
 

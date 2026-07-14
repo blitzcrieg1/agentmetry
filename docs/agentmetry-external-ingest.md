@@ -1,6 +1,6 @@
 # External agent audit (Tier B)
 
-Agentmetry records **governed BLACKBOX runs (Tier A)** and **external agents you wire in (Tier B)** into the same `audit-forward.jsonl` flight recorder.
+Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents you wire in (Tier B)** into the same `audit-forward.jsonl` flight recorder.
 
 ## Architecture
 
@@ -26,9 +26,9 @@ powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
 
 **Requirements:**
 
-1. BLACKBOX running: `scripts\blackbox.bat start` → `:8000`
-2. `BLACKBOX_AUDIT_EXPORT_ENABLED=1` (default)
-3. Optional: `BLACKBOX_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
+1. Agentmetry running: `scripts\agentmetry.bat start` → `:8000`
+2. `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default)
+3. Optional: `AGENTMETRY_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
 
 Restart Cursor after pulling hooks so they load (Hooks tab in settings). Global hooks live in `%USERPROFILE%\.cursor\hooks.json`.
 
@@ -144,7 +144,7 @@ python scripts/agentmetry_ingest.py selftest
 #   Agentmetry hooks: GREEN — synthetic event round-tripped for source 'cursor'.
 ```
 
-RED means the POST failed (orchestrator down / wrong `AGENTMETRY_URL`) or the event never landed (`BLACKBOX_AUDIT_INGEST_ENABLED=0` / sink off). Set `AGENTMETRY_SOURCE_APP` first to test a specific adapter. Freshness for the dashboard badge: `GET /api/v1/audit/status` returns `last_event_utc` + per-source counts.
+RED means the POST failed (orchestrator down / wrong `AGENTMETRY_URL`) or the event never landed (`AGENTMETRY_AUDIT_INGEST_ENABLED=0` / sink off). Set `AGENTMETRY_SOURCE_APP` first to test a specific adapter. Freshness for the dashboard badge: `GET /api/v1/audit/status` returns `last_event_utc` + per-source counts.
 
 ## Approvals & enforcement (honest)
 
@@ -154,7 +154,7 @@ Agentmetry's external hooks are **observe-only by default** — they record, the
 - **Approval *requests* are observed directly** — an `ask` on a `before*`/`PreToolUse` hook becomes an `approval_request` (pending).
 - **Approval *responses* are inferred, not natively reported.** No IDE emits "the human clicked approve." Agentmetry infers it: a tool that *runs* after an `ask` (a matching `tool_called`) yields an `approval_response` marked **`reason: inferred:tool_ran_after_ask`**; an `ask` still pending at session end yields an inferred **denied**. These events are explicitly flagged as inferred — treat them as strong evidence, not a native signal.
 
-**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed by default. Set `BLACKBOX_AUDIT_LOG_COMMANDS=1` in `apps/orchestrator/.env` (or `AGENTMETRY_LOG_COMMANDS=1` in the hook environment) to also record **shell command text** (`command` field) for Bash / `run_command` / `shell.run` tools across Cursor, Claude, Codex, and Antigravity — so an investigator can see what actually ran. Inline secrets in the command (bearer tokens, `user:pass@` URLs, `--password`, AWS/OpenAI/GitHub/Slack keys) are **scrubbed to `<redacted>` first**, at both the hook and the server (`core/audit/redaction.py`). Scrubbing is best-effort, not a guarantee — an unusual secret shape may slip through, so treat the local `audit-forward.jsonl` as sensitive and keep it on machines you own. Other args stay hashed.
+**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed by default. Set `AGENTMETRY_AUDIT_LOG_COMMANDS=1` in `apps/orchestrator/.env` (or `AGENTMETRY_LOG_COMMANDS=1` in the hook environment) to also record **shell command text** (`command` field) for Bash / `run_command` / `shell.run` tools across Cursor, Claude, Codex, and Antigravity — so an investigator can see what actually ran. Inline secrets in the command (bearer tokens, `user:pass@` URLs, `--password`, AWS/OpenAI/GitHub/Slack keys) are **scrubbed to `<redacted>` first**, at both the hook and the server (`core/audit/redaction.py`). Scrubbing is best-effort, not a guarantee — an unusual secret shape may slip through, so treat the local `audit-forward.jsonl` as sensitive and keep it on machines you own. Other args stay hashed.
 
 ## MCP proxy (any client)
 
@@ -177,14 +177,14 @@ Point Cursor/Claude MCP config at the proxy command instead of the raw server.
 |----------|---------|---------|
 | `AGENTMETRY_URL` | `http://127.0.0.1:8000` | Ingest base URL |
 | `AGENTMETRY_SOURCE_APP` | `cursor` | Default source in hook mapper |
-| `AGENTMETRY_LOG_COMMANDS` | *(off)* | `1` = store shell command text in audit (also reads `BLACKBOX_AUDIT_LOG_COMMANDS` from `apps/orchestrator/.env`) |
-| `BLACKBOX_API_KEY` | *(empty)* | Auth header for ingest |
-| `BLACKBOX_AUDIT_INGEST_ENABLED` | `1` | Kill switch |
+| `AGENTMETRY_LOG_COMMANDS` | *(off)* | `1` = store shell command text in audit (also reads `AGENTMETRY_AUDIT_LOG_COMMANDS` from `apps/orchestrator/.env`) |
+| `AGENTMETRY_API_KEY` | *(empty)* | Auth header for ingest |
+| `AGENTMETRY_AUDIT_INGEST_ENABLED` | `1` | Kill switch |
 
 ## Honest limits (Tier C)
 
 - **Works:** Agents you instrument (hooks, MCP proxy, custom scripts) — captures tool calls (success/failure) and approval requests.
-- **Inferred, not native:** the human approve/deny *decision* for external agents is inferred from whether the tool ran (see Approvals above). Tier A (governed BLACKBOX runs) captures the real grant/deny.
+- **Inferred, not native:** the human approve/deny *decision* for external agents is inferred from whether the tool ran (see Approvals above). Tier A (governed Agentmetry runs) captures the real grant/deny.
 - **Not captured for Tier B:** model/provider id (hook payloads omit it — shown as the app name, not `gpt-4`/`claude-sonnet`), per-approver identity.
 - **Does not work:** Silent browser ChatGPT, auto-approve Cursor with hooks disabled, or any agent that never hits your adapter.
 - **Not a CASB:** Network-level shadow-AI detection is a different product.
@@ -192,7 +192,7 @@ Point Cursor/Claude MCP config at the proxy command instead of the raw server.
 ## Disable external ingest
 
 ```env
-BLACKBOX_AUDIT_INGEST_ENABLED=0
+AGENTMETRY_AUDIT_INGEST_ENABLED=0
 ```
 
-Tier A BLACKBOX runs continue; adapters receive HTTP 503.
+Tier A Agentmetry runs continue; adapters receive HTTP 503.

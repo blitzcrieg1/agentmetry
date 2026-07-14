@@ -13,7 +13,7 @@ from core.audit.redaction import scrub_arg_values, scrub_secrets
 from core.audit.run_context import actor_from_initiator, build_initiator
 from core.config import settings
 
-ExternalApp = Literal["cursor", "claude", "antigravity", "codex", "mcp_proxy", "blackbox"]
+ExternalApp = Literal["cursor", "claude", "antigravity", "codex", "mcp_proxy", "agentmetry"]
 
 KNOWN_EXTERNAL_APPS = frozenset({"cursor", "claude", "antigravity", "codex", "mcp_proxy"})
 
@@ -48,7 +48,7 @@ def _split_tool(qualified: str) -> tuple[str, str]:
 def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize an adapter payload into canonical v1.1 JSON."""
     source_app = str(payload.get("source_app") or "cursor").lower()
-    if source_app not in KNOWN_EXTERNAL_APPS and source_app != "blackbox":
+    if source_app not in KNOWN_EXTERNAL_APPS and source_app != "agentmetry":
         source_app = "cursor"
 
     event_type = str(payload.get("event_type") or "tool_called")

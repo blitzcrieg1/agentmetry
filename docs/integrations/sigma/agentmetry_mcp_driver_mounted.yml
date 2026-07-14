@@ -30,7 +30,7 @@ fields:
   - actor.id
   - host_id
 falsepositives:
-  - Expected driver remount after `blackbox doctor --fix` or an intentional drivers.json edit
+  - Expected driver remount after `agentmetry doctor --fix` or an intentional drivers.json edit
   - Normal boot-time mount of drivers already pinned in drivers.json
 level: medium
 tags:

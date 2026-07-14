@@ -10,10 +10,10 @@ Time budget: ~20 minutes.
 
 ## 0. Preflight
 
-- ☐ `.env` has `BLACKBOX_OPERATOR_ID` set (becomes `actor.id` in every event)
-- ☐ `.env` has `BLACKBOX_AUDIT_EXPORT_ENABLED=1` and `BLACKBOX_AUDIT_SINK=file`
-- ☐ `scripts\blackbox.bat doctor` — all green
-- ☐ `scripts\blackbox.bat start` then hard-refresh dashboard at `http://127.0.0.1:8000`
+- ☐ `.env` has `AGENTMETRY_OPERATOR_ID` set (becomes `actor.id` in every event)
+- ☐ `.env` has `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` and `AGENTMETRY_AUDIT_SINK=file`
+- ☐ `scripts\agentmetry.bat doctor` — all green
+- ☐ `scripts\agentmetry.bat start` then hard-refresh dashboard at `http://127.0.0.1:8000`
 
 ```powershell
 python scripts/agentmetry_ingest.py selftest   # Tier B round-trip (optional but recommended)
@@ -121,7 +121,7 @@ Get-Content apps\orchestrator\data\audit-forward.jsonl -Tail 12 |
 ### 3c. Replay
 
 ```powershell
-scripts\blackbox.bat replay <correlation_id_from_3b>
+scripts\agentmetry.bat replay <correlation_id_from_3b>
 ```
 
 - ☐ Readable timeline; `correlation_id` matches JSONL

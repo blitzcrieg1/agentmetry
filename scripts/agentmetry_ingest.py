@@ -5,9 +5,9 @@ POST adapter events to the local orchestrator ingest API.
 
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
-  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
+  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: AGENTMETRY_API_KEY)
   AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
-  AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also BLACKBOX_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
+  AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def _utc_now() -> str:
 def _base_url() -> str:
     return (
         os.environ.get("AGENTMETRY_URL")
-        or os.environ.get("BLACKBOX_AUDIT_INGEST_URL")
+        or os.environ.get("AGENTMETRY_AUDIT_INGEST_URL")
         or "http://127.0.0.1:8000"
     ).rstrip("/")
 
@@ -63,7 +63,7 @@ def _base_url() -> str:
 def _api_key() -> str:
     return (
         os.environ.get("AGENTMETRY_API_KEY", "").strip()
-        or os.environ.get("BLACKBOX_API_KEY", "").strip()
+        or os.environ.get("AGENTMETRY_API_KEY", "").strip()
     )
 
 
@@ -174,7 +174,7 @@ def _log_commands_enabled() -> bool:
     for raw in (
         os.environ.get("AGENTMETRY_LOG_COMMANDS", ""),
         _read_repo_env("AGENTMETRY_LOG_COMMANDS"),
-        _read_repo_env("BLACKBOX_AUDIT_LOG_COMMANDS"),
+        _read_repo_env("AGENTMETRY_AUDIT_LOG_COMMANDS"),
     ):
         if raw.strip().lower() in ("1", "true", "yes", "on"):
             return True
@@ -185,7 +185,7 @@ def _log_full_args_enabled() -> bool:
     for raw in (
         os.environ.get("AGENTMETRY_LOG_FULL_ARGS", ""),
         _read_repo_env("AGENTMETRY_LOG_FULL_ARGS"),
-        _read_repo_env("BLACKBOX_AUDIT_LOG_FULL_ARGS"),
+        _read_repo_env("AGENTMETRY_AUDIT_LOG_FULL_ARGS"),
     ):
         if raw.strip().lower() in ("1", "true", "yes", "on"):
             return True
@@ -271,7 +271,7 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
 
     Args are hashed *inside the hook process* so redacted-plaintext arguments
     never cross the wire to the orchestrator. The stored event keeps only the
-    64-hex digest unless AGENTMETRY_LOG_COMMANDS / BLACKBOX_AUDIT_LOG_COMMANDS
+    64-hex digest unless AGENTMETRY_LOG_COMMANDS / AGENTMETRY_AUDIT_LOG_COMMANDS
     is set — then shell ``command`` text is kept alongside the hash.
     """
     if not payload:
@@ -398,7 +398,7 @@ def selftest(dlp: bool = False) -> int:
         return 0
     print(
         "Agentmetry hooks: RED — event POSTed but not found in the audit tail. "
-        "Ingest disabled (BLACKBOX_AUDIT_INGEST_ENABLED) or sink misconfigured?",
+        "Ingest disabled (AGENTMETRY_AUDIT_INGEST_ENABLED) or sink misconfigured?",
         file=sys.stderr,
     )
     return 1

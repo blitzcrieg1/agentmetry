@@ -25,7 +25,7 @@ event.outcome: "denied" and event.action: "tool_called"
 
 Threshold: **> 5 events in 1 minute** grouped by `user.id`.
 
-**Triage:** `trace.id` → `blackbox replay <correlation_id>`
+**Triage:** `trace.id` → `agentmetry replay <correlation_id>`
 
 ---
 
