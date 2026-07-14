@@ -14,8 +14,8 @@ Every tool call, every denial, every human approval — hashed, correlated, and 
 Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
 
 <p align="center">
-  <a href="https://github.com/blitzcrieg1/agentic-os/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
-  <a href="https://github.com/blitzcrieg1/agentic-os"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
+  <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
+  <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform: Windows | Linux">
 </p>
 
@@ -87,8 +87,8 @@ Agentmetry runs fully locally. The audit trail never leaves your machine unless 
 ### 1. Clone and install
 
 ```powershell
-git clone https://github.com/blitzcrieg1/agentic-os.git
-cd agentic-os
+git clone https://github.com/blitzcrieg1/agentmetry.git
+cd agentmetry
 
 # Python orchestrator
 cd apps\orchestrator
@@ -281,7 +281,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | **Policy engines** | Regex DLP manifest (`policies/dlp/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
-Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentic-os/issues) or see [docs/market_analysis.md](docs/market_analysis.md) for the contributor roadmap.
+Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or see [docs/market_analysis.md](docs/market_analysis.md) for the contributor roadmap.
 
 ---
 

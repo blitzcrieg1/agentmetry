@@ -14,7 +14,7 @@ multi-tenant environments. Treat it as a local, single-operator tool. See
 **Do not open a public issue for a security vulnerability.**
 
 Use GitHub's [private vulnerability
-reporting](https://github.com/blitzcrieg1/agentic-os/security/advisories/new)
+reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new)
 (Security → Report a vulnerability), or email the maintainer.
 
 Please include: what you found, how to reproduce it, and what an attacker gains.

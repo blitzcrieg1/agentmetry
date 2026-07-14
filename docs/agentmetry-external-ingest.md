@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
 
 That writes `~/.gemini/config/hooks.json` with absolute paths to `agentmetry_ingest.py`. Antigravity 2.0 stdin uses `toolCall.name` + `toolCall.args.CommandLine` (commands captured on **PreToolUse** / `run_command`).
 
-Project-only (when workspace **is** `agentic-os`): merge `adapters/antigravity/hooks.agentmetry.json` into `.agents/hooks.json`.
+Project-only (when workspace **is** `agentmetry`): merge `adapters/antigravity/hooks.agentmetry.json` into `.agents/hooks.json`.
 
 ```powershell
 python scripts/agentmetry_ingest.py antigravity hook PreToolUse

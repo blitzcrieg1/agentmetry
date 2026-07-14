@@ -9,8 +9,8 @@ description: >
   A governed agent attempted a tool call that the host allowlist blocked.
   A single denial is informational; the burst correlation below escalates it.
 references:
-  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/integrations/detections-loki.md
-  - https://github.com/blitzcrieg1/agentic-os/blob/master/docs/agentmetry-event-schema.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/detections-loki.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/agentmetry-event-schema.md
 author: Agentmetry
 date: 2026-07-12
 logsource:
