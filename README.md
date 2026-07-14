@@ -105,6 +105,16 @@ the network call and fires a `CRITICAL` credential-exfil detection.**
 No single one of those events is an alert. The sequence is. That is the whole
 product in one screen.
 
+### See the dashboard with a story in it
+
+```bash
+python scripts/demo_dashboard.py      # seeds 5 sessions + 4 detections, serves http://127.0.0.1:8010/
+```
+
+One command seeds a realistic demo trail and serves the dashboard locally — no
+API key, no cloud. See the [dashboard tour](docs/dashboard-tour.md) for what each
+view shows and how to read it.
+
 ### Prerequisites
 
 | Requirement | Version |
