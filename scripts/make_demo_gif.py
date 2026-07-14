@@ -23,6 +23,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 _REPO = Path(__file__).resolve().parent.parent
 _OUT = _REPO / "docs" / "assets" / "demo.gif"
+_OUT_SHORT = _REPO / "docs" / "assets" / "demo-short.gif"
+
+# The social cut. LinkedIn/X viewers are scrolling: drop the framing and the
+# receipts, keep the three tool calls and the detection that lands on them.
+_SHORT_DROP = (
+    "AGENTMETRY", "Replaying an agent session", "Trail:", "The receipts",
+    "Secret value", "Detections from the trail", "Events sent to SIEM",
+    "Everything above stayed",
+)
 
 # GitHub-dark palette; ANSI code -> RGB.
 BG = (13, 17, 23)
@@ -137,6 +146,8 @@ def draw_frame(lines: list[list[Span]], height: int, cursor: bool) -> Image.Imag
 
 
 def main() -> int:
+    short = "--short" in sys.argv
+    out = _OUT_SHORT if short else _OUT
     env = {**os.environ, "AGENTMETRY_DEMO_COLOR": "1", "AGENTMETRY_DEMO_FAST": "1"}
     proc = subprocess.run(
         [sys.executable, str(_REPO / "scripts" / "demo.py")],
@@ -148,6 +159,23 @@ def main() -> int:
         return 1
 
     raw = [ln.rstrip("\n") for ln in proc.stdout.splitlines()]
+    if short:
+        kept: list[str] = []
+        dropped_prev = False
+        for ln in raw:
+            if any(k in ln for k in _SHORT_DROP):
+                dropped_prev = True
+                continue
+            # A separator rule belongs to the heading above it. If that heading
+            # was cut, the rule must go too, or it dangles in the frame.
+            # Strip the ANSI codes first — the rule is dim-coloured.
+            plain = _SGR.sub("", ln).strip()
+            is_rule = bool(plain) and set(plain) <= {"─", "-"}
+            if is_rule and dropped_prev:
+                continue
+            dropped_prev = False
+            kept.append(ln)
+        raw = kept
     # Trim leading/trailing blanks, collapse runs of blank lines.
     lines: list[str] = []
     for ln in raw:
@@ -156,6 +184,8 @@ def main() -> int:
         lines.append(ln)
     while lines and not lines[-1].strip():
         lines.pop()
+    while lines and not lines[0].strip():
+        lines.pop(0)
 
     # Pre-wrap so the canvas is tall enough for every rendered row.
     wrapped: list[tuple[str, list[list[Span]]]] = [
@@ -175,6 +205,7 @@ def main() -> int:
 
         if plain.strip().startswith("$"):
             # Type the command out, character by character.
+            step = 18 if short else 28
             for i in range(1, len(plain) + 1):
                 budget, typed = i, []
                 for text, colour, bold in spans:
@@ -183,28 +214,32 @@ def main() -> int:
                     typed.append((text[:budget], colour, bold))
                     budget -= len(text)
                 frames.append(draw_frame([*shown, typed], height, True))
-                durations.append(28)
+                durations.append(step)
             shown.extend(chunks)
             frames.append(draw_frame(shown, height, True))
-            durations.append(320)
+            durations.append(220 if short else 320)
         else:
             shown.extend(chunks)
             frames.append(draw_frame(shown, height, True))
             # Linger on the payoff lines.
             hot = any(k in plain for k in ("CRITICAL", "DLP", "detection", "Secret value"))
-            durations.append(620 if hot else 190)
+            if hot:
+                durations.append(560 if short else 620)
+            else:
+                durations.append(120 if short else 190)
 
     # Hold the final frame so the punchline is readable in a loop.
     frames.append(draw_frame(shown, height, False))
-    durations.append(3200)
+    durations.append(2600 if short else 3200)
 
-    _OUT.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(
-        _OUT, save_all=True, append_images=frames[1:], duration=durations,
+        out, save_all=True, append_images=frames[1:], duration=durations,
         loop=0, optimize=True, disposal=2,
     )
-    kb = _OUT.stat().st_size / 1024
-    print(f"wrote {_OUT.relative_to(_REPO)}  ({len(frames)} frames, {kb:.0f} KB)")
+    kb = out.stat().st_size / 1024
+    print(f"wrote {out.relative_to(_REPO)}  ({len(frames)} frames, {kb:.0f} KB, "
+          f"{sum(durations)/1000:.1f}s)")
     if kb > 5000:
         print("WARNING: >5MB — GitHub may not autoplay it", file=sys.stderr)
     return 0
