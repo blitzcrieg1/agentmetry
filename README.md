@@ -134,7 +134,7 @@ When an agent runs a tool, Agentmetry automatically:
 1. **Intercepts** the lifecycle hook or MCP `tools/call` before arguments leave the hook process
 2. **Hashes** tool arguments (SHA-256) and scrubs inline secrets in command strings
 3. **Enriches** each event with MITRE tactic/technique mappings and session correlation
-4. **Stores** canonical JSONL locally (`audit-forward.jsonl`) and in the SQLite outbox
+4. **Stores** canonical JSONL locally (`audit-forward.jsonl`) — the system of record for the hook path
 5. **Detects** multi-step behavioral patterns across the session timeline
 6. **Forwards** to your SIEM sinks and alert webhook (optional, best-effort)
 
@@ -152,7 +152,7 @@ flowchart TB
   end
 
   subgraph Gate["Local Security Gate"]
-    DLP["DLP Scanner<br/>regex / YARA rules"]
+    DLP["DLP Scanner<br/>regex rules"]
     HASH["Arg Hash + Secret Scrub"]
   end
 
@@ -212,7 +212,7 @@ flowchart LR
 | **Hook client** | `scripts/agentmetry_ingest.py` | Maps IDE lifecycle events to canonical payloads; hashes args in-process |
 | **MCP proxy** | `apps/orchestrator/tools/mcp_audit_proxy.py` | Wraps any stdio MCP server; logs every `tools/call` + errors |
 | **Ingest API** | `core/audit/ingest.py` | Normalizes payloads, infers approvals (`inferred:*`), writes sinks |
-| **DLP engine** | `core/audit/dlp/` | Regex/YARA scan of tool arguments; block or log before execution |
+| **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); block or log before execution |
 | **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
 | **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC |
 | **Replay** | `core/audit/replay.py` | ASCII timeline reconstruction from the local outbox |
@@ -263,7 +263,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | 🎥 **Flight Recorder** | Live audit tail with dynamic columns, drag-and-drop layout, CSV export, and session drill-down |
 | 📊 **Analytics & Process Tree** | Session-level charts, MITRE tactic breakdown, horizontal React Flow timeline |
 | 🔍 **Behavioral Detection** | Correlated sequence rules — credential exfil, guardrail bypass, recon-then-grab |
-| 🛡️ **Local DLP** | Regex/YARA scanner blocks AWS keys, GitHub tokens, Slack tokens, and PII before tool execution |
+| 🛡️ **Local DLP** | Regex scanner blocks AWS keys, GitHub tokens, Slack tokens, and PII before tool execution |
 | 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
 | 🔐 **Argument hashing** | SHA-256 of tool args by default — plaintext never crosses the wire from hooks |
 | 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, Loki/LogQL, generic webhook, alert webhook on denials |
@@ -288,6 +288,8 @@ Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrie
 ## Behavioral Detection Engine
 
 Per-event MITRE tags say *what* a single tool call is. The detection engine says what a **sequence** of calls means — the signal an EDR cannot see because it never had the agent's session boundary.
+
+> **Alpha limitation — read this before you trust it.** Detections are computed **on demand**, when you query a session (`GET /audit/detections/{correlation_id}`) or open it in the dashboard. They are *not* streamed, *not* forwarded to your SIEM, and they do *not* raise an alert on their own. Today the engine is a forensic tool for a session you already care about, not a live tripwire. Streaming detections to the SIEM sinks is the next milestone.
 
 ```mermaid
 sequenceDiagram
@@ -363,7 +365,7 @@ Dark mode supported with theme toggle. Logo and panels adapt automatically.
 
 ## Forwarding to a SIEM
 
-The SQLite outbox is the **system of record** and never drops events. Forwarders are best-effort.
+For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; the SQLite outbox backs the orchestrator's own runs. Forwarders are best-effort.
 
 | Sink | Env |
 |------|-----|
