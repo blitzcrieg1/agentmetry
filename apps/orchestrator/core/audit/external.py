@@ -153,6 +153,20 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             "input_hash": str(gated.get("input_hash") or ""),
         }
 
+    # DLP verdict — rule metadata only, never the matched value. The hook scans
+    # plaintext before hashing; if we drop the verdict here, a `log`-mode match
+    # (the default mode) leaves no trace anywhere and the DLP engine is a no-op.
+    dlp = payload.get("dlp")
+    if isinstance(dlp, dict) and dlp.get("rule_id"):
+        event["dlp"] = {
+            "rule_id": str(dlp.get("rule_id") or ""),
+            "mode": str(dlp.get("mode") or ""),
+            "pattern_type": str(dlp.get("pattern_type") or "regex"),
+            "category": str(dlp.get("category") or ""),
+            "severity": str(dlp.get("severity") or ""),
+            "rule_ids": [str(r) for r in (dlp.get("rule_ids") or []) if r],
+        }
+
     if payload.get("seq") is not None:
         event["seq"] = payload["seq"]
 

@@ -844,10 +844,14 @@ def hook_main(hook_name: str) -> int:
             tool_name = payload.get("tool", {}).get("qualified", "")
             dlp_verdict = dlp_scan(tool_name, data)
             if dlp_verdict.matched:
+                # Rule metadata only — never the matched value.
                 payload["dlp"] = {
                     "rule_id": dlp_verdict.match.rule_id,
                     "mode": dlp_verdict.mode,
-                    "pattern_type": dlp_verdict.match.pattern_type
+                    "pattern_type": dlp_verdict.match.pattern_type,
+                    "category": dlp_verdict.match.category,
+                    "severity": dlp_verdict.match.severity,
+                    "rule_ids": [m.rule_id for m in (dlp_verdict.matches or [])],
                 }
                 if dlp_verdict.mode == "block":
                     payload["outcome"] = "denied"

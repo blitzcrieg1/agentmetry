@@ -23,6 +23,7 @@ _RUN_ACTION_TYPES = frozenset({
     "tool_called",
     "approval_request",
     "approval_response",
+    "detection",  # correlated findings — must not be filtered out of the feed
 })
 
 
@@ -55,6 +56,10 @@ class ExternalIngestBody(BaseModel):
     triggered_by: str = "manual"
     timestamp_utc: str = ""
     gated_action: dict[str, str] | None = None
+    # DLP verdict from the hook process. It scans plaintext before hashing, so
+    # this is the only place the finding can be captured — without this field
+    # pydantic drops it and a `log`-mode match is silently lost.
+    dlp: dict[str, Any] | None = None
 
 
 def _tail_jsonl(path: Path, *, read_lines: int) -> list[dict]:

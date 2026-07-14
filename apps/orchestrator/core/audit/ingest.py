@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from core.audit.detection.live import build_detection_event, observe
 from core.audit.external import build_external_canonical
 from core.audit.sinks import build_audit_sinks, parse_sink_modes
 from core.config import settings
@@ -154,8 +155,28 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     await sink.emit(canonical)
 
     # Emit any inferred approval_response events derived from the stream.
+    inferred: list[dict[str, Any]] = []
     for extra_payload in infer_approval_payloads(canonical):
-        await sink.emit(build_external_canonical(extra_payload))
+        extra = build_external_canonical(extra_payload)
+        inferred.append(extra)
+        await sink.emit(extra)
+
+    # Correlate as events arrive. A detection that only surfaces when someone
+    # opens the session in the dashboard is not a control — emit it down the
+    # same sinks so it reaches the SIEM and the alert webhook.
+    for event in (canonical, *inferred):
+        for detection in observe(event):
+            try:
+                await sink.emit(build_detection_event(detection, event))
+                logger.warning(
+                    "DETECTION %s [%s] correlation=%s — %s",
+                    detection.rule_id,
+                    detection.severity,
+                    detection.correlation_id,
+                    detection.summary,
+                )
+            except Exception:  # a failed alert must never drop the audit event
+                logger.exception("Failed to emit detection %s", detection.rule_id)
 
     logger.info(
         "Ingested external audit event app=%s type=%s correlation=%s",

@@ -289,7 +289,9 @@ Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrie
 
 Per-event MITRE tags say *what* a single tool call is. The detection engine says what a **sequence** of calls means — the signal an EDR cannot see because it never had the agent's session boundary.
 
-> **Alpha limitation — read this before you trust it.** Detections are computed **on demand**, when you query a session (`GET /audit/detections/{correlation_id}`) or open it in the dashboard. They are *not* streamed, *not* forwarded to your SIEM, and they do *not* raise an alert on their own. Today the engine is a forensic tool for a session you already care about, not a live tripwire. Streaming detections to the SIEM sinks is the next milestone.
+Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else — so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
+
+> **Alpha limitation.** Live correlation state is in-memory and per-process: restarting the orchestrator resets alerting continuity for in-flight sessions. The JSONL trail stays authoritative, so no detection is ever *lost* — it is recomputed on query — but a restart mid-session can delay a live alert. Detection state is not shared across processes.
 
 ```mermaid
 sequenceDiagram
