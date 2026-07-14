@@ -501,3 +501,9 @@ Compliance docs → [docs/compliance/](docs/compliance/)
 ## License
 
 Apache-2.0. Contributions, schema feedback, and detection rules welcome!
+
+---
+
+## Maintainer
+
+Built and maintained by Ioannis L. — connect on [LinkedIn](https://www.linkedin.com/in/ioannis-l-074439194/).
