@@ -28,7 +28,9 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "apps" / "orchestrator"))
 
-BASE = datetime.now(timezone.utc) - timedelta(hours=3)
+# Recent, so the dashboard's default time window (last hour) shows the story
+# without the viewer having to widen it.
+BASE = datetime.now(timezone.utc) - timedelta(minutes=12)
 _clock = {"t": 0}
 
 

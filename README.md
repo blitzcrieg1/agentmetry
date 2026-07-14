@@ -112,8 +112,15 @@ python scripts/demo_dashboard.py      # seeds 5 sessions + 4 detections, serves 
 ```
 
 One command seeds a realistic demo trail and serves the dashboard locally — no
-API key, no cloud. See the [dashboard tour](docs/dashboard-tour.md) for what each
-view shows and how to read it.
+API key, no cloud.
+
+<p align="center">
+  <img src="docs/assets/dashboard.png" alt="The Agentmetry flight recorder dashboard: a live feed of tool calls from Cursor, Claude, and Antigravity, each tagged with its MITRE ATT&CK technique. A credential-access read of ~/.ssh/id_rsa is highlighted in red." width="900">
+</p>
+
+Every tool call, tagged with MITRE ATT&CK as it streams in — credential access
+in red. See the [dashboard tour](docs/dashboard-tour.md) for what each view shows
+and how to read it.
 
 ### Prerequisites
 

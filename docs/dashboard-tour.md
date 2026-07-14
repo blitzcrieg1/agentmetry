@@ -34,6 +34,8 @@ credential-exfil session through the real ingest API with no server at all
 | `sess-cron-*` | Agentmetry (autonomous) | **HIGH `autonomous-unapproved-write`** — a cron agent writes and deletes with no human approval. |
 | `sess-recon-*` | Codex | **MEDIUM `discovery-then-collect`** — a burst of globs, then a file read. |
 
+![The Agentmetry flight recorder — a live feed of tool calls tagged with MITRE ATT&CK, credential access in red](assets/dashboard.png)
+
 ## What the dashboard shows
 
 1. **Live event feed** — every tool call, denial, and approval as it happens,

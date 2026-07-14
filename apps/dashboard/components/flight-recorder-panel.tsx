@@ -286,7 +286,7 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
     }
   },
   command: {
-    id: "command", label: "Command", widthClass: "min-w-0 flex-1",
+    id: "command", label: "Command", widthClass: "min-w-[200px] flex-1",
     render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 font-mono text-sm" title={e.tool?.command || ""}>{e.tool?.command || "—"}</div>
   },
   source: {
@@ -331,7 +331,10 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   }
 };
 
-export const DEFAULT_COLUMNS: ColumnId[] = ["time", "action", "tool", "mitre", "command", "source", "actor", "model", "skill", "reason", "mcp_server", "host_id"];
+// The eight columns that carry the story. The rest (model, skill, host, mcp,
+// session id, agent, initiator) are one click away in the Columns manager —
+// twelve-by-default overflowed the viewport and collapsed the Command column.
+export const DEFAULT_COLUMNS: ColumnId[] = ["time", "action", "tool", "mitre", "command", "source", "actor", "reason"];
 
 function EventRow({ event, highlight, onViewSession, columns }: { event: AuditEvent; highlight: boolean; onViewSession?: (corrId: string) => void; columns: ColumnId[] }) {
   const [open, setOpen] = useState(false);
@@ -1015,7 +1018,8 @@ export function FlightRecorderPanel() {
             window or a Tier B source (Cursor, Antigravity).
           </p>
         ) : (
-          <>
+          <div className="overflow-x-auto">
+            <div className="w-full min-w-[1200px]">
             <div className="flex w-full items-center gap-4 px-4 py-1.5 text-left text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mb-1">
               <div className="w-4 shrink-0"></div>
               {columns.map(colId => {
@@ -1045,7 +1049,8 @@ export function FlightRecorderPanel() {
                 onViewSession={(corrId) => void openSession(corrId)}
               />
             ))}
-          </>
+            </div>
+          </div>
         )}
       </div>
 
