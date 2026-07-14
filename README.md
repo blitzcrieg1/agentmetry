@@ -77,6 +77,25 @@ We do that by:
 
 Agentmetry runs fully locally. The audit trail never leaves your machine unless you explicitly forward it.
 
+### See it catch something first (30 seconds)
+
+No server, no API key, no config. Clone and run:
+
+```bash
+git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
+pip install -r apps/orchestrator/requirements.txt
+python scripts/demo.py
+```
+
+It replays an agent session through the real ingest API: the agent reads an SSH
+private key, runs a command containing an AWS key, then fetches a URL. Agentmetry
+tags each call with MITRE ATT&CK, catches the AWS key with DLP (storing the rule,
+never the value), and then — without being asked — **correlates the key read with
+the network call and fires a `CRITICAL` credential-exfil detection.**
+
+No single one of those events is an alert. The sequence is. That is the whole
+product in one screen.
+
 ### Prerequisites
 
 | Requirement | Version |
