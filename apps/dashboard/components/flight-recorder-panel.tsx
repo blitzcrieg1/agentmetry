@@ -152,6 +152,11 @@ function outcomeDot(outcome?: string): string {
   switch (outcome) {
     case "success":
       return "bg-emerald-400";
+    case "critical":  // detection severity
+      return "bg-red-500 animate-pulse";
+    case "high":
+    case "medium":    // detection severity
+      return "bg-amber-400";
     case "denied":
     case "error":
       return "bg-red-400";
@@ -165,6 +170,11 @@ function outcomeDot(outcome?: string): string {
 function rowOutcomeClass(outcome?: string, highlight?: boolean): string {
   if (highlight) return "border-emerald-500/40 bg-violet-950/25";
   switch (outcome) {
+    case "critical":  // detection severity
+      return "border-red-500/70 bg-red-950/40";
+    case "high":
+    case "medium":    // detection severity
+      return "border-amber-600/60 bg-amber-950/25";
     case "denied":
     case "error":
       return "border-red-900/50 bg-red-950/20";
@@ -737,7 +747,10 @@ export function FlightRecorderPanel() {
       const type = ev.action?.type ?? "";
       if (eventTypeFilter !== "all" && type !== eventTypeFilter) return false;
       const outcome = ev.action?.outcome ?? "";
-      const isIssue = outcome === "denied" || outcome === "error";
+      // A detection's outcome IS its severity (critical/high/medium), not a
+      // standard outcome — group it with issues so it isn't silently filtered out.
+      const isDetection = type === "detection";
+      const isIssue = outcome === "denied" || outcome === "error" || isDetection;
       const outcomeOk =
         (outcome === "success" && outcomeFilters.success) ||
         (outcome === "pending" && outcomeFilters.pending) ||

