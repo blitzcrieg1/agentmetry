@@ -23,19 +23,19 @@ Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
   <a href="#install--quick-start"><strong>Quickstart</strong></a> ·
   <a href="docs/agentmetry-external-ingest.md"><strong>Docs</strong></a> ·
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
-  <a href="docs/market_analysis.md"><strong>Roadmap</strong></a> ·
+  <a href="ROADMAP.md"><strong>Roadmap</strong></a> ·
   <a href="#security"><strong>Security</strong></a>
 </p>
 
 </div>
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="Agentmetry demo: an agent reads an SSH private key, runs a command containing an AWS key, then fetches a URL. Agentmetry tags each call with MITRE ATT&CK, catches the key with DLP without storing its value, and fires a CRITICAL credential-exfil detection by correlating the key read with the network call." width="760">
+  <img src="docs/assets/dashboard.png" alt="The Agentmetry flight recorder dashboard: a live feed of tool calls from Cursor, Claude, and Antigravity, each tagged with its MITRE ATT&CK technique, with a credential-access read of ~/.ssh/id_rsa highlighted in red." width="880">
 </p>
 
 <p align="center">
-  <em>No single event above is an alert. The <strong>sequence</strong> is.<br>
-  Reproduce it yourself: <code>python scripts/demo.py</code> — no server, no API key, no config.</em>
+  <em>Every AI-agent tool call, tagged with MITRE ATT&CK as it happens — and a
+  <strong>correlated alert</strong> when a sequence of innocent-looking calls adds up to an attack.</em>
 </p>
 
 ---
@@ -102,6 +102,10 @@ tags each call with MITRE ATT&CK, catches the AWS key with DLP (storing the rule
 never the value), and then — without being asked — **correlates the key read with
 the network call and fires a `CRITICAL` credential-exfil detection.**
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Terminal replay: an agent reads an SSH private key and an AWS key, then fetches a URL; Agentmetry tags each call with MITRE ATT&CK, flags the AWS key with DLP without storing it, and fires a CRITICAL credential-exfil detection." width="760">
+</p>
+
 No single one of those events is an alert. The sequence is. That is the whole
 product in one screen.
 
@@ -112,15 +116,8 @@ python scripts/demo_dashboard.py      # seeds 5 sessions + 4 detections, serves 
 ```
 
 One command seeds a realistic demo trail and serves the dashboard locally — no
-API key, no cloud.
-
-<p align="center">
-  <img src="docs/assets/dashboard.png" alt="The Agentmetry flight recorder dashboard: a live feed of tool calls from Cursor, Claude, and Antigravity, each tagged with its MITRE ATT&CK technique. A credential-access read of ~/.ssh/id_rsa is highlighted in red." width="900">
-</p>
-
-Every tool call, tagged with MITRE ATT&CK as it streams in — credential access
-in red. Click a flagged session and the detection is right there, with the full
-event drilled open beneath it:
+API key, no cloud. Click a flagged session and the detection is right there, with
+the full event drilled open beneath it:
 
 <p align="center">
   <img src="docs/assets/dashboard-detection.png" alt="A pinned session in Agentmetry showing a CRITICAL credential-exfil detection banner — credential access followed by network egress, T1552.004 to T1071.001 — above the expanded event detail for the id_rsa read." width="900">
@@ -333,7 +330,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | **Policy engines** | Regex DLP manifest (`policies/dlp/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
-Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or see [docs/market_analysis.md](docs/market_analysis.md) for the contributor roadmap.
+Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or the [roadmap](ROADMAP.md).
 
 ---
 
@@ -398,7 +395,7 @@ flowchart LR
 | `AGENTMETRY_DLP_PII` | `1` | Enable PII rules (SSN, etc.) |
 | `AGENTMETRY_DLP_RULES_PATH` | `policies/dlp/manifest.yaml` | Custom rule manifest |
 
-Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, and US SSN patterns. Add custom regex rules without touching Python — drop entries into the manifest.
+Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python — drop entries into the manifest.
 
 ---
 
@@ -429,7 +426,6 @@ For agents captured via IDE hooks (the common case), the canonical JSONL trail i
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
 | **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
 
-Legacy `AGENTMETRY_*` variables are still accepted as aliases during the transition.
 
 Homelab SIEM with Loki + Grafana:
 
@@ -470,7 +466,7 @@ Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM ada
 | Detection rules | `apps/orchestrator/core/audit/detection/rules.py` |
 | DLP rules | `policies/dlp/manifest.yaml` |
 | Sigma pack | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
-| Roadmap | [docs/market_analysis.md](docs/market_analysis.md) |
+| Roadmap | [ROADMAP.md](ROADMAP.md) |
 
 Run tests before opening a PR:
 

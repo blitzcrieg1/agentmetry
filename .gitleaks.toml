@@ -17,4 +17,7 @@ paths = [
   '''apps/orchestrator/tests/test_redaction\.py''',
   '''apps/orchestrator/tests/test_mitre_dlp\.py''',
   '''tests/test_dlp_scanner\.py''',
+  # The DLP rule manifest is regex patterns describing secrets (incl. the
+  # "-----BEGIN PRIVATE KEY-----" marker), not secrets themselves.
+  '''policies/dlp/manifest\.yaml''',
 ]

@@ -28,6 +28,20 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  - id: "bearer_token"
+    name: "Authorization Bearer Token"
+    description: "Detects Bearer tokens in Authorization headers"
+    pattern: "(?i)bearer\\s+[a-z0-9._~+/-]{20,}=*"
+    category: "credentials"
+    severity: "critical"
+
+  - id: "private_key"
+    name: "Private Key Block"
+    description: "Detects PEM private key material (RSA/EC/OpenSSH/PGP)"
+    pattern: "-----BEGIN (?:RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----"
+    category: "credentials"
+    severity: "critical"
+
   - id: "us_ssn"
     name: "US Social Security Number"
     description: "Detects standard US SSN format"
