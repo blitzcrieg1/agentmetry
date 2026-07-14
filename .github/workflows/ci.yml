@@ -14,6 +14,10 @@ jobs:
         working-directory: apps/orchestrator
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks scans the pushed commit range; a shallow clone can't walk it
+          # (surfaces as "failed to scan Git repository: stderr is not empty").
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
