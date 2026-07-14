@@ -1,9 +1,20 @@
 # gitleaks config — keep the default rule set, allowlist known synthetic fixtures.
+#
+# A secret-scanning project necessarily contains secret-SHAPED strings: the DLP
+# and redaction tests must feed the scanner realistic credentials to prove it
+# catches them. These are published non-functional examples (e.g. AWS's own
+# AKIAIOSFODNN7EXAMPLE), never real credentials.
+#
+# Only whole test files are path-allowlisted. Production code is NOT allowlisted
+# by path — if a fixture is needed there, mark that single line `gitleaks:allow`
+# so a real secret can never hide behind a broad exemption.
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Synthetic secret-shaped fixtures used to test command-secret scrubbing (no real credentials)."
+description = "Synthetic secret-shaped fixtures used to test DLP + command-secret scrubbing (no real credentials)."
 paths = [
   '''apps/orchestrator/tests/test_redaction\.py''',
+  '''apps/orchestrator/tests/test_mitre_dlp\.py''',
+  '''tests/test_dlp_scanner\.py''',
 ]
