@@ -27,42 +27,76 @@ def _m(tactic_id: str, tactic: str, technique_id: str, technique: str) -> dict[s
     }
 
 
-# Tool method (segment after the last '.') -> technique.
+def _norm(name: str) -> str:
+    """Fold a tool method to a comparable key.
+
+    IDE agents spell the same action three different ways — Cursor ships
+    `SearchAndReplace`, Claude ships `WebFetch`, our drivers ship `read_file`.
+    Dropping case and separators means one entry covers all spellings; without
+    this, `web_search` matched but `WebSearch` silently did not, and an unmapped
+    network call means the credential-exfil rule can never fire.
+    """
+    return name.lower().replace("_", "").replace("-", "")
+
+
+_EXECUTION = _m("TA0002", "Execution", "T1059", "Command and Scripting Interpreter")
+_COLLECTION = _m("TA0009", "Collection", "T1005", "Data from Local System")
+_DISCOVERY = _m("TA0007", "Discovery", "T1083", "File and Directory Discovery")
+_MANIPULATION = _m("TA0040", "Impact", "T1565", "Data Manipulation")
+_DESTRUCTION = _m("TA0040", "Impact", "T1485", "Data Destruction")
+_C2 = _m("TA0011", "Command and Control", "T1071.001", "Web Protocols")
+
+# Normalized tool method -> technique. Keys are _norm()'d at build time.
 _TOOL_MAP: dict[str, dict[str, str]] = {
-    # Execution
-    "run_command": _m("TA0002", "Execution", "T1059", "Command and Scripting Interpreter"),
-    "run_terminal_cmd": _m("TA0002", "Execution", "T1059", "Command and Scripting Interpreter"),
-    "shell": _m("TA0002", "Execution", "T1059", "Command and Scripting Interpreter"),
-    "bash": _m("TA0002", "Execution", "T1059.004", "Unix Shell"),
-    "powershell": _m("TA0002", "Execution", "T1059.001", "PowerShell"),
-    "exec": _m("TA0002", "Execution", "T1059", "Command and Scripting Interpreter"),
-    # Collection
-    "read_file": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "read_note": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "view_file": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "read": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "grep_search": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "grep": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    "codebase_search": _m("TA0009", "Collection", "T1005", "Data from Local System"),
-    # Discovery
-    "list_dir": _m("TA0007", "Discovery", "T1083", "File and Directory Discovery"),
-    "glob": _m("TA0007", "Discovery", "T1083", "File and Directory Discovery"),
-    "ls": _m("TA0007", "Discovery", "T1083", "File and Directory Discovery"),
-    # Impact / Manipulation
-    "write_file": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "write_to_file": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "write": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "edit_file": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "edit": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "replace_file_content": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "multi_replace_file_content": _m("TA0040", "Impact", "T1565", "Data Manipulation"),
-    "delete_file": _m("TA0040", "Impact", "T1485", "Data Destruction"),
-    # Command & Control / network
-    "curl": _m("TA0011", "Command and Control", "T1071.001", "Web Protocols"),
-    "wget": _m("TA0011", "Command and Control", "T1071.001", "Web Protocols"),
-    "fetch": _m("TA0011", "Command and Control", "T1071.001", "Web Protocols"),
-    "http_request": _m("TA0011", "Command and Control", "T1071.001", "Web Protocols"),
-    "web_search": _m("TA0011", "Command and Control", "T1071.001", "Web Protocols"),
+    _norm(k): v
+    for k, v in {
+        # Execution
+        "run_command": _EXECUTION,
+        "run_terminal_cmd": _EXECUTION,
+        "run": _EXECUTION,  # shell.run
+        "shell": _EXECUTION,
+        "exec": _EXECUTION,
+        "terminal": _EXECUTION,
+        "bash": _m("TA0002", "Execution", "T1059.004", "Unix Shell"),
+        "powershell": _m("TA0002", "Execution", "T1059.001", "PowerShell"),
+        # Collection
+        "read_file": _COLLECTION,
+        "read_note": _COLLECTION,
+        "view_file": _COLLECTION,
+        "read": _COLLECTION,
+        "grep_search": _COLLECTION,
+        "grep": _COLLECTION,
+        "codebase_search": _COLLECTION,
+        "search": _COLLECTION,
+        # Discovery
+        "list_dir": _DISCOVERY,
+        "glob": _DISCOVERY,
+        "ls": _DISCOVERY,
+        "find": _DISCOVERY,
+        # Impact / Manipulation
+        "write_file": _MANIPULATION,
+        "write_to_file": _MANIPULATION,
+        "write": _MANIPULATION,
+        "edit_file": _MANIPULATION,
+        "edit": _MANIPULATION,
+        "multi_edit": _MANIPULATION,  # Claude MultiEdit
+        "search_and_replace": _MANIPULATION,  # Cursor SearchAndReplace
+        "notebook_edit": _MANIPULATION,
+        "replace_file_content": _MANIPULATION,
+        "multi_replace_file_content": _MANIPULATION,
+        # Impact / Destruction — the highest-severity impact; must not be missed.
+        "delete_file": _DESTRUCTION,
+        "delete": _DESTRUCTION,  # cursor.Delete
+        "remove": _DESTRUCTION,
+        # Command & Control / network egress. TA0011 here is what lets the
+        # credential-exfil sequence rule fire, so keep this list generous.
+        "curl": _C2,
+        "wget": _C2,
+        "fetch": _C2,
+        "web_fetch": _C2,  # Claude WebFetch
+        "web_search": _C2,  # Claude WebSearch
+        "http_request": _C2,
+    }.items()
 }
 
 # Content upgrades — fire on evidence text, highest-signal first.
@@ -110,13 +144,12 @@ def get_mitre_mapping(
         if any(p in text for p in _CREDENTIAL_PATTERNS):
             return _CREDENTIAL_ACCESS
 
-    # 2. Tool-name mapping: exact qualified name, then the method segment.
-    if tool_qualified in _TOOL_MAP:
-        return _TOOL_MAP[tool_qualified]
-    method = tool_qualified.rsplit(".", 1)[-1].lower() if tool_qualified else ""
-    if method in _TOOL_MAP:
-        return _TOOL_MAP[method]
-    return None
+    # 2. Tool-name mapping on the method segment (the part after the last '.'),
+    #    normalized so Cursor/Claude/driver spellings all land on one entry.
+    if not tool_qualified:
+        return None
+    method = _norm(tool_qualified.rsplit(".", 1)[-1])
+    return _TOOL_MAP.get(method)
 
 
 # Backwards-compatible alias for any callers importing the old name.
