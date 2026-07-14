@@ -119,8 +119,15 @@ API key, no cloud.
 </p>
 
 Every tool call, tagged with MITRE ATT&CK as it streams in — credential access
-in red. See the [dashboard tour](docs/dashboard-tour.md) for what each view shows
-and how to read it.
+in red. Click a flagged session and the detection is right there, with the full
+event drilled open beneath it:
+
+<p align="center">
+  <img src="docs/assets/dashboard-detection.png" alt="A pinned session in Agentmetry showing a CRITICAL credential-exfil detection banner — credential access followed by network egress, T1552.004 to T1071.001 — above the expanded event detail for the id_rsa read." width="900">
+</p>
+
+See the [dashboard tour](docs/dashboard-tour.md) for what each view shows and how
+to read it.
 
 ### Prerequisites
 

@@ -47,6 +47,21 @@ credential-exfil session through the real ingest API with no server at all
 4. **Correlated detections** — the red/amber banners. No single row is an alert;
    the *sequence* is. Click one to pin the full session.
 
+## Drilling into a detection
+
+Click a flagged session to pin it. The correlated detection sits at the top as a
+banner, and every event in the session is right there to expand — MITRE mapping,
+event id, hashed input, and the raw JSON:
+
+![A pinned session showing the CRITICAL credential-exfil detection banner above the expanded id_rsa event](assets/dashboard-detection.png)
+
+## Analytics
+
+The Analytics tab rolls the trail up: action outcomes, activity by source, and
+the MITRE ATT&CK tactics observed across your agents.
+
+![Analytics view: action-outcome donut, activity-by-source bars, and a MITRE ATT&CK tactics bar chart](assets/dashboard-analytics.png)
+
 ## How to work the console
 
 1. **Scan for red.** Severity is encoded in colour and a left stripe — a quiet
