@@ -29,6 +29,15 @@ Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
 
 </div>
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Agentmetry demo: an agent reads an SSH private key, runs a command containing an AWS key, then fetches a URL. Agentmetry tags each call with MITRE ATT&CK, catches the key with DLP without storing its value, and fires a CRITICAL credential-exfil detection by correlating the key read with the network call." width="760">
+</p>
+
+<p align="center">
+  <em>No single event above is an alert. The <strong>sequence</strong> is.<br>
+  Reproduce it yourself: <code>python scripts/demo.py</code> — no server, no API key, no config.</em>
+</p>
+
 ---
 
 > 🚧 **Public Alpha**: Core capture, replay, and SIEM forwarding are usable for early exploration. APIs and integration surfaces may evolve rapidly.

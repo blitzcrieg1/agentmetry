@@ -22,6 +22,7 @@ The point: no single event above is an alert. The *sequence* is.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -38,7 +39,11 @@ C = {
     "dim": "\033[2m", "red": "\033[91m", "green": "\033[92m", "yellow": "\033[93m",
     "blue": "\033[96m", "bold": "\033[1m", "off": "\033[0m",
 }
-if not sys.stdout.isatty():
+# AGENTMETRY_DEMO_COLOR=1 keeps the ANSI codes when stdout is a pipe, so the GIF
+# recorder renders the demo's real output instead of a hand-written mock-up.
+_FORCE_COLOR = os.environ.get("AGENTMETRY_DEMO_COLOR", "").strip() in ("1", "true", "yes")
+_FAST = os.environ.get("AGENTMETRY_DEMO_FAST", "").strip() in ("1", "true", "yes")
+if not sys.stdout.isatty() and not _FORCE_COLOR:
     C = dict.fromkeys(C, "")
 
 # A Windows console defaults to cp1252 and cannot encode box-drawing characters.
@@ -56,7 +61,8 @@ def say(text: str = "", pause: float = 0.45) -> None:
     except UnicodeEncodeError:
         print(text.encode("ascii", "replace").decode("ascii"))
     sys.stdout.flush()
-    time.sleep(pause)
+    if not _FAST:
+        time.sleep(pause)
 
 
 def rule(title: str) -> None:
@@ -97,7 +103,9 @@ def main() -> int:
 
         rule("AGENTMETRY — local flight recorder for AI agents")
         say(f"{C['dim']}Replaying an agent session through the real ingest API.{C['off']}")
-        say(f"{C['dim']}Trail: {settings.audit_export_path}{C['off']}", 0.8)
+        # Deliberately not the absolute path: this output gets recorded into a
+        # public GIF, and the temp dir contains the operator's username.
+        say(f"{C['dim']}Trail: <temp>/audit-forward.jsonl  (throwaway){C['off']}", 0.8)
 
         rule("The session")
 
@@ -169,13 +177,13 @@ def main() -> int:
         rule("The receipts")
         raw = settings.audit_export_path.read_text(encoding="utf-8")
         leaked = FAKE_AWS_KEY in raw
-        say(f"  Secret value written to the trail?  "
-            f"{C['red']+'YES — BUG' if leaked else C['green']+'NO'}{C['off']}")
-        say(f"  Detection also queryable at        {C['dim']}GET /api/v1/audit/detections/{corr}{C['off']}")
         api_count = client.get(f"/api/v1/audit/detections/{corr}").json()["count"]
-        say(f"  Detections from the trail:          {C['bold']}{api_count}{C['off']}")
-        say(f"  Events forwarded to SIEM sinks:     {C['bold']}{len(events)}{C['off']} "
-            f"{C['dim']}(file here; Loki/Elastic/Splunk in prod){C['off']}")
+        say(f"  Secret value in the trail?   "
+            f"{C['red']+'YES - BUG' if leaked else C['green']+'NO'}{C['off']}")
+        say(f"  Detections from the trail:   {C['bold']}{api_count}{C['off']} "
+            f"{C['dim']}via GET /api/v1/audit/detections/{{id}}{C['off']}")
+        say(f"  Events sent to SIEM sinks:   {C['bold']}{len(events)}{C['off']} "
+            f"{C['dim']}(Loki / Elastic / Splunk){C['off']}")
         say(f"\n{C['dim']}Everything above stayed on this machine. Zero egress.{C['off']}\n", 0.2)
         return 1 if leaked else 0
     finally:
