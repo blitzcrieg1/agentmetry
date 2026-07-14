@@ -1,24 +1,7 @@
 <svg width="176" height="176" viewBox="0 0 176 176" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agentmetry">
-  <!-- Radar sweep — telemetry arc behind the A -->
-  <path
-    d="M118 14C156 26 172 62 172 96C172 128 154 154 126 166"
-    stroke="currentColor"
-    stroke-width="12"
-    stroke-linecap="round"
-    fill="none"
-    opacity="0.55"
-  />
-  <!-- A monogram -->
-  <path
-    fill-rule="evenodd"
-    clip-rule="evenodd"
-    d="M88 22L42 154H62L72 116H104L114 154H134L88 22ZM88 54L78 102H98L88 54Z"
-    fill="currentColor"
-  />
-  <!-- Audit trail lines -->
-  <rect x="66" y="118" width="36" height="4.5" rx="2.25" fill="currentColor" opacity="0.85"/>
-  <rect x="66" y="128" width="28" height="4.5" rx="2.25" fill="currentColor" opacity="0.6"/>
-  <rect x="66" y="138" width="32" height="4.5" rx="2.25" fill="currentColor" opacity="0.4"/>
-  <!-- Record pulse -->
-  <circle cx="88" cy="22" r="7" fill="#F97316"/>
+  <!-- Chevron "A" — one idea, so it survives 16px. The dot is both the letter's
+       counter and the record light of a flight recorder. Inherits currentColor,
+       so the same file works on light and dark; the record dot stays orange. -->
+  <path d="M88 24 L152 150 H120 L88 84 L56 150 H24 Z" fill="currentColor"/>
+  <circle cx="88" cy="124" r="15" fill="#F97316"/>
 </svg>
