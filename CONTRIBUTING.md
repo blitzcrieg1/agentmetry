@@ -63,6 +63,37 @@ push. All four must pass.
 
 Do **not** open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).
 
-## License
+## Contributor License Agreement (CLA)
 
-By contributing, you agree your contributions are licensed under Apache-2.0.
+All pull requests require a signed **[Individual CLA (CLA.md)](CLA.md)** before merge.
+
+1. Open your pull request.
+2. The CLA Assistant bot will comment with signing instructions.
+3. Reply to that comment with exactly: **`I have read the CLA Document and I hereby sign the CLA`**
+4. The bot records your GitHub username in `signatures/version1/cla.json`.
+
+**What you are agreeing to:** You retain copyright in your contribution. You grant
+the Project Owner (blitzcrieg1) the rights in CLA.md — including use under
+**Apache 2.0** and the **right to relicense** your contribution under other terms
+(including commercial licenses). See the plain-language summary at the top of
+CLA.md.
+
+**Employer contributions:** If you contribute on behalf of a company, your employer
+must approve via [CCLA.md](CCLA.md) or an equivalent written authorization.
+
+**AI-assisted contributions:** You are responsible for reviewing and licensing any
+code you submit, including output from generative AI tools (CLA.md §7).
+
+We do **not** require Developer Certificate of Origin (DCO) sign-off; the CLA
+covers inbound licensing.
+
+## Maintainer: branch protection
+
+Require the CLA check before merging to the default branch:
+
+1. GitHub → **Settings** → **Branches** → branch protection for `master`
+2. Enable **Require status checks to pass**
+3. Require the check named **`CLA Assistant`** (or the status context emitted on PRs)
+4. Enable **Require pull request reviews** as appropriate for your team
+
+See also [COMMERCIAL.md](COMMERCIAL.md) for non-binding commercial-licensing intent.

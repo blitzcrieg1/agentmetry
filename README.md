@@ -512,13 +512,7 @@ Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM ada
 | Sigma pack | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
 | Roadmap | [ROADMAP.md](ROADMAP.md) |
 
-Run tests before opening a PR:
-
-```powershell
-cd apps\orchestrator
-python -m ruff check core api tests
-python -m pytest -q
-```
+Run tests before opening a PR — see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs require a signed [CLA](CLA.md)** (v1.0).
 
 ---
 
@@ -540,7 +534,11 @@ Compliance docs → [docs/compliance/](docs/compliance/)
 
 ## License
 
-Apache-2.0. Contributions, schema feedback, and detection rules welcome!
+Apache-2.0 — Copyright 2026 blitzcrieg1. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Contributors sign the [Individual CLA (v1.0)](CLA.md); companies use [CCLA.md](CCLA.md).
+Trademark policy: [TRADEMARK.md](TRADEMARK.md). Commercial intent (non-binding):
+[COMMERCIAL.md](COMMERCIAL.md).
 
 ---
 
