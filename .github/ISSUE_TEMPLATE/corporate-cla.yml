@@ -1,0 +1,63 @@
+name: Corporate CLA (CCLA) request
+description: Request a Corporate Contributor License Agreement for your organization
+title: "CCLA: [Company legal name]"
+labels:
+  - legal
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to request a **Corporate CLA (CCLA)** for employees contributing
+        to Agentmetry. See [CCLA.md](../blob/master/CCLA.md) for the agreement text.
+
+        For individual contributors, sign via the CLA bot on your pull request instead.
+
+  - type: input
+    id: company
+    attributes:
+      label: Legal entity name
+      description: Full registered company name
+      placeholder: Example Security GmbH
+    validations:
+      required: true
+
+  - type: input
+    id: jurisdiction
+    attributes:
+      label: Jurisdiction / country
+      placeholder: Germany
+    validations:
+      required: true
+
+  - type: input
+    id: signatory
+    attributes:
+      label: Authorized signatory (name and title)
+      placeholder: Jane Doe, General Counsel
+    validations:
+      required: true
+
+  - type: textarea
+    id: contributors
+    attributes:
+      label: GitHub usernames or org covered by this CCLA
+      description: One per line
+      placeholder: |
+        blitzcrieg1
+        acme-corp-engineering
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Confirmation
+      options:
+        - label: I am authorized to request a CCLA on behalf of this organization and agree to CCLA v1.0 terms
+          required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes (optional)
+      description: Billing contact, security review requirements, etc.
