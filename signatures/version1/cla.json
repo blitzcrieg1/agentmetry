@@ -1,52 +1,12 @@
 {
-  "signedContributors": [
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994037580,
-      "created_at": "2026-07-16T16:05:48Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    },
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994109075,
-      "created_at": "2026-07-16T16:13:37Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    },
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994149958,
-      "created_at": "2026-07-16T16:18:11Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    },
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994238350,
-      "created_at": "2026-07-16T16:28:05Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    },
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994296650,
-      "created_at": "2026-07-16T16:34:23Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    },
-    {
-      "name": "blitzcrieg1",
-      "id": 44038245,
-      "comment_id": 4994319954,
-      "created_at": "2026-07-16T16:36:58Z",
-      "repoId": 1287296895,
-      "pullRequestNo": 9
-    }
-  ]
+   "signedContributors": [
+      {
+         "name": "blitzcrieg1",
+         "id": 44038245,
+         "comment_id": 4994319954,
+         "created_at": "2026-07-16T16:36:58Z",
+         "repoId": 1287296895,
+         "pullRequestNo": 9
+      }
+   ]
 }
