@@ -15,8 +15,9 @@ item matters to you, open or upvote an [issue](https://github.com/blitzcrieg1/ag
   scrubbing before storage.
 - **Correlated detection** — a sequence-rule engine that fires on patterns a
   single event can't reveal: `credential-exfil`, `approval-denied-then-executed`,
-  `autonomous-unapproved-write`, `discovery-then-collect`. Detections stream to
-  the sinks as first-class events, not just on query.
+  `encoded-command-download`, `autonomous-unapproved-write`,
+  `discovery-then-collect`. Detections stream to the sinks as first-class
+  events, not just on query.
 - **SIEM forwarding** — file, webhook, Elastic ECS, Splunk HEC, Loki/LogQL, plus
   a Sigma pack and an alert webhook.
 - **Dashboard** — live flight recorder, session drill-down, analytics.

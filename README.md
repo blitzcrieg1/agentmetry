@@ -74,7 +74,7 @@ We do that by:
 
 - **Intercepting** agent tool calls through IDE lifecycle hooks (Cursor, Claude Code, Codex, Antigravity) and an MCP stdio audit proxy
 - **Normalizing** every event into a canonical schema v1.1.0 with MITRE ATT&CK enrichment and SHA-256 argument hashing
-- **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, recon-then-grab)
+- **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, raw-IP download cradles, recon-then-grab)
 - **Blocking** secrets and PII at the hook boundary with a local regex DLP engine (`log` or `block` mode)
 - **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook — without making the cloud the system of record
 
@@ -112,7 +112,8 @@ product in one screen.
 ### See the dashboard with a story in it
 
 ```bash
-python scripts/demo_dashboard.py      # seeds 5 sessions + 4 detections, serves http://127.0.0.1:8010/
+python scripts/demo_dashboard.py            # seeds 7 sessions + 5 detections, serves http://127.0.0.1:8010/
+python scripts/demo_dashboard.py --live     # ...and streams synthetic agent traffic in real time
 ```
 
 One command seeds a realistic demo trail and serves the dashboard locally — no
@@ -311,7 +312,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | --- | --- |
 | 🎥 **Flight Recorder** | Live audit tail with dynamic columns, drag-and-drop layout, CSV export, and session drill-down |
 | 📊 **Analytics & Process Tree** | Session-level charts, MITRE tactic breakdown, horizontal React Flow timeline |
-| 🔍 **Behavioral Detection** | Correlated sequence rules — credential exfil, guardrail bypass, recon-then-grab |
+| 🔍 **Behavioral Detection** | Correlated sequence rules: credential exfil, guardrail bypass, raw-IP download cradles, recon-then-grab |
 | 🛡️ **Local DLP** | Regex scanner blocks AWS keys, GitHub tokens, Slack tokens, and PII before tool execution |
 | 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
 | 🔐 **Argument hashing** | SHA-256 of tool args by default — plaintext never crosses the wire from hooks |
@@ -355,6 +356,8 @@ sequenceDiagram
   Note over ENG: Rules run over time-ordered session events
   ENG->>ENG: credential-exfil
   ENG->>ENG: approval-denied-then-executed
+  ENG->>ENG: encoded-command-download
+  ENG->>ENG: autonomous-unapproved-write
   ENG->>ENG: discovery-then-collect
   API->>DB: load events for correlation_id
   API->>ENG: run_detections(events)
@@ -365,6 +368,7 @@ sequenceDiagram
 | ------- | -------- | ------- |
 | `credential-exfil` | critical | Credential access (T1552) → network egress (TA0011) |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
+| `encoded-command-download` | critical | Payload fetched and executed from a raw IP (T1105), flagged T1027 when the command is base64-encoded |
 | `autonomous-unapproved-write` | high | Autonomous agent writes/deletes with no prior human approval |
 | `discovery-then-collect` | medium | Filesystem recon burst (TA0007) → data collection |
 

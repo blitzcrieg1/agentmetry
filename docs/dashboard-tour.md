@@ -12,13 +12,18 @@ python scripts/demo_dashboard.py
 # then open the URL it prints:  http://127.0.0.1:8010/
 ```
 
-That seeds a throwaway trail with **5 realistic sessions and 4 real detections**
+That seeds a throwaway trail with **7 realistic sessions and 5 real detections**
 (computed by the actual pipeline — nothing is hand-written into the trail), then
 serves the built dashboard + API locally. It uses port `8010` and a demo-only
 trail file, so it never touches your real audit data.
 
 > The UI needs the dashboard build. If you haven't built it yet:
 > `cd apps/dashboard && npm install && npm run build`.
+
+Want live traffic instead of a static trail? `python scripts/demo_dashboard.py --live`
+streams clearly-synthetic agent activity through the real ingest API every few
+seconds, so MITRE tags and detections appear in real time. Roughly every third
+scene is an attack, so red detection rows show up on their own.
 
 Prefer the terminal? `python scripts/demo.py` replays the flagship
 credential-exfil session through the real ingest API with no server at all
@@ -33,6 +38,8 @@ credential-exfil session through the real ingest API with no server at all
 | `sess-bypass-*` | Antigravity | **CRITICAL `approval-denied-then-executed`** — operator denies `terraform apply`, it runs anyway. |
 | `sess-cron-*` | Agentmetry (autonomous) | **HIGH `autonomous-unapproved-write`** — a cron agent writes and deletes with no human approval. |
 | `sess-recon-*` | Codex | **MEDIUM `discovery-then-collect`** — a burst of globs, then a file read. |
+| `sess-claude-*` | Claude Code | An ordinary debugging session (Read, Grep, Bash, Edit, Write). More baseline noise. |
+| `sess-lolbin-*` | Cursor | **CRITICAL `encoded-command-download`** — an obfuscated `powershell -EncodedCommand`, then a payload fetched from a raw IP. |
 
 ![The Agentmetry flight recorder — a live feed of tool calls tagged with MITRE ATT&CK, credential access in red](assets/dashboard.png)
 
