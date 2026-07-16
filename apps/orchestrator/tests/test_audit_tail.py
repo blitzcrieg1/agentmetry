@@ -295,3 +295,27 @@ def test_audit_detections_empty_for_benign_session(audit_client: TestClient):
     body = audit_client.get("/api/v1/audit/detections/t1").json()
     assert body["count"] == 0
     assert body["detections"] == []
+
+
+def test_evidence_export_endpoint_writes_a_windows_safe_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The route passed datetimes into a date-typed helper; the isoformat colons
+    made an invalid Windows filename and every Export Pack click returned 500.
+    Never caught before because CI runs on Linux, where colons are legal."""
+    import core.audit.evidence_pack as ep
+    from core.config import settings as cfg
+
+    monkeypatch.setattr(cfg, "audit_export_enabled", True)
+    monkeypatch.setattr(cfg, "vault_path", tmp_path)
+    monkeypatch.setattr(
+        ep, "build_evidence_pack", lambda *a, **k: {"meta": {}, "events": []}
+    )
+    from api.main import app
+
+    resp = TestClient(app).get("/api/v1/audit/export/evidence")
+    assert resp.status_code == 200
+    exports = list((tmp_path / "30-Archive" / "exports").glob("evidence-*.json"))
+    assert len(exports) == 1
+    assert ":" not in exports[0].name
+    assert resp.headers["content-type"].startswith("application/json")

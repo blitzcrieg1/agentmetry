@@ -244,20 +244,22 @@ async def audit_detections(correlation_id: str):
 
 @router.get("/export/evidence", dependencies=[Depends(require_api_key)])
 async def audit_export_evidence():
-    """Generate and download a cryptographic evidence pack."""
+    """Generate and download a tamper-evident evidence pack (SHA-256 integrity manifest)."""
     from core.audit.evidence_pack import build_evidence_pack, default_export_path, write_evidence_pack
     from datetime import datetime, timezone
 
-    to_date = datetime.now(timezone.utc)
+    # Dates, not datetimes: `default_export_path` embeds them in the filename,
+    # and a datetime's isoformat carries colons, which Windows rejects.
+    to_date = datetime.now(timezone.utc).date()
     from_date = to_date - timedelta(days=30)  # Export last 30 days
-    
+
     pack = build_evidence_pack(from_date, to_date)
     out_path = default_export_path(from_date, to_date)
     write_evidence_pack(pack, out_path)
-    
+
     return FileResponse(
         path=out_path,
-        media_type="application/zip",
+        media_type="application/json",
         filename=out_path.name,
     )
 
