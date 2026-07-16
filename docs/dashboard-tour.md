@@ -51,8 +51,9 @@ credential-exfil session through the real ingest API with no server at all
    access and network egress render red so the dangerous ones stand out.
 3. **DLP at the boundary** — a secret in a command is flagged before it is
    stored; the rule is recorded, the value never is.
-4. **Correlated detections** — the red/amber banners. No single row is an alert;
-   the *sequence* is. Click one to pin the full session.
+4. **Correlated detections** — the red/amber chips above the feed. No single
+   row is an alert; the *sequence* is. Click a chip to filter the feed to that
+   rule's events; the pin button on the chip loads the full session.
 
 ## Drilling into a detection
 
@@ -73,12 +74,14 @@ the MITRE ATT&CK tactics observed across your agents.
 
 1. **Scan for red.** Severity is encoded in colour and a left stripe — a quiet
    board is a quiet day.
-2. **Pin the session.** Click a detection to load the entire session from the
-   trail (not just the visible window), so you see the full lead-up.
+2. **Pin the session.** The pin button on a detection chip loads the entire
+   session from the trail (not just the visible window), so you see the full
+   lead-up.
 3. **Filter the noise.** Narrow by source, event type, time window, or outcome.
    Search matches tool, command, correlation id, or hash.
-4. **Forward & keep.** Export the view to JSONL/CSV, pull a signed evidence
-   pack, or forward to Loki / Elastic / Splunk. The trail is yours.
+4. **Forward & keep.** Export the view to JSONL/CSV, pull a tamper-evident
+   evidence pack (SHA-256 integrity manifest), or forward to Loki / Elastic /
+   Splunk. The trail is yours.
 
 ## Seed your own scenarios
 

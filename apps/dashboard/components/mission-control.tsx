@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Image from "next/image";
 import {
-  Wifi,
-  WifiOff,
   Activity,
   FileCode2,
   Terminal,
@@ -13,7 +11,8 @@ import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
-import { AuditFreshnessBadge } from "@/components/audit-freshness-badge";
+import { FeedStatusBar } from "@/components/feed-status-bar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 
 export function MissionControl() {
@@ -22,84 +21,89 @@ export function MissionControl() {
   const [activeTab, setActiveTab] = useState<"recorder" | "analytics">("recorder");
 
   const navItems = [
-    { id: "recorder", label: "Event Stream", icon: Terminal },
-    { id: "analytics", label: "Analytics", icon: Activity },
-  ] as const;
+    { id: "recorder" as const, label: "Event stream", icon: Terminal },
+    { id: "analytics" as const, label: "Analytics", icon: Activity },
+  ];
 
   return (
-    <div className="flex h-screen w-full bg-background font-mono text-sm overflow-hidden">
-      {/* Brutalist Sidebar */}
-      <aside className="w-64 border-r border-border bg-card flex flex-col">
-        <div className="p-6 border-b border-border flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-            <Image src="/agentmetry-icon-white.svg" alt="Agentmetry" width={20} height={20} />
-          </div>
-          <div>
-            <h1 className="font-bold tracking-tight text-foreground uppercase">Agentmetry</h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">SIEM Platform</p>
-          </div>
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      <aside className="flex w-14 shrink-0 flex-col border-r border-border bg-card">
+        <div className="flex h-14 items-center justify-center border-b border-border bg-muted/30 dark:bg-transparent">
+          <Image
+            src="/agentmetry-icon-white.svg"
+            alt="Agentmetry"
+            width={22}
+            height={22}
+            className="invert dark:invert-0"
+          />
         </div>
 
-        <nav className="flex-1 p-4 flex flex-col gap-1">
+        <nav className="flex flex-1 flex-col items-center gap-1 py-3">
           {navItems.map((item) => (
             <button
               key={item.id}
+              type="button"
+              title={item.label}
               onClick={() => setActiveTab(item.id)}
-              className={`flex items-center gap-3 px-3 py-2.5 w-full text-left transition-colors border rounded-none ${
-                activeTab === item.id 
-                  ? "bg-accent text-accent-foreground border-border" 
-                  : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground hover:border-border"
+              className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
+                activeTab === item.id
+                  ? "border-border bg-accent text-accent-foreground"
+                  : "border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
               }`}
             >
               <item.icon className="h-4 w-4" />
-              {item.label}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-border flex flex-col gap-3 shrink-0">
+        <div className="flex flex-col items-center gap-2 border-t border-border py-3">
+          <ThemeToggle />
           <a
             href={`${ORCHESTRATOR_URL}/api/v1/audit/export/evidence`}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-center gap-2 border border-border bg-background px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground hover:bg-muted rounded-none"
-            title="Download cryptographically signed compliance pack"
+            title="Export evidence pack (SHA-256 tamper-evident)"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <FileCode2 className="h-4 w-4" />
-            Export Pack
           </a>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 overflow-hidden">
-                <AuditFreshnessBadge />
-            </div>
-            <ConnectionPill connected={wsConnected} />
-          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 bg-background relative">
-        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)", backgroundSize: "32px 32px" }}></div>
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col p-6 overflow-hidden">
-          {activeTab === "recorder" && <FlightRecorderPanel />}
-          {activeTab === "analytics" && <AnalyticsPanel />}
+      <main className="relative flex min-w-0 flex-1 flex-col bg-background">
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+          <div>
+            <h1 className="text-base font-semibold tracking-tight">
+              {activeTab === "recorder" ? "Flight recorder" : "Analytics"}
+            </h1>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              Local SIEM · agent tool-use
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-0.5">
+            <FeedStatusBar wsConnected={wsConnected} />
+            <p className="hidden font-mono text-xs text-muted-foreground sm:block">
+              {ORCHESTRATOR_URL.replace(/^https?:\/\//, "")}
+            </p>
+          </div>
+        </header>
+
+        <div className="relative min-h-0 flex-1 p-3">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-[0.08] dark:opacity-[0.12]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)",
+              backgroundSize: "24px 24px",
+              color: "hsl(var(--foreground) / 0.15)",
+            }}
+          />
+          <div className="relative z-10 flex h-full min-h-0 flex-col">
+            {activeTab === "recorder" ? <FlightRecorderPanel /> : <AnalyticsPanel />}
+          </div>
         </div>
       </main>
     </div>
-  );
-}
-
-function ConnectionPill({ connected }: { connected: boolean }) {
-  return (
-    <span
-      className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border ${
-        connected
-          ? "border-emerald-500/30 bg-emerald-950/40 text-emerald-400"
-          : "border-red-500/30 bg-red-950/30 text-red-400"
-      }`}
-    >
-      {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-      {connected ? "Live" : "Offline"}
-    </span>
   );
 }

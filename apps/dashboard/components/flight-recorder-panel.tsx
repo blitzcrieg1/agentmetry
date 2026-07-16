@@ -2,13 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Copy,
-  Download,
   Play,
-  Radio,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -21,7 +17,11 @@ import type { LucideIcon } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { AuditJsonView } from "@/components/audit-json-view";
+import { eventSourceApp } from "@/lib/audit-source";
+import { DetectionsStrip } from "@/components/detections-strip";
+import { EventHistogram } from "@/components/event-histogram";
+import { EventInspector } from "@/components/event-inspector";
+import { downloadAuditCsv, downloadAuditJsonl } from "@/lib/audit-export";
 
 export interface AuditEvent {
   event_id?: string;
@@ -38,6 +38,7 @@ export interface AuditEvent {
   initiator?: { actor_type?: string; trigger?: string; operator_id?: string };
   model?: { id?: string; provider?: string };
   mcp?: { server_id?: string; tools?: string[] };
+  detection?: Detection;
 }
 
 export interface Detection {
@@ -99,18 +100,6 @@ function mergeEvents(
   return sortEvents(Array.from(byKey.values()));
 }
 
-// Trails written before the Agentmetry rename carry the legacy first-party name.
-const LEGACY_SOURCE_APPS = new Set(["blackbox"]);
-const normalizeSourceApp = (name: string) =>
-  LEGACY_SOURCE_APPS.has(name) ? "agentmetry" : name;
-
-function eventSourceApp(event: AuditEvent): string {
-  if (event.source?.app) return normalizeSourceApp(event.source.app);
-  const agent = event.agent?.name ? normalizeSourceApp(event.agent.name) : "";
-  if (agent && agent !== "agentmetry") return agent;
-  return "agentmetry";
-}
-
 const SOURCE_LABELS: Record<string, string> = {
   agentmetry: "Agentmetry",
   cursor: "Cursor",
@@ -127,16 +116,6 @@ const ACTION_ICONS: Record<string, LucideIcon> = {
   approval_request: ShieldAlert,
   approval_response: ShieldCheck,
 };
-
-function shortCorr(id?: string): string {
-  if (!id) return "—";
-  return id.length > 8 ? `#${id.slice(-4)}` : id;
-}
-
-function shortHash(hash?: string): string {
-  if (!hash) return "";
-  return hash.length > 10 ? `${hash.slice(0, 6)}…` : hash;
-}
 
 function formatTime(ts?: string): string {
   if (!ts) return "—";
@@ -168,25 +147,21 @@ function outcomeDot(outcome?: string): string {
 }
 
 function rowOutcomeClass(outcome?: string, highlight?: boolean): string {
-  if (highlight) return "border-emerald-500/40 bg-violet-950/25";
+  if (highlight) return "border-emerald-500/40 bg-emerald-50/80 dark:bg-emerald-950/25";
   switch (outcome) {
-    case "critical":  // detection severity
-      return "border-red-500/70 bg-red-950/40";
+    case "critical":
+      return "border-red-500/70 bg-red-50 dark:bg-red-950/40";
     case "high":
-    case "medium":    // detection severity
-      return "border-amber-600/60 bg-amber-950/25";
+    case "medium":
+      return "border-amber-500/60 bg-amber-50 dark:bg-amber-950/25";
     case "denied":
     case "error":
-      return "border-red-900/50 bg-red-950/20";
+      return "border-red-400/50 bg-red-50 dark:bg-red-950/20";
     case "pending":
-      return "border-amber-900/40 bg-amber-950/15";
+      return "border-amber-400/40 bg-amber-50 dark:bg-amber-950/15";
     default:
-      return "border-slate-300 dark:border-slate-800/60 bg-white dark:bg-slate-950/40";
+      return "border-border bg-card/60 dark:bg-slate-950/40";
   }
-}
-
-function copyText(text: string) {
-  void navigator.clipboard?.writeText(text);
 }
 
 function eventSearchHaystack(event: AuditEvent): string {
@@ -211,42 +186,16 @@ function SourceBadge({ app }: { app: string }) {
   const external = app !== "agentmetry";
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+      className={`shrink-0 rounded px-1.5 py-0.5 text-xs uppercase tracking-wide ${
         external
-          ? "bg-sky-950/60 text-sky-300 ring-1 ring-sky-500/20"
-          : "bg-violet-950/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20"
+          ? "bg-sky-100 text-sky-800 ring-1 ring-sky-500/20 dark:bg-sky-950/60 dark:text-sky-300"
+          : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-300"
       }`}
     >
       {SOURCE_LABELS[app] || app}
     </span>
   );
 }
-
-function CopyChip({
-  label,
-  value,
-  title,
-}: {
-  label: string;
-  value: string;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      className="group/chip flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-slate-500 dark:text-slate-400 opacity-70 transition hover:bg-slate-200 dark:bg-slate-800/80 hover:opacity-100"
-      title={title ?? value}
-      onClick={(e) => {
-        e.stopPropagation();
-        copyText(value);
-      }}
-    >
-      <span>{label}</span>
-      <Copy className="h-2.5 w-2.5 opacity-0 transition group-hover/chip:opacity-100" />
-    </button>
-  );
-}
-
 
 export type ColumnId = "time" | "action" | "tool" | "mitre" | "command" | "source" | "actor" | "correlation_id" | "agent" | "initiator" | "model" | "skill" | "host_id" | "reason" | "mcp_server";
 
@@ -280,11 +229,11 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
     id: "mitre", label: "Mitre", widthClass: "w-40",
     render: (e) => {
       const m = e.tool?.mitre;
-      if (!m) return <div className="text-slate-500 dark:text-slate-400 text-sm">—</div>;
+      if (!m) return <div className="text-muted-foreground text-base">—</div>;
       const cred = m.tactic_id === "TA0006" || m.tactic_id === "TA0010"; // credential access / exfil = high signal
       return (
-        <div className="truncate text-sm" title={`${m.tactic} — ${m.technique}${m.technique_id ? ` (${m.technique_id})` : ""}`}>
-          <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-mono font-medium ring-1 ring-inset ${
+        <div className="truncate text-base" title={`${m.tactic} — ${m.technique}${m.technique_id ? ` (${m.technique_id})` : ""}`}>
+          <span className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-mono font-medium ring-1 ring-inset ${
             cred
               ? "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/20"
               : "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20"
@@ -297,7 +246,7 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   },
   command: {
     id: "command", label: "Command", widthClass: "min-w-[200px] flex-1",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 font-mono text-sm" title={e.tool?.command || ""}>{e.tool?.command || "—"}</div>
+    render: (e) => <div className="truncate text-muted-foreground font-mono text-base" title={e.tool?.command || ""}>{e.tool?.command || "—"}</div>
   },
   source: {
     id: "source", label: "Source", widthClass: "w-28",
@@ -309,7 +258,7 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   },
   correlation_id: {
     id: "correlation_id", label: "Session ID", widthClass: "w-40",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-xs" title={e.correlation_id || ""}>{e.correlation_id || "—"}</div>
+    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm" title={e.correlation_id || ""}>{e.correlation_id || "—"}</div>
   },
   agent: {
     id: "agent", label: "Agent Name", widthClass: "w-32",
@@ -346,147 +295,77 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
 // twelve-by-default overflowed the viewport and collapsed the Command column.
 export const DEFAULT_COLUMNS: ColumnId[] = ["time", "action", "tool", "mitre", "command", "source", "actor", "reason"];
 
-function EventRow({ event, highlight, onViewSession, columns }: { event: AuditEvent; highlight: boolean; onViewSession?: (corrId: string) => void; columns: ColumnId[] }) {
-  const [open, setOpen] = useState(false);
-  const [showRawJson, setShowRawJson] = useState(false);
+const DETECTION_SEVERITIES = new Set<Detection["severity"]>(["critical", "high", "medium", "low"]);
+
+function detectionSeverity(outcome?: string): Detection["severity"] {
+  if (outcome && DETECTION_SEVERITIES.has(outcome as Detection["severity"])) {
+    return outcome as Detection["severity"];
+  }
+  return "medium";
+}
+
+export function detectionsFromEvents(events: AuditEvent[]): Detection[] {
+  const byKey = new Map<string, Detection>();
+  for (const ev of events) {
+    if (ev.action?.type !== "detection") continue;
+    if (ev.detection?.rule_id) {
+      const d = ev.detection;
+      byKey.set(`${d.rule_id}:${d.correlation_id}`, d);
+      continue;
+    }
+    const ruleId = ev.source_topic?.replace(/^detection\//, "") || ev.event_id || "detection";
+    byKey.set(`${ruleId}:${ev.correlation_id ?? ""}`, {
+      rule_id: ruleId,
+      title: ruleId,
+      severity: detectionSeverity(ev.action?.outcome),
+      summary: ev.action?.reason || "",
+      correlation_id: ev.correlation_id || "",
+      tactic_ids: ev.tool?.mitre?.tactic_id ? [ev.tool.mitre.tactic_id] : [],
+      technique_ids: ev.tool?.mitre?.technique_id ? [ev.tool.mitre.technique_id] : [],
+      event_ids: ev.event_id ? [ev.event_id] : [],
+      first_seen_utc: ev.timestamp_utc || "",
+      last_seen_utc: ev.timestamp_utc || "",
+    });
+  }
+  return Array.from(byKey.values());
+}
+
+function EventRow({
+  event,
+  highlight,
+  selected,
+  onSelect,
+  columns,
+}: {
+  event: AuditEvent;
+  highlight: boolean;
+  selected: boolean;
+  onSelect: (event: AuditEvent) => void;
+  columns: ColumnId[];
+}) {
   const type = event.action?.type ?? "event";
   const outcome = event.action?.outcome ?? "";
   const sourceApp = eventSourceApp(event);
   const Icon = ACTION_ICONS[type] ?? XCircle;
-  const detail =
-    type === "tool_called" && event.tool?.command
-      ? event.tool.command
-      : type === "tool_called"
-        ? event.tool?.qualified ?? ""
-        : type.startsWith("approval")
-          ? outcome
-          : event.agent?.skill_id || sourceApp;
 
   return (
-    <div
-      className={`group/row rounded-none border text-base font-mono transition ${rowOutcomeClass(outcome, highlight)}`}
+    <button
+      type="button"
+      className={`flex w-full items-center gap-4 border px-4 py-2.5 text-left font-mono text-base transition ${rowOutcomeClass(outcome, highlight)} ${
+        selected ? "ring-1 ring-emerald-500/60 bg-emerald-50/80 dark:bg-emerald-950/20" : "hover:bg-muted/30"
+      }`}
+      onClick={() => onSelect(event)}
     >
-      <button
-        type="button"
-        className="flex w-full items-center gap-4 px-4 py-2 text-left hover:bg-slate-100 dark:bg-slate-900/30"
-        onClick={() => setOpen(!open)}
-      >
-        <div className="w-4 shrink-0 text-slate-500 dark:text-slate-400">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </div>
-        {columns.map(colId => {
-          const c = COLUMN_REGISTRY[colId];
-          if (!c) return null;
-          return <div key={colId} className={`shrink-0 ${c.widthClass}`}>{c.render(event, formatTime, type, outcome, Icon, sourceApp)}</div>;
-        })}
-      </button>
-      {open ? (
-        <div className="relative border-t border-slate-300 dark:border-slate-800/60 px-4 py-4 bg-white dark:bg-slate-950/20">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-5 max-w-4xl">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Timestamp</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.timestamp_utc || "—"}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Event ID</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.event_id || "—"}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Action</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.action?.type || "—"}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Outcome</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.action?.outcome || "—"} {event.action?.reason && <span className="text-slate-500 dark:text-slate-400 text-sm">({event.action.reason})</span>}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Tool</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.tool?.qualified || event.tool?.name || "—"}</span>
-            </div>
-            {event.tool?.mitre?.tactic && (
-              <div className="flex flex-col gap-1">
-                <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">MITRE ATT&CK</span>
-                <span className="text-slate-800 dark:text-slate-200">
-                  {event.tool.mitre.tactic}
-                  {event.tool.mitre.tactic_id && <span className="text-slate-500 dark:text-slate-400 text-sm ml-1">[{event.tool.mitre.tactic_id}]</span>}
-                  <span className="text-slate-500 dark:text-slate-400 text-sm ml-1">· {event.tool.mitre.technique}{event.tool.mitre.technique_id ? ` (${event.tool.mitre.technique_id})` : ""}</span>
-                </span>
-              </div>
-            )}
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Source</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.source?.app || "—"} ({event.source?.tier || "—"})</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Actor</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.actor?.id || "—"}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Initiator</span>
-              <span className="text-slate-800 dark:text-slate-200">{event.initiator?.operator_id || "—"}</span>
-            </div>
-            <div className="flex flex-col gap-1 col-span-2">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400">Correlation ID</span>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-800 dark:text-slate-200">{event.correlation_id || "—"}</span>
-                {event.correlation_id && onViewSession && (
-                  <button
-                    type="button"
-                    onClick={() => onViewSession(event.correlation_id!)}
-                    className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-0.5 text-sm text-sky-300 transition hover:bg-sky-900/40"
-                  >
-                    View Full Session
-                  </button>
-                )}
-              </div>
-            </div>
+      {columns.map((colId) => {
+        const c = COLUMN_REGISTRY[colId];
+        if (!c) return null;
+        return (
+          <div key={colId} className={`shrink-0 ${c.widthClass}`}>
+            {c.render(event, formatTime, type, outcome, Icon, sourceApp)}
           </div>
-          
-          {event.tool?.command && (
-            <div className="mb-5 max-w-4xl">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 block">Command</span>
-              <pre className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800/80 rounded p-3 text-slate-700 dark:text-slate-300 overflow-x-auto">
-                {event.tool.command}
-              </pre>
-            </div>
-          )}
-
-          {event.tool?.arguments && Object.keys(event.tool.arguments).length > 0 && !event.tool?.command && (
-            <div className="mb-5 max-w-4xl">
-              <span className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 block">Arguments</span>
-              <pre className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800/80 rounded p-3 text-slate-700 dark:text-slate-300 overflow-x-auto text-sm max-h-40">
-                {JSON.stringify(event.tool.arguments, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-sm transition ${showRawJson ? 'border-emerald-500/50 bg-emerald-900/20 text-emerald-700 dark:text-emerald-300' : 'border-slate-400 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-800 dark:text-slate-200'}`}
-              onClick={() => setShowRawJson(!showRawJson)}
-            >
-              <Wrench className="h-3 w-3" />
-              {showRawJson ? "Hide Raw JSON" : "Show Raw JSON"}
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded border border-slate-400 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-2 py-1 text-sm text-slate-500 dark:text-slate-400 transition hover:bg-slate-200 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-800 dark:text-slate-200"
-              onClick={() => copyText(JSON.stringify(event, null, 2))}
-            >
-              <Copy className="h-3 w-3" />
-              Copy
-            </button>
-          </div>
-
-          {showRawJson && (
-            <div className="mt-4 border-t border-slate-300 dark:border-slate-800/60 pt-4">
-              <AuditJsonView value={event} />
-            </div>
-          )}
-        </div>
-      ) : null}
-    </div>
+        );
+      })}
+    </button>
   );
 }
 
@@ -503,10 +382,10 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded px-2 py-0.5 text-sm transition ${
+      className={`rounded px-2.5 py-1 text-base transition ${
         active
-          ? "bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500/30"
-          : "bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300"
+          ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-600/30 dark:bg-emerald-900/50 dark:text-emerald-200 dark:ring-emerald-500/30"
+          : "bg-slate-100 text-slate-500 hover:text-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-slate-300"
       }`}
     >
       {label}
@@ -566,6 +445,7 @@ export function FlightRecorderPanel() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [sessionView, setSessionView] = useState<string | null>(null);
+  const [sessionTruncated, setSessionTruncated] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<AuditPagination>({
@@ -589,6 +469,8 @@ export function FlightRecorderPanel() {
     pending: true,
     issues: true,
   });
+  const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
+  const [detectionRuleFilter, setDetectionRuleFilter] = useState<string | null>(null);
 
   const timeWindow = TIME_WINDOWS[timeWindowIdx] ?? TIME_WINDOWS[1];
 
@@ -710,7 +592,12 @@ export function FlightRecorderPanel() {
       ]);
       if (!sessionRes.ok) throw new Error(`HTTP ${sessionRes.status}`);
       const data = await sessionRes.json();
-      setEvents((data.events ?? []) as AuditEvent[]);
+      const sessionEvents = (data.events ?? []) as AuditEvent[];
+      setEvents(sessionEvents);
+      // The endpoint caps at 2000 events; a session at the cap is almost
+      // certainly longer than what loaded, and hiding that would misrepresent
+      // the trail.
+      setSessionTruncated(sessionEvents.length >= 2000);
       setPagination({ has_older: false, has_newer: false });
       // Detections are best-effort: a failed correlation shouldn't hide the trail.
       setDetections(detRes.ok ? (((await detRes.json()).detections ?? []) as Detection[]) : []);
@@ -724,6 +611,7 @@ export function FlightRecorderPanel() {
 
   const exitSession = useCallback(async () => {
     setSessionView(null);
+    setSessionTruncated(false);
     setDetections([]);
     await jumpToLatest();
   }, [jumpToLatest]);
@@ -762,212 +650,69 @@ export function FlightRecorderPanel() {
     });
   }, [events, sourceFilter, eventTypeFilter, outcomeFilters, debouncedSearchQuery]);
 
+  const visibleDetections = useMemo(() => {
+    const merged = new Map<string, Detection>();
+    for (const d of [...detections, ...detectionsFromEvents(events)]) {
+      merged.set(`${d.rule_id}:${d.correlation_id}`, d);
+    }
+    return Array.from(merged.values());
+  }, [events, detections]);
+
+  const displayEvents = useMemo(() => {
+    if (!detectionRuleFilter) return filteredEvents;
+    const det = visibleDetections.find((d) => d.rule_id === detectionRuleFilter);
+    if (!det) return filteredEvents;
+    const ids = new Set(det.event_ids);
+    return filteredEvents.filter(
+      (ev) =>
+        (ev.event_id && ids.has(ev.event_id)) ||
+        (ev.action?.type === "detection" && ev.detection?.rule_id === detectionRuleFilter),
+    );
+  }, [filteredEvents, detectionRuleFilter, visibleDetections]);
+
+  const selectedEvent = useMemo(
+    () => displayEvents.find((ev) => eventKey(ev) === selectedEventKey) ?? null,
+    [displayEvents, selectedEventKey],
+  );
+
   const toggleOutcome = (key: keyof typeof outcomeFilters) => {
     setOutcomeFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-none border border-slate-300 dark:border-slate-800/60 bg-white dark:bg-slate-950/50">
-      <div className="space-y-2 border-b border-slate-300 dark:border-slate-800/60 px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-emerald-400" />
-            <div>
-              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Flight recorder</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {filteredEvents.length} shown · Tier A + B
-                {sessionView ? " · pinned to session" : !atLatest ? " · viewing history" : ""}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
+    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card/20">
+      <div className="space-y-3 border-b border-border/60 px-3 py-3">
+        {sessionView ? (
+          <div className="flex items-center justify-between gap-2 rounded border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-950/30 dark:text-sky-200">
+            <span className="truncate font-mono">
+              Session <span className="text-sky-700 dark:text-sky-300">{sessionView}</span>
+              {sessionTruncated ? (
+                <span className="ml-2 text-sky-700/80 dark:text-sky-300/80">· first 2000 events</span>
+              ) : null}
+            </span>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 transition hover:text-slate-700 dark:text-slate-300"
-              onClick={() => {
-                if (filteredEvents.length === 0) return;
-                const jsonl = filteredEvents.map((ev) => JSON.stringify(ev)).join("\n");
-                const blob = new Blob([jsonl], { type: "application/jsonl" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `audit-export-${new Date().toISOString()}.jsonl`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              title="Export current view to JSONL"
+              onClick={() => void exitSession()}
+              className="shrink-0 rounded border border-sky-400/40 px-2 py-0.5 transition hover:bg-sky-100 dark:hover:bg-sky-900/40"
             >
-              <Download className="h-3 w-3" />
-              JSONL
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 transition hover:text-slate-700 dark:text-slate-300"
-              onClick={() => {
-                if (filteredEvents.length === 0) return;
-                const headers = ["Time", "Event ID", "Action", "Outcome", "Tool", "Command", "Source App", "Actor ID", "Correlation ID"];
-                const rows = filteredEvents.map(ev => {
-                  return [
-                    ev.timestamp_utc || "",
-                    ev.event_id || "",
-                    ev.action?.type || "",
-                    ev.action?.outcome || "",
-                    ev.tool?.qualified || ev.tool?.name || "",
-                    ev.tool?.command || "",
-                    eventSourceApp(ev),
-                    ev.actor?.id || "",
-                    ev.correlation_id || ""
-                  ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(",");
-                });
-                const csv = [headers.join(","), ...rows].join("\n");
-                const blob = new Blob([csv], { type: "text/csv" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `audit-export-${new Date().toISOString()}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              title="Export current view to CSV"
-            >
-              CSV
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setShowColumnManager(!showColumnManager)}
-                className="flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 transition"
-                title="Manage Columns"
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                <span>Columns</span>
-              </button>
-              {showColumnManager && (
-                <div className="absolute right-0 top-full mt-2 w-64 rounded-md border border-slate-700 bg-slate-800 p-2 shadow-xl z-50">
-                  <div className="mb-2 px-2 text-xs font-semibold text-slate-400">Manage Columns</div>
-                  <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-                    {[...columns, ...(Object.keys(COLUMN_REGISTRY) as ColumnId[]).filter(k => !columns.includes(k))].map((colId) => {
-                      const c = COLUMN_REGISTRY[colId];
-                      const isActive = columns.includes(colId);
-                      const idx = columns.indexOf(colId);
-                      
-                      return (
-                        <div key={colId} className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-slate-700/50">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                if (isActive) {
-                                  updateColumns(columns.filter(x => x !== colId));
-                                } else {
-                                  updateColumns([...columns, colId]);
-                                }
-                              }}
-                              className={`flex h-4 w-4 items-center justify-center rounded border ${isActive ? 'border-emerald-500 bg-emerald-500/20 text-emerald-400' : 'border-slate-500 text-transparent'}`}
-                            >
-                              {isActive && <Eye className="h-3 w-3" />}
-                              {!isActive && <EyeOff className="h-3 w-3 text-slate-500" />}
-                            </button>
-                            <span className="text-xs text-slate-300">{c.label}</span>
-                          </div>
-                          {isActive && (
-                            <div className="flex gap-1">
-                              <button
-                                disabled={idx === 0}
-                                onClick={() => {
-                                  const newCols = [...columns];
-                                  const temp = newCols[idx - 1];
-                                  newCols[idx - 1] = newCols[idx];
-                                  newCols[idx] = temp;
-                                  updateColumns(newCols);
-                                }}
-                                className="text-slate-400 hover:text-white disabled:opacity-30"
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </button>
-                              <button
-                                disabled={idx === columns.length - 1}
-                                onClick={() => {
-                                  const newCols = [...columns];
-                                  const temp = newCols[idx + 1];
-                                  newCols[idx + 1] = newCols[idx];
-                                  newCols[idx] = temp;
-                                  updateColumns(newCols);
-                                }}
-                                className="text-slate-400 hover:text-white disabled:opacity-30"
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              className="text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300"
-              onClick={() => void fetchTail()}
-            >
-              Refresh
+              Back to live
             </button>
           </div>
-        </div>
-
-        {sessionView && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2 rounded border border-sky-500/30 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-200">
-              <span className="truncate font-mono">Pinned to session <span className="text-sky-300">{sessionView}</span> · full trail</span>
-              <button
-                type="button"
-                onClick={() => void exitSession()}
-                className="shrink-0 rounded border border-sky-500/40 px-2 py-0.5 text-xs transition hover:bg-sky-900/40"
-              >
-                Back to live
-              </button>
-            </div>
-            {detections.map((d) => {
-              const critical = d.severity === "critical" || d.severity === "high";
-              return (
-                <div
-                  key={d.rule_id}
-                  className={`flex flex-wrap items-center gap-2 rounded border px-3 py-1.5 text-sm ${
-                    critical
-                      ? "border-red-500/40 bg-red-950/30 text-red-200"
-                      : "border-amber-500/40 bg-amber-950/20 text-amber-200"
-                  }`}
-                >
-                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    critical ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"
-                  }`}>
-                    {d.severity}
-                  </span>
-                  <span className="font-medium">{d.title}</span>
-                  <span className="opacity-80">{d.summary}</span>
-                  <span className="ml-auto shrink-0 font-mono text-[11px] opacity-70">
-                    {d.technique_ids.filter(Boolean).join(" → ")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500 dark:text-slate-600" />
-          <input
-            type="search"
-            placeholder="Search corr, tool, command, hash…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 py-1.5 pl-7 pr-2 text-base text-slate-700 dark:text-slate-300 placeholder:text-slate-500 dark:text-slate-600 focus:border-emerald-500/40 focus:outline-none"
-          />
-        </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[12rem] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search tool, command, session, hash…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-2 text-base text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
+            />
+          </div>
           <select
-            className="rounded border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-sm text-slate-500 dark:text-slate-400"
+            className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
           >
@@ -978,9 +723,8 @@ export function FlightRecorderPanel() {
               </option>
             ))}
           </select>
-
           <select
-            className="rounded border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-sm text-slate-500 dark:text-slate-400"
+            className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground"
             value={eventTypeFilter}
             onChange={(e) => setEventTypeFilter(e.target.value)}
           >
@@ -991,115 +735,186 @@ export function FlightRecorderPanel() {
               </option>
             ))}
           </select>
-
-          <div className="flex items-center gap-1">
-            {TIME_WINDOWS.map((w, i) => (
-              <FilterChip
-                key={w.label}
-                active={timeWindowIdx === i}
-                label={w.label}
-                onClick={() => setTimeWindowIdx(i)}
-              />
-            ))}
-          </div>
+          {TIME_WINDOWS.map((w, i) => (
+            <FilterChip
+              key={w.label}
+              active={timeWindowIdx === i}
+              label={w.label}
+              onClick={() => setTimeWindowIdx(i)}
+            />
+          ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-600">Outcome</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">Outcome</span>
           <FilterChip active={outcomeFilters.success} label="OK" onClick={() => toggleOutcome("success")} />
-          <FilterChip
-            active={outcomeFilters.pending}
-            label="Pending"
-            onClick={() => toggleOutcome("pending")}
-          />
-          <FilterChip
-            active={outcomeFilters.issues}
-            label="Denied / Error"
-            onClick={() => toggleOutcome("issues")}
-          />
+          <FilterChip active={outcomeFilters.pending} label="Pending" onClick={() => toggleOutcome("pending")} />
+          <FilterChip active={outcomeFilters.issues} label="Issues" onClick={() => toggleOutcome("issues")} />
+          <span className="ml-2 font-mono text-xs text-muted-foreground">
+            {displayEvents.length} shown
+            {sessionView ? " · session" : !atLatest ? " · history" : ""}
+          </span>
         </div>
-      </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
-        {loading && filteredEvents.length === 0 ? (
-          <p className="py-8 text-center text-lg text-slate-500 dark:text-slate-400">Loading audit events…</p>
-        ) : error && filteredEvents.length === 0 ? (
-          <p className="py-8 text-center text-lg text-red-400/90">{error}</p>
-        ) : filteredEvents.length === 0 ? (
-          <p className="py-8 text-center text-lg text-slate-500 dark:text-slate-400">
-            No events match filters. Try <span className="font-mono text-slate-500 dark:text-slate-400">All</span> time
-            window or a Tier B source (Cursor, Antigravity).
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <div className="w-full min-w-[1200px]">
-            <div className="flex w-full items-center gap-4 px-4 py-1.5 text-left text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mb-1">
-              <div className="w-4 shrink-0"></div>
-              {columns.map(colId => {
-                const c = COLUMN_REGISTRY[colId];
-                if (!c) return null;
-                return (
-                  <div 
-                    key={colId} 
-                    className={`shrink-0 cursor-grab hover:text-emerald-400 dark:hover:text-emerald-400 transition select-none ${c.widthClass} ${draggedCol === colId ? 'opacity-50' : ''}`}
-                    draggable={true}
-                    onDragStart={(e) => handleDragStart(e, colId)}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, colId)}
-                    onDragEnd={() => setDraggedCol(null)}
-                    title={`Drag to reorder ${c.label}`}
-                  >
-                    {c.label}
-                  </div>
-                );
-              })}
-            </div>
-            {filteredEvents.map((ev, i) => (
-              <EventRow columns={columns}
-                key={eventKey(ev) || `${i}`}
-                event={ev}
-                highlight={!!threadId && ev.correlation_id === threadId}
-                onViewSession={(corrId) => void openSession(corrId)}
-              />
-            ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-300 dark:border-slate-800/60 px-4 py-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-3">
           <button
             type="button"
-            disabled={!pagination.has_older || loadingOlder}
-            onClick={() => void loadOlder()}
-            className="inline-flex items-center gap-1 rounded border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-sm text-slate-500 dark:text-slate-400 transition hover:border-slate-400 dark:border-slate-700 hover:text-slate-900 dark:hover:text-slate-800 dark:text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            onClick={() => downloadAuditJsonl(displayEvents)}
           >
-            <ChevronLeft className="h-3 w-3" />
-            Older
+            JSONL
           </button>
           <button
             type="button"
-            disabled={!pagination.has_newer || loadingNewer}
-            onClick={() => void loadNewer()}
-            className="inline-flex items-center gap-1 rounded border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-sm text-slate-500 dark:text-slate-400 transition hover:border-slate-400 dark:border-slate-700 hover:text-slate-900 dark:hover:text-slate-800 dark:text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            onClick={() => downloadAuditCsv(displayEvents)}
           >
-            Newer
-            <ChevronRight className="h-3 w-3" />
+            CSV
           </button>
-          {!atLatest ? (
+          <div className="relative">
             <button
-              type="button"
-              onClick={() => void jumpToLatest()}
-              className="rounded border border-emerald-500/30 bg-violet-950/30 px-2 py-1 text-sm text-emerald-800 dark:text-emerald-200 transition hover:bg-emerald-900/40"
+              onClick={() => setShowColumnManager(!showColumnManager)}
+              className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground hover:bg-muted"
             >
-              Latest
+              <Settings2 className="h-3.5 w-3.5" />
+              Columns
             </button>
-          ) : null}
+            {showColumnManager && (
+              <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-md border border-border bg-card p-2 shadow-xl">
+                <div className="mb-2 px-2 text-sm font-semibold text-muted-foreground">Manage columns</div>
+                <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+                  {[...columns, ...(Object.keys(COLUMN_REGISTRY) as ColumnId[]).filter((k) => !columns.includes(k))].map(
+                    (colId) => {
+                      const c = COLUMN_REGISTRY[colId];
+                      const isActive = columns.includes(colId);
+                      const idx = columns.indexOf(colId);
+                      return (
+                        <div key={colId} className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted/50">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                if (isActive) updateColumns(columns.filter((x) => x !== colId));
+                                else updateColumns([...columns, colId]);
+                              }}
+                              className={`flex h-4 w-4 items-center justify-center rounded border ${isActive ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-border text-transparent"}`}
+                            >
+                              {isActive ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 text-muted-foreground" />}
+                            </button>
+                            <span className="text-sm">{c.label}</span>
+                          </div>
+                          {isActive && (
+                            <div className="flex gap-1">
+                              <button disabled={idx === 0} onClick={() => { const n = [...columns]; [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]]; updateColumns(n); }} className="disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
+                              <button disabled={idx === columns.length - 1} onClick={() => { const n = [...columns]; [n[idx + 1], n[idx]] = [n[idx], n[idx + 1]]; updateColumns(n); }} className="disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            onClick={() => void fetchTail()}
+          >
+            Refresh
+          </button>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-600">
-          Tier B records agents you wire in (hooks, MCP proxy).
-        </p>
+      </div>
+
+      <DetectionsStrip
+        detections={visibleDetections}
+        activeRuleId={detectionRuleFilter}
+        onSelect={setDetectionRuleFilter}
+        onOpenSession={(corrId) => void openSession(corrId)}
+      />
+      <EventHistogram events={displayEvents} />
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {loading && displayEvents.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Loading audit events…</p>
+            ) : error && displayEvents.length === 0 ? (
+              <p className="py-8 text-center text-sm text-red-400">{error}</p>
+            ) : displayEvents.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No events match filters. Widen the time window or enable a Tier B source.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="min-w-[1100px]">
+                  <div className="mb-1 flex items-center gap-4 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {columns.map((colId) => {
+                      const c = COLUMN_REGISTRY[colId];
+                      if (!c) return null;
+                      return (
+                        <div
+                          key={colId}
+                          className={`shrink-0 cursor-grab select-none hover:text-emerald-400 ${c.widthClass} ${draggedCol === colId ? "opacity-50" : ""}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, colId)}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, colId)}
+                          onDragEnd={() => setDraggedCol(null)}
+                        >
+                          {c.label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-1">
+                    {displayEvents.map((ev, i) => (
+                      <EventRow
+                        key={eventKey(ev) || `${i}`}
+                        columns={columns}
+                        event={ev}
+                        highlight={!!threadId && ev.correlation_id === threadId}
+                        selected={selectedEventKey === eventKey(ev)}
+                        onSelect={(e) => setSelectedEventKey(eventKey(e))}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <button type="button" disabled={!pagination.has_older || loadingOlder} onClick={() => void loadOlder()} className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1.5 text-sm text-muted-foreground disabled:opacity-40">
+                <ChevronLeft className="h-3.5 w-3.5" /> Older
+              </button>
+              <button type="button" disabled={!pagination.has_newer || loadingNewer} onClick={() => void loadNewer()} className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1.5 text-sm text-muted-foreground disabled:opacity-40">
+                Newer <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+              {!atLatest ? (
+                <button type="button" onClick={() => void jumpToLatest()} className="rounded border border-emerald-500/30 px-2.5 py-1.5 text-sm text-emerald-600 dark:text-emerald-300">
+                  Latest
+                </button>
+              ) : null}
+            </div>
+            {selectedEvent ? (
+              <button type="button" className="text-sm text-muted-foreground lg:hidden" onClick={() => setSelectedEventKey(null)}>
+                Close inspector
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {selectedEvent ? (
+          <div className="flex w-full shrink-0 flex-col border-t border-border/60 lg:w-80 lg:border-l lg:border-t-0 xl:w-96">
+            <EventInspector
+              event={selectedEvent}
+              onClose={() => setSelectedEventKey(null)}
+              onViewSession={(corrId) => void openSession(corrId)}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

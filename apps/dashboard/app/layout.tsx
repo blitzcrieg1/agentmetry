@@ -15,8 +15,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased bg-black text-white font-mono selection:bg-emerald-500/30">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} forcedTheme="dark">
+      <body className="antialiased font-mono selection:bg-emerald-500/30">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem storageKey="agentmetry-theme">
           {children}
         </ThemeProvider>
       </body>
