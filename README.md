@@ -30,12 +30,11 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 </div>
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="The Agentmetry flight recorder dashboard: a live feed of tool calls from Cursor, Claude, and Antigravity, each tagged with its MITRE ATT&CK technique, with a credential-access read of ~/.ssh/id_rsa highlighted in red." width="880">
+  <img src="docs/assets/dashboard.png" alt="Agentmetry Phase 1 flight recorder: detections strip with CRITICAL credential-exfil alerts, event histogram, live ingest status, and a tool-call feed tagged with MITRE ATT&amp;CK." width="880">
 </p>
 
 <p align="center">
-  <em>Every AI-agent tool call, tagged with MITRE ATT&CK as it happens — and a
-  <strong>correlated alert</strong> when a sequence of innocent-looking calls adds up to an attack.</em>
+  <em>Detections strip, event histogram, and live feed — every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em>
 </p>
 
 ---
@@ -117,11 +116,11 @@ python scripts/demo_dashboard.py --live     # ...and streams synthetic agent tra
 ```
 
 One command seeds a realistic demo trail and serves the dashboard locally — no
-API key, no cloud. Click a flagged session and the detection is right there, with
-the full event drilled open beneath it:
+API key, no cloud. The detections strip surfaces CRITICAL findings; the feed
+shows approval gates, tool calls, and inline detection events:
 
 <p align="center">
-  <img src="docs/assets/dashboard-detection.png" alt="A pinned session in Agentmetry showing a CRITICAL credential-exfil detection banner — credential access followed by network egress, T1552.004 to T1071.001 — above the expanded event detail for the id_rsa read." width="900">
+  <img src="docs/assets/dashboard-detection.png" alt="Agentmetry flight recorder with DETECTIONS strip showing CRITICAL credential-exfil alerts and the event feed highlighting detection rows, SSH key reads, and network egress." width="900">
 </p>
 
 See the [dashboard tour](docs/dashboard-tour.md) for what each view shows and how

@@ -41,27 +41,27 @@ credential-exfil session through the real ingest API with no server at all
 | `sess-claude-*` | Claude Code | An ordinary debugging session (Read, Grep, Bash, Edit, Write). More baseline noise. |
 | `sess-lolbin-*` | Cursor | **CRITICAL `encoded-command-download`** — an obfuscated `powershell -EncodedCommand`, then a payload fetched from a raw IP. |
 
-![The Agentmetry flight recorder — a live feed of tool calls tagged with MITRE ATT&CK, credential access in red](assets/dashboard.png)
+![Phase 1 flight recorder — detections strip, event histogram, live ingest status, and MITRE-tagged tool-call feed](assets/dashboard.png)
 
 ## What the dashboard shows
 
-1. **Live event feed** — every tool call, denial, and approval as it happens,
-   grouped by session. The raw flight-data recorder.
-2. **MITRE ATT&CK per call** — each action tagged with a technique. Credential
+1. **Live event feed** — every tool call, denial, approval, and detection as it
+   happens. Export to CSV or JSONL from the toolbar.
+2. **Detections strip** — CRITICAL/HIGH chips above the feed. Click to filter;
+   pin to load the full session from the trail.
+3. **Event histogram** — activity density over the selected time window.
+4. **MITRE ATT&CK per call** — each action tagged with a technique. Credential
    access and network egress render red so the dangerous ones stand out.
-3. **DLP at the boundary** — a secret in a command is flagged before it is
+5. **DLP at the boundary** — a secret in a command is flagged before it is
    stored; the rule is recorded, the value never is.
-4. **Correlated detections** — the red/amber chips above the feed. No single
-   row is an alert; the *sequence* is. Click a chip to filter the feed to that
-   rule's events; the pin button on the chip loads the full session.
+6. **Feed status** — ingest health and orchestrator endpoint in the header.
 
-## Drilling into a detection
+## Detections in the feed
 
-Click a flagged session to pin it. The correlated detection sits at the top as a
-banner, and every event in the session is right there to expand — MITRE mapping,
-event id, hashed input, and the raw JSON:
+The detections strip surfaces correlated findings; detection rows appear inline
+in the feed (red highlight) alongside approval gates and tool calls:
 
-![A pinned session showing the CRITICAL credential-exfil detection banner above the expanded id_rsa event](assets/dashboard-detection.png)
+![Detections strip with CRITICAL credential-exfil alerts and inline detection rows in the event feed](assets/dashboard-detection.png)
 
 ## Analytics
 
