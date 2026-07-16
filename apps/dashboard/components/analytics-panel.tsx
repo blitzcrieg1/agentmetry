@@ -18,7 +18,7 @@ import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import type { AuditEvent } from "./flight-recorder-panel";
 import { detectionsFromEvents } from "./flight-recorder-panel";
-import { eventSourceApp } from "@/lib/audit-source";
+import { eventSourceApp, sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { EventHistogram } from "./event-histogram";
 import { ProcessTree } from "./process-tree";
 
@@ -93,7 +93,7 @@ export function AnalyticsPanel() {
     ].filter((d) => d.value > 0);
 
     const sourceData = Object.entries(sourceCounts)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ name: sourceLabel(name), key: name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
@@ -197,7 +197,11 @@ export function AnalyticsPanel() {
                 <XAxis type="number" className="text-muted-foreground" fontSize={10} />
                 <YAxis dataKey="name" type="category" className="text-muted-foreground" fontSize={10} width={70} />
                 <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-                <Bar dataKey="value" fill="#34d399" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  {stats.sourceData.map((entry) => (
+                    <Cell key={entry.key} fill={sourceChartColor(entry.key)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

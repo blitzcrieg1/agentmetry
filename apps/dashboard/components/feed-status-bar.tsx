@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
+import { sourceDotClass } from "@/lib/audit-source";
 
 interface AuditStatus {
   enabled: boolean;
@@ -122,7 +123,7 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
           return (
             <span
               key={src}
-              className={`h-1.5 w-1.5 rounded-full ${count > 0 ? "bg-emerald-400/80" : "bg-muted"}`}
+              className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(src, count > 0)}`}
               title={`${src}: ${count}`}
             />
           );

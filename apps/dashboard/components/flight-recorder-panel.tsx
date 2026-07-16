@@ -17,7 +17,7 @@ import type { LucideIcon } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { eventSourceApp } from "@/lib/audit-source";
+import { eventSourceApp, sourceBadgeClass, sourceLabel } from "@/lib/audit-source";
 import { DetectionsStrip } from "@/components/detections-strip";
 import { EventHistogram } from "@/components/event-histogram";
 import { EventInspector } from "@/components/event-inspector";
@@ -100,14 +100,15 @@ function mergeEvents(
   return sortEvents(Array.from(byKey.values()));
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  agentmetry: "Agentmetry",
-  cursor: "Cursor",
-  claude: "Claude",
-  codex: "Codex",
-  antigravity: "Antigravity",
-  mcp_proxy: "MCP",
-};
+function SourceBadge({ app }: { app: string }) {
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-xs uppercase tracking-wide ${sourceBadgeClass(app)}`}
+    >
+      {sourceLabel(app)}
+    </span>
+  );
+}
 
 const ACTION_ICONS: Record<string, LucideIcon> = {
   session_start: Play,
@@ -180,21 +181,6 @@ function eventSearchHaystack(event: AuditEvent): string {
     event.action?.outcome,
   ];
   return parts.filter(Boolean).join(" ").toLowerCase();
-}
-
-function SourceBadge({ app }: { app: string }) {
-  const external = app !== "agentmetry";
-  return (
-    <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-xs uppercase tracking-wide ${
-        external
-          ? "bg-sky-100 text-sky-800 ring-1 ring-sky-500/20 dark:bg-sky-950/60 dark:text-sky-300"
-          : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-300"
-      }`}
-    >
-      {SOURCE_LABELS[app] || app}
-    </span>
-  );
 }
 
 export type ColumnId = "time" | "action" | "tool" | "mitre" | "command" | "source" | "actor" | "correlation_id" | "agent" | "initiator" | "model" | "skill" | "host_id" | "reason" | "mcp_server";
@@ -719,7 +705,7 @@ export function FlightRecorderPanel() {
             <option value="all">All sources</option>
             {ALL_SOURCES.map((s) => (
               <option key={s} value={s}>
-                {SOURCE_LABELS[s]}
+                {sourceLabel(s)}
               </option>
             ))}
           </select>

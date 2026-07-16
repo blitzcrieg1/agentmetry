@@ -184,13 +184,32 @@ def main() -> int:
     if out.exists():
         out.unlink()
 
+    demo_db = out.with_suffix(".db")
+    demo_live_db = out.parent / "demo-detection-live.db"
+    for db_file in (demo_db, demo_live_db):
+        if db_file.exists():
+            try:
+                db_file.unlink()
+            except OSError as exc:
+                print(
+                    f"Cannot remove {db_file.name} — stop the demo server first "
+                    f"(scripts\\agentmetry.bat stop or close the uvicorn window).",
+                    file=sys.stderr,
+                )
+                return 1
+
     os.environ["AGENTMETRY_AUDIT_EXPORT_PATH"] = str(out)
+    os.environ["AGENTMETRY_AUDIT_DB_PATH"] = str(demo_db)
+    os.environ["AGENTMETRY_DETECTION_LIVE_DB_PATH"] = str(demo_live_db)
     from core.config import settings
 
     settings.audit_export_path = out
+    settings.audit_db_path = demo_db
+    settings.detection_live_db_path = demo_live_db
     settings.audit_export_enabled = True
     settings.audit_sink = "file"
-    settings.operator_id = "demo-operator"  # don't inherit the local .env identity
+    settings.audit_ingest_enabled = True
+    settings.operator_id = "home-lab"  # generic label for screenshots / demos
 
     import asyncio
 
@@ -199,13 +218,17 @@ def main() -> int:
     import core.audit.detection.live as _live
     import core.audit.external as _ext
 
-    _ext._HOST_ID = "workstation-01"
-    _live._HOST_ID = "workstation-01"
+    _ext._HOST_ID = "demo-lab"
+    _live._HOST_ID = "demo-lab"
 
     from core.audit.detection.live import reset_live_state
+    from core.audit.detection.live_store import reset_live_store_singleton
     from core.audit.ingest import ingest_external_event, reset_ingest_sink_cache
+    from core.audit.trail_db import reset_trail_db
 
     reset_ingest_sink_cache()
+    reset_trail_db()
+    reset_live_store_singleton()
     reset_live_state()
 
     async def run() -> None:
@@ -215,8 +238,13 @@ def main() -> int:
     asyncio.run(run())
 
     import json as _json
+    from core.audit.trail_chain import unwrap_trail_record
 
-    written = [_json.loads(x) for x in out.read_text(encoding="utf-8").splitlines() if x.strip()]
+    written = [
+        unwrap_trail_record(_json.loads(x))
+        for x in out.read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
     dets = [x for x in written if (x.get("action") or {}).get("type") == "detection"]
     print(f"seeded {len(written)} events -> {out}")
     print(f"  sessions   : {len({x.get('correlation_id') for x in written})}")
@@ -224,7 +252,9 @@ def main() -> int:
     for d in dets:
         det = d["detection"]
         print(f"    [{det['severity']:8}] {det['rule_id']}  ({det['correlation_id']})")
-    print(f"\nServe it:  AGENTMETRY_AUDIT_EXPORT_PATH={out} python -m uvicorn api.main:app --port 8000")
+    print(f"\nServe it:  scripts\\screenshot_demo.bat")
+    print(f"  (or AGENTMETRY_AUDIT_EXPORT_PATH={out} AGENTMETRY_AUDIT_DB_PATH={demo_db} "
+          f"python -m uvicorn api.main:app --port 8000)")
     return 0
 
 

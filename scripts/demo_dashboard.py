@@ -130,6 +130,9 @@ def main() -> int:
     env = {
         **os.environ,
         "AGENTMETRY_AUDIT_EXPORT_PATH": str(_TRAIL),
+        "AGENTMETRY_AUDIT_DB_PATH": str(_TRAIL.with_suffix(".db")),
+        "AGENTMETRY_DETECTION_LIVE_DB_PATH": str(_ORCH / "data" / "demo-detection-live.db"),
+        "AGENTMETRY_OPERATOR_ID": "home-lab",
         "AGENTMETRY_LLM_PROVIDER": "mock",
         "AGENTMETRY_ALLOW_MOCK": "1",
         "AGENTMETRY_STARTUP_VAULT_INDEX": "0",

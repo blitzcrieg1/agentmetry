@@ -466,7 +466,7 @@ The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activit
 
 | View | Features |
 | ---- | -------- |
-| **Flight Recorder** | Real-time event tail, detections strip, event histogram, source badges, outcome filters, split-pane inspector, CSV/JSONL export |
+| **Flight Recorder** | Real-time event tail, detections strip, event histogram, color-coded source badges (Cursor, Claude, Codex, Antigravity), outcome filters, split-pane inspector, CSV/JSONL export |
 | **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons — reorder or hide via the Columns settings panel |
 | **Analytics** | Outcome distribution, MITRE tactic chart, session ID search |
 | **Process Tree** | Horizontal React Flow timeline of events within a selected session |
