@@ -1,8 +1,9 @@
 # CLA signatures (ICLA v1.0)
 
 The [CLA Assistant](https://github.com/contributor-assistant/github-action) workflow
-records individual contributor signatures in `cla.json` in this directory (created
-automatically by the bot — **do not** commit an empty `cla.json` manually).
+records individual contributor signatures in `cla.json` in this directory on the
+**`cla-signatures`** branch (kept unprotected so the bot can commit). The bot creates
+the file automatically — **do not** commit an empty `cla.json` manually.
 
 - **CLA text:** [CLA.md](../../CLA.md) (version 1.0)
 - **Do not hand-edit** `cla.json` except via the automated signing flow or a
