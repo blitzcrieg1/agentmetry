@@ -32,7 +32,8 @@ item matters to you, open or upvote an [issue](https://github.com/blitzcrieg1/ag
   per-process; make alerting continuity survive a restart.
 - **More IDE / agent hosts** — Windsurf, VS Code Copilot.
 - **More agent frameworks** — LangChain and AutoGen listeners, following the
-  same shape as the [CrewAI adapter](adapters/crewai/).
+  same shape as the [CrewAI](adapters/crewai/) and [OpenSRE](adapters/opensre/)
+  adapters.
 - **Richer DLP** — source-code and PII heuristics beyond regex; per-rule
   validators.
 

