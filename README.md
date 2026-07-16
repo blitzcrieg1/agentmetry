@@ -7,11 +7,11 @@
   </picture>
 </p>
 
-<h1>Agentmetry: SIEM for AI Agents</h1>
+<h1>Agentmetry: the local flight recorder for AI coding agents</h1>
 
-<p>The open-source flight recorder and security layer for AI agent tool-use.<br/>
-Every tool call, every denial, every human approval — hashed, correlated, and stored in a JSONL trail you own.<br/>
-Replay on demand; forward to Loki, Elastic, or Splunk when you want a SIEM.</p>
+<p>Records every tool call, denial, and human approval from Cursor, Claude Code, Codex and Antigravity.<br/>
+Tags each one with MITRE ATT&CK, correlates sequences into detections, and stores it all in a JSONL trail you own.<br/>
+Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</p>
 
 <p align="center">
   <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>

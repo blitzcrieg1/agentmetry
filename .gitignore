@@ -59,3 +59,10 @@ apps/dashboard/scratch/
 
 # Next.js/TS incremental build artifact
 *.tsbuildinfo
+
+# Local-only scratch directories (never part of the published repo):
+#   agentmetry/     a stale duplicate clone of this same repo
+#   apps/landing/   an unused Vite scaffold (88M of node_modules)
+# Ignored so a stray `git add -A` cannot commit them.
+/agentmetry/
+/apps/landing/
