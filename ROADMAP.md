@@ -15,9 +15,12 @@ item matters to you, open or upvote an [issue](https://github.com/blitzcrieg1/ag
   scrubbing before storage.
 - **Correlated detection** — a sequence-rule engine that fires on patterns a
   single event can't reveal: `credential-exfil`, `approval-denied-then-executed`,
-  `encoded-command-download`, `autonomous-unapproved-write`,
-  `discovery-then-collect`. Detections stream to the sinks as first-class
-  events, not just on query.
+  `encoded-command-download`, `pr-merged-without-review`,
+  `untrusted-input-then-risky-action`, `destructive-delete-burst`,
+  `autonomous-unapproved-write`, `discovery-then-collect`, and opt-in
+  `off-hours-activity`. Includes detection for the Agent Data Injection chains
+  in [arXiv:2607.05120](https://arxiv.org/abs/2607.05120). Detections stream to
+  the sinks as first-class events, not just on query.
 - **SIEM forwarding** — file, webhook, Elastic ECS, Splunk HEC, Loki/LogQL, plus
   a Sigma pack and an alert webhook.
 - **Dashboard** — live flight recorder, session drill-down, analytics.
@@ -25,9 +28,9 @@ item matters to you, open or upvote an [issue](https://github.com/blitzcrieg1/ag
 
 ## Near term
 
-- **More detection rules** — rapid-fire denials, destructive-delete bursts,
-  off-hours autonomous activity. Rules are pure functions over a session's
-  events (`core/audit/detection/rules.py`); adding one is ~20 lines plus tests.
+- **More detection rules** — rapid-fire denials, package-install tampering.
+  Rules are pure functions over a session's events
+  (`core/audit/detection/rules.py`); adding one is ~20 lines plus tests.
 - **Durable detection state** — live correlation is currently in-memory and
   per-process; make alerting continuity survive a restart.
 - **More IDE / agent hosts** — Windsurf, VS Code Copilot.
