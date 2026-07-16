@@ -26,10 +26,11 @@ jobs:
         uses: contributor-assistant/github-action@v2.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         with:
           path-to-signatures: "signatures/version1/cla.json"
           path-to-document: "https://github.com/blitzcrieg1/agentmetry/blob/master/CLA.md"
-          branch: "master"
+          branch: "cla-signatures"
           allowlist: dependabot[bot],greenkeeper[bot]
           custom-notsigned-prcomment: >
             Thank you for your submission. Before we can merge, please sign our
