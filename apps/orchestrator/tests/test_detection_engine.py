@@ -18,6 +18,8 @@ def _event(
     tactic_id: str = "",
     technique_id: str = "",
     command: str = "",
+    input_hash: str = "",
+    reason: str = "",
     correlation_id: str = "sess-1",
     event_id: str = "",
 ) -> dict:
@@ -26,12 +28,14 @@ def _event(
         "correlation_id": correlation_id,
         "timestamp_utc": ts,
         "initiator": {"actor_type": actor_type, "trigger": "manual", "operator_id": "local"},
-        "action": {"type": action_type, "outcome": outcome, "reason": ""},
+        "action": {"type": action_type, "outcome": outcome, "reason": reason},
     }
     if tool:
         event["tool"] = {"qualified": tool}
         if command:
             event["tool"]["command"] = command
+        if input_hash:
+            event["tool"]["input_hash"] = input_hash
         if tactic_id or technique_id:
             event["tool"]["mitre"] = {"tactic_id": tactic_id, "technique_id": technique_id}
     return event
@@ -162,6 +166,107 @@ def test_approval_denied_then_executed_does_not_fire_on_denied_execution():
         _event("2026-07-13T14:00:05Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
     ]
     assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
+def test_inferred_denial_at_session_end_is_not_a_bypass():
+    """Ingest marks asks still pending at session_end as `denied` with an
+    `inferred:` reason. Nobody said no — treating it as a denial convicted
+    every later call of the same tool on an ordinary Cursor session."""
+    events = [
+        _event(
+            "2026-07-13T14:00:00Z",
+            action_type="approval_response",
+            outcome="denied",
+            tool="shell.run",
+            reason="inferred:session_ended_pending",
+        ),
+        _event("2026-07-13T14:00:05Z", action_type="tool_called", outcome="success", tool="shell.run"),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
+def test_denied_shell_command_does_not_convict_a_different_command():
+    """`shell.run` names every shell command there is. Denying one command must
+    not flag the next, unrelated one as a guardrail bypass."""
+    events = [
+        _event(
+            "2026-07-13T14:00:00Z",
+            action_type="approval_response",
+            outcome="denied",
+            tool="shell.run",
+            command="rm -rf /prod-data",
+            reason="operator denied",
+        ),
+        _event(
+            "2026-07-13T14:00:05Z",
+            action_type="tool_called",
+            outcome="success",
+            tool="shell.run",
+            command="pytest tests/ -q",
+        ),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(events)
+
+
+def test_denied_command_that_runs_anyway_still_fires():
+    events = [
+        _event(
+            "2026-07-13T14:00:00Z",
+            action_type="approval_response",
+            outcome="denied",
+            tool="shell.run",
+            command="rm -rf /prod-data",
+            reason="operator denied",
+        ),
+        _event(
+            "2026-07-13T14:00:05Z",
+            action_type="tool_called",
+            outcome="success",
+            tool="shell.run",
+            command="rm -rf /prod-data",
+        ),
+    ]
+    assert "approval-denied-then-executed" in _rule_ids(events)
+
+
+def test_denied_action_binds_on_input_hash_when_present():
+    """Tier A events carry hashes, not plaintext commands — the hash is the
+    identity. Same tool with a different hash is a different action."""
+    different = [
+        _event(
+            "2026-07-13T14:00:00Z",
+            action_type="approval_response",
+            outcome="denied",
+            tool="mcp.call_tool",
+            input_hash="aaa111",
+        ),
+        _event(
+            "2026-07-13T14:00:05Z",
+            action_type="tool_called",
+            outcome="success",
+            tool="mcp.call_tool",
+            input_hash="bbb222",
+        ),
+    ]
+    assert "approval-denied-then-executed" not in _rule_ids(different)
+
+    same = [
+        _event(
+            "2026-07-13T14:00:00Z",
+            action_type="approval_response",
+            outcome="denied",
+            tool="mcp.call_tool",
+            input_hash="aaa111",
+        ),
+        _event(
+            "2026-07-13T14:00:05Z",
+            action_type="tool_called",
+            outcome="success",
+            tool="mcp.call_tool",
+            input_hash="aaa111",
+        ),
+    ]
+    assert "approval-denied-then-executed" in _rule_ids(same)
 
 
 # --- encoded-command-download ------------------------------------------------
