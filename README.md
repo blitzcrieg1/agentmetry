@@ -325,6 +325,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | Category | Supported today | Roadmap |
 | -------- | --------------- | ------- |
 | **IDE / Agent hosts** | Cursor · Claude Code · Codex · Antigravity | Windsurf · VS Code Copilot |
+| **Agent frameworks** | [CrewAI](adapters/crewai/) (event-bus listener) | LangChain · AutoGen |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
 | **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) | STIX/TAXII export |
@@ -466,6 +467,7 @@ Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM ada
 | Area | Start here |
 | ---- | ---------- |
 | Hook adapters | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
+| Framework adapters | [adapters/crewai/](adapters/crewai/) |
 | Event schema | [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md) |
 | Detection rules | `apps/orchestrator/core/audit/detection/rules.py` |
 | DLP rules | `policies/dlp/manifest.yaml` |
