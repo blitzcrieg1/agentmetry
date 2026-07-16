@@ -1,27 +1,58 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 260 25% 5%;
-    --foreground: 260 15% 92%;
-    --card: 260 22% 8%;
-    --card-foreground: 260 15% 92%;
-    --primary: 265 85% 62%;
-    --primary-foreground: 260 25% 8%;
-    --muted: 260 18% 14%;
-    --muted-foreground: 260 10% 58%;
-    --accent: 265 40% 18%;
-    --accent-foreground: 260 15% 95%;
-    --border: 260 18% 16%;
-    --radius: 0.625rem;
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --primary: 240 6% 10%;
+    --primary-foreground: 0 0% 98%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    --border: 240 6% 90%;
+    --radius: 0.5rem;
 
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --destructive: 0 84% 60%;
+    --input: 240 6% 90%;
+    --ring: 240 6% 10%;
+    
     --graph-idle: 260 12% 28%;
     --graph-running: 265 85% 62%;
     --graph-completed: 152 65% 48%;
     --graph-error: 0 72% 55%;
     --graph-waiting: 38 92% 55%;
+  }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 6% 10%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 5% 84%;
   }
 }
 
@@ -30,156 +61,35 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(265 85% 62% / 0.12), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(265 60% 40% / 0.08), transparent);
+    @apply bg-background text-foreground antialiased font-sans;
   }
 }
 
 @layer utilities {
   .glass-panel {
-    @apply border border-border/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-xl shadow-black/5 dark:shadow-black/20;
+    @apply border border-border/80 bg-white/5 dark:bg-black/50 backdrop-blur-md shadow-xl shadow-black/20;
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-emerald-700 via-fuchsia-600 to-emerald-700 dark:from-emerald-300 dark:via-fuchsia-200 dark:to-emerald-300 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-emerald-500 to-emerald-300 bg-clip-text text-transparent;
   }
 }
 
 @keyframes pulse-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 12px hsl(var(--graph-running) / 0.35);
-  }
-  50% {
-    box-shadow: 0 0 28px hsl(var(--graph-running) / 0.65);
-  }
+  0%, 100% { box-shadow: 0 0 12px hsl(var(--graph-running) / 0.35); }
+  50% { box-shadow: 0 0 28px hsl(var(--graph-running) / 0.65); }
 }
 
 @keyframes node-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes orbit {
-  from {
-    transform: rotate(0deg) translateX(48px) rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg) translateX(48px) rotate(-360deg);
-  }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
 @keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-.animate-node-float {
-  animation: node-float 3s ease-in-out infinite;
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in-up {
   animation: fade-in-up 0.35s ease-out forwards;
-}
-
-.graph-node-running {
-  animation: pulse-glow 2s ease-in-out infinite, node-float 3s ease-in-out infinite;
-}
-
-.graph-node-waiting {
-  animation: pulse-glow 1.5s ease-in-out infinite;
-}
-
-/* 3D orbit ring for active loops in vault constellation */
-.orbit-scene {
-  perspective: 900px;
-  perspective-origin: 50% 50%;
-}
-
-.orbit-ring-3d {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-  animation: orbit-ring-spin 32s linear infinite;
-  will-change: transform;
-}
-
-.orbit-card-3d {
-  position: absolute;
-  left: -44px;
-  top: -22px;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  will-change: transform;
-}
-
-.orbit-more-badge {
-  position: absolute;
-  left: 50%;
-  top: 72px;
-  transform: translateX(-50%);
-  z-index: 200;
-  border-radius: 9999px;
-  border: 1px solid rgb(249 115 22 / 0.3);
-  background: rgb(67 20 7 / 0.6);
-  padding: 2px 8px;
-  font-size: 9px;
-  font-weight: 500;
-  color: rgb(254 215 170 / 0.9);
-  backdrop-filter: blur(4px);
-}
-
-@keyframes orbit-ring-spin {
-  from {
-    transform: rotateX(16deg) rotateY(0deg);
-  }
-  to {
-    transform: rotateX(16deg) rotateY(360deg);
-  }
-}
-
-/* React Flow — Obsidian-graph feel */
-.react-flow__background pattern circle {
-  fill: hsl(265 30% 25% / 0.35);
-}
-
-.react-flow__edge-path {
-  stroke-width: 2;
-}
-
-.react-flow__controls button {
-  @apply !bg-card/90 !border-border !text-foreground hover:!bg-accent;
-}
-
-.react-flow__minimap {
-  @apply !bg-card/80 !border !border-border rounded-lg overflow-hidden;
 }

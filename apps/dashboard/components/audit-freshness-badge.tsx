@@ -74,33 +74,35 @@ export function AuditFreshnessBadge() {
 
   return (
     <div
-      className={`hidden items-center gap-2 rounded-full border px-2.5 py-1 sm:flex ${tone}`}
+      className={`flex w-full flex-col gap-1.5 rounded-none border px-3 py-2 ${tone}`}
       title={
         enabled
           ? `Audit export on · ${recent} events in tail window`
           : "Set AGENTMETRY_AUDIT_EXPORT_ENABLED=1"
       }
     >
-      <span className="text-[10px] font-medium">{label}</span>
-      <span className="flex items-center gap-0.5">
-        {SOURCE_ORDER.map((src) => {
-          const count = bySource[src] ?? 0;
-          const active = count > 0;
-          return (
-            <span
-              key={src}
-              className={`h-1.5 w-1.5 rounded-full ${
-                active ? "bg-emerald-400" : "bg-slate-600"
-              }`}
-              title={`${src}: ${count} recent`}
-            />
-          );
-        })}
-      </span>
-      <span className="hidden text-[9px] uppercase tracking-wider text-slate-500 lg:inline">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold">{label}</span>
+        <span className="flex items-center gap-1">
+          {SOURCE_ORDER.map((src) => {
+            const count = bySource[src] ?? 0;
+            const active = count > 0;
+            return (
+              <span
+                key={src}
+                className={`h-1.5 w-1.5 rounded-none ${
+                  active ? "bg-emerald-400" : "bg-slate-700"
+                }`}
+                title={`${src}: ${count} recent`}
+              />
+            );
+          })}
+        </span>
+      </div>
+      <span className="text-[9px] uppercase tracking-wider text-slate-500">
         {SOURCE_ORDER.filter((s) => (bySource[s] ?? 0) > 0)
           .map((s) => SOURCE_SHORT[s] ?? s)
-          .join(" · ") || "—"}
+          .join(" · ") || "NO RECENT HOOKS"}
       </span>
     </div>
   );

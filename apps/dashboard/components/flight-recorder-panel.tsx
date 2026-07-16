@@ -364,7 +364,7 @@ function EventRow({ event, highlight, onViewSession, columns }: { event: AuditEv
 
   return (
     <div
-      className={`group/row rounded-lg border text-base font-mono transition ${rowOutcomeClass(outcome, highlight)}`}
+      className={`group/row rounded-none border text-base font-mono transition ${rowOutcomeClass(outcome, highlight)}`}
     >
       <button
         type="button"
@@ -767,7 +767,7 @@ export function FlightRecorderPanel() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-300 dark:border-slate-800/60 bg-white dark:bg-slate-950/50">
+    <div className="flex min-h-0 flex-1 flex-col rounded-none border border-slate-300 dark:border-slate-800/60 bg-white dark:bg-slate-950/50">
       <div className="space-y-2 border-b border-slate-300 dark:border-slate-800/60 px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
