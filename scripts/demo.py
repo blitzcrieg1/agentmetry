@@ -90,6 +90,7 @@ def main() -> int:
         from core.audit.detection.live import reset_live_state
         from core.audit.dlp import scan
         from core.audit.ingest import reset_ingest_sink_cache
+        from core.audit.trail_chain import unwrap_trail_record
 
         reset_ingest_sink_cache()
         reset_live_state()
@@ -141,7 +142,7 @@ def main() -> int:
 
         rule("What Agentmetry recorded")
         events = [
-            json.loads(line)
+            unwrap_trail_record(json.loads(line))
             for line in settings.audit_export_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
