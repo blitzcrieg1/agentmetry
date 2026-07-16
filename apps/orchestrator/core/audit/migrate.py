@@ -48,11 +48,14 @@ def backfill_db_from_jsonl() -> int:
                 if not line:
                     continue
                 try:
-                    event = json.loads(line)
+                    raw = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if not isinstance(event, dict):
+                if not isinstance(raw, dict):
                     continue
+                from core.audit.trail_chain import unwrap_trail_record
+
+                event = unwrap_trail_record(raw)
                 batch.append(event)
                 if len(batch) >= _BATCH:
                     total += db.insert_batch(batch)

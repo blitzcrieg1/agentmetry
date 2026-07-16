@@ -477,12 +477,30 @@ def cmd_export(args: argparse.Namespace) -> int:
 def cmd_verify(args: argparse.Namespace) -> int:
     import json
 
-    from core.audit.evidence_pack import verify_evidence_pack
-
-    path = Path(args.evidence_file)
+    path = Path(args.path)
     if not path.exists():
         print(f"No such file: {path}")
         return 1
+
+    if getattr(args, "trail", False):
+        from core.audit.trail_chain import verify_trail_file
+
+        result = verify_trail_file(path)
+        if result.ok:
+            print(f"OK — {result.message}")
+            if result.lines_total:
+                print(
+                    f"  lines: {result.lines_total} total, "
+                    f"{result.lines_chained} chained, {result.lines_legacy} legacy"
+                )
+            return 0
+        print(f"FAILED — {result.message}")
+        if result.first_bad_line:
+            print(f"  first bad line: {result.first_bad_line}")
+        return 1
+
+    from core.audit.evidence_pack import verify_evidence_pack
+
     try:
         pack = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -567,8 +585,16 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
     export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
     export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
-    verify = sub.add_parser("verify", help="verify an evidence pack integrity hash")
-    verify.add_argument("evidence_file", help="path to exported evidence JSON")
+    verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
+    verify.add_argument(
+        "path",
+        help="evidence JSON file, or JSONL trail with --trail",
+    )
+    verify.add_argument(
+        "--trail",
+        action="store_true",
+        help="verify tamper-evident hash chain on an audit JSONL file",
+    )
     doctor = sub.add_parser("doctor", help="preflight checks (vault, drivers, python)")
     doctor.add_argument(
         "--fix",

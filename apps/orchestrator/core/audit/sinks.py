@@ -30,11 +30,10 @@ class FileAuditSink(AuditSink):
         self._path = path
 
     async def emit(self, canonical: dict[str, Any]) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(canonical, separators=(",", ":"), default=str) + "\n"
+        from core.audit.trail_chain import append_chained_line
+
         with _file_lock:
-            with self._path.open("a", encoding="utf-8") as fh:
-                fh.write(line)
+            append_chained_line(self._path, canonical)
 
 
 class WebhookAuditSink(AuditSink):

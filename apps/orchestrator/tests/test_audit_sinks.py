@@ -30,7 +30,9 @@ async def test_file_sink_appends_jsonl(tmp_path: Path):
     await sink.emit(event)
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
-    assert json.loads(lines[0])["event_id"] == "abc"
+    from core.audit.trail_chain import unwrap_trail_record
+
+    assert unwrap_trail_record(json.loads(lines[0]))["event_id"] == "abc"
 
 
 @pytest.mark.asyncio

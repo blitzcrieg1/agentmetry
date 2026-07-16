@@ -114,7 +114,9 @@ async def test_ingest_service_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     assert canonical["source"]["app"] == "antigravity"
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    parsed = json.loads(lines[0])
+    from core.audit.trail_chain import unwrap_trail_record
+
+    parsed = unwrap_trail_record(json.loads(lines[0]))
     assert parsed["agent"]["name"] == "antigravity"
 
 
@@ -133,7 +135,9 @@ def test_ingest_api(ingest_client):
     assert resp.json()["status"] == "accepted"
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    assert json.loads(lines[0])["source"]["app"] == "cursor"
+    from core.audit.trail_chain import unwrap_trail_record
+
+    assert unwrap_trail_record(json.loads(lines[0]))["source"]["app"] == "cursor"
 
 
 def test_tail_filters_by_source(ingest_client):
@@ -225,6 +229,8 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
 
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 3  # request + tool_called + inferred approval_response
-    types = [json.loads(ln)["action"]["type"] for ln in lines]
+    from core.audit.trail_chain import unwrap_trail_record
+
+    types = [unwrap_trail_record(json.loads(ln))["action"]["type"] for ln in lines]
     assert types == ["approval_request", "tool_called", "approval_response"]
-    assert json.loads(lines[2])["action"]["reason"] == "inferred:tool_ran_after_ask"
+    assert unwrap_trail_record(json.loads(lines[2]))["action"]["reason"] == "inferred:tool_ran_after_ask"

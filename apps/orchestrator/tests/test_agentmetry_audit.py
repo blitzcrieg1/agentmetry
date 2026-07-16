@@ -129,7 +129,9 @@ async def test_jsonl_append(tmp_path: Path):
     await sink.emit(canonical)
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
-    parsed = json.loads(lines[0])
+    from core.audit.trail_chain import unwrap_trail_record
+
+    parsed = unwrap_trail_record(json.loads(lines[0]))
     assert parsed["action"]["type"] == "session_start"
     assert parsed["agent"]["skill_id"] == "summarize_note"
 

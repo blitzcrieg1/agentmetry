@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     )
     audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
     audit_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit.db"
+    detection_live_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "detection_live.db"
     # Local policy checks (core/audit/policy.py). Off by default: the built-in
     # ruleset is a hardcoded starting point, and it annotates only, it cannot
     # block. Real prevention lives in the hook (DLP block mode).

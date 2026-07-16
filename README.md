@@ -131,10 +131,23 @@ to read it.
 
 | Requirement | Version |
 |-------------|---------|
-| Python | 3.10+ |
-| Node.js | 18+ |
+| Python | 3.11+ |
+| Node.js | 18+ (dashboard only) |
 
-### 1. Clone and install
+### Windows one-flow install
+
+From a fresh clone on Windows 11:
+
+```powershell
+git clone https://github.com/blitzcrieg1/agentmetry.git
+cd agentmetry
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+scripts\start-dev.bat
+```
+
+`install.ps1` creates the orchestrator venv, installs Python + dashboard deps, copies `.env.example`, wires Cursor and Claude hooks, and runs `agentmetry doctor`. Skip hooks with `-SkipHooks`; orchestrator-only with `-SkipDashboard`.
+
+### Manual install
 
 ```powershell
 git clone https://github.com/blitzcrieg1/agentmetry.git
@@ -184,9 +197,15 @@ When an agent runs a tool, Agentmetry automatically:
 1. **Intercepts** the lifecycle hook or MCP `tools/call` before arguments leave the hook process
 2. **Hashes** tool arguments (SHA-256) and scrubs inline secrets in command strings
 3. **Enriches** each event with MITRE tactic/technique mappings and session correlation
-4. **Stores** canonical JSONL locally (`audit-forward.jsonl`) — the system of record for the hook path
+4. **Stores** canonical JSONL locally (`audit-forward.jsonl`) — the system of record for the hook path; each new line is hash-chained for tamper detection
 5. **Detects** multi-step behavioral patterns across the session timeline
 6. **Forwards** to your SIEM sinks and alert webhook (optional, best-effort)
+
+Verify the local trail after capture:
+
+```powershell
+agentmetry verify --trail apps\orchestrator\data\audit-forward.jsonl
+```
 
 ---
 
@@ -342,7 +361,7 @@ Per-event MITRE tags say *what* a single tool call is. The detection engine says
 
 Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else — so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
 
-> **Alpha limitation.** Live correlation state is in-memory and per-process: restarting the orchestrator resets alerting continuity for in-flight sessions. The JSONL trail stays authoritative, so no detection is ever *lost* — it is recomputed on query — but a restart mid-session can delay a live alert. Detection state is not shared across processes.
+> **Alpha limitation.** Live detection checkpoint state persists in SQLite across orchestrator restarts (emitted rules and session windows are not re-fired). Detection state is still per-process and not shared across multiple orchestrator instances. The JSONL trail stays authoritative — every detection can be recomputed on query via `GET /audit/detections/{correlation_id}`.
 
 ```mermaid
 sequenceDiagram
@@ -448,7 +467,7 @@ The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activit
 
 | View | Features |
 | ---- | -------- |
-| **Flight Recorder** | Real-time event tail, source badges, outcome filters, expandable row detail, raw JSON view |
+| **Flight Recorder** | Real-time event tail, detections strip, event histogram, source badges, outcome filters, split-pane inspector, CSV/JSONL export |
 | **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons — reorder or hide via the Columns settings panel |
 | **Analytics** | Outcome distribution, MITRE tactic chart, session ID search |
 | **Process Tree** | Horizontal React Flow timeline of events within a selected session |
@@ -463,7 +482,7 @@ For agents captured via IDE hooks (the common case), the canonical JSONL trail i
 
 | Sink | Env |
 |------|-----|
-| **File (default)** | `AGENTMETRY_AUDIT_SINK=file` |
+| **File (default)** | `AGENTMETRY_AUDIT_SINK=file` — hash-chained JSONL (`agentmetry verify --trail`) |
 | **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
@@ -488,10 +507,12 @@ Integration guides → [docs/integrations/](docs/integrations/)
 
 | Command | What it does |
 |---------|--------------|
+| `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, doctor |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry replay <thread_id>` | ASCII audit timeline for one run, from `events.db` |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
+| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
 | `agentmetry doctor` | Preflight check for python, paths, etc. |
 
 `scripts\agentmetry.bat` remains as a legacy alias.

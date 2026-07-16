@@ -81,7 +81,9 @@ async def test_audit_exporter_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     export_path = tmp_path / "audit-forward.jsonl"
     lines = export_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    assert json.loads(lines[0])["action"]["type"] == "session_start"
+    from core.audit.trail_chain import unwrap_trail_record
+
+    assert unwrap_trail_record(json.loads(lines[0]))["action"]["type"] == "session_start"
 
 
 async def test_persister_excludes_tokens(tmp_path: Path):
