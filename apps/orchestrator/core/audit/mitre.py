@@ -129,8 +129,21 @@ _CREDENTIAL_PATTERNS = (
 _NETWORK_CLIENT = re.compile(
     r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b"
 )
-_NETWORK_TARGET = re.compile(r"https?://|\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_URL_HOST = re.compile(r"https?://(?:[^\s/@'\"]*@)?([^\s/:'\"]+)")
+_BARE_IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# Loopback is not egress. Hitting your own health endpoint is the single most
+# common thing a developer does while running this tool, and tagging it
+# Command and Control buries the one event that matters under a hundred that
+# don't. Anything off the box still counts, including the LAN: exfil to the
+# machine next to you is still exfil.
+_LOOPBACK = re.compile(r"^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?)$")
 _C2 = _m("TA0011", "Command and Control", "T1071.001", "Web Protocols")
+
+
+def _reaches_remote_host(text: str) -> bool:
+    """True when the command names a target that is not this machine."""
+    hosts = _URL_HOST.findall(text) + _BARE_IP.findall(text)
+    return any(not _LOOPBACK.match(host) for host in hosts)
 
 
 def _evidence_text(evidence: Any) -> str:
@@ -162,7 +175,7 @@ def get_mitre_mapping(
         if any(p in text for p in _CREDENTIAL_PATTERNS):
             return _CREDENTIAL_ACCESS
         # A shell that reaches the network is C2, whatever the tool is called.
-        if _NETWORK_CLIENT.search(text) and _NETWORK_TARGET.search(text):
+        if _NETWORK_CLIENT.search(text) and _reaches_remote_host(text):
             return _C2
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),

