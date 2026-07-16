@@ -54,8 +54,8 @@ item matters to you.
   orchestrator restart without re-firing detections.
 - **Windows one-flow install** — `scripts/install.ps1` (venv, dashboard deps,
   IDE hooks, doctor).
-- **Visual truth (partial)** — README + agentmetry.ai use Phase 1 dashboard
-  screenshots; `demo.gif` refresh still optional.
+- **Visual truth** — README, agentmetry.ai, and `docs/assets/demo.gif` match Phase 1
+  dashboard and live demo output.
 
 ---
 
@@ -65,11 +65,10 @@ Goal: fix trust gaps before calling the product beta-ready.
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
-| P0 | **Visual truth (finish)** | `docs/assets/demo.gif`, agentmetry.ai deploy | GIF matches live demo; site deployed with real screenshots |
 | P1 | **README scope trim** | `README.md` | SIEM story first; Obsidian/LangGraph runtime under “Advanced” |
 | P1 | **Dogfood weekly log** | issue template or operator notes | Events/week, detections/week, false positives, install attempts tracked |
 
-**If you only ship one thing in 14 days, ship visual truth (P0).**
+**Phase 0 P0 items are shipped.** Next focus: README scope trim and dogfood logging.
 
 ---
 
