@@ -70,6 +70,13 @@ def ingest_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     jsonl = tmp_path / "audit-forward.jsonl"
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     monkeypatch.setattr(settings, "audit_ingest_enabled", True)
     monkeypatch.setattr(settings, "audit_sink", "file")
     monkeypatch.setattr(settings, "api_key", "")
@@ -86,6 +93,13 @@ async def test_ingest_service_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     jsonl = tmp_path / "audit-forward.jsonl"
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     monkeypatch.setattr(settings, "audit_ingest_enabled", True)
     monkeypatch.setattr(settings, "audit_sink", "file")
     reset_ingest_sink_cache()
@@ -129,6 +143,9 @@ def test_tail_filters_by_source(ingest_client):
         build_external_canonical({"source_app": "claude", "event_type": "session_start", "correlation_id": "2"}),
     ]
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    get_trail_db().insert_batch(events)
 
     body = client.get("/api/v1/audit/tail?sources=cursor&scope=runs").json()
     assert len(body["events"]) == 1
@@ -183,6 +200,13 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
     jsonl = tmp_path / "audit-forward.jsonl"
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     monkeypatch.setattr(settings, "audit_ingest_enabled", True)
     monkeypatch.setattr(settings, "audit_sink", "file")
     reset_ingest_sink_cache()

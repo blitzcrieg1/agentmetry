@@ -56,6 +56,16 @@ _setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from core.audit.migrate import backfill_db_from_jsonl
+
+    # Backfill SQLite from the existing JSONL trail. A broken or locked audit DB
+    # must degrade the dashboard, never stop the daemon from booting: the
+    # recorder's job is to keep recording.
+    try:
+        await asyncio.to_thread(backfill_db_from_jsonl)
+    except Exception:
+        logger.exception("Audit trail backfill failed; continuing without it")
+
     # Event bus first: everything downstream publishes onto it.
     bus.set_initial_seq(get_outbox().max_seq())
     bridge_tasks = [

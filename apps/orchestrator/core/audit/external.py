@@ -170,4 +170,13 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("seq") is not None:
         event["seq"] = payload["seq"]
 
+    # Policy verdicts annotate; they never rewrite what happened. This event has
+    # already executed on the agent's machine, so claiming "denied" here would
+    # put a lie in the trail and hide the event from every detection rule that
+    # keys on outcome == "success". See core/audit/policy.py.
+    if settings.policy_enabled and event["action"]["type"] in ("tool_called", "approval_request"):
+        from core.audit.policy import annotate as annotate_policy
+
+        annotate_policy(event)
+
     return event

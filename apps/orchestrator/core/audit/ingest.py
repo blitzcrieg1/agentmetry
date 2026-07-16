@@ -148,6 +148,12 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("External audit ingest is disabled")
 
     canonical = build_external_canonical(payload)
+
+    # 1. Durable indexed store (query backend)
+    from core.audit.trail_db import get_trail_db
+    get_trail_db().insert(canonical)
+
+    # 2. Forward to configured sinks (JSONL file, webhook, Elastic, Splunk)
     sink = _get_sink()
     if sink is None:
         raise RuntimeError("No audit sinks configured")
@@ -159,6 +165,7 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     for extra_payload in infer_approval_payloads(canonical):
         extra = build_external_canonical(extra_payload)
         inferred.append(extra)
+        get_trail_db().insert(extra)
         await sink.emit(extra)
 
     # Correlate as events arrive. A detection that only surfaces when someone
@@ -167,7 +174,9 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     for event in (canonical, *inferred):
         for detection in observe(event):
             try:
-                await sink.emit(build_detection_event(detection, event))
+                det_event = build_detection_event(detection, event)
+                get_trail_db().insert(det_event)
+                await sink.emit(det_event)
                 logger.warning(
                     "DETECTION %s [%s] correlation=%s — %s",
                     detection.rule_id,

@@ -21,6 +21,13 @@ def audit_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
 
     from api.main import app
 
@@ -37,7 +44,7 @@ def test_audit_tail_returns_last_events(audit_client: TestClient):
     assert body["events"][1]["correlation_id"] == "t2"
 
 
-def test_audit_tail_excludes_config_change_by_default(audit_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_audit_tail_excludes_config_change_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     jsonl = tmp_path / "audit-forward.jsonl"
     events = [
         {"schema_version": "1.1.0", "session_id": "s1", "correlation_id": "t1", "action": {"type": "config_change", "outcome": "success"}, "mcp": {"server_id": "gmail"}},
@@ -45,6 +52,10 @@ def test_audit_tail_excludes_config_change_by_default(audit_client: TestClient, 
     ]
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    get_trail_db().insert_batch(events)
 
     from api.main import app
 
@@ -65,6 +76,10 @@ def test_audit_tail_filters_by_session(audit_client: TestClient, tmp_path: Path,
     ]
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    get_trail_db().insert_batch(events)
 
     from api.main import app
 
@@ -77,6 +92,13 @@ def test_audit_tail_filters_by_session(audit_client: TestClient, tmp_path: Path,
 def test_audit_tail_empty_when_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "missing.jsonl")
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     client = TestClient(app)
@@ -97,6 +119,13 @@ def test_audit_status_reports_freshness_and_sources(tmp_path: Path, monkeypatch:
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     body = TestClient(app).get("/api/v1/audit/status").json()
@@ -110,6 +139,13 @@ def test_audit_status_reports_freshness_and_sources(tmp_path: Path, monkeypatch:
 def test_audit_status_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "x.jsonl")
     monkeypatch.setattr(settings, "audit_export_enabled", False)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     body = TestClient(app).get("/api/v1/audit/status").json()
@@ -128,6 +164,13 @@ def test_audit_tail_pagination_before_utc(tmp_path: Path, monkeypatch: pytest.Mo
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     client = TestClient(app)
@@ -159,6 +202,13 @@ def test_audit_tail_pagination_after_utc(tmp_path: Path, monkeypatch: pytest.Mon
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     newer = TestClient(app).get(
@@ -188,6 +238,13 @@ def test_audit_session_returns_full_session(tmp_path: Path, monkeypatch: pytest.
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     body = TestClient(app).get("/api/v1/audit/session/sess-X").json()
@@ -219,6 +276,13 @@ def test_audit_detections_correlate_across_session(tmp_path: Path, monkeypatch: 
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+    reset_trail_db()
+    try:
+        get_trail_db().insert_batch(events)
+    except NameError:
+        pass  # events not defined in this scope
     from api.main import app
 
     body = TestClient(app).get("/api/v1/audit/detections/sess-D").json()

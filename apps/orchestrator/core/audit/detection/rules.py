@@ -11,6 +11,7 @@ Add a rule by writing a function and appending it to REGISTRY.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from .models import Detection
@@ -90,9 +91,76 @@ def _correlation_id(events: list[dict[str, Any]]) -> str:
     return ""
 
 
+def _trigger(event: dict[str, Any]) -> str:
+    initiator = event.get("initiator")
+    return str(initiator.get("trigger") or "") if isinstance(initiator, dict) else ""
+
+
+def _norm_tool(name: str) -> str:
+    """Same folding core.audit.mitre uses, so `delete_file`/`Delete` agree."""
+    return name.lower().replace("_", "").replace("-", "")
+
+
+def _business_tz(name: str) -> timezone | Any:
+    """Resolve the operator's timezone, falling back to UTC if unavailable."""
+    if not name or name.upper() == "UTC":
+        return timezone.utc
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception:
+        return timezone.utc
+
+
+def _business_window(spec: str) -> tuple[int, int]:
+    """Parse "09-18" into (9, 18). Falls back to 09-18 on anything unparsable."""
+    try:
+        start_s, end_s = spec.split("-", 1)
+        start, end = int(start_s), int(end_s)
+        if 0 <= start < end <= 24:
+            return start, end
+    except (ValueError, AttributeError):
+        pass
+    return 9, 18
+
+
+def _to_tz(ts: str, tz: Any) -> datetime | None:
+    """Parse a canonical timestamp and convert it into `tz`.
+
+    Explicit conversion is the whole point: reading `.hour` off the parsed value
+    reports the *source* offset, not the operator's clock.
+    """
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)  # canonical events are UTC
+    return dt.astimezone(tz)
+
+
 # --- rules -------------------------------------------------------------------
 
 _DISCOVERY_BURST = 3  # list_dir/glob calls that read as recon before a grab
+_DELETE_BURST = 5  # deletions in one session before it is worth a look
+
+# Exact tool methods that destroy data. Normalized via _norm_tool, so
+# `delete_file`, `deleteFile` and `Delete` all land here, while
+# `remove_whitespace` and `undelete` correctly do not.
+_DELETE_METHODS = frozenset(
+    {"delete", "deletefile", "removefile", "rm", "rmdir", "unlink", "rmrf", "destroy"}
+)
+
+# `bash: rm -rf build/` is a deletion even though the tool is named "Bash".
+_DELETE_COMMAND = re.compile(
+    r"\brm\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|remove-item\b|\bdel\s+/", re.IGNORECASE
+)
+
+# Scheduled work runs at night by design; excluded from the off-hours rule.
+_SCHEDULED_TRIGGERS = frozenset({"cron", "schedule", "scheduled", "timer"})
 
 
 def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
@@ -300,10 +368,133 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
     return []
 
 
+def _is_delete(event: dict[str, Any]) -> bool:
+    """Is this event actually a destruction of data?
+
+    Deliberately NOT a substring test. `"delete" in tool or "remove" in tool`
+    matched `editor.remove_whitespace`, `remove_import` and `undelete`, so an
+    ordinary refactor produced a *critical* "data destruction attack". Same
+    class of bug as the loose tool matching fixed in core/audit/mitre.py.
+
+    Authority order: the ATT&CK technique first (mitre.py already normalizes
+    tool spellings), then an exact match on known destructive verbs, then the
+    command text, so `bash: rm -rf build/` counts even though the tool is
+    "Bash".
+    """
+    if _technique_id(event) in ("T1485", "T1070.004"):
+        return True
+    method = _norm_tool(_tool_qualified(event).rsplit(".", 1)[-1])
+    if method in _DELETE_METHODS:
+        return True
+    return bool(_DELETE_COMMAND.search(_command(event)))
+
+
+def rule_destructive_delete_burst(events: list[dict[str, Any]]) -> list[Detection]:
+    """A burst of deletions in one session.
+
+    High rather than critical: an agent cleaning build artifacts looks identical
+    to an agent destroying data, and only the operator knows which. Critical is
+    reserved for patterns that are hard to explain innocently (credential exfil,
+    a denied action running anyway).
+    """
+    deletes = [
+        e
+        for e in events
+        if _action_type(e) == "tool_called" and _outcome(e) == "success" and _is_delete(e)
+    ]
+    if len(deletes) < _DELETE_BURST:
+        return []
+    return [
+        Detection(
+            rule_id="destructive-delete-burst",
+            title="Burst of destructive deletions",
+            severity="high",
+            summary=(
+                f"{len(deletes)} deletion operations in a single session. Worth confirming "
+                "this was intended cleanup and not data destruction."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0040"],
+            technique_ids=sorted({_technique_id(e) for e in deletes if _technique_id(e)}),
+            event_ids=[_event_id(e) for e in deletes],
+            first_seen_utc=_ts(deletes[0]),
+            last_seen_utc=_ts(deletes[-1]),
+        )
+    ]
+
+
+def rule_off_hours_activity(events: list[dict[str, Any]]) -> list[Detection]:
+    """An autonomous agent performs an impact action outside business hours.
+
+    Opt-in (`AGENTMETRY_DETECT_OFF_HOURS=1`) and off by default, because as a
+    generic rule this is mostly noise:
+
+    * Scheduled jobs run at night. That is what cron is for. Flagging a nightly
+      archive as "highly suspicious" trains operators to ignore the feed, so
+      `trigger: cron` is excluded outright.
+    * "Business hours" are local, not UTC. 23:00-05:00 UTC is early evening in
+      the US. The window and timezone are therefore operator-configured
+      (`AGENTMETRY_BUSINESS_HOURS`, `AGENTMETRY_BUSINESS_TZ`), not assumed.
+
+    Timezone handling matters here: the previous version read `dt.hour` straight
+    off the parsed timestamp, so an event stamped `02:00+09:00` (17:00 UTC, a
+    Tuesday afternoon) was reported as off-hours "Hour: 2 UTC". Timestamps are
+    converted explicitly before comparing.
+    """
+    from core.config import settings
+
+    if not settings.detect_off_hours:
+        return []
+
+    tz = _business_tz(settings.business_tz)
+    start_h, end_h = _business_window(settings.business_hours)
+
+    for event in events:
+        if _actor_type(event) != "autonomous":
+            continue
+        # A scheduled job running at 03:00 is doing its job, not hiding.
+        if _trigger(event) in _SCHEDULED_TRIGGERS:
+            continue
+        if _tactic_id(event) != "TA0040" or _outcome(event) != "success":
+            continue
+
+        local = _to_tz(_ts(event), tz)
+        if local is None:
+            continue
+
+        weekend = local.weekday() >= 5
+        outside = not (start_h <= local.hour < end_h)
+        if not (weekend or outside):
+            continue
+
+        when = "the weekend" if weekend else f"{local.hour:02d}:00 local"
+        return [
+            Detection(
+                rule_id="off-hours-activity",
+                title="Autonomous impact action outside business hours",
+                severity="medium",
+                summary=(
+                    f"An unscheduled autonomous agent modified or deleted data on {when} "
+                    f"({local.tzname()}), outside the configured "
+                    f"{start_h:02d}:00-{end_h:02d}:00 window."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=[_tactic_id(event)],
+                technique_ids=[_technique_id(event)] if _technique_id(event) else [],
+                event_ids=[_event_id(event)],
+                first_seen_utc=_ts(event),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
     rule_approval_denied_then_executed,
     rule_encoded_command_download,
+    rule_destructive_delete_burst,
+    rule_off_hours_activity,
 ]

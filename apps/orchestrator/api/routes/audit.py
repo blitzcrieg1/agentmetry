@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -62,38 +61,6 @@ class ExternalIngestBody(BaseModel):
     dlp: dict[str, Any] | None = None
 
 
-def _tail_jsonl(path: Path, *, read_lines: int) -> list[dict]:
-    if not path.is_file():
-        return []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if not lines:
-        return []
-    tail = lines[-read_lines:]
-    return _parse_jsonl_lines(tail)
-
-
-def _read_jsonl(path: Path, *, max_lines: int = 50_000) -> list[dict]:
-    if not path.is_file():
-        return []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if len(lines) > max_lines:
-        lines = lines[-max_lines:]
-    return _parse_jsonl_lines(lines)
-
-
-def _parse_jsonl_lines(lines: list[str]) -> list[dict]:
-    events: list[dict] = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return events
-
-
 def _parse_event_ts(event: dict[str, Any]) -> datetime | None:
     ts = event.get("timestamp_utc")
     if not isinstance(ts, str):
@@ -137,91 +104,6 @@ def _event_source_app(event: dict[str, Any]) -> str:
         if name != "agentmetry":
             return name
     return "agentmetry"
-
-
-def _filter_events(
-    events: list[dict],
-    *,
-    scope: Literal["runs", "all"],
-    session_id: str | None,
-    sources: set[str] | None,
-    since_minutes: int | None,
-) -> list[dict]:
-    if scope == "runs":
-        events = [
-            e
-            for e in events
-            if (e.get("action") or {}).get("type") in _RUN_ACTION_TYPES
-        ]
-    if sources:
-        events = [e for e in events if _event_source_app(e) in sources]
-    if session_id:
-        events = [
-            e
-            for e in events
-            if e.get("session_id") == session_id
-            or _event_source_app(e) != "agentmetry"
-        ]
-    if since_minutes is not None and since_minutes > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
-
-        def _after_cutoff(event: dict) -> bool:
-            dt = _parse_event_ts(event)
-            if dt is None:
-                return True
-            return dt >= cutoff
-
-        events = [e for e in events if _after_cutoff(e)]
-    return events
-
-
-def _sort_events(events: list[dict]) -> list[dict]:
-    epoch = datetime.min.replace(tzinfo=timezone.utc)
-
-    def _key(event: dict) -> tuple[datetime, str]:
-        ts = _parse_event_ts(event) or epoch
-        eid = str(event.get("event_id") or "")
-        return (ts, eid)
-
-    return sorted(events, key=_key)
-
-
-def _paginate_events(
-    events: list[dict],
-    *,
-    limit: int,
-    before_utc: str | None,
-    after_utc: str | None,
-) -> tuple[list[dict], dict[str, Any]]:
-    sorted_events = _sort_events(events)
-    if before_utc and after_utc:
-        raise HTTPException(status_code=400, detail="Use only one of before_utc or after_utc")
-
-    if before_utc:
-        cutoff = _parse_query_ts(before_utc)
-        pool = [e for e in sorted_events if (ts := _parse_event_ts(e)) and ts < cutoff]
-        page = pool[-limit:]
-        has_older = len(pool) > limit
-        has_newer = True
-    elif after_utc:
-        cutoff = _parse_query_ts(after_utc)
-        pool = [e for e in sorted_events if (ts := _parse_event_ts(e)) and ts > cutoff]
-        page = pool[:limit]
-        has_older = True
-        has_newer = len(pool) > limit
-    else:
-        page = sorted_events[-limit:]
-        has_older = len(sorted_events) > limit
-        has_newer = False
-
-    pagination = {
-        "has_older": has_older,
-        "has_newer": has_newer,
-        "oldest_utc": page[0].get("timestamp_utc") if page else None,
-        "newest_utc": page[-1].get("timestamp_utc") if page else None,
-        "count": len(page),
-    }
-    return page, pagination
 
 
 @router.post("/ingest", dependencies=[Depends(require_api_key)])
@@ -280,6 +162,7 @@ async def audit_tail(
     ),
 ):
     """Return canonical audit events from the local JSONL forwarder."""
+    from core.audit.trail_db import get_trail_db
     path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
         return {"events": [], "path": str(path), "enabled": False, "pagination": {"has_older": False, "has_newer": False, "count": 0}}
@@ -289,26 +172,22 @@ async def audit_tail(
         source_set = {s.strip().lower() for s in sources.split(",") if s.strip()}
 
     try:
-        if before_utc or after_utc:
-            raw = _read_jsonl(path)
-        else:
-            read_lines = max(limit * 20, 400)
-            raw = _tail_jsonl(path, read_lines=read_lines)
-        filtered = _filter_events(
-            raw,
+        events, pagination = get_trail_db().tail(
+            limit=limit,
             scope=scope,
-            session_id=session_id,
             sources=source_set,
+            session_id=session_id,
             since_minutes=since_minutes,
-        )
-        page, pagination = _paginate_events(
-            filtered, limit=limit, before_utc=before_utc, after_utc=after_utc
+            before_utc=before_utc,
+            after_utc=after_utc,
         )
     except HTTPException:
         raise
-    except OSError as exc:
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"events": page, "path": str(path), "enabled": True, "pagination": pagination}
+    return {"events": events, "path": str(path), "enabled": True, "pagination": pagination}
 
 
 @router.get("/session/{correlation_id}", dependencies=[Depends(require_api_key)])
@@ -322,19 +201,18 @@ async def audit_session(
     full session — especially an older one — needs a server-side lookup that
     scans the entire JSONL rather than the last N lines.
     """
-    path = Path(settings.audit_export_path)
+    from core.audit.trail_db import get_trail_db
     if not settings.audit_export_enabled:
         return {"events": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
     try:
-        raw = _read_jsonl(path)
-    except OSError as exc:
+        events = get_trail_db().session(correlation_id, limit=limit)
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    matched = _sort_events([e for e in raw if e.get("correlation_id") == correlation_id])
     return {
-        "events": matched[:limit],
+        "events": events,
         "correlation_id": correlation_id,
         "enabled": True,
-        "count": len(matched),
+        "count": len(events),
     }
 
 
@@ -347,15 +225,14 @@ async def audit_detections(correlation_id: str):
     their own. Scans the whole trail for the session, then correlates.
     """
     from core.audit.detection import run_detections
+    from core.audit.trail_db import get_trail_db
 
-    path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
         return {"detections": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
     try:
-        raw = _read_jsonl(path)
-    except OSError as exc:
+        events = get_trail_db().events_for_detection(correlation_id)
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    events = [e for e in raw if e.get("correlation_id") == correlation_id]
     detections = run_detections(events)
     return {
         "detections": [d.as_dict() for d in detections],
@@ -369,7 +246,7 @@ async def audit_detections(correlation_id: str):
 async def audit_export_evidence():
     """Generate and download a cryptographic evidence pack."""
     from core.audit.evidence_pack import build_evidence_pack, default_export_path, write_evidence_pack
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
     to_date = datetime.now(timezone.utc)
     from_date = to_date - timedelta(days=30)  # Export last 30 days
@@ -392,23 +269,16 @@ async def audit_status():
     Powers the freshness badge and `selftest` — makes silent hook failure visible
     instead of the operator falsely believing they are being audited.
     """
+    from core.audit.trail_db import get_trail_db
     path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
         return {"enabled": False, "last_event_utc": None, "recent": 0, "by_source": {}, "path": str(path)}
 
-    raw = _tail_jsonl(path, read_lines=500)
-    by_source: dict[str, int] = {}
-    last_ts: str | None = None
-    for event in raw:
-        app = _event_source_app(event)
-        by_source[app] = by_source.get(app, 0) + 1
-        ts = event.get("timestamp_utc")
-        if isinstance(ts, str) and (last_ts is None or ts > last_ts):
-            last_ts = ts
+    status_data = get_trail_db().status()
     return {
         "enabled": True,
-        "last_event_utc": last_ts,
-        "recent": len(raw),
-        "by_source": by_source,
+        "last_event_utc": status_data["last_event_utc"],
+        "recent": status_data["recent"],
+        "by_source": status_data["by_source"],
         "path": str(path),
     }
