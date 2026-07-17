@@ -18,7 +18,10 @@ echo.
 call scripts\agentmetry.bat stop 2>nul
 
 echo [1/2] Seeding demo trail (generic paths, no C:\Users\...)...
-python scripts\seed_demo.py
+rem Must be the venv python: seed_demo imports core.config, whose dependencies
+rem install.ps1 only puts in the venv. Bare "python" works only on machines
+rem that happen to have them system-wide.
+apps\orchestrator\.venv\Scripts\python.exe scripts\seed_demo.py
 if errorlevel 1 (
   echo seed_demo.py failed
   exit /b 1

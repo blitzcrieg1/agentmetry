@@ -33,8 +33,14 @@ function Require-Command([string]$Name) {
 }
 
 function Get-PythonVersion {
-    $raw = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
-    return [version]$raw.Trim()
+    # On stock Windows 11, "python" is often the Microsoft Store alias: it is
+    # on PATH, produces no output, and opens the Store. Catch that here with a
+    # real message instead of letting the [version] cast fail cryptically.
+    $raw = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+    if (-not $raw) {
+        throw "python on PATH produced no output (usually the Microsoft Store alias). Install Python 3.11+ from https://www.python.org/downloads/, or disable the alias under Settings > Apps > Advanced app settings > App execution aliases, then re-run."
+    }
+    return [version]"$raw".Trim()
 }
 
 Write-Host ""
@@ -78,7 +84,9 @@ Pop-Location
 if (-not $SkipDashboard) {
     Write-Step "Installing dashboard dependencies"
     Push-Location $DashRoot
-    & npm install --no-fund --no-audit
+    # npm ci installs exactly what package-lock.json pins — reproducible on
+    # fresh machines, which is what an installer is for.
+    & npm ci --no-fund --no-audit
     Pop-Location
 }
 
