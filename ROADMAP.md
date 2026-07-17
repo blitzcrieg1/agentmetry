@@ -58,6 +58,8 @@ item matters to you.
   dashboard and live demo output.
 
 - **Phase 0 complete** — README SIEM-first + Advanced runtime doc; dogfood issue template.
+- **Tool allow/deny policy YAML** — `policies/tool/manifest.yaml`; hook `log`/`block` via
+  `AGENTMETRY_TOOL_POLICY_MODE` (runs before DLP at the hook boundary).
 
 ---
 
@@ -65,7 +67,7 @@ item matters to you.
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
-| P0 | **Tool allow/deny policy YAML** | alongside existing DLP manifest | Block disallowed shell/MCP before execution (extend hooks, not replace DLP) |
+| P0 | ~~**Tool allow/deny policy YAML**~~ | `policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
 | P1 | **Dogfood metrics in CLI/dashboard** | `agentmetry stats --days 7` surfaced in UI | Operator sees weekly ingest/detection counts without SQL |
 | P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
 | P1 | **More detection rules** | `core/audit/detection/rules.py` | e.g. rapid-fire denials, package-install tampering (~20 lines + tests each) |

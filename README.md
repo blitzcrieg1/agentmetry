@@ -461,6 +461,17 @@ flowchart LR
 
 Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python — drop entries into the manifest.
 
+### Tool allow/deny policy
+
+Structural tool policy runs **before** DLP at the hook boundary. Deny rules match tool names (glob) and optional shell command regex.
+
+| Env | Default | Description |
+| --- | ------- | ----------- |
+| `AGENTMETRY_TOOL_POLICY_MODE` | `log` | `log` · `block` · `disable` |
+| `AGENTMETRY_TOOL_POLICY_PATH` | `policies/tool/manifest.yaml` | Custom allow/deny manifest |
+
+In `block` mode, a matching deny rule returns `permission: deny` to the IDE hook (same path as DLP block).
+
 ---
 
 ## Dashboard

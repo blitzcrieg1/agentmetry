@@ -59,6 +59,7 @@ class ExternalIngestBody(BaseModel):
     # this is the only place the finding can be captured — without this field
     # pydantic drops it and a `log`-mode match is silently lost.
     dlp: dict[str, Any] | None = None
+    tool_policy: dict[str, Any] | None = None
 
 
 def _parse_event_ts(event: dict[str, Any]) -> datetime | None:

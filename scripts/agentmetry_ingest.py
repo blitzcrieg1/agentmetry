@@ -27,8 +27,10 @@ from typing import Any
 try:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from apps.orchestrator.core.audit.dlp import scan as dlp_scan
+    from apps.orchestrator.core.audit.tool_policy import evaluate as tool_policy_eval
 except ImportError:
     dlp_scan = None
+    tool_policy_eval = None
 
 REDACT_KEYS = frozenset({
     "token", "api_key", "apikey", "password", "secret", "authorization",
@@ -840,10 +842,38 @@ def hook_main(hook_name: str) -> int:
         if decode_error:
             payload["reason"] = (payload.get("reason", "") + ";stdin_decode_error").strip(";")
             
-        if payload.get("event_type") in ("tool_called", "approval_request") and dlp_scan:
-            tool_name = payload.get("tool", {}).get("qualified", "")
-            dlp_verdict = dlp_scan(tool_name, data)
-            if dlp_verdict.matched:
+        if payload.get("event_type") in ("tool_called", "approval_request"):
+            tool_block = payload.get("tool") or {}
+            tool_name = tool_block.get("qualified", "")
+            server = tool_block.get("server", "")
+
+            if tool_policy_eval:
+                tp_verdict = tool_policy_eval(tool_name, data, server=server)
+                if tp_verdict.matched:
+                    payload["tool_policy"] = {
+                        "rule_id": tp_verdict.match.rule_id if tp_verdict.match else "",
+                        "action": tp_verdict.match.action if tp_verdict.match else "",
+                        "mode": tp_verdict.mode,
+                        "blocked": tp_verdict.blocked,
+                    }
+                    if tp_verdict.blocked and tp_verdict.mode == "block":
+                        rule_id = tp_verdict.match.rule_id if tp_verdict.match else "policy"
+                        payload["outcome"] = "denied"
+                        payload["reason"] = f"tool_policy:{rule_id}"
+                        payload["event_type"] = "tool_called"
+                        post_ingest(payload, quiet=True)
+                        source = _source_app()
+                        if source == "antigravity":
+                            print(json.dumps({"decision": "deny"}))
+                        else:
+                            print(json.dumps({"permission": "deny"}))
+                        return 0
+
+            if dlp_scan:
+                dlp_verdict = dlp_scan(tool_name, data)
+            else:
+                dlp_verdict = None
+            if dlp_verdict and dlp_verdict.matched:
                 # Rule metadata only — never the matched value.
                 payload["dlp"] = {
                     "rule_id": dlp_verdict.match.rule_id,

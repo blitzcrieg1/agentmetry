@@ -1,0 +1,37 @@
+version: "1.0"
+# default: allow — deny rules block; default: deny — only allow rules pass
+default: allow
+rules:
+  - id: block_shell_rm
+    action: deny
+    description: Block recursive delete via shell tools
+    tools:
+      - "Bash"
+      - "Shell"
+      - "shell.run"
+      - "cursor.Shell"
+      - "powershell"
+      - "antigravity.run_command"
+      - "*.run_command"
+    command_pattern: "(?i)\\brm\\s+-rf\\b"
+
+  - id: block_kubectl_exec
+    action: deny
+    description: Block kubectl exec into running pods
+    tools:
+      - "kubectl.exec"
+      - "*kubectl*exec*"
+
+  - id: block_iam_delete
+    action: deny
+    description: Block IAM user deletion
+    tools:
+      - "aws.iam.delete_user"
+      - "*delete_user*"
+
+  - id: block_mcp_git_push
+    action: deny
+    description: Block direct git push via MCP without review
+    tools:
+      - "mcp__github__push"
+      - "*github*push*"

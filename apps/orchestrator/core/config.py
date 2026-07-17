@@ -161,6 +161,14 @@ class Settings(BaseSettings):
     )
     dlp_rules_path: Path = _ORCHESTRATOR_ROOT.parent.parent / "policies" / "dlp" / "manifest.yaml"
     dlp_pii: bool = True
+    # Tool allow/deny policy — enforced at the hook boundary (like DLP block mode).
+    tool_policy_mode: str = Field(
+        default="log",
+        validation_alias=AliasChoices("AGENTMETRY_TOOL_POLICY_MODE"),
+    )
+    tool_policy_path: Path = (
+        _ORCHESTRATOR_ROOT.parent.parent / "policies" / "tool" / "manifest.yaml"
+    )
 
 
 settings = Settings()

@@ -167,6 +167,15 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             "rule_ids": [str(r) for r in (dlp.get("rule_ids") or []) if r],
         }
 
+    tool_policy = payload.get("tool_policy")
+    if isinstance(tool_policy, dict) and tool_policy.get("rule_id"):
+        event["tool_policy"] = {
+            "rule_id": str(tool_policy.get("rule_id") or ""),
+            "action": str(tool_policy.get("action") or ""),
+            "mode": str(tool_policy.get("mode") or ""),
+            "blocked": bool(tool_policy.get("blocked")),
+        }
+
     if payload.get("seq") is not None:
         event["seq"] = payload["seq"]
 
