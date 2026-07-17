@@ -493,6 +493,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     f"  lines: {result.lines_total} total, "
                     f"{result.lines_chained} chained, {result.lines_legacy} legacy"
                 )
+            if result.head_sha256:
+                # Record this pair somewhere the audited agent cannot write
+                # (a git commit, a note) — comparing it later is the only
+                # defense against someone deleting the newest lines.
+                print(f"  head: seq {result.head_seq}, sha256 {result.head_sha256}")
             return 0
         print(f"FAILED — {result.message}")
         if result.first_bad_line:

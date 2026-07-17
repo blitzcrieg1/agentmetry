@@ -87,7 +87,10 @@ class LiveDetectionStore:
         """Append an event and return the bounded session window."""
         with self._lock:
             conn = self._get_conn()
-            now = time.monotonic()
+            # Wall clock, not monotonic: last_touch is persisted, and monotonic
+            # resets on reboot — pre-reboot sessions would outrank new ones and
+            # LRU eviction would evict the newest sessions first.
+            now = time.time()
             conn.execute(
                 """
                 INSERT INTO live_session_meta (correlation_id, last_touch)

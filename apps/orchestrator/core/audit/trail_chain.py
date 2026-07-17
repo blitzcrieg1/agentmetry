@@ -145,6 +145,11 @@ class TrailVerifyResult:
     lines_chained: int = 0
     lines_legacy: int = 0
     first_bad_line: int | None = None
+    # The chain head after a successful walk. Printed by the CLI so an operator
+    # can record it somewhere the audited agent cannot write and compare later —
+    # the only defense a local file can offer against tail deletion.
+    head_seq: int = 0
+    head_sha256: str = ""
 
 
 def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
@@ -184,6 +189,19 @@ def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
                         line_no,
                     )
                 if not is_chained_record(record):
+                    # Legacy lines are only legitimate as a prefix from before
+                    # chaining was enabled. An unchained line AFTER chained
+                    # records is exactly what a forged append looks like, and
+                    # readers would render it as a real event.
+                    if chained > 0:
+                        return TrailVerifyResult(
+                            False,
+                            f"unchained line after chained records at line {line_no} (forged append?)",
+                            total,
+                            chained,
+                            legacy,
+                            line_no,
+                        )
                     legacy += 1
                     continue
 
@@ -236,21 +254,47 @@ def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
             chained,
             legacy,
         )
-    if legacy > 0:
+    if chained == 0:
+        return TrailVerifyResult(True, "empty trail", total, chained, legacy)
+
+    # The chain itself proves in-place edits, inserts, and reordering. It cannot
+    # prove the file was not cut short: compare against the sidecar head, which
+    # records how far the writer actually got.
+    sidecar_head = _load_sidecar(chain_sidecar_path(trail_path))
+    if sidecar_head is not None and sidecar_head.seq > expected_seq:
         return TrailVerifyResult(
-            True,
-            f"OK — {chained} chained line(s) verified; {legacy} legacy unchained prefix line(s)",
+            False,
+            f"trail ends at seq {expected_seq} but sidecar records seq {sidecar_head.seq} (truncated?)",
             total,
             chained,
             legacy,
         )
-    if chained == 0:
-        return TrailVerifyResult(True, "empty trail", total, chained, legacy)
+    if sidecar_head is not None and sidecar_head.seq == expected_seq and sidecar_head.last_sha256 != prev:
+        return TrailVerifyResult(
+            False,
+            f"sidecar head hash does not match the last chained record at seq {expected_seq}",
+            total,
+            chained,
+            legacy,
+        )
+
+    prefix = (
+        f"{chained} chained line(s) verified; {legacy} legacy unchained prefix line(s)"
+        if legacy
+        else f"{chained} chained line(s) verified"
+    )
+    # A missing sidecar is legitimate (verifying a copied .jsonl on another
+    # machine) but it means tail deletion cannot be ruled out — say so instead
+    # of implying a stronger guarantee than the file alone can carry.
+    if sidecar_head is None:
+        prefix += "; no sidecar head found, so tail truncation cannot be ruled out"
     return TrailVerifyResult(
         True,
-        f"OK — {chained} chained line(s) verified",
+        prefix,
         total,
         chained,
         legacy,
         first_bad,
+        head_seq=expected_seq,
+        head_sha256=prev,
     )
