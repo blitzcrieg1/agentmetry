@@ -36,22 +36,41 @@ def reset_live_state() -> None:
 
 
 def observe(canonical: dict[str, Any]) -> list[Detection]:
-    """Record an event and return detections that are NEW for its session."""
+    """Record an event and return detections that are NEW for its session.
+
+    Does NOT checkpoint here. The caller must call `mark_detection_emitted` only
+    after the detection is durably stored and forwarded, so a failed emit lets
+    the rule fire again on the next session event instead of being lost.
+    """
     corr = str(canonical.get("correlation_id") or "")
     if not corr:
         return []
 
     store = get_live_store()
     events = store.append_event(corr, canonical)
-    ts = str(canonical.get("timestamp_utc") or "")
 
     fresh: list[Detection] = []
+    seen_in_batch: set[str] = set()
     for detection in run_detections(events):
-        if store.is_emitted(corr, detection.rule_id):
+        # Dedup within this call (a rule may return several findings) without
+        # persisting — persistence is the caller's job, post-emit.
+        if detection.rule_id in seen_in_batch or store.is_emitted(corr, detection.rule_id):
             continue
-        store.mark_emitted(corr, detection.rule_id, emitted_at=ts)
+        seen_in_batch.add(detection.rule_id)
         fresh.append(detection)
     return fresh
+
+
+def mark_detection_emitted(correlation_id: str, rule_id: str, emitted_at: str = "") -> None:
+    """Checkpoint a detection as emitted for its session.
+
+    Call ONLY after the detection event is durably stored and forwarded. Marking
+    is idempotent (INSERT OR IGNORE), so a re-fired detection that finally
+    succeeds does not double-alert.
+    """
+    if not correlation_id or not rule_id:
+        return
+    get_live_store().mark_emitted(correlation_id, rule_id, emitted_at=emitted_at)
 
 
 def build_detection_event(detection: Detection, source_event: dict[str, Any]) -> dict[str, Any]:
