@@ -898,6 +898,11 @@ export function FlightRecorderPanel() {
               event={selectedEvent}
               onClose={() => setSelectedEventKey(null)}
               onViewSession={(corrId) => void openSession(corrId)}
+              onSelectEventId={(id) => {
+                const match = displayEvents.find((ev) => ev.event_id === id);
+                if (match) setSelectedEventKey(eventKey(match));
+              }}
+              hasEventId={(id) => displayEvents.some((ev) => ev.event_id === id)}
             />
           </div>
         ) : null}
