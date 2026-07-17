@@ -2,15 +2,21 @@
 
 High #2 from the 2026-07-18 review: the old flow marked a rule emitted inside
 observe(), before the sink emit. If emit threw, the rule was never re-fired for
-that session and the alert was silently lost. Now the checkpoint happens after a
-successful emit, so a transient sink failure lets the detection fire again on the
-next session event — without double-alerting once it finally succeeds.
+that session and the alert was silently lost. Now the checkpoint happens only
+after the detection is written to the trail AND forwarded, so a transient sink
+failure lets the detection fire again on the next session event — without
+double-alerting once it finally succeeds.
+
+Ordering is insert-then-emit: the local trail is the source of truth and must
+record the detection even if forwarding is broken. Redundant rows written during
+a sink outage are deduped by the dashboard on rule_id:correlation_id.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from core.config import settings
 from core.audit.detection.live import reset_live_state
 from core.audit.detection.live_store import get_live_store
 from core.audit.ingest import (
@@ -39,8 +45,25 @@ class _FlakyDetectionSink:
         return [e for e in self.events if (e.get("action") or {}).get("type") == "detection"]
 
 
+def _trail_detections(corr: str) -> list[dict]:
+    """Detection events actually written to the trail for a session."""
+    from core.audit.trail_db import get_trail_db
+
+    return [
+        e
+        for e in get_trail_db().session(corr)
+        if (e.get("action") or {}).get("type") == "detection"
+    ]
+
+
 @pytest.fixture
-def flaky_sink(monkeypatch: pytest.MonkeyPatch) -> _FlakyDetectionSink:
+def flaky_sink(monkeypatch: pytest.MonkeyPatch, tmp_path) -> _FlakyDetectionSink:
+    # Isolate the trail DB so detection-row assertions are not polluted by other
+    # tests (same pattern as test_audit_tail / test_external_ingest).
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    from core.audit.trail_db import reset_trail_db
+
+    reset_trail_db()
     reset_live_state()
     reset_pending_approvals()
     reset_ingest_sink_cache()
@@ -76,6 +99,9 @@ async def test_failed_emit_refires_and_marks_only_after_success(flaky_sink: _Fla
     await ingest_external_event(_egress(corr))
     assert flaky_sink.detections() == []  # never forwarded
     assert not get_live_store().is_emitted(corr, "credential-exfil")  # not checkpointed
+    # Durability: the trail still recorded it even though forwarding failed.
+    trail = _trail_detections(corr)
+    assert any(d["detection"]["rule_id"] == "credential-exfil" for d in trail)
 
     # Next session event: the rule is still eligible, and now succeeds.
     await ingest_external_event(_egress(corr))
@@ -90,8 +116,13 @@ async def test_no_duplicate_detection_after_success(flaky_sink: _FlakyDetectionS
     corr = "sess-once"
     await ingest_external_event(_cred_read(corr))
     await ingest_external_event(_egress(corr))  # fails once, not marked
-    await ingest_external_event(_egress(corr))  # re-fires, succeeds -> 1 detection
-    await ingest_external_event(_egress(corr))  # already emitted -> no dup
-    await ingest_external_event(_egress(corr))  # still no dup
+    await ingest_external_event(_egress(corr))  # re-fires, succeeds -> 1 alert
+    await ingest_external_event(_egress(corr))  # already emitted -> no re-fire
+    await ingest_external_event(_egress(corr))  # still no re-fire
 
+    # The alert path never double-fires.
     assert len(flaky_sink.detections()) == 1
+    # The trail may carry redundant rows from the outage, but they collapse to a
+    # single detection the way the dashboard dedups them (rule_id:correlation_id).
+    distinct = {d["detection"]["rule_id"] for d in _trail_detections(corr)}
+    assert distinct == {"credential-exfil"}

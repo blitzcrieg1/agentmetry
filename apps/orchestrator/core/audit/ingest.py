@@ -175,22 +175,24 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
         corr = str(event.get("correlation_id") or "")
         ts = str(event.get("timestamp_utc") or "")
         for detection in observe(event):
+            det_event = build_detection_event(detection, event)
             try:
-                det_event = build_detection_event(detection, event)
-                # Forward first: the sink is the fragile, networked half. If it
-                # throws we skip the checkpoint below, so the rule re-fires on the
-                # next event instead of being lost. Nothing is indexed for a
-                # detection that never reached a sink, so no duplicate rows build
-                # up while forwarding is down.
-                await sink.emit(det_event)
+                # Record in the trail first: it is the source of truth and must
+                # hold the detection even when forwarding is broken — a
+                # misconfigured sink must never make a critical vanish from the
+                # record. A re-fire can insert again, but the dashboard dedups
+                # detections by rule_id:correlation_id, so any redundant rows
+                # written during a sink outage collapse in the UI.
                 get_trail_db().insert(det_event)
+                await sink.emit(det_event)
             except Exception:
-                # Not checkpointed — the detection stays eligible to fire again.
-                # The forensic /audit/detections endpoint still recomputes it
-                # from the trail, so it is deferred, never dropped.
+                # Emit (or insert) failed — do NOT checkpoint, so the rule
+                # re-fires and re-emits on the next session event instead of the
+                # alert being silently lost.
                 logger.exception("Failed to emit detection %s", detection.rule_id)
                 continue
-            # Durably stored and forwarded — safe to checkpoint (idempotent).
+            # Stored and forwarded — checkpoint. Idempotent, so a recovered emit
+            # never double-alerts.
             mark_detection_emitted(corr, detection.rule_id, emitted_at=ts)
             logger.warning(
                 "DETECTION %s [%s] correlation=%s — %s",
