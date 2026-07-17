@@ -1,0 +1,56 @@
+name: Dogfood weekly log
+description: Operator metrics for beta gate (4 green weeks)
+title: "[dogfood] Week of YYYY-MM-DD"
+labels:
+  - dogfood
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Weekly log for [beta gates](ROADMAP.md#beta-gates-operator). One issue per week is enough.
+  - type: input
+    id: week
+    attributes:
+      label: Week ending (ISO date)
+      placeholder: "2026-07-21"
+    validations:
+      required: true
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: Week verdict
+      options:
+        - Green — no crashes, detection checkpoint OK, hooks stable
+        - Yellow — minor issues, still usable
+        - Red — crash, data loss, or trust break
+    validations:
+      required: true
+  - type: input
+    id: events
+    attributes:
+      label: Events captured (approx)
+      placeholder: "1200"
+  - type: input
+    id: detections
+    attributes:
+      label: Detections fired (approx)
+      placeholder: "3"
+  - type: input
+    id: false_positives
+    attributes:
+      label: False positives / noisy rules
+      placeholder: "0 — or rule id + note"
+  - type: input
+    id: install
+    attributes:
+      label: Fresh install attempts (manual count)
+      placeholder: "0"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Crashes, doctor failures, UX friction, rules to tune
+      placeholder: |
+        - orchestrator restart: detection checkpoint survived? (yes/no)
+        - agentmetry verify --trail: OK?
+        - dashboard: anything confusing?

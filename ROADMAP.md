@@ -57,18 +57,7 @@ item matters to you.
 - **Visual truth** — README, agentmetry.ai, and `docs/assets/demo.gif` match Phase 1
   dashboard and live demo output.
 
----
-
-## Phase 0 — Beta readiness (weeks 1–2)
-
-Goal: fix trust gaps before calling the product beta-ready.
-
-| Priority | Item | Where | Done when |
-|----------|------|-------|-----------|
-| P1 | **README scope trim** | `README.md` | SIEM story first; Obsidian/LangGraph runtime under “Advanced” |
-| P1 | **Dogfood weekly log** | issue template or operator notes | Events/week, detections/week, false positives, install attempts tracked |
-
-**Phase 0 P0 items are shipped.** Next focus: README scope trim and dogfood logging.
+- **Phase 0 complete** — README SIEM-first + Advanced runtime doc; dogfood issue template.
 
 ---
 
@@ -78,7 +67,7 @@ Goal: fix trust gaps before calling the product beta-ready.
 |----------|------|-------|-----------|
 | P0 | **Tool allow/deny policy YAML** | alongside existing DLP manifest | Block disallowed shell/MCP before execution (extend hooks, not replace DLP) |
 | P1 | **Dogfood metrics in CLI/dashboard** | `agentmetry stats --days 7` surfaced in UI | Operator sees weekly ingest/detection counts without SQL |
-| P1 | **Marketing `.gr` / `.ai` alignment** | `ai-audit-watch` | Canonical URL set; EU copy block on `.gr`; no “AI Audit Watch” residue |
+| P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
 | P1 | **More detection rules** | `core/audit/detection/rules.py` | e.g. rapid-fire denials, package-install tampering (~20 lines + tests each) |
 
 ---

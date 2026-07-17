@@ -55,6 +55,7 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 - [Dashboard](#dashboard)
 - [Forwarding to a SIEM](#forwarding-to-a-siem)
 - [CLI Reference](#cli-reference)
+- [Advanced — governed runtime (optional)](#advanced--governed-runtime-optional)
 - [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)
@@ -206,6 +207,8 @@ Verify the local trail after capture:
 agentmetry verify --trail apps\orchestrator\data\audit-forward.jsonl
 ```
 
+**What the chain does and does not prove.** Verification catches in-place edits, inserted or reordered lines, and forged appends, and it cross-checks the `.chain` sidecar to catch a truncated file. It cannot, by itself, prove the newest lines were not deleted along with the sidecar: any actor with full write access to the trail can also rewrite the sidecar. For that, `verify` prints the current chain head (sequence number plus SHA-256). Record it somewhere the audited agent cannot write (a git commit, a note, a password manager entry) and compare on the next verify.
+
 ---
 
 ## How Agentmetry Works
@@ -228,7 +231,7 @@ flowchart TB
     INGEST["POST /api/v1/audit/ingest"]
     CANON["Canonical Schema v1.1.0<br/>MITRE enrichment"]
     DETECT["Sequence Detection Engine"]
-    OUTBOX[("SQLite Outbox<br/>events.db")]
+    TRAILDB[("SQLite trail index<br/>audit.db")]
   end
 
   subgraph Output["Outputs"]
@@ -243,7 +246,7 @@ flowchart TB
   DLP -->|deny| INGEST
   HASH --> INGEST
   INGEST --> CANON
-  CANON --> OUTBOX
+  CANON --> TRAILDB
   CANON --> JSONL
   CANON --> DETECT
   JSONL --> DASH
@@ -477,7 +480,7 @@ Dark mode supported with theme toggle. Logo and panels adapt automatically.
 
 ## Forwarding to a SIEM
 
-For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; the SQLite outbox backs the orchestrator's own runs. Forwarders are best-effort.
+For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries. Forwarders are best-effort.
 
 | Sink | Env |
 |------|-----|
@@ -515,6 +518,14 @@ Integration guides → [docs/integrations/](docs/integrations/)
 | `agentmetry doctor` | Preflight check for python, paths, etc. |
 
 `scripts\agentmetry.bat` remains as a legacy alias.
+
+---
+
+## Advanced — governed runtime (optional)
+
+The README above describes the **SIEM flight recorder** (hooks → JSONL → dashboard). The same repo also ships an optional **Obsidian + LangGraph** skill runtime with vault-defined skills and approval gates — useful for governed demos, not required for IDE hook capture.
+
+See **[docs/advanced-governed-runtime.md](docs/advanced-governed-runtime.md)** for when to use hook JSONL vs vault skills, and how to avoid mixing compliance narratives.
 
 ---
 
