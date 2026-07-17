@@ -1,29 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   Activity,
   FileCode2,
+  ShieldAlert,
   Terminal,
 } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel } from "@/components/flight-recorder-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
+import { DetectionsPanel } from "@/components/detections-panel";
 import { FeedStatusBar } from "@/components/feed-status-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 
+type Tab = "recorder" | "detections" | "analytics";
+
 export function MissionControl() {
   useWebSocket();
   const wsConnected = useAgentStore((s) => s.wsConnected);
-  const [activeTab, setActiveTab] = useState<"recorder" | "analytics">("recorder");
+  const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
+  const [activeTab, setActiveTab] = useState<Tab>("recorder");
 
-  const navItems = [
-    { id: "recorder" as const, label: "Event stream", icon: Terminal },
-    { id: "analytics" as const, label: "Analytics", icon: Activity },
+  // Opening a detection from the Detections section hands off to the flight
+  // recorder, which lives in another tab — follow it there.
+  useEffect(() => {
+    if (pinnedDetection) setActiveTab("recorder");
+  }, [pinnedDetection]);
+
+  const navItems: { id: Tab; label: string; icon: typeof Terminal }[] = [
+    { id: "recorder", label: "Event stream", icon: Terminal },
+    { id: "detections", label: "Detections", icon: ShieldAlert },
+    { id: "analytics", label: "Analytics", icon: Activity },
   ];
+
+  const headerTitle =
+    activeTab === "recorder" ? "Flight recorder" : activeTab === "detections" ? "Detections" : "Analytics";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
@@ -73,9 +88,7 @@ export function MissionControl() {
       <main className="relative flex min-w-0 flex-1 flex-col bg-background">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
           <div>
-            <h1 className="text-base font-semibold tracking-tight">
-              {activeTab === "recorder" ? "Flight recorder" : "Analytics"}
-            </h1>
+            <h1 className="text-base font-semibold tracking-tight">{headerTitle}</h1>
             <p className="text-xs uppercase tracking-wider text-muted-foreground">
               Local SIEM · agent tool-use
             </p>
@@ -100,7 +113,13 @@ export function MissionControl() {
             }}
           />
           <div className="relative z-10 flex h-full min-h-0 flex-col">
-            {activeTab === "recorder" ? <FlightRecorderPanel /> : <AnalyticsPanel />}
+            {activeTab === "recorder" ? (
+              <FlightRecorderPanel />
+            ) : activeTab === "detections" ? (
+              <DetectionsPanel />
+            ) : (
+              <AnalyticsPanel />
+            )}
           </div>
         </div>
       </main>

@@ -384,6 +384,8 @@ export function FlightRecorderPanel() {
   const sessionId = useAgentStore((s) => s.sessionId);
   const devMode = useAgentStore((s) => s.devMode);
   const runsRefreshKey = useAgentStore((s) => s.runsRefreshKey);
+  const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
+  const clearPinnedDetection = useAgentStore((s) => s.clearPinnedDetection);
 
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -613,6 +615,15 @@ export function FlightRecorderPanel() {
     const timer = window.setInterval(() => void fetchPage("latest"), 8000);
     return () => window.clearInterval(timer);
   }, [atLatest, fetchPage, sessionView]);
+
+  // A detection opened from the Detections section: pin its session, filter the
+  // feed to the rule, then clear the request so it fires once.
+  useEffect(() => {
+    if (!pinnedDetection) return;
+    const { correlationId, ruleId } = pinnedDetection;
+    void openSession(correlationId).then(() => setDetectionRuleFilter(ruleId));
+    clearPinnedDetection();
+  }, [pinnedDetection, openSession, clearPinnedDetection]);
 
   const filteredEvents = useMemo(() => {
     const q = debouncedSearchQuery.trim().toLowerCase();

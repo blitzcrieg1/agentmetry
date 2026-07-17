@@ -60,6 +60,10 @@ interface AgentStore {
   wsConnected: boolean;
   runsRefreshKey: number;
   devMode: boolean;
+  // Set by the Detections section to hand a detection to the flight recorder:
+  // switch to the recorder tab, pin the session, and filter to the rule. The
+  // recorder clears it once consumed.
+  pinnedDetection: { correlationId: string; ruleId: string } | null;
 
   setSkills: (skills: Skill[]) => void;
   setActiveSkill: (skill: string) => void;
@@ -86,6 +90,8 @@ interface AgentStore {
   setWsConnected: (connected: boolean) => void;
   bumpRunsRefresh: () => void;
   setDevMode: (enabled: boolean) => void;
+  requestPinnedDetection: (correlationId: string, ruleId: string) => void;
+  clearPinnedDetection: () => void;
   reset: (nodes?: GraphNodeState[]) => void;
   clearPipelineView: () => void;
 }
@@ -115,6 +121,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
   wsConnected: false,
   runsRefreshKey: 0,
   devMode: false,
+  pinnedDetection: null,
 
   setSkills: (skills) => set({ skills }),
   setActiveSkill: (skill) => set({ activeSkill: skill }),
@@ -176,6 +183,9 @@ export const useAgentStore = create<AgentStore>((set) => ({
   bumpRunsRefresh: () =>
     set((state) => ({ runsRefreshKey: state.runsRefreshKey + 1 })),
   setDevMode: (enabled) => set({ devMode: enabled }),
+  requestPinnedDetection: (correlationId, ruleId) =>
+    set({ pinnedDetection: { correlationId, ruleId } }),
+  clearPinnedDetection: () => set({ pinnedDetection: null }),
   reset: (nodes) =>
     set((state) => {
       const base = nodes ?? state.graphNodes;
