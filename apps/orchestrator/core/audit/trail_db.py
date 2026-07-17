@@ -314,6 +314,82 @@ class AuditTrailDB:
             "by_source": by_source,
         }
 
+    def stats(self, window_days: int = 7) -> dict[str, Any]:
+        """Aggregate audit metrics for dogfood / operator dashboards."""
+        days = max(1, min(window_days, 90))
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        conn = self._get_conn()
+
+        def _scalar(sql: str, *params: Any) -> int:
+            row = conn.execute(sql, params).fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+        total = _scalar(
+            "SELECT COUNT(*) FROM audit_events WHERE timestamp_utc >= ?",
+            cutoff,
+        )
+        sessions = _scalar(
+            """SELECT COUNT(DISTINCT correlation_id) FROM audit_events
+               WHERE timestamp_utc >= ? AND correlation_id != ''""",
+            cutoff,
+        )
+        detections = _scalar(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE timestamp_utc >= ? AND action_type = 'detection'""",
+            cutoff,
+        )
+        denied = _scalar(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE timestamp_utc >= ? AND action_outcome = 'denied'""",
+            cutoff,
+        )
+        dlp_matches = _scalar(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE timestamp_utc >= ?
+                 AND json_extract(event_json, '$.dlp.rule_id') IS NOT NULL""",
+            cutoff,
+        )
+        tool_policy_hits = _scalar(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE timestamp_utc >= ?
+                 AND json_extract(event_json, '$.tool_policy.rule_id') IS NOT NULL""",
+            cutoff,
+        )
+        tool_policy_blocks = _scalar(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE timestamp_utc >= ?
+                 AND json_extract(event_json, '$.tool_policy.blocked') = 1""",
+            cutoff,
+        )
+
+        rows = conn.execute(
+            """SELECT source_app, COUNT(*) as cnt FROM audit_events
+               WHERE timestamp_utc >= ?
+               GROUP BY source_app
+               ORDER BY cnt DESC""",
+            (cutoff,),
+        ).fetchall()
+        by_source = {row["source_app"]: row["cnt"] for row in rows}
+
+        last_row = conn.execute(
+            "SELECT MAX(timestamp_utc) as last_ts FROM audit_events WHERE timestamp_utc >= ?",
+            (cutoff,),
+        ).fetchone()
+        last_ts = last_row["last_ts"] if last_row else None
+
+        return {
+            "window_days": days,
+            "total_events": total,
+            "sessions": sessions,
+            "detections": detections,
+            "denied": denied,
+            "dlp_matches": dlp_matches,
+            "tool_policy_hits": tool_policy_hits,
+            "tool_policy_blocks": tool_policy_blocks,
+            "by_source": by_source,
+            "last_event_utc": last_ts,
+        }
+
     def count(self) -> int:
         """Total event count."""
         row = self._get_conn().execute("SELECT COUNT(*) as cnt FROM audit_events").fetchone()

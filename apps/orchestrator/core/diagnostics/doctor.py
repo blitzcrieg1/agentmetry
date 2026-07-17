@@ -143,6 +143,26 @@ def run_doctor(
     data_dir.mkdir(parents=True, exist_ok=True)
     report.ok("data", f"Data directory {data_dir}")
 
+    tool_manifest = orch.parent.parent / "policies" / "tool" / "manifest.yaml"
+    if tool_manifest.is_file():
+        report.ok("tool_policy", f"Tool policy manifest at {tool_manifest.name}")
+    else:
+        report.warn("tool_policy", f"Missing {tool_manifest}")
+
+    dlp_manifest = orch.parent.parent / "policies" / "dlp" / "manifest.yaml"
+    if dlp_manifest.is_file():
+        report.ok("dlp", f"DLP manifest at {dlp_manifest.name}")
+    else:
+        report.warn("dlp", f"Missing {dlp_manifest}")
+
+    tp_mode = settings.tool_policy_mode
+    dlp_mode = settings.dlp_mode
+    report.ok(
+        "hook_enforcement",
+        f"Tool policy={tp_mode}, DLP={dlp_mode} "
+        "(set block in .env or install.ps1 -ToolPolicyBlock)",
+    )
+
     return report
 
 

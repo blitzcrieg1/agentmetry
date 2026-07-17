@@ -11,6 +11,7 @@ from core.audit.hook_bootstrap import (
     cursor_hooks_payload,
     install_claude_global_hooks,
     install_cursor_global_hooks,
+    merge_claude_hook_env,
     merge_claude_hooks,
 )
 
@@ -130,3 +131,14 @@ def test_install_claude_skips_unparseable_settings(tmp_path: Path, monkeypatch):
     path = install_claude_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path is None
     assert bad.read_text(encoding="utf-8") == "{ not valid json"  # untouched
+
+
+def test_merge_claude_hook_env_from_orchestrator_dotenv(tmp_path: Path):
+    repo = tmp_path / "repo"
+    env_path = repo / "apps" / "orchestrator" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("AGENTMETRY_TOOL_POLICY_MODE=block\n", encoding="utf-8")
+    settings = {"theme": "dark"}
+    merge_claude_hook_env(settings, repo_root=repo)
+    assert settings["env"]["AGENTMETRY_TOOL_POLICY_MODE"] == "block"
+    assert settings["theme"] == "dark"

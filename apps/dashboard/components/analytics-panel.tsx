@@ -21,6 +21,7 @@ import { detectionsFromEvents } from "./flight-recorder-panel";
 import { eventSourceApp, sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { EventHistogram } from "./event-histogram";
 import { ProcessTree } from "./process-tree";
+import { DogfoodStatsStrip } from "./dogfood-stats-strip";
 
 const OUTCOME_COLORS: Record<string, string> = {
   success: "#34d399",
@@ -151,6 +152,10 @@ export function AnalyticsPanel() {
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Last {stats.total} events · {stats.sessionCount} sessions
         </p>
+      </div>
+
+      <div className="border-b border-border/60 px-4 py-3">
+        <DogfoodStatsStrip />
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-b border-border/60 px-4 py-3 sm:grid-cols-4">

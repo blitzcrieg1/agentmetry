@@ -4,14 +4,18 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 #
 # Options:
-#   -SkipHooks      Do not install Cursor / Claude global hooks
-#   -SkipDashboard  Skip npm install for apps\dashboard
-#   -NoDoctor       Skip agentmetry doctor at the end
+#   -SkipHooks         Do not install Cursor / Claude global hooks
+#   -SkipDashboard     Skip npm install for apps\dashboard
+#   -NoDoctor          Skip agentmetry doctor at the end
+#   -ToolPolicyBlock   Set AGENTMETRY_TOOL_POLICY_MODE=block in orchestrator .env
+#   -DlpBlock          Set AGENTMETRY_DLP_MODE=block in orchestrator .env
 
 param(
     [switch]$SkipHooks,
     [switch]$SkipDashboard,
-    [switch]$NoDoctor
+    [switch]$NoDoctor,
+    [switch]$ToolPolicyBlock,
+    [switch]$DlpBlock
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,6 +83,23 @@ if ((Test-Path $envExample) -and -not (Test-Path $envFile)) {
     Copy-Item $envExample $envFile
     Write-Host "  Created apps\orchestrator\.env from .env.example"
 }
+
+function Set-OrchestratorEnvKey {
+    param([string]$Key, [string]$Value)
+    if (-not (Test-Path $envFile)) {
+        if (Test-Path $envExample) { Copy-Item $envExample $envFile }
+        else { New-Item -ItemType File -Path $envFile -Force | Out-Null }
+    }
+    & $VenvPython -c "from core.diagnostics.env_file import upsert_env_key; from pathlib import Path; upsert_env_key(Path(r'$envFile'), r'$Key', r'$Value')"
+    Write-Host "  $Key=$Value"
+}
+
+if ($ToolPolicyBlock) {
+    Set-OrchestratorEnvKey -Key "AGENTMETRY_TOOL_POLICY_MODE" -Value "block"
+}
+if ($DlpBlock) {
+    Set-OrchestratorEnvKey -Key "AGENTMETRY_DLP_MODE" -Value "block"
+}
 Pop-Location
 
 if (-not $SkipDashboard) {
@@ -110,7 +131,11 @@ Write-Host "  2. Dashboard: http://localhost:3000"
 Write-Host "  3. API:       http://localhost:8000"
 Write-Host "  4. Selftest:  python scripts\agentmetry_ingest.py selftest"
 Write-Host "  5. Trail:     scripts\agentmetry.bat verify --trail apps\orchestrator\data\audit-forward.jsonl"
+Write-Host "  6. Stats:      scripts\agentmetry.bat stats --days 7"
 Write-Host ""
+if ($ToolPolicyBlock -or $DlpBlock) {
+    Write-Host "Hook enforcement enabled in apps\orchestrator\.env — restart Cursor / Claude after hooks install." -ForegroundColor Yellow
+}
 if (-not $SkipHooks) {
     Write-Host "Fully quit and restart Cursor / Claude Code so hooks load." -ForegroundColor Yellow
 }

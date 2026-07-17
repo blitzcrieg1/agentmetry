@@ -285,3 +285,14 @@ async def audit_status():
         "by_source": status_data["by_source"],
         "path": str(path),
     }
+
+
+@router.get("/stats", dependencies=[Depends(require_api_key)])
+async def audit_stats(days: int = Query(7, ge=1, le=90)):
+    """Weekly dogfood metrics — same data as `agentmetry stats --days N`."""
+    from core.audit.trail_db import get_trail_db
+
+    if not settings.audit_export_enabled:
+        return {"enabled": False, "window_days": days}
+
+    return {"enabled": True, **get_trail_db().stats(window_days=days)}

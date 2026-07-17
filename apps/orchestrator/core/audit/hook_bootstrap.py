@@ -10,6 +10,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Hook subprocesses read these from orchestrator .env (Claude also gets them in settings env).
+HOOK_ENV_KEYS = (
+    "AGENTMETRY_TOOL_POLICY_MODE",
+    "AGENTMETRY_DLP_MODE",
+    "AGENTMETRY_URL",
+)
+
 CURSOR_HOOK_EVENTS = (
     "sessionStart",
     "sessionEnd",
@@ -92,6 +99,30 @@ CLAUDE_HOOK_EVENTS = (
 )
 
 
+def _orchestrator_env_path(repo_root: Path | None = None) -> Path:
+    root = repo_root or _repo_root()
+    return root / "apps" / "orchestrator" / ".env"
+
+
+def merge_claude_hook_env(
+    settings: dict[str, Any], *, repo_root: Path | None = None
+) -> dict[str, Any]:
+    """Mirror hook-relevant keys from orchestrator .env into Claude settings env."""
+    from core.diagnostics.env_file import read_env_key
+
+    env_path = _orchestrator_env_path(repo_root)
+    env = settings.get("env")
+    if not isinstance(env, dict):
+        env = {}
+    for key in HOOK_ENV_KEYS:
+        val = read_env_key(env_path, key)
+        if val:
+            env[key] = val
+    if env:
+        settings["env"] = env
+    return settings
+
+
 def _claude_command(event: str, *, python: str, ingest: Path) -> str:
     return f'"{python}" "{ingest}" claude hook {event}'
 
@@ -165,6 +196,7 @@ def install_claude_global_hooks(
         settings = loaded
 
     merge_claude_hooks(settings, python=py, ingest=ingest)
+    merge_claude_hook_env(settings, repo_root=root)
 
     settings_dir.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
