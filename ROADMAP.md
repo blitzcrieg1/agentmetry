@@ -55,7 +55,9 @@ item matters to you.
 - **Windows one-flow install** — `scripts/install.ps1` (venv, dashboard deps,
   IDE hooks, doctor).
 - **Visual truth** — README, agentmetry.ai, and `docs/assets/agentmetry.mp4` match Phase 1
-  dashboard and live demo output.
+  dashboard and live demo output. The README hero is a poster image linking to the
+  MP4: GitHub only plays videos it hosts itself, so an inline player needs a
+  one-time web-editor upload ([docs/readme-media.md](docs/readme-media.md)).
 
 - **Phase 0 complete** — README SIEM-first + Advanced runtime doc; dogfood issue template.
 - **Tool allow/deny policy YAML** — `policies/tool/manifest.yaml`; hook `log`/`block` via
