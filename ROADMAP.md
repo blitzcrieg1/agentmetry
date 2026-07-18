@@ -70,7 +70,7 @@ item matters to you.
 | P0 | ~~**Tool allow/deny policy YAML**~~ | `policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
 | P1 | ~~**Dogfood metrics in CLI/dashboard**~~ | `agentmetry stats --days 7` + Analytics tab | ✓ Weekly events/detections/denials |
 | P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
-| P1 | **More detection rules** | `core/audit/detection/rules.py` | e.g. rapid-fire denials, package-install tampering (~20 lines + tests each) |
+| P1 | **More detection rules** | `core/audit/detection/rules.py` | Community asks: dotfile read → remote push; consecutive writes outside project root (`~/.ssh`, `.env`). Also rapid-fire denials, package-install tampering (~20 lines + tests each) |
 
 ---
 

