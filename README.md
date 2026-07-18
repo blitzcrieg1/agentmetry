@@ -130,15 +130,24 @@ you configure them, so you do not need the dashboard open to get paged.
 
 ### See the dashboard with a story in it
 
+The dashboard is a static export, and it is not checked into the repo, so build
+it once first:
+
+```bash
+cd apps/dashboard && npm install && npm run build && cd ../..
+```
+
 ```bash
 python scripts/demo_dashboard.py            # seeds 7 sessions + 5 detections, serves http://127.0.0.1:8010/
 python scripts/demo_dashboard.py --live     # ...and streams synthetic agent traffic in real time
 ```
 
-One command seeds a realistic demo trail and serves the dashboard locally — no
-API key, no cloud. Seven sessions, five real detections (computed by the pipeline,
+That seeds a realistic demo trail and serves the dashboard locally, with no API
+key and no cloud. Seven sessions, five real detections (computed by the pipeline,
 not hand-written). The feed shows approval gates, tool calls, and inline detection
-events across Event stream, Detections, and Analytics tabs.
+events across Event stream, Detections, and Analytics tabs. Without the build step
+the script still seeds the trail and serves the API, and it will tell you the
+dashboard export is missing.
 
 See the [dashboard tour](docs/dashboard-tour.md) for what each view shows and how
 to read it.
@@ -224,6 +233,11 @@ agentmetry verify --trail apps\orchestrator\data\audit-forward.jsonl
 ```
 
 **What the chain does and does not prove.** Verification catches in-place edits, inserted or reordered lines, and forged appends, and it cross-checks the `.chain` sidecar to catch a truncated file. It cannot, by itself, prove the newest lines were not deleted along with the sidecar: any actor with full write access to the trail can also rewrite the sidecar. For that, `verify` prints the current chain head (sequence number plus SHA-256). Record it somewhere the audited agent cannot write (a git commit, a note, a password manager entry) and compare on the next verify.
+
+Two scope limits worth stating plainly:
+
+- **Only lines written after chaining was enabled are covered.** A trail that predates it keeps its earlier lines as a legacy unchained prefix, and `verify` reports them separately rather than vouching for them. On a long-running install most of the file can be legacy, so read the chained/legacy counts in the verify output, not just the `OK`.
+- **The chain protects the JSONL, not the dashboard.** The dashboard reads a SQLite index derived from the same canonical events. The two agree in practice, but the index carries no chain: the JSONL is the artifact you hand to an incident responder.
 
 ---
 
@@ -325,7 +339,12 @@ Every run emits typed, SIEM-ready JSON. A single `tool_called` line:
     "server": "vault_fs",
     "input_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "parameters_redacted": true,
-    "mitre": {"tactic": "Collection (TA0009)", "technique": "Data from Local System (T1005)"}
+    "mitre": {
+      "tactic_id": "TA0009",
+      "tactic": "Collection",
+      "technique_id": "T1005",
+      "technique": "Data from Local System"
+    }
   },
   "model": {"id": "claude-3-5-sonnet", "provider": "anthropic"}
 }

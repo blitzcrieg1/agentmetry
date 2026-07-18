@@ -561,6 +561,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A Windows console defaults to cp1252 and cannot encode the dashes this CLI
+    # prints, so `verify --trail` rendered as "OK ? 422 chained line(s)". That is
+    # the flagship trust command; it must not look broken on the primary dogfood
+    # platform. Same guard as scripts/demo.py.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    except Exception:  # pragma: no cover - depends on the host console
+        pass
+
     parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
