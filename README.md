@@ -47,7 +47,7 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 </a>
 
 <p>
-  <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4"><strong>Download the dashboard demo (MP4, 0.8 MB)</strong></a>
+  <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4"><strong>▶ Watch the dashboard demo (MP4, 0.8 MB)</strong></a>
   or run it locally with <code>python scripts/demo_dashboard.py</code>
 </p>
 
