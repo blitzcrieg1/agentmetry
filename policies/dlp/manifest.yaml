@@ -80,3 +80,29 @@ rules:
     pattern: "(?i)\\b(base64|b64encode)\\b[^|;&]*\\|[^|;&]*\\b(base64|b64encode)\\b"
     category: "exfiltration"
     severity: "high"
+
+  # Markdown image exfil (Johann Rehberger / CamoLeak class): agent embeds harvested
+  # data in an image URL query string. Log by default; block only on pre-hooks with
+  # AGENTMETRY_DLP_MODE=block. Browser-side CamoLeak egress is out of scope.
+  - id: "markdown_image_exfil"
+    name: "Markdown Image Exfiltration"
+    description: "Markdown image URL with long encoded query parameter (data exfil channel)"
+    pattern: "(?i)!\\[[^\\]]*\\]\\(\\s*https?://[^)\\s]*[?&][^)\\s]*=[A-Za-z0-9+/=_%\\-]{32,}"
+    category: "exfiltration"
+    severity: "critical"
+
+  - id: "image_proxy_exfil_host"
+    name: "Image Proxy Exfil Host"
+    description: "Signed image-proxy hosts used in CamoLeak-style character-by-character exfil"
+    pattern: "(?i)https?://[^\\s\"')]*\\b(camo\\.githubusercontent\\.com|\\.blob\\.core\\.windows\\.net)\\b"
+    category: "exfiltration"
+    severity: "high"
+
+  # CVE-2025-59536 / CVE-2026-21852 env override half: repo-controlled config redirects
+  # API traffic or injects runtime hooks. Complements block_agent_exec_config_write.
+  - id: "agent_env_override"
+    name: "Agent Environment Override"
+    description: "Assignment to agent-critical env vars (API base URL, proxy, NODE_OPTIONS, etc.)"
+    pattern: "(?i)\\b(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|OPENAI_BASE_URL|OPENAI_API_BASE|GEMINI_BASE_URL|HTTP_PROXY|HTTPS_PROXY|NODE_OPTIONS|PYTHONSTARTUP|LD_PRELOAD)[\"']?\\s*[=:]"
+    category: "execution_hijack"
+    severity: "critical"

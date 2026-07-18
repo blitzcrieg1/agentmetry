@@ -69,3 +69,25 @@ rules:
       - "*.write_file"
       - "*.edit_file"
     command_pattern: '(?i)(^|[\\/])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/])'
+
+  # Git hook persistence: agent plants .git/hooks/* or repoints core.hooksPath.
+  # Deny only on pre-hooks when AGENTMETRY_TOOL_POLICY_MODE=block.
+  - id: block_git_hook_persistence
+    action: deny
+    description: Block agent writes to git hooks or core.hooksPath repointing
+    tools:
+      - "Write"
+      - "Edit"
+      - "edit_file"
+      - "write"
+      - "str_replace_editor"
+      - "*.write_file"
+      - "*.edit_file"
+      - "Bash"
+      - "Shell"
+      - "shell.run"
+      - "cursor.Shell"
+      - "powershell"
+      - "antigravity.run_command"
+      - "*.run_command"
+    command_pattern: '(?i)(^|[\\/])\.git[\\/]hooks[\\/](pre-commit|post-commit|pre-push|post-merge|post-checkout|prepare-commit-msg)|\bcore\.hooksPath\b'
