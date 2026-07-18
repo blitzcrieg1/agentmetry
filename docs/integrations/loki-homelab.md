@@ -67,6 +67,14 @@ Parse JSON fields:
 {job="agentmetry"} | json | action_outcome="denied"
 ```
 
+> **Why the queries below work.** The file sink writes hash-chained envelopes,
+> `{"trail":{...},"event":{...}}`, so the canonical event is nested one level
+> down. The shipped `infra/loki/alloy.config` unwraps it (`event || @`) before
+> extracting, which is why `action_outcome` and friends are top level here.
+> If you build your own pipeline against `audit-forward.jsonl`, unwrap `.event`
+> first or every field will come back empty. Legacy pre-chain lines have no
+> `trail` key and pass through unchanged.
+
 Filter by operator:
 
 ```logql

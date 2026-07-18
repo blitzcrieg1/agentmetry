@@ -20,9 +20,9 @@ logsource:
   service: governed-host
 detection:
   selection:
-    action.type: config_change        # [verify against live JSONL] Loki label: action_type
-    action.outcome: success           # [verify against live JSONL] Loki label: action_outcome
-    source_topic: 'driver/mounted'    # [verify against live JSONL] confirm this field is forwarded, not dropped
+    action.type: config_change        # verified 2026-07-18 (top-level canonical field); Loki label: action_type
+    action.outcome: success           # verified 2026-07-18 (top-level canonical field); Loki label: action_outcome
+    source_topic: 'driver/mounted'    # verified 2026-07-18: top-level canonical field (external.py:103)
   condition: selection
 fields:
   - mcp.server_id                     # [verify against live JSONL] confirm mcp.* is present on config_change events

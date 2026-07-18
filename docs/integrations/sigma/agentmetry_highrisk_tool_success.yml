@@ -19,8 +19,8 @@ logsource:
   service: governed-host
 detection:
   selection:
-    action.type: tool_called          # [verify against live JSONL] Loki label: action_type
-    action.outcome: success           # [verify against live JSONL] Loki label: action_outcome
+    action.type: tool_called          # verified 2026-07-18 (top-level canonical field); Loki label: action_type
+    action.outcome: success           # verified 2026-07-18 (top-level canonical field); Loki label: action_outcome
   # tool.qualified matches shell-family names. Mirrors LogQL regex
   # ".*shell.*|.*powershell.*|.*exec.*". [verify against live JSONL] — confirm
   # your actual tool naming (e.g. shell.run, fs.exec) in audit-forward.jsonl.
