@@ -21,7 +21,7 @@ item matters to you.
 
 ## Shipped
 
-- **Capture** — IDE lifecycle hooks (Cursor, Claude Code, Codex, Antigravity) and
+- **Capture** — IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and
   an MCP stdio audit proxy, normalized to canonical schema v1.1.0.
 - **MITRE ATT&CK** — per-tool tactic/technique tagging, including credential-access
   (T1552) upgrades when a read touches a key or secret file.

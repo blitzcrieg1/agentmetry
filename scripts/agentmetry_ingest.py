@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agentmetry Tier B ingest client — Cursor, Claude Code, Antigravity hooks.
+"""Agentmetry Tier B ingest client — Claude Code, Cursor, Antigravity hooks.
 
 POST adapter events to the local orchestrator ingest API.
 

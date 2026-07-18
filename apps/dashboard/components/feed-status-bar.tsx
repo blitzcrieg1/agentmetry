@@ -12,7 +12,7 @@ interface AuditStatus {
   by_source: Record<string, number>;
 }
 
-const SOURCE_ORDER = ["agentmetry", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
+const SOURCE_ORDER = ["agentmetry", "claude", "cursor", "codex", "antigravity", "mcp_proxy"] as const;
 
 const STALE_MINUTES = 15;
 

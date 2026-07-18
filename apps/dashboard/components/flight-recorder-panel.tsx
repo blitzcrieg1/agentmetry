@@ -54,7 +54,7 @@ export interface Detection {
   last_seen_utc: string;
 }
 
-const ALL_SOURCES = ["agentmetry", "cursor", "claude", "codex", "antigravity", "mcp_proxy"] as const;
+const ALL_SOURCES = ["agentmetry", "claude", "cursor", "codex", "antigravity", "mcp_proxy"] as const;
 
 const EVENT_TYPES = [
   "session_start",

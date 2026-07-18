@@ -4,11 +4,13 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 #
 # Options:
-#   -SkipHooks         Do not install Cursor / Claude global hooks
+#   -SkipHooks         Do not install Claude / Cursor global hooks
 #   -SkipDashboard     Skip npm install for apps\dashboard
 #   -NoDoctor          Skip agentmetry doctor at the end
 #   -ToolPolicyBlock   Set AGENTMETRY_TOOL_POLICY_MODE=block in orchestrator .env
 #   -DlpBlock          Set AGENTMETRY_DLP_MODE=block in orchestrator .env
+#
+# Doctor runs with --fix so fresh clones get vault/.system/drivers.json from the example.
 
 param(
     [switch]$SkipHooks,
@@ -112,14 +114,14 @@ if (-not $SkipDashboard) {
 }
 
 if (-not $SkipHooks) {
-    Write-Step "Installing IDE hooks (Cursor + Claude Code)"
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\install_cursor_hooks.ps1")
+    Write-Step "Installing IDE hooks (Claude Code + Cursor)"
     & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\install_claude_hooks.ps1")
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\install_cursor_hooks.ps1")
 }
 
 if (-not $NoDoctor) {
     Write-Step "Running agentmetry doctor"
-    & $VenvPython -m cli doctor
+    & $VenvPython -m cli doctor --fix
 }
 
 Write-Host ""
@@ -134,8 +136,8 @@ Write-Host "  5. Trail:     scripts\agentmetry.bat verify --trail apps\orchestra
 Write-Host "  6. Stats:      scripts\agentmetry.bat stats --days 7"
 Write-Host ""
 if ($ToolPolicyBlock -or $DlpBlock) {
-    Write-Host "Hook enforcement enabled in apps\orchestrator\.env — restart Cursor / Claude after hooks install." -ForegroundColor Yellow
+    Write-Host "Hook enforcement enabled in apps\orchestrator\.env — restart Claude Code / Cursor after hooks install." -ForegroundColor Yellow
 }
 if (-not $SkipHooks) {
-    Write-Host "Fully quit and restart Cursor / Claude Code so hooks load." -ForegroundColor Yellow
+    Write-Host "Fully quit and restart Claude Code / Cursor so hooks load." -ForegroundColor Yellow
 }

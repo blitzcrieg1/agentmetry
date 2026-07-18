@@ -12,7 +12,7 @@
 <p><strong>Your agent reads a private key, then makes a network call. Your EDR sees a process.<br/>
 Agentmetry sees the sequence, tags it with MITRE ATT&CK, and fires one CRITICAL alert.</strong></p>
 
-<p>Records every tool call, denial, and approval from Cursor, Claude Code, Codex and Antigravity into a JSONL trail you own.<br/>
+<p>Records every tool call, denial, and approval from Claude Code, Cursor, Codex and Antigravity into a JSONL trail you own.<br/>
 Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</p>
 
 <p align="center">
@@ -74,10 +74,10 @@ Agentmetry is the open-source **endpoint flight recorder** for AI agents — bui
 
 We do that by:
 
-- **Intercepting** agent tool calls through IDE lifecycle hooks (Cursor, Claude Code, Codex, Antigravity) and an MCP stdio audit proxy
+- **Intercepting** agent tool calls through IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and an MCP stdio audit proxy
 - **Normalizing** every event into a canonical schema v1.1.0 with MITRE ATT&CK enrichment and SHA-256 argument hashing
 - **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, download cradles, agent data injection, recon-then-grab)
-- **Blocking** secrets and PII at the hook boundary with a local regex DLP engine (`log` or `block` mode)
+- **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
 - **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook — without making the cloud the system of record
 
 **Agentmetry is not a CASB or shadow-AI spy.** It records the agents you wire in. If your problem is unmanaged ChatGPT in the browser, you need network/endpoint policy — not a flight recorder.
@@ -147,7 +147,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 scripts\start-dev.bat
 ```
 
-`install.ps1` creates the orchestrator venv, installs Python + dashboard deps, copies `.env.example`, wires Cursor and Claude hooks, and runs `agentmetry doctor`. Skip hooks with `-SkipHooks`; orchestrator-only with `-SkipDashboard`.
+`install.ps1` creates the orchestrator venv, installs Python + dashboard deps, copies `.env.example`, wires Claude Code and Cursor hooks, and runs `agentmetry doctor --fix` (creates portable `drivers.json` from the example). Skip hooks with `-SkipHooks`; orchestrator-only with `-SkipDashboard`. Opt-in hook enforcement with `-ToolPolicyBlock` or `-DlpBlock`.
 
 ### Manual install
 
@@ -180,11 +180,11 @@ Dashboard → [http://localhost:3000](http://localhost:3000) · Orchestrator API
 ### 3. Wire your IDEs (one-time)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
 powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
 ```
 
-Fully quit and restart Cursor / Claude Code so hooks load.
+Fully quit and restart Claude Code / Cursor so hooks load.
 
 ### 4. Verify
 
@@ -220,11 +220,12 @@ agentmetry verify --trail apps\orchestrator\data\audit-forward.jsonl
 ```mermaid
 flowchart TB
   subgraph Capture["Capture Layer (Tier A + B)"]
-    HOOKS["IDE Lifecycle Hooks<br/>Cursor · Claude · Codex · Antigravity"]
+    HOOKS["IDE Lifecycle Hooks<br/>Claude · Cursor · Codex · Antigravity"]
     PROXY["MCP Audit Proxy<br/>mcp_audit_proxy.py"]
   end
 
   subgraph Gate["Local Security Gate"]
+    POLICY["Tool Policy<br/>allow/deny YAML"]
     DLP["DLP Scanner<br/>regex rules"]
     HASH["Arg Hash + Secret Scrub"]
   end
@@ -242,8 +243,10 @@ flowchart TB
     SIEM["Loki · Elastic · Splunk · Webhook"]
   end
 
-  HOOKS --> DLP
-  PROXY --> DLP
+  HOOKS --> POLICY
+  PROXY --> POLICY
+  POLICY -->|allow| DLP
+  POLICY -->|deny| INGEST
   DLP -->|allow| HASH
   DLP -->|deny| INGEST
   HASH --> INGEST
@@ -260,8 +263,8 @@ flowchart TB
 ```mermaid
 flowchart LR
   subgraph TierB["Tier B — IDE Hooks"]
-    C["Cursor"]
     CL["Claude Code"]
+    C["Cursor"]
     AG["Antigravity"]
     CX["Codex"]
   end
@@ -273,8 +276,8 @@ flowchart LR
 
   INGEST["agentmetry_ingest.py → /audit/ingest"]
 
-  C --> INGEST
   CL --> INGEST
+  C --> INGEST
   AG --> INGEST
   CX --> INGEST
   MCP --> WRAP --> INGEST
@@ -285,10 +288,11 @@ flowchart LR
 | **Hook client** | `scripts/agentmetry_ingest.py` | Maps IDE lifecycle events to canonical payloads; hashes args in-process |
 | **MCP proxy** | `apps/orchestrator/tools/mcp_audit_proxy.py` | Wraps any stdio MCP server; logs every `tools/call` + errors |
 | **Ingest API** | `core/audit/ingest.py` | Normalizes payloads, infers approvals (`inferred:*`), writes sinks |
-| **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); block or log before execution |
+| **Tool policy** | `core/audit/tool_policy/` | Allow/deny by tool name (glob) and optional shell regex; runs before DLP |
+| **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); `log` or `block` before execution |
 | **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
 | **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC |
-| **Replay** | `core/audit/replay.py` | ASCII timeline reconstruction from the local outbox |
+| **Replay** | `core/audit/replay.py` | ASCII timeline from the governed-runtime outbox (`events.db`); hook users use the dashboard or JSONL |
 
 ### The canonical event
 
@@ -324,7 +328,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | Tier | Setup | Agentmetry coverage |
 |------|-------|---------------------|
 | **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture** — every `tools/call` + error responses, arg hashes, session correlation |
-| **B** | IDE hooks (Cursor, Claude, Codex, Antigravity) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
+| **B** | IDE hooks (Claude, Cursor, Codex, Antigravity) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
 | **C** | Unmanaged ChatGPT, Cursor with hooks off | **Not visible.** CASB / secure-web-gateway territory |
 
 ---
@@ -336,23 +340,23 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | 🎥 **Flight Recorder** | Live audit tail with dynamic columns, drag-and-drop layout, CSV export, and session drill-down |
 | 📊 **Analytics & Process Tree** | Session-level charts, MITRE tactic breakdown, horizontal React Flow timeline |
 | 🔍 **Behavioral Detection** | Correlated sequence rules: credential exfil, guardrail bypass, download cradles, agent data injection, supply-chain merges |
-| 🛡️ **Local DLP** | Regex scanner blocks AWS keys, GitHub tokens, Slack tokens, and PII before tool execution |
+| 🛡️ **Local DLP** | Regex scanner detects AWS keys, GitHub tokens, Slack tokens, and PII at the hook boundary (`block` mode optional) |
 | 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
 | 🔐 **Argument hashing** | SHA-256 of tool args by default — plaintext never crosses the wire from hooks |
 | 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, Loki/LogQL, generic webhook, alert webhook on denials |
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
-| 👥 **Multi-IDE support** | Cursor, Claude Code, Codex, Antigravity — global hook install scripts |
+| 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity — global hook install scripts |
 
 ### Integrations
 
 | Category | Supported today | Roadmap |
 | -------- | --------------- | ------- |
-| **IDE / Agent hosts** | Cursor · Claude Code · Codex · Antigravity | Windsurf · VS Code Copilot |
+| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity | Windsurf · VS Code Copilot |
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) | LangChain · AutoGen |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
 | **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) | STIX/TAXII export |
-| **Policy engines** | Regex DLP manifest (`policies/dlp/`) | OPA / Rego policy-as-code |
+| **Policy engines** | Regex DLP manifest (`policies/dlp/`) · tool allow/deny YAML (`policies/tool/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
 Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or the [roadmap](ROADMAP.md).
@@ -482,9 +486,10 @@ The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activit
 
 | View | Features |
 | ---- | -------- |
-| **Flight Recorder** | Real-time event tail, detections strip, event histogram, color-coded source badges (Cursor, Claude, Codex, Antigravity), outcome filters, split-pane inspector, CSV/JSONL export |
+| **Event stream** | Real-time audit tail, detections strip, event histogram, color-coded source badges (Claude, Cursor, Codex, Antigravity), outcome filters, split-pane inspector, CSV/JSONL export |
+| **Detections** | Triage panel for correlated findings — severity, rule ID, session drill-down; open a row to jump to the event stream |
+| **Analytics** | Outcome distribution, MITRE tactic chart, session ID search, weekly dogfood stats strip (same data as `agentmetry stats --days 7`) |
 | **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons — reorder or hide via the Columns settings panel |
-| **Analytics** | Outcome distribution, MITRE tactic chart, session ID search |
 | **Process Tree** | Horizontal React Flow timeline of events within a selected session |
 
 Dark mode supported with theme toggle. Logo and panels adapt automatically.
@@ -522,13 +527,14 @@ Integration guides → [docs/integrations/](docs/integrations/)
 
 | Command | What it does |
 |---------|--------------|
-| `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, doctor |
+| `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
-| `agentmetry replay <thread_id>` | ASCII audit timeline for one run, from `events.db` |
+| `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
+| `agentmetry replay <thread_id>` | ASCII audit timeline for one governed-runtime run (`events.db` outbox) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
-| `agentmetry doctor` | Preflight check for python, paths, etc. |
+| `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
 
 `scripts\agentmetry.bat` remains as a legacy alias.
 
@@ -567,10 +573,10 @@ Agentmetry is designed for security-sensitive environments:
 - **Local-first** — audit data stays on your machine unless you configure forwarders
 - **Argument hashing by default** — plaintext tool args never leave the hook process
 - **Optional API key** — protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
-- **DLP blocking** — stop secrets and PII from reaching tool execution boundaries
+- **Hook enforcement (opt-in)** — DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
 - **Tamper-evident exports** — evidence packs include SHA-256 integrity hashes
 
-Report vulnerabilities via GitHub Issues with the `security` label, or open a private security advisory on the repository.
+Report vulnerabilities via GitHub [private vulnerability reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new) (Security → Report a vulnerability). Do not open a public issue for security findings. See [SECURITY.md](SECURITY.md).
 
 Compliance docs → [docs/compliance/](docs/compliance/)
 

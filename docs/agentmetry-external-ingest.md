@@ -5,7 +5,7 @@ Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents y
 ## Architecture
 
 ```
-Cursor / Claude / Codex / Antigravity / MCP clients
+Claude Code / Cursor / Codex / Antigravity / MCP clients
         ↓ hooks or mcp_audit_proxy.py
   scripts/agentmetry_ingest.py
         ↓ POST /api/v1/audit/ingest
@@ -13,6 +13,38 @@ Cursor / Claude / Codex / Antigravity / MCP clients
         ↓
   Dashboard flight recorder (source badges)
 ```
+
+## Quick start — Claude Code (global hooks)
+
+**Launch-and-forget.** On orchestrator boot, `bootstrap_tier_b_hooks()` **merges** Agentmetry hooks into `~/.claude/settings.json` — every Claude Code project is audited, no per-repo setup. The merge is **non-destructive** (`theme`, `permissions`, `mcpServers`, `env`, and any existing hooks are preserved) and **idempotent** (re-run never duplicates). Never overwrites the file; if it can't parse your settings.json it skips rather than clobber.
+
+Manual install / re-install:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
+# then FULLY QUIT and reopen Claude Code so global settings load
+```
+
+**One-time:** fully quit Claude Code after install so hooks load. Then any project you open logs to Agentmetry when the orchestrator is on `:8000`.
+
+**Requirements:**
+
+1. Agentmetry running: `scripts\agentmetry.bat start` → `:8000`
+2. `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default)
+3. Optional: `AGENTMETRY_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
+
+Events (PascalCase): `SessionStart`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`. Template: `adapters/claude/settings.agentmetry.json` (nested `event -> [{hooks:[{type,command}]}]` schema).
+
+```powershell
+$env:AGENTMETRY_SOURCE_APP="claude"; python scripts/agentmetry_ingest.py selftest   # GREEN
+# then run any tool in Claude Code and confirm a real hook fired:
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=claude&limit=10" |
+  Select -ExpandProperty events |
+  Select timestamp_utc, @{n='adapter';e={$_.source.adapter}}, @{n='tool';e={$_.tool.qualified}}
+# success = adapter `claude_hook` with a real tool (not claude_selftest)
+```
+
+Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool ran), same as Cursor; Claude hook payloads do **not** carry the model slug, so `model.id` shows the app name, not `claude-sonnet`. A transcript-watcher fallback (`~/.claude/projects/<encoded>/<session>.jsonl`) is **deferred** — hooks already cover every tool call and a watcher would double-log.
 
 ## Quick start — Cursor (global hooks)
 
@@ -23,12 +55,6 @@ powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
 ```
 
 **One-time:** fully quit Cursor after install so hooks load. Then any project you open logs to Agentmetry when the orchestrator is on `:8000`.
-
-**Requirements:**
-
-1. Agentmetry running: `scripts\agentmetry.bat start` → `:8000`
-2. `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default)
-3. Optional: `AGENTMETRY_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
 
 Restart Cursor after pulling hooks so they load (Hooks tab in settings). Global hooks live in `%USERPROFILE%\.cursor\hooks.json`.
 
@@ -59,30 +85,6 @@ Canonical output adds:
 ```json
 "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"}
 ```
-
-## Claude Code (boot-installed + global)
-
-**Launch-and-forget, like Cursor.** On orchestrator boot, `bootstrap_tier_b_hooks()` **merges** Agentmetry hooks into `~/.claude/settings.json` — every Claude Code project is audited, no per-repo setup. The merge is **non-destructive** (`theme`, `permissions`, `mcpServers`, `env`, and any existing hooks are preserved) and **idempotent** (re-run never duplicates). Never overwrites the file; if it can't parse your settings.json it skips rather than clobber.
-
-Manual install / re-install:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
-# then FULLY QUIT and reopen Claude Code so global settings load
-```
-
-Events (PascalCase): `SessionStart`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`. Template: `adapters/claude/settings.agentmetry.json` (nested `event -> [{hooks:[{type,command}]}]` schema).
-
-```powershell
-$env:AGENTMETRY_SOURCE_APP="claude"; python scripts/agentmetry_ingest.py selftest   # GREEN
-# then run any tool in Claude Code and confirm a real hook fired:
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=claude&limit=10" |
-  Select -ExpandProperty events |
-  Select timestamp_utc, @{n='adapter';e={$_.source.adapter}}, @{n='tool';e={$_.tool.qualified}}
-# success = adapter `claude_hook` with a real tool (not claude_selftest)
-```
-
-Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool ran), same as Cursor; Claude hook payloads do **not** carry the model slug, so `model.id` shows the app name, not `claude-sonnet`. A transcript-watcher fallback (`~/.claude/projects/<encoded>/<session>.jsonl`) is **deferred** — hooks already cover every tool call and a watcher would double-log.
 
 ## Google Antigravity
 
@@ -154,7 +156,7 @@ Agentmetry's external hooks are **observe-only by default** — they record, the
 - **Approval *requests* are observed directly** — an `ask` on a `before*`/`PreToolUse` hook becomes an `approval_request` (pending).
 - **Approval *responses* are inferred, not natively reported.** No IDE emits "the human clicked approve." Agentmetry infers it: a tool that *runs* after an `ask` (a matching `tool_called`) yields an `approval_response` marked **`reason: inferred:tool_ran_after_ask`**; an `ask` still pending at session end yields an inferred **denied**. These events are explicitly flagged as inferred — treat them as strong evidence, not a native signal.
 
-**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed by default. Set `AGENTMETRY_AUDIT_LOG_COMMANDS=1` in `apps/orchestrator/.env` (or `AGENTMETRY_LOG_COMMANDS=1` in the hook environment) to also record **shell command text** (`command` field) for Bash / `run_command` / `shell.run` tools across Cursor, Claude, Codex, and Antigravity — so an investigator can see what actually ran. Inline secrets in the command (bearer tokens, `user:pass@` URLs, `--password`, AWS/OpenAI/GitHub/Slack keys) are **scrubbed to `<redacted>` first**, at both the hook and the server (`core/audit/redaction.py`). Scrubbing is best-effort, not a guarantee — an unusual secret shape may slip through, so treat the local `audit-forward.jsonl` as sensitive and keep it on machines you own. Other args stay hashed.
+**What leaves the hook:** tool arguments are SHA-256 hashed **inside the hook process**; only `input_hash` is POSTed by default. Set `AGENTMETRY_AUDIT_LOG_COMMANDS=1` in `apps/orchestrator/.env` (or `AGENTMETRY_LOG_COMMANDS=1` in the hook environment) to also record **shell command text** (`command` field) for Bash / `run_command` / `shell.run` tools across Claude, Cursor, Codex, and Antigravity — so an investigator can see what actually ran. Inline secrets in the command (bearer tokens, `user:pass@` URLs, `--password`, AWS/OpenAI/GitHub/Slack keys) are **scrubbed to `<redacted>` first**, at both the hook and the server (`core/audit/redaction.py`). Scrubbing is best-effort, not a guarantee — an unusual secret shape may slip through, so treat the local `audit-forward.jsonl` as sensitive and keep it on machines you own. Other args stay hashed.
 
 ## MCP proxy (any client)
 
@@ -165,7 +167,7 @@ python apps/orchestrator/tools/mcp_audit_proxy.py --server vault_fs -- `
   python apps/orchestrator/tools/vault_fs_server.py C:\path\to\vault
 ```
 
-Point Cursor/Claude MCP config at the proxy command instead of the raw server.
+Point Claude / Cursor MCP config at the proxy command instead of the raw server.
 
 - **Correlation:** every call in one proxy process shares a per-process session id (override with `AGENTMETRY_CORRELATION_ID`) — not the JSON-RPC request id, which collides across sessions.
 - **Args hashed in-proxy:** only `input_hash` is sent; plaintext arguments never leave the proxy.

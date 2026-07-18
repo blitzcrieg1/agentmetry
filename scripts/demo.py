@@ -7,7 +7,7 @@ network, no config. From a clean clone:
     python scripts/demo.py
 
 It replays a realistic agent session through the *real* ingest API — the same
-code path a Cursor or Claude Code hook uses — and shows what Agentmetry records:
+code path a Claude Code or Cursor hook uses — and shows what Agentmetry records:
 
     1. The agent reads an SSH private key.        -> MITRE T1552.004
     2. The agent runs a command containing an     -> DLP: aws_access_key
