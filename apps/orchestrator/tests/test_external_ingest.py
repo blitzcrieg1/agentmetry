@@ -179,6 +179,98 @@ def test_infer_grant_on_tool_run_after_ask():
     assert inferred[0]["gated_action"]["tool"] == "shell.run"
 
 
+def _ask(corr: str, tool: str = "shell.run", input_hash: str | None = None) -> dict:
+    payload: dict = {
+        "source_app": "cursor", "event_type": "approval_request", "outcome": "pending",
+        "correlation_id": corr,
+        "tool": {"qualified": tool, "server": "shell"},
+    }
+    if input_hash:
+        payload["tool"]["input_hash"] = input_hash
+    return build_external_canonical(payload)
+
+
+def _ran(corr: str, tool: str = "shell.run", input_hash: str | None = None) -> dict:
+    payload: dict = {
+        "source_app": "cursor", "event_type": "tool_called", "outcome": "success",
+        "correlation_id": corr,
+        "tool": {"qualified": tool, "server": "shell"},
+    }
+    if input_hash:
+        payload["tool"]["input_hash"] = input_hash
+    return build_external_canonical(payload)
+
+
+def test_approval_not_consumed_by_a_different_command_on_the_same_tool():
+    """Approve `Bash(rm -rf /tmp/x)`, run `Bash(ls)`: that is NOT the approved action.
+
+    The matcher used to compare tool names only, so any later call to the same
+    tool silently consumed the approval and the trail asserted a human had
+    approved something they never saw. This is the proposed-vs-executed gap.
+    """
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-mismatch", input_hash="a" * 64))
+
+    inferred = infer_approval_payloads(_ran("conv-mismatch", input_hash="b" * 64))
+    assert inferred == [], "a different command must not satisfy the approval"
+
+    # The approval was never satisfied, so it must still be pending and resolve
+    # as denied at session end rather than vanishing.
+    end = build_external_canonical({
+        "source_app": "cursor", "event_type": "session_end", "correlation_id": "conv-mismatch",
+    })
+    closed = infer_approval_payloads(end)
+    assert len(closed) == 1
+    assert closed[0]["outcome"] == "denied"
+    assert closed[0]["gated_action"]["input_hash"] == "a" * 64
+
+
+def test_approval_binds_when_the_hash_matches():
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-exact", input_hash="c" * 64))
+
+    inferred = infer_approval_payloads(_ran("conv-exact", input_hash="c" * 64))
+    assert len(inferred) == 1
+    assert inferred[0]["reason"] == "inferred:tool_ran_after_ask"
+    assert inferred[0]["gated_action"]["input_hash"] == "c" * 64
+
+
+def test_approval_falls_back_to_tool_name_when_a_hash_is_missing():
+    """Pre-hash adapters send no input_hash; name matching must still work."""
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-nohash"))
+
+    inferred = infer_approval_payloads(_ran("conv-nohash", input_hash="d" * 64))
+    assert len(inferred) == 1
+    assert inferred[0]["reason"] == "inferred:tool_ran_after_ask"
+
+
+def test_approval_for_one_tool_is_not_consumed_by_another():
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-tools", tool="shell.run", input_hash="e" * 64))
+
+    assert infer_approval_payloads(_ran("conv-tools", tool="fs.write", input_hash="e" * 64)) == []
+
+
+def test_matching_approval_is_found_past_an_unrelated_pending_one():
+    """The right approval binds even when a mismatched one is queued ahead of it."""
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-queue", input_hash="1" * 64))
+    infer_approval_payloads(_ask("conv-queue", input_hash="2" * 64))
+
+    inferred = infer_approval_payloads(_ran("conv-queue", input_hash="2" * 64))
+    assert len(inferred) == 1
+    assert inferred[0]["gated_action"]["input_hash"] == "2" * 64
+
+    # The first approval is untouched and still resolves as denied.
+    end = build_external_canonical({
+        "source_app": "cursor", "event_type": "session_end", "correlation_id": "conv-queue",
+    })
+    closed = infer_approval_payloads(end)
+    assert len(closed) == 1
+    assert closed[0]["gated_action"]["input_hash"] == "1" * 64
+
+
 def test_infer_denied_on_session_end_pending():
     """ask still pending at session end ⇒ inferred denied (F2)."""
     reset_pending_approvals()

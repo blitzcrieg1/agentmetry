@@ -44,6 +44,27 @@ def _tool_ident(canonical: dict[str, Any]) -> tuple[str, str, str]:
     )
 
 
+def _approval_matches(pending: dict[str, str], qualified: str, input_hash: str) -> bool:
+    """Does this executed call satisfy that pending approval?
+
+    Bind on the most specific identity both sides carry, the same precedence
+    rule_approval_denied_then_executed uses. When both know the argument hash
+    they must agree: an approval for `Bash(rm -rf /tmp/x)` must not be consumed
+    by a later `Bash(ls)`, or the trail claims a human approved something they
+    never saw. That gap between the proposed action and the one that ran is
+    exactly where surprises live.
+
+    Falls back to the tool name only when a hash is missing on either side,
+    which is the pre-hash adapter case. An approval recorded with no tool name
+    still matches anything, as before.
+    """
+    if pending.get("tool") and pending["tool"] != qualified:
+        return False
+    if pending.get("input_hash") and input_hash:
+        return pending["input_hash"] == input_hash
+    return True
+
+
 def _approval_payload(
     source_app: str, corr: str, pending: dict[str, str], outcome: str, reason: str
 ) -> dict[str, Any]:
@@ -81,9 +102,9 @@ def infer_approval_payloads(canonical: dict[str, Any]) -> list[dict[str, Any]]:
 
     if atype == "tool_called" and outcome == "success":
         bucket = _pending_approvals.get(corr) or []
-        qualified, _server, _hash = _tool_ident(canonical)
+        qualified, _server, input_hash = _tool_ident(canonical)
         for i, pending in enumerate(bucket):
-            if not pending["tool"] or pending["tool"] == qualified:
+            if _approval_matches(pending, qualified, input_hash):
                 bucket.pop(i)
                 return [
                     _approval_payload(
