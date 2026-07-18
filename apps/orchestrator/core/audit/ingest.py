@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from core.audit.detection.live import build_detection_event, observe
+from core.audit.detection.live import build_detection_event, mark_detection_emitted, observe
 from core.audit.external import build_external_canonical
 from core.audit.sinks import build_audit_sinks, parse_sink_modes
 from core.config import settings
@@ -172,20 +172,35 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     # opens the session in the dashboard is not a control — emit it down the
     # same sinks so it reaches the SIEM and the alert webhook.
     for event in (canonical, *inferred):
+        corr = str(event.get("correlation_id") or "")
+        ts = str(event.get("timestamp_utc") or "")
         for detection in observe(event):
+            det_event = build_detection_event(detection, event)
             try:
-                det_event = build_detection_event(detection, event)
+                # Record in the trail first: it is the source of truth and must
+                # hold the detection even when forwarding is broken — a
+                # misconfigured sink must never make a critical vanish from the
+                # record. A re-fire can insert again, but the dashboard dedups
+                # detections by rule_id:correlation_id, so any redundant rows
+                # written during a sink outage collapse in the UI.
                 get_trail_db().insert(det_event)
                 await sink.emit(det_event)
-                logger.warning(
-                    "DETECTION %s [%s] correlation=%s — %s",
-                    detection.rule_id,
-                    detection.severity,
-                    detection.correlation_id,
-                    detection.summary,
-                )
-            except Exception:  # a failed alert must never drop the audit event
+            except Exception:
+                # Emit (or insert) failed — do NOT checkpoint, so the rule
+                # re-fires and re-emits on the next session event instead of the
+                # alert being silently lost.
                 logger.exception("Failed to emit detection %s", detection.rule_id)
+                continue
+            # Stored and forwarded — checkpoint. Idempotent, so a recovered emit
+            # never double-alerts.
+            mark_detection_emitted(corr, detection.rule_id, emitted_at=ts)
+            logger.warning(
+                "DETECTION %s [%s] correlation=%s — %s",
+                detection.rule_id,
+                detection.severity,
+                detection.correlation_id,
+                detection.summary,
+            )
 
     logger.info(
         "Ingested external audit event app=%s type=%s correlation=%s",

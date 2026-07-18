@@ -5,7 +5,7 @@ POST adapter events to the local orchestrator ingest API.
 
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
-  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: AGENTMETRY_API_KEY)
+  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
   AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
@@ -65,7 +65,7 @@ def _base_url() -> str:
 def _api_key() -> str:
     return (
         os.environ.get("AGENTMETRY_API_KEY", "").strip()
-        or os.environ.get("AGENTMETRY_API_KEY", "").strip()
+        or os.environ.get("BLACKBOX_API_KEY", "").strip()  # pre-rename fallback
     )
 
 
@@ -824,6 +824,37 @@ def _hook_debug_path() -> Path:
     return data_dir / f"{source}-hook-debug.log"
 
 
+# Hooks the IDE actually blocks on: it waits for our decision before running the
+# tool. Only here can a `block` verdict become a real deny. `beforeReadFile` is
+# intentionally excluded (see CURSOR_BLOCKING) — it is not a blocking hook.
+_PRE_EXECUTION_HOOKS = CURSOR_BLOCKING | frozenset({"PreToolUse", "PermissionRequest"})
+
+
+def _is_blocking_hook(hook_name: str, data: dict[str, Any]) -> bool:
+    """True only for genuinely pre-execution hooks.
+
+    A `block` on an after-hook (afterShellExecution, PostToolUse, ...) is a false
+    prevention guarantee: the tool already ran, so emitting deny stops nothing.
+    The effective name is resolved the same way the mappers do — from stdin
+    first, then the CLI arg — so it matches what the IDE actually invoked.
+    """
+    effective = str(
+        data.get("hook_event_name")
+        or data.get("hookEventName")
+        or data.get("event")
+        or hook_name
+    )
+    return effective in _PRE_EXECUTION_HOOKS
+
+
+def _emit_block_decision() -> None:
+    """Print the deny decision in the shape the current source app expects."""
+    if _source_app() == "antigravity":
+        print(json.dumps({"decision": "deny"}))
+    else:
+        print(json.dumps({"permission": "deny"}))
+
+
 def hook_main(hook_name: str) -> int:
     data, decode_error = read_hook_stdin()
     if decode_error:
@@ -846,6 +877,11 @@ def hook_main(hook_name: str) -> int:
             tool_block = payload.get("tool") or {}
             tool_name = tool_block.get("qualified", "")
             server = tool_block.get("server", "")
+            # Enforcement (printing deny) is only honest on a pre-execution hook.
+            # On an after-hook the tool has already run, so a block-mode match is
+            # recorded but never turned into a deny — that would be a lie in the
+            # trail and a false prevention guarantee. See core/audit/policy.py.
+            blocking = _is_blocking_hook(hook_name, data)
 
             if tool_policy_eval:
                 tp_verdict = tool_policy_eval(tool_name, data, server=server)
@@ -858,16 +894,18 @@ def hook_main(hook_name: str) -> int:
                     }
                     if tp_verdict.blocked and tp_verdict.mode == "block":
                         rule_id = tp_verdict.match.rule_id if tp_verdict.match else "policy"
-                        payload["outcome"] = "denied"
-                        payload["reason"] = f"tool_policy:{rule_id}"
-                        payload["event_type"] = "tool_called"
-                        post_ingest(payload, quiet=True)
-                        source = _source_app()
-                        if source == "antigravity":
-                            print(json.dumps({"decision": "deny"}))
-                        else:
-                            print(json.dumps({"permission": "deny"}))
-                        return 0
+                        if blocking:
+                            payload["outcome"] = "denied"
+                            payload["reason"] = f"tool_policy:{rule_id}"
+                            payload["event_type"] = "tool_called"
+                            post_ingest(payload, quiet=True)
+                            _emit_block_decision()
+                            return 0
+                        # After-hook: keep the real outcome so detection rules
+                        # still see the executed call; note it was not enforced.
+                        payload["reason"] = (
+                            f"{payload.get('reason', '')};tool_policy_block_observed:{rule_id}"
+                        ).strip(";")
 
             if dlp_scan:
                 dlp_verdict = dlp_scan(tool_name, data)
@@ -884,16 +922,17 @@ def hook_main(hook_name: str) -> int:
                     "rule_ids": [m.rule_id for m in (dlp_verdict.matches or [])],
                 }
                 if dlp_verdict.mode == "block":
-                    payload["outcome"] = "denied"
-                    payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
-                    payload["event_type"] = "tool_called"
-                    post_ingest(payload, quiet=True)
-                    source = _source_app()
-                    if source == "antigravity":
-                        print(json.dumps({"decision": "deny"}))
-                    else:
-                        print(json.dumps({"permission": "deny"}))
-                    return 0
+                    if blocking:
+                        payload["outcome"] = "denied"
+                        payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
+                        payload["event_type"] = "tool_called"
+                        post_ingest(payload, quiet=True)
+                        _emit_block_decision()
+                        return 0
+                    # After-hook: already executed — record, do not claim a block.
+                    payload["reason"] = (
+                        f"{payload.get('reason', '')};dlp_block_observed:{dlp_verdict.match.rule_id}"
+                    ).strip(";")
 
         post_ingest(payload, quiet=True)
 
