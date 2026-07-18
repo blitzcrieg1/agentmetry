@@ -34,24 +34,17 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 <div align="center">
 
 <!--
-  DEMO VIDEO. GitHub renders an inline player only for assets it hosts itself
-  (github.com/user-attachments/assets/...), which are created by dragging the
-  file into the web editor. Release, raw and blob URLs all serve the MP4 as
-  application/octet-stream, so they download instead of playing. Until the
-  upload is done, this is a poster that links to the file.
-  To upgrade this block to a real player, see docs/readme-media.md
+  DEMO VIDEO. Keep the line below a bare github.com/user-attachments URL on its
+  own line. That is the only form GitHub renders as an inline player: release,
+  raw and blob URLs serve the MP4 as application/octet-stream and download
+  instead of playing, and <video src="docs/assets/..."> is stripped by the HTML
+  sanitizer. To replace the video, see docs/readme-media.md
 -->
 
-<a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4">
-  <img src="docs/assets/dashboard-detection.png" alt="Agentmetry dashboard: a CRITICAL credential-exfil detection correlating a read of ~/.ssh/id_rsa (T1552.004) with a WebFetch egress (T1071.001), shown live in the event feed." width="880">
-</a>
+https://github.com/user-attachments/assets/edd2002e-47c1-4885-8500-b3651f648018
 
-<p>
-  <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4"><strong>▶ Watch the dashboard demo (MP4, 0.8 MB)</strong></a>
-  or run it locally with <code>python scripts/demo_dashboard.py</code>
-</p>
-
-<p><em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em></p>
+<p><em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em><br/>
+Run it yourself with <code>python scripts/demo_dashboard.py</code></p>
 
 </div>
 
