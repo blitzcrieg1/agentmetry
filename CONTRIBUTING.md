@@ -33,6 +33,24 @@ python scripts/demo.py
 
 ## Before you open a PR
 
+### Commit authorship (solo maintainers)
+
+GitHub shows anyone listed in a commit trailer as a **contributor**. To keep the
+repo attributed to you (and optional Claude co-authors only):
+
+1. **Cursor:** Settings → Agent → Attribution → turn **Commit Attribution** off.
+2. **Enable the repo hook** (strips `Co-authored-by: Cursor` if it slips in):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The repo ships `.githooks/prepare-commit-msg`; it removes Cursor co-author lines
+and keeps other co-authors (e.g. Claude).
+
+**Note:** Past commits already on GitHub may still list `cursoragent` until history
+is rewritten. New commits after the steps above will not add Cursor as co-author.
+
 From `apps/orchestrator`:
 
 ```bash
