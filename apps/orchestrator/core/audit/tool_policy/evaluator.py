@@ -39,33 +39,70 @@ def _tool_matches(pattern: str, qualified: str) -> bool:
     return fnmatch.fnmatch(short, p) or fnmatch.fnmatch(_norm(short), _norm(p))
 
 
+_COMMAND_KEYS = ("command", "cmd", "script", "CommandLine")
+# Mirrors extract_command in scripts/agentmetry_ingest.py, so a policy can target
+# a file path (agent config, hooks) and not only a shell string.
+_PATH_KEYS = ("path", "filepath", "file_path", "AbsolutePath", "TargetFile", "target_path")
+
+
+def _nested_arg_containers(hook_data: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    """Every dict an IDE may hide tool arguments in, plus a raw string fallback.
+
+    Cursor shell hooks put `command` at the top level, but Claude and Codex nest
+    it under `tool_input` and Antigravity under `toolCall.args`. Without those,
+    a `command_pattern` rule matched nothing on three of the four supported IDEs
+    — the shipped block_shell_rm rule was Cursor-only in practice.
+    """
+    containers: list[dict[str, Any]] = []
+    raw = ""
+    for key in ("arguments", "args", "input", "tool_input", "toolInput"):
+        val = hook_data.get(key)
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except json.JSONDecodeError:
+                raw = raw or val
+                continue
+        if isinstance(val, dict):
+            containers.append(val)
+    tool_call = hook_data.get("toolCall")
+    if isinstance(tool_call, dict) and isinstance(tool_call.get("args"), dict):
+        containers.append(tool_call["args"])
+    return containers, raw
+
+
 def _extract_command(hook_data: dict[str, Any] | str, qualified: str = "") -> str:
     if isinstance(hook_data, str):
         return hook_data
     if not isinstance(hook_data, dict):
         return ""
 
-    for key in ("command", "cmd", "script", "CommandLine"):
+    nested, raw = _nested_arg_containers(hook_data)
+
+    for key in _COMMAND_KEYS:
         val = hook_data.get(key)
         if val is not None and str(val).strip():
             return str(val)
-
-    args = hook_data.get("arguments") or hook_data.get("args") or hook_data.get("input")
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except json.JSONDecodeError:
-            return args
-    if isinstance(args, dict):
-        for key in ("command", "cmd", "script", "CommandLine", "value"):
-            val = args.get(key)
+    for container in nested:
+        for key in (*_COMMAND_KEYS, "value"):
+            val = container.get(key)
             if val is not None and str(val).strip():
                 return str(val)
+    if raw:
+        return raw
+
     q = (qualified or "").lower()
     if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
         val = hook_data.get("value")
         if val is not None and str(val).strip():
             return str(val)
+
+    # Path fallback: lets a rule deny writes to agent-execution config.
+    for container in (hook_data, *nested):
+        for key in _PATH_KEYS:
+            val = container.get(key)
+            if val is not None and str(val).strip():
+                return str(val)
     return ""
 
 

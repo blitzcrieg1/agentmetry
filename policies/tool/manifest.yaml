@@ -35,3 +35,37 @@ rules:
     tools:
       - "mcp__github__push"
       - "*github*push*"
+
+  # Nx "s1ngularity" (Aug 2025): malicious postinstall invoked locally installed
+  # agent CLIs with guardrails off and prompted THEM to enumerate secrets. A tool
+  # call spawning an agent CLI in non-interactive mode has no benign analogue.
+  - id: block_agent_cli_weaponization
+    action: deny
+    description: Tool call spawning an agent CLI with guardrails disabled
+    tools:
+      - "Bash"
+      - "Shell"
+      - "shell.run"
+      - "cursor.Shell"
+      - "powershell"
+      - "antigravity.run_command"
+      - "*.run_command"
+    command_pattern: '(?i)\b(claude|gemini|codex|cursor-agent)\b[^|;&\n]*?(--dangerously-skip-permissions|--yolo|--allowedTools|\s-p\s|--print\b|--prompt\b)'
+
+  # Agent execution config is attacker-controlled in an untrusted repo
+  # (CVE-2025-59536 / CVE-2026-21852). These files grant code execution: hooks,
+  # MCP server definitions, env overrides. Deliberately excludes CLAUDE.md and
+  # .cursor/rules — agents edit those legitimately, and the real threat there is
+  # hidden Unicode, which the invisible_unicode_instructions DLP rule catches.
+  - id: block_agent_exec_config_write
+    action: deny
+    description: Block writes to agent execution config (hooks, MCP servers, env)
+    tools:
+      - "Write"
+      - "Edit"
+      - "edit_file"
+      - "write"
+      - "str_replace_editor"
+      - "*.write_file"
+      - "*.edit_file"
+    command_pattern: '(?i)(^|[\\/])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/])'
