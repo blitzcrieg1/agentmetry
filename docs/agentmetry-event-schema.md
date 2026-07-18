@@ -59,6 +59,18 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 | `gated_action` | `approval_request` | Binds the gate to `{tool, server, input_hash}` |
 | `dlp` | `tool_called` (when `outcome` is `denied` or `mode` is `log`) | Records DLP scanner matches: `{rule_id, mode, pattern_type}` |
 | `actor.type` | Derived | `user` for human-initiated runs; `agent` for cron/vault/ingress |
+| `tool.mitre` | `tool_called` for a tool with an ATT&CK mapping | `{tactic_id, tactic, technique_id, technique}` |
+| `tool_policy` | `tool_called` / `approval_request` when an allow/deny rule matches | `{rule_id, action, mode, blocked}` |
+| `detection` | `action.type: detection` | Correlated finding: `{rule_id, title, severity, summary, correlation_id, tactic_ids, technique_ids, event_ids, first_seen_utc, last_seen_utc}` |
+
+**Note on MITRE**: the object carries both machine ids and human names. Write SIEM
+queries against `tactic_id` / `technique_id`; `tactic` / `technique` are display
+labels and their wording can change. There is no single combined field.
+
+**Note on detections**: a firing rule is emitted as its own canonical event with
+`action.type: detection`, and `action.outcome` carries the severity, so a SIEM can
+alert on `action.type:detection AND action.outcome:critical` without knowing
+Agentmetry's rule vocabulary.
 
 `initiator.actor_type` is set at `run_skill` from the call site (`manual`, `cron`, `vault_watch`, `ingress`, …) — never from client headers. `approval_response` events keep the run's `initiator` but set `actor.type=user` (the operator who clicked approve/reject).
 
@@ -86,7 +98,13 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
     "server": "vault_fs",
     "input_redaction": "hash",
     "input_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "parameters_redacted": true
+    "parameters_redacted": true,
+    "mitre": {
+      "tactic_id": "TA0009",
+      "tactic": "Collection",
+      "technique_id": "T1005",
+      "technique": "Data from Local System"
+    }
   },
   "model": {"id": "gemini-2.5-flash-lite", "provider": "gemini"}
 }
