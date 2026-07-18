@@ -31,22 +31,13 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 
 </div>
 
-<p align="center">
-  <video
-    src="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4"
-    poster="docs/assets/dashboard-detection.png"
-    controls
-    playsinline
-    width="880">
-    <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4">
-      <img src="docs/assets/dashboard-detection.png" width="880" alt="Agentmetry dashboard demo — download MP4">
-    </a>
-  </video>
-</p>
+<div align="center">
 
-<p align="center">
-  <em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em>
-</p>
+https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4
+
+<p><em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em></p>
+
+</div>
 
 ---
 
