@@ -48,3 +48,35 @@ rules:
     pattern: "\\b(?!000|666|9\\d{2})\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b"
     category: "pii"
     severity: "high"
+
+  # Rules File Backdoor (Pillar Security, Mar 2025): instructions hidden in
+  # zero-width joiners / bidi overrides inside .cursor/rules, CLAUDE.md or an
+  # MCP tool description. Invisible in review, but the model obeys them.
+  #
+  # Both halves of this pattern are required. scanner.py matches against
+  # json.dumps(arguments), which defaults to ensure_ascii=True, so a real U+200B
+  # arrives as the six ASCII characters ​. The raw-character classes alone
+  # would compile, ship, and never fire. See test_dlp_invisible_unicode.py.
+  - id: "invisible_unicode_instructions"
+    name: "Invisible Unicode Instructions"
+    description: "Zero-width, bidi-override or Unicode-Tags characters used to hide agent instructions"
+    pattern: "[\\u200b\\u200c\\u200d\\u200e\\u200f\\u202a\\u202b\\u202c\\u202d\\u202e\\u2060\\u2061\\u2062\\u2063\\u2064\\ufeff]|[\\U000e0000-\\U000e007f]|\\\\u(?:200[b-f]|202[a-e]|206[0-4]|feff)|\\\\udb40\\\\udc[0-7][0-9a-f]"
+    category: "prompt_injection"
+    severity: "critical"
+
+  # Nx "s1ngularity" campaign (Aug 2025): harvested secrets were double-base64
+  # encoded into results.b64 and pushed to public s1ngularity-repository repos
+  # on the victim's own GitHub account.
+  - id: "s1ngularity_exfil_ioc"
+    name: "s1ngularity Exfiltration IOC"
+    description: "Known artifact names from the Nx s1ngularity credential-theft campaign"
+    pattern: "(?i)s1ngularity-repository|\\bresults\\.b64\\b"
+    category: "exfiltration"
+    severity: "critical"
+
+  - id: "double_base64_encode"
+    name: "Double Base64 Encoding"
+    description: "Encode-twice pipeline used to defeat single-pass secret scanners"
+    pattern: "(?i)\\b(base64|b64encode)\\b[^|;&]*\\|[^|;&]*\\b(base64|b64encode)\\b"
+    category: "exfiltration"
+    severity: "high"
