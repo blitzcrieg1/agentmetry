@@ -27,17 +27,12 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
   <a href="ROADMAP.md"><strong>Roadmap</strong></a> ·
   <a href="#security"><strong>Security</strong></a>
+<p align="center">
+  <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4">
+    <img src="docs/assets/dashboard-detection.png" width="880" alt="Watch Agentmetry dashboard demo">
+  </a>
 </p>
-
-</div>
-
-<div align="center">
-
-https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4
-
-<p><em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em></p>
-
-</div>
+<p align="center"><strong><a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4">▶ Watch demo (MP4)</a></strong></p>
 
 ---
 
