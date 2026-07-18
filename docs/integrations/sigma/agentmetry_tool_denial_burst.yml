@@ -18,8 +18,8 @@ logsource:
   service: governed-host
 detection:
   selection:
-    action.type: tool_called          # [verify against live JSONL] Loki label: action_type
-    action.outcome: denied            # [verify against live JSONL] Loki label: action_outcome
+    action.type: tool_called          # verified 2026-07-18 (top-level canonical field); Loki label: action_type
+    action.outcome: denied            # verified 2026-07-18 (top-level canonical field); Loki label: action_outcome
   condition: selection
 fields:
   - correlation_id
