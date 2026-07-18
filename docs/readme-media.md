@@ -1,29 +1,45 @@
 # Refreshing the README demo video
 
-GitHub renders an inline `<video>` player only for assets it hosts itself
-(`github.com/user-attachments/assets/<uuid>`). These are created by the web
-editor, not by any API or CLI, so the upload is a manual one-time step.
+The README hero is a real inline player. It works because the URL points at an
+asset GitHub hosts itself:
 
-Verified as non-working (all serve `application/octet-stream`, so the browser
-downloads instead of playing):
+```
+https://github.com/user-attachments/assets/<uuid>
+```
+
+Keep that line **bare and on its own line**. Wrapping it in an `<a>`, an `<img>`,
+or markdown link syntax turns it back into a plain link. GitHub rewrites the bare
+URL into a `<video controls>` element pointing at a signed
+`private-user-images.githubusercontent.com` URL served as `video/mp4`.
+
+`user-attachments` URLs are minted by GitHub's web upload. There is no API or
+`gh` command for it, so refreshing the video is a manual browser step.
+
+Verified as non-working, so nobody retries them (all serve
+`application/octet-stream`, so the browser downloads instead of playing):
 
 | Source | Result |
 |--------|--------|
 | `<video src="docs/assets/agentmetry.mp4">` | stripped by the HTML sanitizer |
-| Release asset URL | `Content-Disposition: attachment` |
+| Release asset URL | 302 to a CDN with `Content-Disposition: attachment` |
 | `raw.githubusercontent.com` URL | `application/octet-stream` |
 | Blob view (`/blob/master/...mp4`) | shows "Download raw file", no player |
 
-## Upgrading the poster to a real inline player
+## Replacing the video
 
-1. Open `README.md` on github.com and click the pencil (Edit).
-2. Drag `docs/assets/agentmetry.mp4` into the editor. GitHub uploads it and
-   inserts a `https://github.com/user-attachments/assets/<uuid>` URL.
-3. Replace the poster `<a>`/`<img>` block with that bare URL on its own line.
-4. Preview to confirm a player appears, then commit.
+1. Re-record and overwrite `docs/assets/agentmetry.mp4`.
+2. Refresh the release copy (used by the site and by direct links):
+   `gh release upload demo-assets docs/assets/agentmetry.mp4 --clobber`
+3. Open a new issue draft on github.com and drag the new MP4 into the comment
+   box. Wait for the upload, copy the `user-attachments` URL it inserts, then
+   close the tab without submitting. The asset stays uploaded.
+4. Swap that URL into the README hero line and open a PR.
 
-## When the video changes
+To confirm the player renders on a branch before merging:
 
-Re-record, replace `docs/assets/agentmetry.mp4`, refresh the release asset with
-`gh release upload demo-assets docs/assets/agentmetry.mp4 --clobber`, then redo
-the drag-and-drop above so the player points at the new file.
+```bash
+curl -sL https://github.com/<owner>/<repo>/blob/<branch>/README.md | grep -o '<video[^>]*>'
+```
+
+A `<video ... controls="controls" ...>` match means the player is live. Text
+extraction tools show only the filename, so they cannot confirm this.
