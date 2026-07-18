@@ -32,11 +32,13 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 </div>
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="Agentmetry Phase 1 flight recorder: detections strip with CRITICAL credential-exfil alerts, event histogram, live ingest status, and a tool-call feed tagged with MITRE ATT&amp;CK." width="880">
+  <video src="docs/assets/agentmetry.mp4" controls width="880" aria-label="Agentmetry dashboard demo: Event stream, Detections strip, and a live credential-exfil sequence tagged with MITRE ATT&amp;CK.">
+    <a href="docs/assets/agentmetry.mp4">Watch the dashboard demo (MP4)</a>
+  </video>
 </p>
 
 <p align="center">
-  <em>Detections strip, event histogram, and live feed — every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em>
+  <em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em>
 </p>
 
 ---
