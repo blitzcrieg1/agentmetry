@@ -9,8 +9,10 @@
 
 <h1>Agentmetry: the local flight recorder for AI coding agents</h1>
 
-<p>Records every tool call, denial, and human approval from Cursor, Claude Code, Codex and Antigravity.<br/>
-Tags each one with MITRE ATT&CK, correlates sequences into detections, and stores it all in a JSONL trail you own.<br/>
+<p><strong>Your agent reads a private key, then makes a network call. Your EDR sees a process.<br/>
+Agentmetry sees the sequence, tags it with MITRE ATT&CK, and fires one CRITICAL alert.</strong></p>
+
+<p>Records every tool call, denial, and approval from Cursor, Claude Code, Codex and Antigravity into a JSONL trail you own.<br/>
 Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</p>
 
 <p align="center">
@@ -92,7 +94,7 @@ No server, no API key, no config. Clone and run:
 
 ```bash
 git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
-pip install -r apps/orchestrator/requirements.txt
+pip install -e apps/orchestrator
 python scripts/demo.py
 ```
 
