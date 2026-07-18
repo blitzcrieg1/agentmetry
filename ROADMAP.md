@@ -54,7 +54,7 @@ item matters to you.
   orchestrator restart without re-firing detections.
 - **Windows one-flow install** — `scripts/install.ps1` (venv, dashboard deps,
   IDE hooks, doctor).
-- **Visual truth** — README, agentmetry.ai, `docs/assets/agentmetry.mp4`, and `docs/assets/demo.gif` match Phase 1
+- **Visual truth** — README, agentmetry.ai, and `docs/assets/agentmetry.mp4` match Phase 1
   dashboard and live demo output.
 
 - **Phase 0 complete** — README SIEM-first + Advanced runtime doc; dogfood issue template.

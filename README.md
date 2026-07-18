@@ -32,8 +32,15 @@ Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</
 </div>
 
 <p align="center">
-  <video src="docs/assets/agentmetry.mp4" controls width="880" aria-label="Agentmetry dashboard demo: Event stream, Detections strip, and a live credential-exfil sequence tagged with MITRE ATT&amp;CK.">
-    <a href="docs/assets/agentmetry.mp4">Watch the dashboard demo (MP4)</a>
+  <video
+    src="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4"
+    poster="docs/assets/dashboard-detection.png"
+    controls
+    playsinline
+    width="880">
+    <a href="https://github.com/blitzcrieg1/agentmetry/releases/download/demo-assets/agentmetry.mp4">
+      <img src="docs/assets/dashboard-detection.png" width="880" alt="Agentmetry dashboard demo — download MP4">
+    </a>
   </video>
 </p>
 
@@ -92,7 +99,7 @@ We do that by:
 
 Agentmetry runs fully locally. The audit trail never leaves your machine unless you explicitly forward it.
 
-### See it catch something first (30 seconds)
+### Try it locally (30 seconds)
 
 No server, no API key, no config. Clone and run:
 
@@ -101,16 +108,6 @@ git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
 pip install -e apps/orchestrator
 python scripts/demo.py
 ```
-
-It replays an agent session through the real ingest API: the agent reads an SSH
-private key, runs a command containing an AWS key, then fetches a URL. Agentmetry
-tags each call with MITRE ATT&CK, catches the AWS key with DLP (storing the rule,
-never the value), and then **correlates the key read with
-the network call and fires a `CRITICAL` credential-exfil detection.**
-
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="Terminal replay: an agent reads an SSH private key and an AWS key, then fetches a URL; Agentmetry tags each call with MITRE ATT&CK, flags the AWS key with DLP without storing it, and fires a CRITICAL credential-exfil detection." width="760">
-</p>
 
 No single one of those events is an alert. The sequence is. That is the whole
 product in one screen.
