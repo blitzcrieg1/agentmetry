@@ -9,21 +9,6 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
-### Fixed
-- Inferred approvals now bind to the action that was actually approved. The
-  matcher compared tool names only, so an approval for `Bash(rm -rf /tmp/x)`
-  could be consumed by a later `Bash(ls)`. It now compares `input_hash` when both
-  sides carry one. A mismatch leaves the approval pending and resolves as denied
-  at session end, exposing the proposed-versus-executed gap in the trail.
-- API key comparison is constant-time (`secrets.compare_digest`), so the key can
-  no longer be recovered a byte at a time through response timing.
-
-### Changed
-- `core/config.py` is reorganized so the SIEM recorder settings come first and
-  the optional governed-runtime settings are grouped and signposted separately.
-  No settings changed: field names, defaults, and environment aliases are
-  identical.
-
 ## [0.2.0] - 2026-07-19
 
 First tagged public-alpha release. A local-first flight recorder and mini-SIEM
@@ -74,6 +59,28 @@ tamper-evident JSONL trail you own.
 - **Compliance kit.** An ISO 42001 mapping and an EU AI Act deployer checklist.
 - **Install.** Windows one-flow `scripts/install.ps1`. The orchestrator, tests,
   and hook bootstrap also run on Linux (CI runs on Ubuntu).
+
+### Fixed
+- Inferred approvals bind to the action that was actually approved. The matcher
+  compared tool names only, so an approval for `Bash(rm -rf /tmp/x)` could be
+  consumed by a later `Bash(ls)`. It now compares `input_hash` when both sides
+  carry one, and a mismatch leaves the approval pending so it resolves as denied
+  at session end, exposing the proposed-versus-executed gap in the trail.
+- Enforcement (`block`) is emitted only on genuinely pre-execution hooks. An
+  after-hook match is recorded but never turned into a deny, since the tool has
+  already run.
+- Live detections are checkpointed only after they are durably stored and
+  forwarded, so a transient sink failure re-fires on the next event instead of
+  being lost.
+- Loki forwarding unwraps the hash-chain envelope, so the documented LogQL
+  queries resolve their fields again.
+- API key comparison is constant-time (`secrets.compare_digest`), so the key
+  cannot be recovered a byte at a time through response timing.
+
+### Changed
+- `core/config.py` groups the SIEM recorder settings first and the optional
+  governed-runtime settings separately, with a pointer to their doc. No settings
+  changed: field names, defaults, and environment aliases are identical.
 
 ### Known limitations
 - Approval *responses* are inferred, not observed, since no IDE reports the
