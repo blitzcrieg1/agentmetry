@@ -1,68 +1,67 @@
-# EU AI Act — Deployer Checklist (Agentmetry Operator)
+# EU AI Act — Deployer Checklist (Agentmetry SIEM)
 
-**Role mapping:** Agentmetry repo author = **provider** (tool). You, running it on client data = **deployer**.
+**Role mapping:** Agentmetry repo author = **provider** (tool). You, running it on
+developer workstations = **deployer**.
 
-Use this checklist when a client asks how you govern AI-assisted email, documents, and meeting follow-ups.
+Use this checklist when a client asks how you govern **AI coding agents**
+(Cursor, Claude Code, Codex, MCP tools) — not outbound email automation.
 
 ---
 
 ## Art. 12 — Logging & traceability
 
 | Step | Action | Agentmetry hook |
-|------|--------|---------------|
-| 1 | Enable the orchestrator for all production skills | `scripts/agentmetry.bat start` |
-| 2 | Do not delete `apps/orchestrator/data/events.db` or `runs.jsonl` during an audit window | Immutable outbox + ledger |
+|------|--------|-----------------|
+| 1 | Run the orchestrator on every machine with AI agents | `scripts/agentmetry.bat start` |
+| 2 | Do not delete `audit-forward.jsonl` or `audit.db` during an audit window | JSONL hash chain + SQLite index |
 | 3 | Export monthly evidence | `agentmetry export --evidence --from … --to …` |
-| 4 | Verify integrity | Pack includes `meta.integrity_sha256`; re-run verify in Python or CI |
-| 5 | Archive exports | `vault/30-Archive/exports/evidence-*.json` |
+| 4 | Verify integrity | `agentmetry verify --trail audit-forward.jsonl` |
+| 5 | Archive exports | Your org's evidence store (local or SIEM) |
 
-**Evidence fields (schema 1.1+):** `events[]`, `runs[]`, `tool_calls[]`, `meta.provider_metadata`, `meta.tool_allowlist_snapshot`.
+**Evidence fields (schema 1.1+):** `correlation_id`, `host_id`, `tool.input_hash`,
+`detection.*`, `dlp.rule_id`, `tool_policy.rule_id`.
 
 ---
 
 ## Art. 14 — Human oversight
 
 | Step | Action | Agentmetry hook |
-|------|--------|---------------|
-| 1 | Keep `approval_threshold: 1.1` on outbound skills (`customer_reply`, etc.) | Forces HITL gate every run |
-| 2 | Resolve approvals only via dashboard / plugin / approved channel | `resolve_approval()` single path |
-| 3 | Never enable send-after-approve until your 4-green-week gate clears | Gmail draft-only today |
-| 4 | Terminate bad drafts explicitly | Reject → `RUN_TERMINATED` in outbox |
-| 5 | Record why you approved | Optional note in Obsidian active loop before approve |
-
-**Evidence fields:** `approvals[]` with `decision`, `draft`, `confidence_score`, `approval_signature`.
+|------|--------|-----------------|
+| 1 | Enable tool policy **block** mode for destructive patterns | `AGENTMETRY_TOOL_POLICY_MODE=block` |
+| 2 | Review detections in dashboard Detections tab | Live + durable in JSONL |
+| 3 | Treat hook **deny** as pre-execution control; post-ingest policy as annotation only | See `core/audit/policy.py` |
+| 4 | Export correlation packs for incidents | `agentmetry export --evidence` |
 
 ---
 
 ## Art. 52 — Transparency (user-facing)
 
 | Step | Action | Agentmetry hook |
-|------|--------|---------------|
-| 1 | Maintain `vault/.system/AGENTS.md` persona | Injected every run |
-| 2 | Write SOPs in vault (`10-Knowledge/SOPs/`) | RAG context for reply skills |
-| 3 | Tell clients AI assists drafts; you review before send | Process + Gmail draft workflow |
-| 4 | Optional footer on outbound mail | Add to your SOP template: *"Draft prepared with local AI assistance; reviewed by [name]."* |
+|------|--------|-----------------|
+| 1 | Document which IDEs/agents are monitored | Hook install scripts in `scripts/` |
+| 2 | Tell developers tool calls are logged locally | Process + README |
+| 3 | Optional: disclose AI assistance in commit messages / PRs | Org policy, not product-enforced |
 
 ---
 
 ## Art. 10 — Data governance (deployer responsibility)
 
 | Step | Action | Agentmetry hook |
-|------|--------|---------------|
-| 1 | Complete a DPIA for client PII in vault + Gmail | Use [dpia pointer](./data-residency-statement.md) |
-| 2 | Prefer local LLM for sensitive matters | `AGENTMETRY_LLM_PROVIDER=ollama` |
-| 3 | Restrict drivers | `vault/.system/drivers.json` — disable unused MCP servers |
-| 4 | Vault stays on disk you control | No cloud vault sync required |
+|------|--------|-----------------|
+| 1 | Complete a DPIA for developer credentials in audit trails | [data residency statement](./data-residency-statement.md) |
+| 2 | Use DLP block mode on pre-hooks for secrets | `AGENTMETRY_DLP_MODE=block` |
+| 3 | Restrict MCP servers | `vault/.system/drivers.json` — enable only needed drivers |
+| 4 | Audit data stays on disk you control | Local-first by default |
 
 ---
 
 ## Art. 9 — Risk management
 
 | Step | Action | Agentmetry hook |
-|------|--------|---------------|
-| 1 | Maintain a risk register | Copy [incident-response-template.md](./incident-response-template.md) |
-| 2 | Tool allowlist enforced at MCP host | `TOOL_DENIED` events in outbox |
-| 3 | Write ACL on vault | Orchestrator-only writes to `20-Active-Loops/`, `30-Archive/` |
+|------|--------|-----------------|
+| 1 | Maintain a risk register | [incident-response-template.md](./incident-response-template.md) |
+| 2 | Tool allow/deny at hook boundary | `policies/tool/manifest.yaml` |
+| 3 | Sequence detections for agentic abuse | `core/audit/detection/rules.py` |
 | 4 | Review weekly stats | `agentmetry stats --days 7` |
 
 ---

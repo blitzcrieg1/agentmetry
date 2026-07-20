@@ -22,8 +22,6 @@ from core.bus.events import (
     TOOL_CALLED,
     TOOL_DENIED,
 )
-from core.config import settings
-
 SCHEMA_VERSION = "1.1.0"
 
 _HOST_ID = socket.gethostname()
@@ -144,14 +142,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if topic == RUN_APPROVAL_GRANTED and payload.get("edited"):
         event["action"]["reason"] = "approved_with_edit"
 
-    provider = settings.llm_provider.lower()
-    if provider == "gemini":
-        model_id = settings.gemini_model
-    elif provider == "ollama":
-        model_id = settings.ollama_model
-    else:
-        model_id = provider
-    event["model"] = {"id": model_id, "provider": provider}
+    event["model"] = {"id": "siem", "provider": "agentmetry"}
 
     return event
 

@@ -1,8 +1,8 @@
 # Agentmetry event schema (v1.1.0)
 
-Canonical JSON events for governed agent runs. The orchestrator writes these to:
+Canonical JSON events for IDE hook capture and MCP audit. The orchestrator writes these to:
 
-- **SQLite outbox** — `apps/orchestrator/data/events.db` (system of record)
+- **SQLite index** — `apps/orchestrator/data/audit.db` (query backend)
 - **JSONL forward file** — `apps/orchestrator/data/audit-forward.jsonl` (SIEM/homelab ingest)
 
 Disable JSONL export: `AGENTMETRY_AUDIT_EXPORT_ENABLED=0`
@@ -49,7 +49,7 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 | `driver/mounted` | `config_change` | `success` |
 | `driver/failed` | `config_change` | `error` |
 
-`correlation_id` maps to LangGraph `thread_id`. `session_id` is the dashboard/WebSocket session.
+`correlation_id` groups events from one agent session (IDE conversation or MCP proxy session). `session_id` is the dashboard/WebSocket session when applicable.
 
 ### v1.1 additions (additive)
 
@@ -87,15 +87,15 @@ Agentmetry's rule vocabulary.
   "correlation_id": "thread-8892",
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "host_id": "dev-laptop",
-  "source_topic": "run/tool_called",
+  "source_topic": "external/cursor/tool_called",
+  "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"},
   "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
   "action": {"type": "tool_called", "outcome": "success", "reason": ""},
-  "agent": {"name": "agentmetry", "skill_id": "customer_reply"},
+  "agent": {"name": "cursor", "skill_id": ""},
   "tool": {
-    "name": "read_file",
-    "qualified": "vault_fs.read_file",
-    "server": "vault_fs",
+    "name": "run_shell_command",
+    "qualified": "shell.run",
     "input_redaction": "hash",
     "input_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "parameters_redacted": true,

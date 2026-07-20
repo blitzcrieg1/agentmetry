@@ -7,8 +7,13 @@ from typing import Any
 
 from .models import SEVERITY_RANK, Detection
 from .rules import HOST_REGISTRY, REGISTRY
+from .yaml_rules import build_yaml_rules
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _session_rules():
+    return [*REGISTRY, *build_yaml_rules()]
 
 
 def _event_ts(event: dict[str, Any]) -> datetime:
@@ -40,7 +45,7 @@ def run_detections(events: list[dict[str, Any]]) -> list[Detection]:
     """
     ordered = _sorted(events)
     detections: list[Detection] = []
-    for rule in REGISTRY:
+    for rule in _session_rules():
         detections.extend(rule(ordered))
     detections.sort(key=lambda d: (SEVERITY_RANK.get(d.severity, 99), d.first_seen_utc))
     return detections

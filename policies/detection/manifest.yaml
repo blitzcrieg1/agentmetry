@@ -1,0 +1,35 @@
+version: "1.0"
+
+# Tunable thresholds for built-in sequence rules (hot-reload on orchestrator restart).
+thresholds:
+  discovery_burst: 3
+  delete_burst: 5
+  subagent_burst: 5
+  session_tool_burst: 40
+  host_subagent_burst: 8
+
+# Analyst-authored count rules — no Python PR required. Fires when ≥ min_count
+# events in one session match all filters in `match`.
+count_rules:
+  - id: rapid-tool-denials
+    title: Rapid tool denials in one session
+    severity: medium
+    summary: "{count} denied tool calls — possible policy probing or injection retries"
+    tactic_ids: ["TA0005"]
+    technique_ids: ["T1562"]
+    min_count: 5
+    match:
+      action_type: tool_called
+      outcome: denied
+
+  - id: rapid-dlp-blocks
+    title: Repeated DLP blocks in one session
+    severity: high
+    summary: "{count} DLP-related denials — secrets may be present in agent context"
+    tactic_ids: ["TA0010"]
+    technique_ids: ["T1552"]
+    min_count: 3
+    match:
+      action_type: tool_called
+      outcome: denied
+      reason_prefix: "dlp:"

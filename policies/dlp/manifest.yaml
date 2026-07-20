@@ -7,10 +7,15 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  # The 40-char token class alone is useless: every git commit SHA is a
+  # 40-char [a-f0-9] string, so a bare pattern turned `git checkout <sha>` into
+  # a critical match — and in block mode, a denied tool call. Require an
+  # aws/secret context within 40 chars of the token, the same shape gitleaks
+  # uses, so real `AWS_SECRET_ACCESS_KEY=...` assignments still match.
   - id: "aws_secret_key"
     name: "AWS Secret Access Key"
-    description: "Detects standard AWS secret access keys"
-    pattern: "(?i)\\b([a-zA-Z0-9+/]{40})\\b"
+    description: "AWS secret access key near an aws/secret context (bare 40-char tokens like git SHAs excluded)"
+    pattern: "(?i)\\b(?:aws|secret[_-]?access[_-]?key)\\b.{0,40}?\\b([a-zA-Z0-9+/]{40})\\b"
     category: "credentials"
     severity: "critical"
 

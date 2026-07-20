@@ -32,6 +32,12 @@ class IngestToolBody(BaseModel):
     arguments: dict[str, Any] | None = None
     input_hash: str = ""
     command: str = ""
+    # Hook-side detection features, computed from the plaintext command before
+    # it was hashed away: category labels (`traits`) and the ATT&CK mapping.
+    # Without these fields pydantic silently drops them and default-config
+    # (hashed-only) events are invisible to every command-based sequence rule.
+    traits: list[str] = Field(default_factory=list)
+    mitre: dict[str, str] | None = None
 
 
 class ExternalIngestBody(BaseModel):

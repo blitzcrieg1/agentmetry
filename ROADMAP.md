@@ -2,8 +2,7 @@
 
 Agentmetry is in **public alpha**, moving toward **beta** as a **local-first mini-SIEM
 for AI coding agents**. Nothing here is a promise with a date — it is direction,
-grounded in [GLM 5.2 research](docs/glm-52-roadmap-research-prompt-2026-07-16.md)
-(July 2026) and operator dogfood.
+grounded in operator dogfood (July 2026).
 
 **Primary persona:** security engineer / DevSecOps who needs tamper-evident agent
 tool-use logs and sequence detections without Docker or a cloud ledger.
@@ -83,7 +82,8 @@ item matters to you.
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
 | P1 | **OTLP export** | `core/audit/` sinks | Forwards to Jaeger / OTel collector |
-| P1 | **YAML custom rules** | loader + docs | External contributor adds rule without editing Python core |
+| P1 | ~~**YAML custom rules**~~ (thresholds + count rules) | `policies/detection/manifest.yaml` | ✓ Analysts tune bursts / add count rules without Python |
+| P1 | **YAML sequence rules + Sigma import** | loader + docs | Sequence correlation in YAML; Sigma import for point alerts |
 | P1 | **Detection benchmark fixtures** | `tests/fixtures/` or `bench/` | CI runs rules against synthetic attack JSONL |
 | P2 | **More IDE hosts** | `scripts/` hooks | Windsurf, VS Code Copilot |
 | P2 | **Richer DLP** | DLP manifest | Source-code / PII heuristics beyond regex |
@@ -106,8 +106,7 @@ item matters to you.
 - **MCP transport** — SSE / streamable-HTTP audit proxy in addition to stdio.
 - **Threat-intel interop** — STIX/TAXII export of detections.
 - **More sinks** — Datadog, New Relic.
-- **Repo split** — isolate Obsidian/LangGraph runtime only if GitHub positioning
-  stays confused after README trim (not a default week-1 action).
+- **Repo split** — only if GitHub positioning stays confused after README trim (not a default action).
 
 ---
 

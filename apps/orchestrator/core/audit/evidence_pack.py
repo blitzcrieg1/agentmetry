@@ -104,14 +104,7 @@ def _skill_definition_hash(vault: Path, skill_name: str | None) -> str | None:
 
 
 def _provider_metadata() -> dict[str, str]:
-    provider = settings.llm_provider.lower()
-    if provider == "ollama":
-        model = settings.ollama_model
-    elif provider == "gemini":
-        model = settings.gemini_model
-    else:
-        model = provider
-    return {"provider": provider, "model": model}
+    return {"provider": "agentmetry", "model": "siem"}
 
 
 def _drivers_snapshot(vault: Path) -> dict[str, Any]:

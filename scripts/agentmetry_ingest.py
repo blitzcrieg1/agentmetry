@@ -32,6 +32,15 @@ except ImportError:
     dlp_scan = None
     tool_policy_eval = None
 
+# Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
+# trait/MITRE tagging, which only needs the stdlib.
+try:
+    from apps.orchestrator.core.audit.detection.traits import classify_command
+    from apps.orchestrator.core.audit.mitre import get_mitre_mapping
+except ImportError:
+    classify_command = None
+    get_mitre_mapping = None
+
 REDACT_KEYS = frozenset({
     "token", "api_key", "apikey", "password", "secret", "authorization",
     "anthropic_api_key", "openai_api_key",
@@ -284,16 +293,32 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         qualified = str(tool.get("qualified") or "")
         if not tool.get("input_hash"):
             tool["input_hash"] = hash_arguments(args)
-        
+
+        cmd = extract_command(args, qualified)
+
+        # Detection features, computed while the plaintext is still visible.
+        # Only category labels and ATT&CK ids leave this process — never the
+        # command text. Without these, the default hashed-only config left
+        # every command-based sequence rule (credential-exfil, the HF chains,
+        # download cradles) blind on real traffic: the demo injected `command`,
+        # production events had nothing to match.
+        if classify_command and cmd:
+            traits = classify_command(cmd)
+            if traits:
+                tool["traits"] = traits
+        if get_mitre_mapping and not tool.get("mitre"):
+            evidence = cmd or (args if isinstance(args, dict) else None)
+            mitre = get_mitre_mapping(qualified, evidence)
+            if mitre:
+                tool["mitre"] = mitre
+
         if _log_full_args_enabled():
             tool["arguments"] = scrub_arg_values(
                 redact_arguments(args if isinstance(args, dict) else {"value": args})
             )
 
-        if _log_full_args_enabled() or _log_commands_enabled():
-            cmd = extract_command(args, qualified)
-            if cmd:
-                tool["command"] = scrub_command(cmd)
+        if (_log_full_args_enabled() or _log_commands_enabled()) and cmd:
+            tool["command"] = scrub_command(cmd)
     return payload
 
 

@@ -7,18 +7,7 @@ _ORCHESTRATOR_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
-    """Runtime configuration.
-
-    Two groups, and the split is deliberate. The **SIEM flight recorder** is the
-    product: capture, canonical schema, detection, DLP, tool policy, and the
-    forward sinks. Everything a security engineer touches lives in that block.
-
-    The **optional governed runtime** below it (Obsidian vault + LangGraph
-    skills, Gemini/Ollama, the Telegram/Gmail channel drivers) is a separate,
-    off-by-default lineage documented in ``docs/advanced-governed-runtime.md``.
-    It is not required for IDE-hook or MCP capture. It is kept, not dead, but a
-    cloner evaluating the recorder can ignore it entirely.
-    """
+    """Runtime configuration for the Agentmetry SIEM flight recorder."""
 
     model_config = SettingsConfigDict(
         env_prefix="AGENTMETRY_",
@@ -144,70 +133,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_BUSINESS_TZ"),
     )
 
-    # ------------------------------------ optional governed runtime (advanced)
-    # Obsidian vault + LangGraph skills, model providers, and channel drivers.
-    # Off by default and not required for SIEM capture. See
-    # docs/advanced-governed-runtime.md. Kept for governed-agent demos; a
-    # recorder-only deployment can leave this whole block at its defaults.
+    detection_rules_path: Path = (
+        _ORCHESTRATOR_ROOT.parent.parent / "policies" / "detection" / "manifest.yaml"
+    )
+
+    # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[3] / "vault"
-    startup_vault_index: bool = True
-    startup_index_skip_unchanged: bool = True
-    active_loop_archive_days: int = 7
-    active_loop_auto_archive: bool = True
-    kernel_background_run_limit: int = 2
-    sandbox_tier1_allowed: str = "git"  # comma-separated binaries runnable in the jail
-    approval_threshold: float = 0.9
-    cost_alert_threshold: float = 1.0
-    context_window_tokens: int = 1_048_576
-
-    # Model providers (governed runtime only).
-    llm_provider: str = "gemini"  # gemini | ollama | mock
-    allow_mock: bool = False  # permit mock fallback when no real provider is available
-    qdrant_url: str = "http://localhost:6333"
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
-    embedding_model: str = "nomic-embed-text"
-    gemini_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "GEMINI_API_KEY",
-            "GOOGLE_API_KEY",
-        ),
-    )
-    gemini_model: str = "gemini-2.5-flash-lite"
-    gemini_embedding_model: str = "gemini-embedding-2"
-    embedding_dimensions: int = 768
-    collection_name: str = "agent_memory"
-    gemini_health_cache_seconds: int = 300
-    gemini_health_probe: bool = False
-    gemini_embed_min_interval_seconds: float = 0.7
-    # Pacing: 60 / RPM. Flash-lite free tier ≈10 RPM → 6s; 2.5-flash ≈5 RPM → 13s.
-    gemini_flash_min_interval_seconds: float = 6.5
-    gemini_flash_daily_limit: int = 20
-    gemini_flash_interactive_reserve: int = 8
-
-    # Runtime telemetry store (separate from the audit trail above).
-    database_url: str = "sqlite:///./data/telemetry.db"
-    postgres_url: str = "postgresql://agentmetry:agentmetry@localhost:5432/agentic_os"
-    use_postgres: bool = False
-
-    # Channel drivers — ship disabled, require explicit unlock.
-    channel_telegram_enabled: bool = False
-    telegram_bot_token: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "TELEGRAM_BOT_TOKEN",
-        ),
-    )
-    telegram_allowed_chat_ids: str = ""  # comma-separated; empty refuses to start
-    gmail_send_enabled: bool = False  # Phase 4-E — requires explicit unlock
 
 
 settings = Settings()
-
-
-def get_database_url() -> str:
-    """Return PostgreSQL URL when enabled, otherwise SQLite."""
-    if settings.use_postgres:
-        return settings.postgres_url
-    return settings.database_url

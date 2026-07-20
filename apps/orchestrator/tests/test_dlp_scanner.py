@@ -3,11 +3,10 @@ from unittest.mock import patch
 
 import pytest
 
-from core.audit.dlp.models import DlpVerdict
 from core.audit.dlp import scanner as dlp_scanner
 from core.audit.dlp.scanner import scan
 
-_MANIFEST = Path(__file__).resolve().parents[1] / "policies" / "dlp" / "manifest.yaml"
+_MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "dlp" / "manifest.yaml"
 
 
 @pytest.fixture(autouse=True)

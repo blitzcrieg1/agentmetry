@@ -161,86 +161,11 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"Agentmetry: not running ({_base_url(args.port)})")
         return 1
 
-    modes = health.get("modes", {})
-    budget = health.get("budget", {})
-    vault = health.get("vault", {})
     print(f"Agentmetry: {health.get('status', '?')} on {_base_url(args.port)}")
-    print(f"  LLM:    {modes.get('llm', '?')}   RAG: {modes.get('rag', '?')}")
-    print(f"  Vault:  {vault.get('notes', '?')} notes at {vault.get('path', '?')}")
-    if budget:
-        flag = "" if budget.get("autonomous_allowed") else "  [autonomous paused]"
-        print(
-            f"  Budget: {budget.get('flash_used', 0)}/{budget.get('flash_limit', 0)} "
-            f"Flash calls today{flag}"
-        )
-    try:
-        pending = httpx.get(
-            f"{_base_url(args.port)}/api/v1/skills/pending", timeout=2.0
-        ).json().get("pending", [])
-        if pending:
-            print(f"  Pending approvals: {len(pending)}")
-    except Exception:
-        pass
-    return 0
-
-
-def cmd_recovery(args: argparse.Namespace) -> int:
-    """List (and optionally dismiss) stale active-loop notes."""
-    try:
-        data = httpx.get(
-            f"{_base_url(args.port)}/api/v1/skills/recovery", timeout=10.0
-        ).json()
-    except Exception:
-        print("Not running - start Agentmetry first (recovery reads via the API).")
-        return 1
-
-    items = data.get("recovery", [])
-    if not items:
-        print("No stale active loops.")
-        return 0
-
-    for item in items:
-        print(
-            f"  [{item['classification']}] {item['skill']}  {item['path']}  "
-            f"(created {item.get('created', '?')[:19]})"
-        )
-    print(f"{len(items)} stale loop note(s).")
-
-    headers = {"Content-Type": "application/json"}
-    api_key = os.environ.get("AGENTMETRY_API_KEY", "")
-    if api_key:
-        headers["X-API-Key"] = api_key
-
-    if args.resume:
-        # Resuming re-enters the graph from its checkpoint — LLM calls happen.
-        resp = httpx.post(
-            f"{_base_url(args.port)}/api/v1/skills/recovery/resume",
-            json={"path": args.resume},
-            headers=headers,
-            timeout=300.0,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            print(f"  {args.resume} -> {data.get('status')}")
-        else:
-            print(f"  {args.resume} -> HTTP {resp.status_code}: {resp.text[:200]}")
-        return 0
-
-    if args.dismiss_all:
-        for item in items:
-            resp = httpx.post(
-                f"{_base_url(args.port)}/api/v1/skills/recovery/resolve",
-                json={"path": item["path"], "action": "dismiss"},
-                headers=headers,
-                timeout=10.0,
-            )
-            marker = "dismissed" if resp.status_code == 200 else f"HTTP {resp.status_code}"
-            print(f"  {item['path']} -> {marker}")
-    else:
-        print(
-            "Run 'agentmetry recovery --dismiss-all' to clear them, or\n"
-            "'agentmetry recovery --resume <path>' to resume an orphan from its checkpoint."
-        )
+    print(f"  Mode:   {health.get('mode', 'siem')}")
+    audit = health.get("audit_export") or {}
+    if audit:
+        print(f"  Export: {'enabled' if audit.get('enabled') else 'disabled'} → {audit.get('path', '?')}")
     return 0
 
 
@@ -548,7 +473,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Preflight: vault, python, portable drivers.json."""
+    """SIEM preflight: manifests, trail chain, orchestrator health, hooks."""
     sys.path.insert(0, str(_ORCH_ROOT))
     from core.diagnostics.doctor import format_report, run_doctor
 
@@ -581,13 +506,7 @@ def main(argv: list[str] | None = None) -> int:
         default="127.0.0.1",
         help="bind address — use 0.0.0.0 for phone/LAN access (default: 127.0.0.1)",
     )
-    sub.add_parser("status", help="health, budget, pending approvals")
-    recovery = sub.add_parser("recovery", help="list stale active-loop notes after a crash")
-    recovery.add_argument("--dismiss-all", action="store_true")
-    recovery.add_argument(
-        "--resume", metavar="PATH", default=None,
-        help="resume one orphaned loop note from its LangGraph checkpoint",
-    )
+    sub.add_parser("status", help="orchestrator health and audit export status")
     stats = sub.add_parser("stats", help="audit trail metrics for dogfood (events, detections)")
     stats.add_argument("--days", type=int, default=7)
     logs = sub.add_parser("logs", help="tail the orchestrator log")
@@ -617,21 +536,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="verify tamper-evident hash chain on an audit JSONL file",
     )
-    doctor = sub.add_parser("doctor", help="preflight checks (vault, drivers, python)")
+    doctor = sub.add_parser(
+        "doctor", help="SIEM preflight (manifests, trail chain, health, hooks)"
+    )
     doctor.add_argument(
         "--fix",
         action="store_true",
         help="rewrite drivers.json to portable {PYTHON}/{VAULT_PATH} tokens",
     )
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
-    replay.add_argument("thread_id", help="LangGraph thread_id / correlation_id")
+    replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
 
     args = parser.parse_args(argv)
     handlers = {
         "start": cmd_start,
         "stop": cmd_stop,
         "status": cmd_status,
-        "recovery": cmd_recovery,
         "stats": cmd_stats,
         "logs": cmd_logs,
         "backup": cmd_backup,

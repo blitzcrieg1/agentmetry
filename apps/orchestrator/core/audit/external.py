@@ -143,13 +143,31 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(tool_block.get("arguments"), dict):
             event["tool"]["arguments"] = scrub_arg_values(tool_block.get("arguments"))
 
-        from core.audit.canonical import get_mitre_mapping
-        # Pass command/args as evidence so a read of a key/secret upgrades to
-        # Credential Access (T1552) instead of generic Collection.
-        evidence = command or tool_block.get("arguments")
-        mitre = get_mitre_mapping(tool_qualified, evidence)
-        if mitre:
-            event["tool"]["mitre"] = mitre
+        # Hook-side command classification labels. In the default hashed-only
+        # config these are the ONLY detection signal the command leaves behind.
+        traits_raw = tool_block.get("traits")
+        if isinstance(traits_raw, list):
+            traits = [str(t) for t in traits_raw if t]
+            if traits:
+                event["tool"]["traits"] = traits
+
+        # Prefer the hook's MITRE mapping: it saw the plaintext command before
+        # hashing, so its content upgrade (e.g. a key-file read → T1552) is
+        # strictly better informed than a name-only recompute here.
+        adapter_mitre = tool_block.get("mitre")
+        if isinstance(adapter_mitre, dict) and adapter_mitre.get("tactic_id"):
+            event["tool"]["mitre"] = {
+                key: str(adapter_mitre.get(key) or "")
+                for key in ("tactic_id", "tactic", "technique_id", "technique")
+            }
+        else:
+            from core.audit.canonical import get_mitre_mapping
+            # Pass command/args as evidence so a read of a key/secret upgrades to
+            # Credential Access (T1552) instead of generic Collection.
+            evidence = command or tool_block.get("arguments")
+            mitre = get_mitre_mapping(tool_qualified, evidence)
+            if mitre:
+                event["tool"]["mitre"] = mitre
 
     gated = payload.get("gated_action")
     if isinstance(gated, dict) and gated.get("tool"):

@@ -123,7 +123,6 @@ def test_doctor_passes_on_portable_config(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(dp, "_ORCH_ROOT", orch)
     monkeypatch.setattr(dp, "default_python", lambda: py)
     monkeypatch.setattr(config_module.settings, "vault_path", vault)
-    monkeypatch.setattr(config_module.settings, "gmail_send_enabled", False)
 
     config = vault / ".system" / "drivers.json"
     config.write_text(
@@ -141,32 +140,3 @@ def test_doctor_passes_on_portable_config(tmp_path: Path, monkeypatch: pytest.Mo
     report = run_doctor(vault_path=vault)
     assert report.exit_code == 0
     assert any(f.code == "drivers_portable" for f in report.findings)
-
-
-def test_gmail_send_injects_env_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import core.config as config_module
-    import core.diagnostics.driver_paths as dp
-
-    vault = tmp_path / "vault"
-    (vault / ".system").mkdir(parents=True)
-    orch = tmp_path / "o"
-    (orch / "tools").mkdir(parents=True)
-    monkeypatch.setattr(dp, "_ORCH_ROOT", orch)
-    monkeypatch.setattr(dp, "default_python", lambda: _stub_python(orch))
-    monkeypatch.setattr(config_module.settings, "vault_path", vault)
-    monkeypatch.setattr(config_module.settings, "gmail_send_enabled", False)
-
-    config = vault / ".system" / "drivers.json"
-    config.write_text(
-        json.dumps({
-            "drivers": [{
-                "name": "gmail",
-                "command": "{PYTHON}",
-                "args": ["{ORCHESTRATOR_ROOT}/tools/gmail_server.py"],
-                "enabled": True,
-            }]
-        }),
-        encoding="utf-8",
-    )
-    spec = load_resolved_driver_specs(config, vault_path=vault)[0]
-    assert spec.env.get("AGENTMETRY_GMAIL_SEND_ENABLED") == "0"

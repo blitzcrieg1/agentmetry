@@ -597,21 +597,13 @@ Integration guides → [docs/integrations/](docs/integrations/)
 | `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
-| `agentmetry replay <thread_id>` | ASCII audit timeline for one governed-runtime run (`events.db` outbox) |
+| `agentmetry replay <correlation_id>` | ASCII audit timeline for one session (audit trail) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
 | `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
 
 `scripts\agentmetry.bat` remains as a legacy alias.
-
----
-
-## Advanced — governed runtime (optional)
-
-The README above describes the **SIEM flight recorder** (hooks → JSONL → dashboard). The same repo also ships an optional **Obsidian + LangGraph** skill runtime with vault-defined skills and approval gates — useful for governed demos, not required for IDE hook capture.
-
-See **[docs/advanced-governed-runtime.md](docs/advanced-governed-runtime.md)** for when to use hook JSONL vs vault skills, and how to avoid mixing compliance narratives.
 
 ---
 

