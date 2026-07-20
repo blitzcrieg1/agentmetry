@@ -9,6 +9,8 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-20
+
 ### Added
 - **YAML detection manifest** (`policies/detection/manifest.yaml`) — tunable burst
   thresholds and analyst-authored session count rules (no Python PR).
@@ -132,5 +134,6 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/blitzcrieg1/agentmetry/releases/tag/v0.2.0
