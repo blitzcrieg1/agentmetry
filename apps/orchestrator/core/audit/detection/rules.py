@@ -218,6 +218,74 @@ _PR_DESC_COMMAND = re.compile(r"\bgh\s+pr\s+view\b", re.IGNORECASE)
 _PR_COMMIT_COMMAND = re.compile(r"\bgh\s+pr\s+(diff|checkout|files)\b|\bgit\s+show\b", re.IGNORECASE)
 _PR_MERGE_COMMAND = re.compile(r"\bgh\s+pr\s+merge\b|\bgit\s+merge\b", re.IGNORECASE)
 
+# Cloud and cluster APIs used after credential harvest (HF July 2026 lateral phase).
+# Require CLI invocation, not credential file paths like ~/.aws/credentials.
+_CLOUD_API = re.compile(
+    r"\bkubectl\b|"
+    r"(?:^|\s)aws\s+\w|"
+    r"\bgcloud\b|"
+    r"\baz\s+(?:account|login|keyvault|aks|storage)\b|"
+    r"\b(?:hf|huggingface-cli)\s+(?:auth|upload|download|whoami|login)\b",
+    re.IGNORECASE,
+)
+
+# Push harvested material to a remote the operator did not intend (Nx s1ngularity class).
+_GIT_EXFIL = re.compile(
+    r"\bgit\s+push\b|"
+    r"\bgh\s+repo\s+(?:create|sync)\b|"
+    r"\bgh\s+release\s+upload\b",
+    re.IGNORECASE,
+)
+
+# Public staging hosts used for agent C2 (gist, HF raw files, GitHub raw content).
+_STAGING_HOST = re.compile(
+    r"https?://(?:[\w-]+\.)?(?:"
+    r"githubusercontent\.com|gist\.github\.com|raw\.github\.com|"
+    r"huggingface\.co|pastebin\.com|gitlab\.com|bitbucket\.org"
+    r")",
+    re.IGNORECASE,
+)
+_STAGING_FETCH = re.compile(
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b",
+    re.IGNORECASE,
+)
+# Second-step execution after a staged download — excludes package managers, which
+# legitimately follow fetching a manifest from GitHub.
+_RISKY_EXEC_AFTER_STAGING = re.compile(
+    r"\b(bash|sh|zsh|dash)\s+[\w./~-]+\.(?:sh|bash)\b|"
+    r"\bpython\d?\s+[\w./~-]+\.py\b|"
+    r"\bpython\d?\s+-c\b|"
+    r"\b(iex|invoke-expression|eval)\b|"
+    r"\bpowershell(?:\.exe)?\s+-(?:enc|f|file)\b",
+    re.IGNORECASE,
+)
+_BENIGN_AFTER_STAGING = re.compile(
+    r"\b(npm|yarn|pnpm|pip|pip3|cargo|go)\s+(?:install|run|build)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_credential_access(event: dict[str, Any]) -> bool:
+    return _technique_id(event).startswith("T1552")
+
+
+def _is_staging_fetch(event: dict[str, Any]) -> bool:
+    cmd = _command(event)
+    if not cmd or not _STAGING_HOST.search(cmd):
+        return False
+    return bool(_STAGING_FETCH.search(cmd) or _DOWNLOAD_EXEC.search(cmd))
+
+
+def _is_risky_exec_after_staging(event: dict[str, Any]) -> bool:
+    if _action_type(event) != "tool_called" or _outcome(event) != "success":
+        return False
+    cmd = _command(event)
+    if not cmd or _BENIGN_AFTER_STAGING.search(cmd):
+        return False
+    if _PIPE_TO_SHELL.search(cmd):
+        return True
+    return bool(_RISKY_EXEC_AFTER_STAGING.search(cmd))
+
 
 def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
     """Credential access (T1552) then network egress (TA0011) in one session.
@@ -712,6 +780,121 @@ def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detectio
     return []
 
 
+def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[Detection]:
+    """Credential access (T1552) then a cloud or cluster API in the same session.
+
+    Hugging Face's July 2026 agentic intrusion harvested cloud and cluster
+    credentials, then used them to move laterally. The read alone is collection;
+    the cloud CLI call is the escalation worth paging on.
+    """
+    cred_idx = next((i for i, e in enumerate(events) if _is_credential_access(e)), None)
+    if cred_idx is None:
+        return []
+
+    for event in events[cred_idx + 1:]:
+        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            continue
+        if not _CLOUD_API.search(_command(event)):
+            continue
+        cred = events[cred_idx]
+        return [
+            Detection(
+                rule_id="credential-read-then-cloud-api",
+                title="Credential access followed by cloud or cluster API",
+                severity="critical",
+                summary=(
+                    f"{_tool_qualified(cred) or 'A tool'} accessed credentials, then "
+                    f"{_tool_qualified(event) or 'a tool'} invoked a cloud or cluster "
+                    "API (kubectl, aws, gcloud, az, or Hugging Face CLI) in the same "
+                    "session."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=["TA0006", "TA0008"],
+                technique_ids=[_technique_id(cred), "T1078"],
+                event_ids=[_event_id(cred), _event_id(event)],
+                first_seen_utc=_ts(cred),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
+def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detection]:
+    """Credential read (T1552) then push to a remote repository.
+
+    Matches the exfil pattern seen in supply-chain campaigns: harvest secrets
+    locally, then publish them via the victim's own git credentials.
+    """
+    cred_idx = next((i for i, e in enumerate(events) if _is_credential_access(e)), None)
+    if cred_idx is None:
+        return []
+
+    for event in events[cred_idx + 1:]:
+        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            continue
+        if not _GIT_EXFIL.search(_command(event)):
+            continue
+        cred = events[cred_idx]
+        return [
+            Detection(
+                rule_id="dotfile-read-then-git-push",
+                title="Credential read followed by git push",
+                severity="critical",
+                summary=(
+                    f"{_tool_qualified(cred) or 'A tool'} accessed credentials, then "
+                    f"{_tool_qualified(event) or 'a tool'} pushed to a remote repository "
+                    "in the same session."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=["TA0006", "TA0010"],
+                technique_ids=[_technique_id(cred), "T1567.001"],
+                event_ids=[_event_id(cred), _event_id(event)],
+                first_seen_utc=_ts(cred),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
+def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detection]:
+    """Fetch from a public staging host, then execute in a separate step.
+
+    Agent C2 in the HF July 2026 disclosure staged payloads on public services.
+    A one-liner `curl … | bash` is already caught by encoded-command-download;
+    this rule covers the two-step variant: download to disk, then run.
+    """
+    fetch_idx = next((i for i, e in enumerate(events) if _is_staging_fetch(e)), None)
+    if fetch_idx is None:
+        return []
+
+    for event in events[fetch_idx + 1:]:
+        if _is_staging_fetch(event):
+            continue
+        if not _is_risky_exec_after_staging(event):
+            continue
+        source = events[fetch_idx]
+        return [
+            Detection(
+                rule_id="remote-staging-then-execute",
+                title="Staged download from public host followed by execution",
+                severity="critical",
+                summary=(
+                    f"{_tool_qualified(source) or 'A tool'} fetched content from a "
+                    "public staging host (GitHub raw, gist, Hugging Face, etc.), then "
+                    f"{_tool_qualified(event) or 'a tool'} executed code in the same "
+                    "session."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=["TA0011", "TA0002"],
+                technique_ids=["T1105", "T1059"],
+                event_ids=[_event_id(source), _event_id(event)],
+                first_seen_utc=_ts(source),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
@@ -722,4 +905,7 @@ REGISTRY = [
     rule_off_hours_activity,
     rule_untrusted_input_then_risky_action,
     rule_pr_merged_without_review,
+    rule_credential_read_then_cloud_api,
+    rule_dotfile_read_then_git_push,
+    rule_remote_staging_then_execute,
 ]

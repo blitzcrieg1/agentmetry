@@ -21,6 +21,13 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  - id: "huggingface_token"
+    name: "Hugging Face Access Token"
+    description: "Detects Hugging Face user and org access tokens (hf_…)"
+    pattern: "(?i)\\bhf_[a-zA-Z0-9]{34,}\\b"
+    category: "credentials"
+    severity: "critical"
+
   - id: "slack_token"
     name: "Slack Token"
     description: "Detects Slack bot/user/app tokens"

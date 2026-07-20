@@ -107,6 +107,7 @@ No server, no API key, no config. Clone and run:
 git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
 pip install -e apps/orchestrator
 python scripts/demo.py
+python scripts/demo.py --scenario hf   # HF July 2026 agentic intrusion patterns
 ```
 
 No single one of those events is an alert. The sequence is. That is the whole
@@ -460,6 +461,9 @@ sequenceDiagram
 | Rule ID | Severity | Pattern |
 | ------- | -------- | ------- |
 | `credential-exfil` | critical | Credential access (T1552) → network egress (TA0011) |
+| `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
+| `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |
+| `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |

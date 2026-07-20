@@ -38,6 +38,13 @@ def test_dlp_scan_github_pat():
     assert verdict.match.rule_id == "github_pat"
 
 
+def test_dlp_scan_huggingface_token():
+    args = {"command": "huggingface-cli login --token hf_abcdefghijklmnopqrstuvwxyz1234567890AB"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "huggingface_token"
+
+
 def test_dlp_scan_safe_args():
     args = {"command": "ls -la"}
     verdict = scan("run_command", args)

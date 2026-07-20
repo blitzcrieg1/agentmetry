@@ -9,6 +9,21 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+- **Detection rules (HF July 2026 patterns).** Three sequence rules for agentic
+  intrusion patterns seen in governed coding-agent sessions:
+  `credential-read-then-cloud-api`, `dotfile-read-then-git-push`, and
+  `remote-staging-then-execute`.
+- **DLP:** Hugging Face access token pattern (`hf_…`).
+- **Docs:** [`docs/compliance/local-llm-forensics.md`](docs/compliance/local-llm-forensics.md)
+  — forensic playbook for analyzing JSONL trails with a self-hosted model when
+  commercial APIs block incident payloads (the "asymmetry problem" from Hugging
+  Face's July 2026 disclosure).
+
+### Changed
+- **MITRE credential paths:** `.docker/config.json` and `.config/gcloud` upgrade
+  file reads to T1552 (Credentials In Files).
+
 ## [0.2.0] - 2026-07-19
 
 First tagged public-alpha release. A local-first flight recorder and mini-SIEM
