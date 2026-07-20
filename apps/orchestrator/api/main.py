@@ -17,6 +17,8 @@ from core.bus.audit_exporter import audit_exporter
 from core.bus.bridges import outbox_persister
 from core.bus.bus import bus
 from core.bus.outbox import get_outbox
+from core.config import settings
+from core.extensions import load_extensions
 from core.health import get_system_health
 
 logger = logging.getLogger(__name__)
@@ -138,6 +140,8 @@ app.add_middleware(
 )
 
 app.include_router(audit_router, prefix="/api/v1")
+
+load_extensions(app, settings=settings)
 
 
 @app.get("/api/v1/health")

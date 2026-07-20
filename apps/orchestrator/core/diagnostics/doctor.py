@@ -238,6 +238,28 @@ def _check_optional_vault(
         report.ok("drivers_schema", "All driver entries validate")
 
 
+def _check_extensions(report: DoctorReport) -> None:
+    """Report enterprise extension packages (entry points) if installed."""
+    from core.extensions import _iter_extension_entry_points, get_extension_registry
+
+    registry = get_extension_registry()
+    if registry.loaded:
+        names = ", ".join(item.name for item in registry.loaded)
+        report.ok("extensions", f"Enterprise extensions loaded: {names}")
+        return
+
+    eps = list(_iter_extension_entry_points())
+    if not eps:
+        report.ok("extensions", "Open-source core (no enterprise extensions installed)")
+        return
+
+    names = ", ".join(sorted(ep.name for ep in eps))
+    report.ok(
+        "extensions",
+        f"Enterprise extension packages installed ({names}) — loaded on orchestrator start",
+    )
+
+
 def run_doctor(
     *,
     vault_path: Path | None = None,
@@ -286,6 +308,7 @@ def run_doctor(
     _check_trail(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
+    _check_extensions(report)
 
     # --- Optional governed runtime (demo vault) ------------------------------
     vault = Path(vault_path or settings.vault_path).resolve()

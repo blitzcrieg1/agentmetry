@@ -10,6 +10,16 @@ license on the open-source code.
   manifest format, and SIEM forwarders in this repository are intended to remain
   available under **Apache 2.0**, subject to the [CLA](CLA.md).
 
+See the full boundary table in **[Open-core split](docs/commercial/open-core-split.md)**
+(Apache 2.0 vs. ELv2 enterprise add-ons).
+
+## Extension mechanism
+
+Commercial add-ons ship as a separate Python package (`agentmetry-enterprise`) that
+registers via standard entry points (`agentmetry.extensions`). The orchestrator
+loads extensions at startup when the package is installed; the OSS quickstart is
+unchanged when it is not. See `core/extensions.py`.
+
 ## What may be offered commercially (future)
 
 The Project Owner may offer paid offerings such as:
