@@ -6,7 +6,7 @@ POST adapter events to the local orchestrator ingest API.
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
   AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
-  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
@@ -770,10 +770,238 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
     return None
 
 
+def _patch_claude_family(
+    payload: dict[str, Any] | None,
+    *,
+    source_app: str,
+    adapter: str,
+    server: str,
+) -> dict[str, Any] | None:
+    if not payload:
+        return None
+    patched = dict(payload)
+    patched["source_app"] = source_app
+    patched["adapter"] = adapter
+    tool = patched.get("tool")
+    if isinstance(tool, dict):
+        tool = dict(tool)
+        tool["server"] = server
+        patched["tool"] = tool
+    return patched
+
+
+def _map_post_tool_use_failure(
+    source_app: str,
+    adapter: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", default=""))
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tin = _pick(data, "tool_input", default={})
+    initiator = _initiator_from_hook(hook_name, data)
+    return {
+        "source_app": source_app,
+        "adapter": adapter,
+        "event_type": "tool_failed",
+        "outcome": "error",
+        "reason": str(_pick(data, "error", "message", "reason", default="tool_failed")),
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        "tool": {
+            "qualified": tool_name,
+            "server": source_app,
+            "arguments": redact_arguments(tin),
+        },
+    }
+
+
+def _map_claude_family_hook(
+    source_app: str,
+    adapter: str,
+    server: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Qwen Code and Kimi Code share Claude's hook wire protocol (JSON on stdin)."""
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    if hook_name == "PostToolUseFailure":
+        return _map_post_tool_use_failure(source_app, adapter, hook_name, data)
+    if hook_name == "SessionEnd":
+        correlation = str(_pick(data, "session_id", default=""))
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+    if hook_name == "SubagentStart":
+        correlation = str(_pick(data, "session_id", default=""))
+        agent_type = str(
+            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+        )
+        slug = agent_type.lower().replace("_", "").replace("-", "") or "subagent"
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "tool_called",
+            "outcome": "success",
+            "reason": f"subagent_start:{agent_type}",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+            "tool": {
+                "qualified": f"{source_app}.subagent.{slug}",
+                "server": source_app,
+                "arguments": redact_arguments(_pick(data, "tool_input", default={})),
+            },
+        }
+    if hook_name == "SubagentStop":
+        correlation = str(_pick(data, "session_id", default=""))
+        agent_type = str(
+            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+        )
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "reason": f"subagent_stop:{agent_type}",
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        }
+    return _patch_claude_family(
+        map_claude_hook(hook_name, data),
+        source_app=source_app,
+        adapter=adapter,
+        server=server,
+    )
+
+
+def map_qwen_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qwen", "qwen_hook", "qwen", hook_name, data)
+
+
+def map_kimi_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("kimi", "kimi_hook", "kimi", hook_name, data)
+
+
+def map_qoder_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qoder", "qoder_hook", "qoder", hook_name, data)
+
+
+def map_codebuddy_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("codebuddy", "codebuddy_hook", "codebuddy", hook_name, data)
+
+
+def map_kimi_stream_json_line(
+    msg: dict[str, Any], *, session_id: str,
+) -> list[dict[str, Any]]:
+    """Map one Kimi `--output-format stream-json` JSONL line to adapter payloads.
+
+    Kimi print mode emits assistant messages with tool_calls and tool results
+    sequentially. Each tool_call becomes one tool_called event for Tier B ingest.
+    """
+    import uuid
+
+    role = str(msg.get("role") or "")
+    correlation = session_id or f"stream-{uuid.uuid4().hex[:12]}"
+    base = {
+        "source_app": "kimi",
+        "adapter": "kimi_stream_json",
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+    }
+
+    if role != "assistant":
+        return []
+
+    tool_calls = msg.get("tool_calls")
+    if not isinstance(tool_calls, list) or not tool_calls:
+        return []
+
+    payloads: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = str(fn.get("name") or "unknown")
+        args_raw = fn.get("arguments") or "{}"
+        if isinstance(args_raw, dict):
+            args = args_raw
+        else:
+            try:
+                args = json.loads(str(args_raw))
+            except json.JSONDecodeError:
+                args = {"raw": str(args_raw)[:512]}
+        if not isinstance(args, dict):
+            args = {"value": args}
+        payloads.append({
+            **base,
+            "event_type": "tool_called",
+            "outcome": "success",
+            "reason": "stream_json:tool_call",
+            "tool": {
+                "qualified": f"kimi.{name}",
+                "server": "kimi",
+                "arguments": redact_arguments(args),
+            },
+        })
+    return payloads
+
+
+def stream_json_main(source_app: str = "kimi") -> int:
+    """Read JSONL from stdin (Kimi print mode) and POST each mapped event."""
+    import uuid
+
+    session_id = (
+        os.environ.get("AGENTMETRY_CORRELATION_ID", "").strip()
+        or f"stream-{uuid.uuid4().hex[:12]}"
+    )
+    mapper = map_kimi_stream_json_line if source_app == "kimi" else None
+    if mapper is None:
+        print(f"stream-json ingest not implemented for source '{source_app}'", file=sys.stderr)
+        return 2
+
+    posted = 0
+    for raw_line in sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(msg, dict):
+            continue
+        for payload in mapper(msg, session_id=session_id):
+            payload = _hash_tool_args(payload)
+            if post_ingest(payload, quiet=True):
+                posted += 1
+
+    if posted == 0:
+        print("stream-json: no tool events posted (empty stdin or no tool_calls)", file=sys.stderr)
+        return 1
+    return 0
+
+
 def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     source = _source_app()
     if source == "claude":
         payload = map_claude_hook(hook_name, data)
+    elif source == "qwen":
+        payload = map_qwen_hook(hook_name, data)
+    elif source == "kimi":
+        payload = map_kimi_hook(hook_name, data)
+    elif source == "qoder":
+        payload = map_qoder_hook(hook_name, data)
+    elif source == "codebuddy":
+        payload = map_codebuddy_hook(hook_name, data)
     elif source == "codex":
         payload = map_codex_hook(hook_name, data)
     elif source == "antigravity":
@@ -956,6 +1184,9 @@ def cli_main(argv: list[str] | None = None) -> int:
     test_p = sub.add_parser("selftest", help="POST a synthetic event and confirm it lands")
     test_p.add_argument("--dlp", action="store_true", help="Run DLP scanner test")
 
+    stream_p = sub.add_parser("stream-json", help="Ingest Kimi print-mode JSONL from stdin")
+    stream_p.add_argument("--source-app", default="kimi", choices=("kimi",))
+
     args = parser.parse_args(argv)
 
     if args.cmd == "hook":
@@ -963,6 +1194,11 @@ def cli_main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "selftest":
         return selftest(dlp=args.dlp)
+
+    if args.cmd == "stream-json":
+        if args.source_app:
+            os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
+        return stream_json_main(args.source_app)
 
     if args.source_app:
         os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
@@ -977,10 +1213,14 @@ def cli_main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     # python scripts/agentmetry_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
-    if len(sys.argv) >= 2 and sys.argv[1] in ("cursor", "claude", "antigravity", "codex"):
+    if len(sys.argv) >= 2 and sys.argv[1] in (
+        "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy",
+    ):
         os.environ["AGENTMETRY_SOURCE_APP"] = sys.argv[1]
         if len(sys.argv) >= 4 and sys.argv[2] == "hook":
             sys.exit(hook_main(sys.argv[3]))
+        if len(sys.argv) >= 4 and sys.argv[2] == "stream-json":
+            sys.exit(stream_json_main(sys.argv[1]))
         if len(sys.argv) >= 3:
             sys.exit(hook_main(sys.argv[2]))
     if len(sys.argv) >= 2 and sys.argv[1] == "selftest":

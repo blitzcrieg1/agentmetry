@@ -23,7 +23,7 @@ import socket
 import uuid
 from typing import Any
 
-from .engine import run_detections
+from .engine import run_detections, run_host_detections
 from .live_store import get_live_store
 from .models import Detection
 
@@ -59,6 +59,32 @@ def observe(canonical: dict[str, Any]) -> list[Detection]:
         seen_in_batch.add(detection.rule_id)
         fresh.append(detection)
     return fresh
+
+
+def observe_host(canonical: dict[str, Any]) -> list[Detection]:
+    """Record an event in the host-level window and return new host-scoped detections."""
+    host_id = str(canonical.get("host_id") or "")
+    if not host_id:
+        return []
+
+    store = get_live_store()
+    events = store.append_host_event(host_id, canonical)
+
+    fresh: list[Detection] = []
+    seen_in_batch: set[str] = set()
+    for detection in run_host_detections(events):
+        if detection.rule_id in seen_in_batch or store.is_host_emitted(host_id, detection.rule_id):
+            continue
+        seen_in_batch.add(detection.rule_id)
+        fresh.append(detection)
+    return fresh
+
+
+def mark_host_detection_emitted(host_id: str, rule_id: str, emitted_at: str = "") -> None:
+    """Checkpoint a host-level detection as emitted."""
+    if not host_id or not rule_id:
+        return
+    get_live_store().mark_host_emitted(host_id, rule_id, emitted_at=emitted_at)
 
 
 def mark_detection_emitted(correlation_id: str, rule_id: str, emitted_at: str = "") -> None:

@@ -13,9 +13,15 @@ from core.audit.redaction import scrub_arg_values, scrub_secrets
 from core.audit.run_context import actor_from_initiator, build_initiator
 from core.config import settings
 
-ExternalApp = Literal["cursor", "claude", "antigravity", "codex", "mcp_proxy", "agentmetry"]
+ExternalApp = Literal[
+    "cursor", "claude", "antigravity", "codex", "mcp_proxy",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "agentmetry",
+]
 
-KNOWN_EXTERNAL_APPS = frozenset({"cursor", "claude", "antigravity", "codex", "mcp_proxy"})
+KNOWN_EXTERNAL_APPS = frozenset({
+    "cursor", "claude", "antigravity", "codex", "mcp_proxy",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre",
+})
 
 _HOST_ID = socket.gethostname()
 

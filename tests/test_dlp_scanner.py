@@ -38,6 +38,36 @@ def test_dlp_scan_github_pat():
     assert verdict.match.rule_id == "github_pat"
 
 
+def test_dlp_scan_huggingface_token():
+    args = {"command": "huggingface-cli login --token hf_abcdefghijklmnopqrstuvwxyz1234567890AB"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "huggingface_token"
+
+
+def test_dlp_scan_tencent_secret_id():
+    secret_id = "AKID" + "A" * 32
+    args = {"command": f"export TENCENT_SECRET_ID={secret_id}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "tencent_secret_id"
+
+
+def test_dlp_scan_chinese_api_key_assignment():
+    args = {"command": "export DASHSCOPE_API_KEY=sk-testvalue123456789012345678901234"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "chinese_provider_api_key_assignment"
+
+
+def test_dlp_scan_dashscope_api_token():
+    token = "sk-" + "a" * 32
+    args = {"command": f"curl -H 'Authorization: Bearer {token}' https://dashscope.aliyuncs.com"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "dashscope_api_token"
+
+
 def test_dlp_scan_safe_args():
     args = {"command": "ls -la"}
     verdict = scan("run_command", args)

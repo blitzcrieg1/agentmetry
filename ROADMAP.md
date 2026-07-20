@@ -31,6 +31,8 @@ item matters to you.
 - **Correlated detection** — sequence-rule engine: `credential-exfil`,
   `approval-denied-then-executed`, `encoded-command-download`,
   `pr-merged-without-review`, `untrusted-input-then-risky-action`,
+  `credential-read-then-cloud-api`, `dotfile-read-then-git-push`,
+  `remote-staging-then-execute`,
   `destructive-delete-burst`, `autonomous-unapproved-write`,
   `discovery-then-collect`, and opt-in `off-hours-activity`. Includes Agent Data
   Injection chains ([arXiv:2607.05120](https://arxiv.org/abs/2607.05120)).
@@ -72,7 +74,7 @@ item matters to you.
 | P0 | ~~**Tool allow/deny policy YAML**~~ | `policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
 | P1 | ~~**Dogfood metrics in CLI/dashboard**~~ | `agentmetry stats --days 7` + Analytics tab | ✓ Weekly events/detections/denials |
 | P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
-| P1 | **More detection rules** | `core/audit/detection/rules.py` | Community asks: dotfile read → remote push; consecutive writes outside project root (`~/.ssh`, `.env`). Also rapid-fire denials, package-install tampering (~20 lines + tests each) |
+| P1 | **More detection rules** | `core/audit/detection/rules.py` | ~~Dotfile read → remote push~~ ✓ (`dotfile-read-then-git-push`). Remaining: consecutive writes outside project root; rapid-fire denials; package-install tampering |
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook SessionStart", "timeout": 10 } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook SessionEnd", "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook PreToolUse", "timeout": 10 } ] }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook PostToolUse", "timeout": 10 } ] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook PostToolUseFailure", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python scripts/agentmetry_ingest.py qwen hook Stop", "timeout": 10 } ] }
+    ]
+  }
+}

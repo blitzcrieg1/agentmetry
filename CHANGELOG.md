@@ -9,6 +9,35 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+- **Chinese agent capture (Sprint C).** Kimi `stream-json` print-mode ingest
+  (`python scripts/agentmetry_ingest.py kimi stream-json`), `session-tool-burst`
+  and `host-subagent-swarm-burst` detection rules, DashScope-specific DLP,
+  host-level live detection aggregation, Trae MCP-proxy adapter stub, and
+  `scripts/install_chinese_hooks.ps1` (all Chinese CLIs in one script).
+- **Chinese agent capture (Sprint B).** Qoder and CodeBuddy hook adapters,
+  `subagent-swarm-burst` detection rule, Chinese provider DLP (Tencent SecretId,
+  API key assignments, env overrides), CN cloud CLI coverage in
+  `credential-read-then-cloud-api`, extended tool policy for kimi/qwen/deepseek.
+- **Chinese agent capture (Sprint A).** Qwen Code and Kimi Code Tier B hooks:
+  `map_qwen_hook`, `map_kimi_hook`, `install_qwen_hooks.ps1`, `install_kimi_hooks.ps1`,
+  dashboard badges, and [`docs/integrations/chinese-agents.md`](docs/integrations/chinese-agents.md).
+- **Detection rules (HF July 2026 patterns).** Three sequence rules for agentic
+  intrusion patterns seen in governed coding-agent sessions:
+  `credential-read-then-cloud-api`, `dotfile-read-then-git-push`, and
+  `remote-staging-then-execute`.
+- **DLP:** Hugging Face access token pattern (`hf_…`).
+- **Docs:** [`docs/compliance/local-llm-forensics.md`](docs/compliance/local-llm-forensics.md)
+  — forensic playbook for analyzing JSONL trails with a self-hosted model when
+  commercial APIs block incident payloads (the "asymmetry problem" from Hugging
+  Face's July 2026 disclosure).
+
+### Changed
+- **External ingest.** `qwen`, `kimi`, `crewai`, and `opensre` are first-class
+  `source_app` values (no longer rewritten to `cursor` in canonical events).
+- **MITRE credential paths:** `.docker/config.json` and `.config/gcloud` upgrade
+  file reads to T1552 (Credentials In Files).
+
 ## [0.2.0] - 2026-07-19
 
 First tagged public-alpha release. A local-first flight recorder and mini-SIEM

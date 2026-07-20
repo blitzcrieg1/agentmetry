@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .models import SEVERITY_RANK, Detection
-from .rules import REGISTRY
+from .rules import HOST_REGISTRY, REGISTRY
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -41,6 +41,16 @@ def run_detections(events: list[dict[str, Any]]) -> list[Detection]:
     ordered = _sorted(events)
     detections: list[Detection] = []
     for rule in REGISTRY:
+        detections.extend(rule(ordered))
+    detections.sort(key=lambda d: (SEVERITY_RANK.get(d.severity, 99), d.first_seen_utc))
+    return detections
+
+
+def run_host_detections(events: list[dict[str, Any]]) -> list[Detection]:
+    """Run host-scoped rules over events aggregated by host_id."""
+    ordered = _sorted(events)
+    detections: list[Detection] = []
+    for rule in HOST_REGISTRY:
         detections.extend(rule(ordered))
     detections.sort(key=lambda d: (SEVERITY_RANK.get(d.severity, 99), d.first_seen_utc))
     return detections

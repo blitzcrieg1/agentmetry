@@ -40,6 +40,27 @@ CREATE TABLE IF NOT EXISTS live_emitted (
     emitted_at     TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (correlation_id, rule_id)
 );
+
+CREATE TABLE IF NOT EXISTS live_host_meta (
+    host_id     TEXT PRIMARY KEY,
+    last_touch  REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS live_host_events (
+    host_id     TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    event_json  TEXT NOT NULL,
+    PRIMARY KEY (host_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_host_events_host ON live_host_events(host_id);
+
+CREATE TABLE IF NOT EXISTS live_host_emitted (
+    host_id   TEXT NOT NULL,
+    rule_id   TEXT NOT NULL,
+    emitted_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (host_id, rule_id)
+);
 """
 
 
@@ -75,6 +96,9 @@ class LiveDetectionStore:
             conn.execute("DELETE FROM live_events")
             conn.execute("DELETE FROM live_emitted")
             conn.execute("DELETE FROM live_session_meta")
+            conn.execute("DELETE FROM live_host_events")
+            conn.execute("DELETE FROM live_host_emitted")
+            conn.execute("DELETE FROM live_host_meta")
             conn.commit()
 
     def close(self) -> None:
@@ -172,6 +196,79 @@ class LiveDetectionStore:
                 VALUES (?, ?, ?)
                 """,
                 (correlation_id, rule_id, emitted_at),
+            )
+            conn.commit()
+
+    def append_host_event(self, host_id: str, event: dict[str, Any]) -> list[dict[str, Any]]:
+        """Append an event to the host-level window and return bounded events."""
+        if not host_id:
+            return []
+        with self._lock:
+            conn = self._get_conn()
+            now = time.time()
+            conn.execute(
+                """
+                INSERT INTO live_host_meta (host_id, last_touch)
+                VALUES (?, ?)
+                ON CONFLICT(host_id) DO UPDATE SET last_touch = excluded.last_touch
+                """,
+                (host_id, now),
+            )
+            row = conn.execute(
+                "SELECT COALESCE(MAX(seq), 0) FROM live_host_events WHERE host_id = ?",
+                (host_id,),
+            ).fetchone()
+            next_seq = int(row[0]) + 1
+            conn.execute(
+                "INSERT INTO live_host_events (host_id, seq, event_json) VALUES (?, ?, ?)",
+                (host_id, next_seq, json.dumps(event, separators=(",", ":"), sort_keys=True)),
+            )
+            min_seq = max(1, next_seq - _MAX_EVENTS_PER_SESSION + 1)
+            conn.execute(
+                "DELETE FROM live_host_events WHERE host_id = ? AND seq < ?",
+                (host_id, min_seq),
+            )
+            conn.commit()
+            return self._load_host_events(conn, host_id)
+
+    def _load_host_events(self, conn: sqlite3.Connection, host_id: str) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT event_json FROM live_host_events
+            WHERE host_id = ?
+            ORDER BY seq ASC
+            """,
+            (host_id,),
+        ).fetchall()
+        events: list[dict[str, Any]] = []
+        for (raw,) in rows:
+            try:
+                events.append(json.loads(raw))
+            except json.JSONDecodeError:
+                continue
+        return events
+
+    def is_host_emitted(self, host_id: str, rule_id: str) -> bool:
+        with self._lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                """
+                SELECT 1 FROM live_host_emitted
+                WHERE host_id = ? AND rule_id = ?
+                """,
+                (host_id, rule_id),
+            ).fetchone()
+            return row is not None
+
+    def mark_host_emitted(self, host_id: str, rule_id: str, emitted_at: str = "") -> None:
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO live_host_emitted (host_id, rule_id, emitted_at)
+                VALUES (?, ?, ?)
+                """,
+                (host_id, rule_id, emitted_at),
             )
             conn.commit()
 

