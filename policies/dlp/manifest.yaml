@@ -28,6 +28,20 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  - id: "tencent_secret_id"
+    name: "Tencent Cloud SecretId"
+    description: "Detects Tencent Cloud API SecretId (AKID prefix)"
+    pattern: "(?i)\\bAKID[A-Za-z0-9]{32}\\b"
+    category: "credentials"
+    severity: "critical"
+
+  - id: "chinese_provider_api_key_assignment"
+    name: "Chinese AI Provider API Key Assignment"
+    description: "Assignment to Moonshot, DashScope, DeepSeek, Zhipu, or MiniMax API keys"
+    pattern: "(?i)\\b(MOONSHOT|DASHSCOPE|DEEPSEEK|ZHIPU|MINIMAX|QWEN|DOUBAO)[_\\s-]*API[_\\s-]*KEY[\"']?\\s*[=:]\\s*\\S+"
+    category: "credentials"
+    severity: "critical"
+
   - id: "slack_token"
     name: "Slack Token"
     description: "Detects Slack bot/user/app tokens"
@@ -110,6 +124,6 @@ rules:
   - id: "agent_env_override"
     name: "Agent Environment Override"
     description: "Assignment to agent-critical env vars (API base URL, proxy, NODE_OPTIONS, etc.)"
-    pattern: "(?i)\\b(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|OPENAI_BASE_URL|OPENAI_API_BASE|GEMINI_BASE_URL|HTTP_PROXY|HTTPS_PROXY|NODE_OPTIONS|PYTHONSTARTUP|LD_PRELOAD)[\"']?\\s*[=:]"
+    pattern: "(?i)\\b(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|OPENAI_BASE_URL|OPENAI_API_BASE|GEMINI_BASE_URL|MOONSHOT_API_KEY|DASHSCOPE_API_KEY|DEEPSEEK_API_KEY|ZHIPUAI_API_KEY|MINIMAX_API_KEY|QWEN_API_KEY|HTTP_PROXY|HTTPS_PROXY|NODE_OPTIONS|PYTHONSTARTUP|LD_PRELOAD)[\"']?\\s*[=:]"
     category: "execution_hijack"
     severity: "critical"

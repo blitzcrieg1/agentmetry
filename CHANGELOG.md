@@ -10,6 +10,10 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Added
+- **Chinese agent capture (Sprint B).** Qoder and CodeBuddy hook adapters,
+  `subagent-swarm-burst` detection rule, Chinese provider DLP (Tencent SecretId,
+  API key assignments, env overrides), CN cloud CLI coverage in
+  `credential-read-then-cloud-api`, extended tool policy for kimi/qwen/deepseek.
 - **Chinese agent capture (Sprint A).** Qwen Code and Kimi Code Tier B hooks:
   `map_qwen_hook`, `map_kimi_hook`, `install_qwen_hooks.ps1`, `install_kimi_hooks.ps1`,
   dashboard badges, and [`docs/integrations/chinese-agents.md`](docs/integrations/chinese-agents.md).

@@ -50,7 +50,7 @@ rules:
       - "powershell"
       - "antigravity.run_command"
       - "*.run_command"
-    command_pattern: '(?i)\b(claude|gemini|codex|cursor-agent)\b[^|;&\n]*?(--dangerously-skip-permissions|--yolo|--allowedTools|\s-p\s|--print\b|--prompt\b)'
+    command_pattern: '(?i)\b(claude|gemini|codex|cursor-agent|kimi|qwen|deepseek)\b[^|;&\n]*?(--dangerously-skip-permissions|--yolo|--auto|--allowedTools|\s-p\s|--print\b|--prompt\b)'
 
   # Agent execution config is attacker-controlled in an untrusted repo
   # (CVE-2025-59536 / CVE-2026-21852). These files grant code execution: hooks,
@@ -68,7 +68,7 @@ rules:
       - "str_replace_editor"
       - "*.write_file"
       - "*.edit_file"
-    command_pattern: '(?i)(^|[\\/])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/])'
+    command_pattern: '(?i)(^|[\\/])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml)'
 
   # Git hook persistence: agent plants .git/hooks/* or repoints core.hooksPath.
   # Deny only on pre-hooks when AGENTMETRY_TOOL_POLICY_MODE=block.

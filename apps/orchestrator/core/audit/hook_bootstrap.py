@@ -107,6 +107,8 @@ FAMILY_HOOK_EVENTS = (
     "PreToolUse",
     "PostToolUse",
     "PostToolUseFailure",
+    "SubagentStart",
+    "SubagentStop",
     "Stop",
 )
 
@@ -270,14 +272,51 @@ def install_qwen_global_hooks(
     *, repo_root: Path | None = None, python: str | None = None
 ) -> Path | None:
     """Merge Agentmetry hooks into ~/.qwen/settings.json for every Qwen Code project."""
+    return _install_family_settings_hooks(
+        "qwen", _qwen_settings_dir(), repo_root=repo_root, python=python
+    )
+
+
+def _qoder_settings_dir() -> Path:
+    return Path.home() / ".qoder"
+
+
+def install_qoder_global_hooks(
+    *, repo_root: Path | None = None, python: str | None = None
+) -> Path | None:
+    """Merge Agentmetry hooks into ~/.qoder/settings.json (Qoder / 通义灵码)."""
+    return _install_family_settings_hooks(
+        "qoder", _qoder_settings_dir(), repo_root=repo_root, python=python
+    )
+
+
+def _codebuddy_settings_dir() -> Path:
+    return Path.home() / ".codebuddy"
+
+
+def install_codebuddy_global_hooks(
+    *, repo_root: Path | None = None, python: str | None = None
+) -> Path | None:
+    """Merge Agentmetry hooks into ~/.codebuddy/settings.json (Tencent CodeBuddy)."""
+    return _install_family_settings_hooks(
+        "codebuddy", _codebuddy_settings_dir(), repo_root=repo_root, python=python
+    )
+
+
+def _install_family_settings_hooks(
+    source_app: str,
+    settings_dir: Path,
+    *,
+    repo_root: Path | None = None,
+    python: str | None = None,
+) -> Path | None:
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
     if not ingest.is_file():
-        logger.warning("Qwen hook bootstrap skipped: missing %s", ingest)
+        logger.warning("%s hook bootstrap skipped: missing %s", source_app, ingest)
         return None
 
     py = python or sys.executable
-    settings_dir = _qwen_settings_dir()
     settings_path = settings_dir / "settings.json"
 
     settings: dict[str, Any] = {}
@@ -285,24 +324,24 @@ def install_qwen_global_hooks(
         try:
             loaded = json.loads(settings_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Qwen settings.json unreadable (%s); skipping install", exc)
+            logger.warning("%s settings.json unreadable (%s); skipping install", source_app, exc)
             return None
         if not isinstance(loaded, dict):
-            logger.warning("Qwen settings.json is not an object; skipping install")
+            logger.warning("%s settings.json is not an object; skipping install", source_app)
             return None
         settings = loaded
 
     merge_family_hooks(
         settings,
         events=FAMILY_HOOK_EVENTS,
-        source_app="qwen",
+        source_app=source_app,
         python=py,
         ingest=ingest,
     )
 
     settings_dir.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-    logger.info("Installed global Qwen audit hooks -> %s", settings_path)
+    logger.info("Installed global %s audit hooks -> %s", source_app, settings_path)
     return settings_path
 
 
@@ -392,9 +431,11 @@ if __name__ == "__main__":
         "bootstrap": bootstrap_tier_b_hooks,
         "qwen": install_qwen_global_hooks,
         "kimi": install_kimi_global_hooks,
+        "qoder": install_qoder_global_hooks,
+        "codebuddy": install_codebuddy_global_hooks,
     }
     fn = installers.get(target, bootstrap_tier_b_hooks)
-    if target in ("qwen", "kimi"):
+    if target in ("qwen", "kimi", "qoder", "codebuddy"):
         path = fn()
         if path:
             print(f"Installed global {target} hooks -> {path}")

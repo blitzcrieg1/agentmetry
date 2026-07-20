@@ -6,7 +6,7 @@ POST adapter events to the local orchestrator ingest API.
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
   AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
-  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | mcp_proxy
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
@@ -839,6 +839,41 @@ def _map_claude_family_hook(
             "session_id": correlation,
             "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
         }
+    if hook_name == "SubagentStart":
+        correlation = str(_pick(data, "session_id", default=""))
+        agent_type = str(
+            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+        )
+        slug = agent_type.lower().replace("_", "").replace("-", "") or "subagent"
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "tool_called",
+            "outcome": "success",
+            "reason": f"subagent_start:{agent_type}",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+            "tool": {
+                "qualified": f"{source_app}.subagent.{slug}",
+                "server": source_app,
+                "arguments": redact_arguments(_pick(data, "tool_input", default={})),
+            },
+        }
+    if hook_name == "SubagentStop":
+        correlation = str(_pick(data, "session_id", default=""))
+        agent_type = str(
+            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+        )
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "reason": f"subagent_stop:{agent_type}",
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        }
     return _patch_claude_family(
         map_claude_hook(hook_name, data),
         source_app=source_app,
@@ -855,6 +890,14 @@ def map_kimi_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None
     return _map_claude_family_hook("kimi", "kimi_hook", "kimi", hook_name, data)
 
 
+def map_qoder_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qoder", "qoder_hook", "qoder", hook_name, data)
+
+
+def map_codebuddy_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("codebuddy", "codebuddy_hook", "codebuddy", hook_name, data)
+
+
 def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     source = _source_app()
     if source == "claude":
@@ -863,6 +906,10 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = map_qwen_hook(hook_name, data)
     elif source == "kimi":
         payload = map_kimi_hook(hook_name, data)
+    elif source == "qoder":
+        payload = map_qoder_hook(hook_name, data)
+    elif source == "codebuddy":
+        payload = map_codebuddy_hook(hook_name, data)
     elif source == "codex":
         payload = map_codex_hook(hook_name, data)
     elif source == "antigravity":
@@ -1067,7 +1114,7 @@ def cli_main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     # python scripts/agentmetry_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
     if len(sys.argv) >= 2 and sys.argv[1] in (
-        "cursor", "claude", "antigravity", "codex", "qwen", "kimi",
+        "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy",
     ):
         os.environ["AGENTMETRY_SOURCE_APP"] = sys.argv[1]
         if len(sys.argv) >= 4 and sys.argv[2] == "hook":

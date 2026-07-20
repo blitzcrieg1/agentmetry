@@ -157,6 +157,7 @@ def _to_tz(ts: str, tz: Any) -> datetime | None:
 
 _DISCOVERY_BURST = 3  # list_dir/glob calls that read as recon before a grab
 _DELETE_BURST = 5  # deletions in one session before it is worth a look
+_SUBAGENT_BURST = 5  # subagent spawns in one session (Kimi AgentSwarm, Qwen Agent Teams)
 
 # Exact tool methods that destroy data. Normalized via _norm_tool, so
 # `delete_file`, `deleteFile` and `Delete` all land here, while
@@ -225,7 +226,8 @@ _CLOUD_API = re.compile(
     r"(?:^|\s)aws\s+\w|"
     r"\bgcloud\b|"
     r"\baz\s+(?:account|login|keyvault|aks|storage)\b|"
-    r"\b(?:hf|huggingface-cli)\s+(?:auth|upload|download|whoami|login)\b",
+    r"\b(?:hf|huggingface-cli)\b|"
+    r"\baliyun\b|\btencentcloud\b|\bbce\b|\bossutil\b|\bcoscmd\b",
     re.IGNORECASE,
 )
 
@@ -895,6 +897,45 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
     return []
 
 
+def _is_subagent_start(event: dict[str, Any]) -> bool:
+    if _action_type(event) != "tool_called" or _outcome(event) != "success":
+        return False
+    reason = str(_action(event).get("reason") or "")
+    if reason.startswith("subagent_start:"):
+        return True
+    return ".subagent." in _tool_qualified(event).lower()
+
+
+def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
+    """Many subagent spawns in one session.
+
+    Kimi AgentSwarm and Qwen Agent Teams fan work out to isolated subagents.
+    A burst can indicate autonomous swarm behaviour similar to the HF July 2026
+    disclosure (many short-lived workers in one campaign).
+    """
+    starts = [e for e in events if _is_subagent_start(e)]
+    if len(starts) < _SUBAGENT_BURST:
+        return []
+    return [
+        Detection(
+            rule_id="subagent-swarm-burst",
+            title="Burst of subagent spawns in one session",
+            severity="high",
+            summary=(
+                f"{len(starts)} subagent starts in a single session. Common in "
+                "AgentSwarm / Agent Teams; worth confirming this was intended "
+                "parallel work and not an autonomous attack swarm."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0002"],
+            technique_ids=["T1059"],
+            event_ids=[_event_id(e) for e in starts],
+            first_seen_utc=_ts(starts[0]),
+            last_seen_utc=_ts(starts[-1]),
+        )
+    ]
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
@@ -908,4 +949,5 @@ REGISTRY = [
     rule_credential_read_then_cloud_api,
     rule_dotfile_read_then_git_push,
     rule_remote_staging_then_execute,
+    rule_subagent_swarm_burst,
 ]

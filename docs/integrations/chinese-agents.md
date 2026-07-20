@@ -1,7 +1,7 @@
 # Chinese AI coding agents (Tier B)
 
-Agentmetry records tool calls from **Qwen Code** and **Kimi Code** using the same
-Tier B path as Claude Code and Cursor: lifecycle hooks → `scripts/agentmetry_ingest.py`
+Agentmetry records tool calls from **Qwen Code**, **Kimi Code**, **Qoder**, and
+**CodeBuddy** using the same Tier B path as Claude Code and Cursor: lifecycle hooks → `scripts/agentmetry_ingest.py`
 → `POST /api/v1/audit/ingest` → JSONL trail + sequence detections.
 
 Both products adopted the **Claude hook wire protocol** (JSON on stdin,
@@ -15,12 +15,30 @@ Both products adopted the **Claude hook wire protocol** (JSON on stdin,
 |-------|--------------|-------------|---------|
 | **Qwen Code** | `qwen` | `~/.qwen/settings.json` | `scripts/install_qwen_hooks.ps1` |
 | **Kimi Code** | `kimi` | `~/.kimi-code/config.toml` | `scripts/install_kimi_hooks.ps1` |
+| **Qoder** (通义灵码) | `qoder` | `~/.qoder/settings.json` | `scripts/install_qoder_hooks.ps1` |
+| **CodeBuddy** (Tencent) | `codebuddy` | `~/.codebuddy/settings.json` | `scripts/install_codebuddy_hooks.ps1` |
 
-Templates: `adapters/qwen/settings.agentmetry.json`, Kimi block written by the installer.
+Templates: `adapters/qwen/settings.agentmetry.json`, `adapters/qoder/settings.agentmetry.json`.
+Kimi uses a managed TOML block from the installer.
 
 **Also works without new code:** wrap MCP servers with `tools/mcp_audit_proxy.py` for
-any MCP-capable host (Trae, CodeBuddy, Qoder, etc.) — see
+any MCP-capable host (Trae, etc.) — see
 [external ingest](../agentmetry-external-ingest.md).
+
+---
+
+## Detection (Sprint B)
+
+| Rule | Fires when |
+|------|------------|
+| `subagent-swarm-burst` | ≥5 `SubagentStart` events in one session (Kimi AgentSwarm, Qwen Agent Teams) |
+| `credential-read-then-cloud-api` | Also matches `aliyun`, `tencentcloud`, `ossutil`, `coscmd` CLIs |
+
+**DLP:** Tencent `AKID…` SecretId, Chinese provider `*_API_KEY=` assignments,
+extended `agent_env_override` for Moonshot/DashScope/DeepSeek/Zhipu/MiniMax.
+
+**Tool policy:** blocks `kimi --yolo`, `qwen -p`, `deepseek` weaponization; protects
+`.qwen/`, `.qoder/`, `.codebuddy/`, `.kimi-code/` config writes.
 
 ---
 
@@ -47,8 +65,7 @@ python scripts/agentmetry_ingest.py selftest
 Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=qwen&limit=5"
 ```
 
-Hook events: `SessionStart`, `SessionEnd`, `PreToolUse`, `PostToolUse`,
-`PostToolUseFailure`, `Stop`.
+Hook events include `SubagentStart` / `SubagentStop` for swarm detection.
 
 Docs: [Qwen Code hooks](https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/)
 
@@ -78,16 +95,25 @@ Docs: [Kimi Code hooks](https://www.kimi.com/code/docs/en/kimi-code-cli/customiz
 
 ---
 
-## Detection and DLP
+## Qoder (通义灵码)
 
-Sequence rules (credential exfil, HF July 2026 patterns, ADI chains) run on the
-session `correlation_id` regardless of host. Tool names differ (`Bash` vs
-`run_shell_command`) — MITRE tagging uses command evidence when
-`AGENTMETRY_LOG_COMMANDS=1`.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_qoder_hooks.ps1
+$env:AGENTMETRY_SOURCE_APP="qoder"; python scripts/agentmetry_ingest.py selftest
+```
 
-**Coming next (ROADMAP):** Qoder / CodeBuddy hook adapters (same Claude-family
-protocol), DashScope / Moonshot API key DLP, subagent-swarm detection for Kimi
-AgentSwarm and Qwen Agent Teams.
+Docs: [Qoder hooks](https://docs.qoder.com/en/cli/hooks)
+
+---
+
+## CodeBuddy (Tencent)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_codebuddy_hooks.ps1
+$env:AGENTMETRY_SOURCE_APP="codebuddy"; python scripts/agentmetry_ingest.py selftest
+```
+
+Docs: [CodeBuddy hooks](https://www.codebuddy.ai/docs/cli/hooks)
 
 ---
 
@@ -96,6 +122,8 @@ AgentSwarm and Qwen Agent Teams.
 [Trae](https://www.trae.ai/) (ByteDance) and similar AI-native IDEs do **not** ship
 lifecycle hooks yet ([trae-agent #397](https://github.com/bytedance/trae-agent/issues/397)).
 Partial coverage: wrap MCP servers with `mcp_audit_proxy.py`.
+
+**ROADMAP:** Kimi `stream-json` ingest, Trae hooks when ByteDance ships them.
 
 ---
 

@@ -122,6 +122,21 @@ def test_merge_kimi_hooks_toml_replaces_managed_block(tmp_path: Path):
     assert all(event in merged for event in FAMILY_HOOK_EVENTS)
 
 
+def test_install_qoder_global_hooks(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    ingest = repo / "scripts" / "agentmetry_ingest.py"
+    ingest.parent.mkdir(parents=True)
+    ingest.write_text("# stub", encoding="utf-8")
+    home = tmp_path / "home"
+    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+
+    from core.audit.hook_bootstrap import install_qoder_global_hooks
+
+    path = install_qoder_global_hooks(repo_root=repo, python="/usr/bin/python3")
+    assert path == home / ".qoder" / "settings.json"
+    assert "SubagentStart" in path.read_text(encoding="utf-8")
+
+
 def test_install_kimi_global_hooks(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     ingest = repo / "scripts" / "agentmetry_ingest.py"

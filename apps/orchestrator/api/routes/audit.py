@@ -39,7 +39,7 @@ class ExternalIngestBody(BaseModel):
 
     source_app: str = Field(
         ...,
-        description="cursor | claude | antigravity | codex | mcp_proxy | qwen | kimi | crewai | opensre",
+        description="cursor | claude | antigravity | codex | mcp_proxy | qwen | kimi | qoder | codebuddy | crewai | opensre",
     )
     event_type: str = Field(
         ...,

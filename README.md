@@ -394,7 +394,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 
 | Category | Supported today | Roadmap |
 | -------- | --------------- | ------- |
-| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot · Qoder · CodeBuddy |
+| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi · Qoder · CodeBuddy](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot |
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) | LangChain · AutoGen |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
@@ -464,6 +464,7 @@ sequenceDiagram
 | `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
 | `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |
 | `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
+| `subagent-swarm-burst` | high | ≥5 subagent starts in one session (Kimi AgentSwarm, Qwen Agent Teams) |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
