@@ -10,8 +10,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 from agentmetry_ingest import map_kimi_hook, map_qwen_hook  # noqa: E402
 
-from core.audit.external import build_external_canonical
-from core.audit.hook_bootstrap import (
+from core.audit.external import build_external_canonical  # noqa: E402
+from core.audit.hook_bootstrap import (  # noqa: E402
     FAMILY_HOOK_EVENTS,
     install_kimi_global_hooks,
     install_qwen_global_hooks,

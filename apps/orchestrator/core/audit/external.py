@@ -15,12 +15,12 @@ from core.config import settings
 
 ExternalApp = Literal[
     "cursor", "claude", "antigravity", "codex", "mcp_proxy",
-    "qwen", "kimi", "qoder", "codebuddy", "crewai", "opensre", "agentmetry",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "agentmetry",
 ]
 
 KNOWN_EXTERNAL_APPS = frozenset({
     "cursor", "claude", "antigravity", "codex", "mcp_proxy",
-    "qwen", "kimi", "qoder", "codebuddy", "crewai", "opensre",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre",
 })
 
 _HOST_ID = socket.gethostname()

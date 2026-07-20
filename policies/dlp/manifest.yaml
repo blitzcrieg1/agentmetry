@@ -35,6 +35,13 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  - id: "dashscope_api_token"
+    name: "DashScope API Token"
+    description: "Detects bare Alibaba DashScope API tokens (sk- + 32 hex chars)"
+    pattern: "(?i)\\bsk-[a-f0-9]{32}\\b"
+    category: "credentials"
+    severity: "critical"
+
   - id: "chinese_provider_api_key_assignment"
     name: "Chinese AI Provider API Key Assignment"
     description: "Assignment to Moonshot, DashScope, DeepSeek, Zhipu, or MiniMax API keys"

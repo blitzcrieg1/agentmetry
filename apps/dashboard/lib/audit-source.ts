@@ -18,6 +18,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   kimi: "Kimi Code",
   qoder: "Qoder",
   codebuddy: "CodeBuddy",
+  trae: "Trae",
   crewai: "CrewAI",
   opensre: "OpenSRE",
 };
@@ -44,6 +45,8 @@ const SOURCE_BADGE_CLASS: Record<string, string> = {
     "bg-orange-100 text-orange-950 ring-1 ring-orange-500/25 dark:bg-orange-950/50 dark:text-orange-200",
   codebuddy:
     "bg-sky-100 text-sky-900 ring-1 ring-sky-500/25 dark:bg-sky-950/50 dark:text-sky-200",
+  trae:
+    "bg-red-100 text-red-900 ring-1 ring-red-500/25 dark:bg-red-950/50 dark:text-red-200",
   crewai:
     "bg-lime-100 text-lime-900 ring-1 ring-lime-500/25 dark:bg-lime-950/50 dark:text-lime-200",
   opensre:
@@ -61,6 +64,7 @@ const SOURCE_DOT_CLASS: Record<string, string> = {
   kimi: "bg-indigo-400",
   qoder: "bg-orange-400",
   codebuddy: "bg-sky-400",
+  trae: "bg-red-400",
   crewai: "bg-lime-400",
   opensre: "bg-teal-400",
 };
@@ -77,6 +81,7 @@ export const SOURCE_CHART_COLOR: Record<string, string> = {
   kimi: "#818cf8",
   qoder: "#fb923c",
   codebuddy: "#38bdf8",
+  trae: "#f87171",
   crewai: "#a3e635",
   opensre: "#2dd4bf",
 };

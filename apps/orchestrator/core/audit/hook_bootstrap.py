@@ -152,7 +152,6 @@ def _is_our_hook_group(group: Any, *, source_app: str | None = None) -> bool:
     """True if a hook group is one Agentmetry installed (idempotency marker)."""
     if not isinstance(group, dict):
         return False
-    needle = f'"{source_app} hook' if source_app else "agentmetry_ingest.py"
     for inner in group.get("hooks", []) or []:
         cmd = str(inner.get("command", ""))
         if "agentmetry_ingest.py" in cmd or "agentaudit_ingest.py" in cmd:

@@ -10,6 +10,11 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Added
+- **Chinese agent capture (Sprint C).** Kimi `stream-json` print-mode ingest
+  (`python scripts/agentmetry_ingest.py kimi stream-json`), `session-tool-burst`
+  and `host-subagent-swarm-burst` detection rules, DashScope-specific DLP,
+  host-level live detection aggregation, Trae MCP-proxy adapter stub, and
+  `scripts/install_chinese_hooks.ps1` (all Chinese CLIs in one script).
 - **Chinese agent capture (Sprint B).** Qoder and CodeBuddy hook adapters,
   `subagent-swarm-burst` detection rule, Chinese provider DLP (Tencent SecretId,
   API key assignments, env overrides), CN cloud CLI coverage in

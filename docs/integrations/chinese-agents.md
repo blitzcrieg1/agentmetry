@@ -27,14 +27,16 @@ any MCP-capable host (Trae, etc.) — see
 
 ---
 
-## Detection (Sprint B)
+## Detection (Sprint B–C)
 
 | Rule | Fires when |
 |------|------------|
 | `subagent-swarm-burst` | ≥5 `SubagentStart` events in one session (Kimi AgentSwarm, Qwen Agent Teams) |
+| `host-subagent-swarm-burst` | ≥8 subagent starts across sessions on one `host_id` |
+| `session-tool-burst` | ≥40 successful tool calls in one session |
 | `credential-read-then-cloud-api` | Also matches `aliyun`, `tencentcloud`, `ossutil`, `coscmd` CLIs |
 
-**DLP:** Tencent `AKID…` SecretId, Chinese provider `*_API_KEY=` assignments,
+**DLP:** Tencent `AKID…` SecretId, DashScope bare `sk-` + 32 hex tokens, Chinese provider `*_API_KEY=` assignments,
 extended `agent_env_override` for Moonshot/DashScope/DeepSeek/Zhipu/MiniMax.
 
 **Tool policy:** blocks `kimi --yolo`, `qwen -p`, `deepseek` weaponization; protects
@@ -93,6 +95,21 @@ The installer appends a marked `# agentmetry hooks begin` … `end` block with
 
 Docs: [Kimi Code hooks](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/hooks.html)
 
+### Print mode (stream-json)
+
+For headless / CI pipelines without interactive hooks:
+
+```powershell
+kimi -p "List changed files" --output-format stream-json |
+  python scripts/agentmetry_ingest.py kimi stream-json
+```
+
+Set a stable correlation id for the whole pipeline:
+
+```powershell
+$env:AGENTMETRY_CORRELATION_ID="ci-run-42"
+```
+
 ---
 
 ## Qoder (通义灵码)
@@ -121,9 +138,15 @@ Docs: [CodeBuddy hooks](https://www.codebuddy.ai/docs/cli/hooks)
 
 [Trae](https://www.trae.ai/) (ByteDance) and similar AI-native IDEs do **not** ship
 lifecycle hooks yet ([trae-agent #397](https://github.com/bytedance/trae-agent/issues/397)).
-Partial coverage: wrap MCP servers with `mcp_audit_proxy.py`.
+Partial coverage today:
 
-**ROADMAP:** Kimi `stream-json` ingest, Trae hooks when ByteDance ships them.
+```powershell
+$env:AGENTMETRY_SOURCE_APP="trae"
+python tools/mcp_audit_proxy.py --server "your-mcp-server-command"
+```
+
+See [`adapters/trae/README.md`](../../adapters/trae/README.md). Full hook adapter
+when ByteDance ships lifecycle hooks.
 
 ---
 

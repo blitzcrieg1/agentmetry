@@ -9,7 +9,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 import agentmetry_ingest as ingest  # noqa: E402
 
-from core.audit.detection.rules import rule_subagent_swarm_burst
+from core.audit.detection.rules import rule_subagent_swarm_burst  # noqa: E402
 
 
 def _ev(**kwargs) -> dict:

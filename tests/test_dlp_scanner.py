@@ -60,6 +60,14 @@ def test_dlp_scan_chinese_api_key_assignment():
     assert verdict.match.rule_id == "chinese_provider_api_key_assignment"
 
 
+def test_dlp_scan_dashscope_api_token():
+    token = "sk-" + "a" * 32
+    args = {"command": f"curl -H 'Authorization: Bearer {token}' https://dashscope.aliyuncs.com"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "dashscope_api_token"
+
+
 def test_dlp_scan_safe_args():
     args = {"command": "ls -la"}
     verdict = scan("run_command", args)

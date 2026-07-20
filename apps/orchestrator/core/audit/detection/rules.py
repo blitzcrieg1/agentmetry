@@ -158,6 +158,8 @@ def _to_tz(ts: str, tz: Any) -> datetime | None:
 _DISCOVERY_BURST = 3  # list_dir/glob calls that read as recon before a grab
 _DELETE_BURST = 5  # deletions in one session before it is worth a look
 _SUBAGENT_BURST = 5  # subagent spawns in one session (Kimi AgentSwarm, Qwen Agent Teams)
+_TOOL_BURST = 40  # successful tool calls in one session (HF-style agentic campaigns)
+_HOST_SUBAGENT_BURST = 8  # subagent starts across sessions on one host
 
 # Exact tool methods that destroy data. Normalized via _norm_tool, so
 # `delete_file`, `deleteFile` and `Delete` all land here, while
@@ -936,6 +938,79 @@ def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
     ]
 
 
+def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
+    """Many successful tool calls in one session.
+
+    Autonomous agent campaigns (HF July 2026, Kimi AgentSwarm) often fan out
+    dozens of tool invocations in a single correlation window. Normal interactive
+    coding rarely exceeds a handful per minute — a burst is worth confirming.
+    """
+    tools = [
+        e
+        for e in events
+        if _action_type(e) == "tool_called" and _outcome(e) == "success"
+    ]
+    if len(tools) < _TOOL_BURST:
+        return []
+    return [
+        Detection(
+            rule_id="session-tool-burst",
+            title="Burst of tool calls in one session",
+            severity="high",
+            summary=(
+                f"{len(tools)} successful tool calls in a single session. Common in "
+                "autonomous agent campaigns; confirm this was intended work."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0002"],
+            technique_ids=["T1059"],
+            event_ids=[_event_id(e) for e in tools[:20]],
+            first_seen_utc=_ts(tools[0]),
+            last_seen_utc=_ts(tools[-1]),
+        )
+    ]
+
+
+def _host_id(events: list[dict[str, Any]]) -> str:
+    for event in events:
+        hid = event.get("host_id")
+        if hid:
+            return str(hid)
+    return ""
+
+
+def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
+    """Subagent spawns aggregated across sessions on one host.
+
+    Per-session swarm detection misses campaigns that restart sessions between
+    bursts. Host-level aggregation catches parallel workers even when each
+    session stays under the per-session threshold.
+    """
+    starts = [e for e in events if _is_subagent_start(e)]
+    if len(starts) < _HOST_SUBAGENT_BURST:
+        return []
+    host = _host_id(events)
+    sessions = sorted({str(e.get("correlation_id") or "") for e in starts if e.get("correlation_id")})
+    return [
+        Detection(
+            rule_id="host-subagent-swarm-burst",
+            title="Subagent swarm across sessions on one host",
+            severity="high",
+            summary=(
+                f"{len(starts)} subagent starts across {len(sessions)} session(s) on "
+                f"host {host or 'unknown'}. May indicate a coordinated autonomous "
+                "campaign rather than a single interactive session."
+            ),
+            correlation_id=host or _correlation_id(events),
+            tactic_ids=["TA0002"],
+            technique_ids=["T1059"],
+            event_ids=[_event_id(e) for e in starts[:20]],
+            first_seen_utc=_ts(starts[0]),
+            last_seen_utc=_ts(starts[-1]),
+        )
+    ]
+
+
 REGISTRY = [
     rule_credential_exfil,
     rule_autonomous_unapproved_write,
@@ -950,4 +1025,9 @@ REGISTRY = [
     rule_dotfile_read_then_git_push,
     rule_remote_staging_then_execute,
     rule_subagent_swarm_burst,
+    rule_session_tool_burst,
+]
+
+HOST_REGISTRY = [
+    rule_host_subagent_swarm_burst,
 ]
