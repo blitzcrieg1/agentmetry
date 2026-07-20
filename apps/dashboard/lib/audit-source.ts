@@ -14,6 +14,10 @@ export const SOURCE_LABELS: Record<string, string> = {
   codex: "Codex",
   antigravity: "Antigravity",
   mcp_proxy: "MCP",
+  qwen: "Qwen Code",
+  kimi: "Kimi Code",
+  crewai: "CrewAI",
+  opensre: "OpenSRE",
 };
 
 /** Light + dark Tailwind classes for source badges in the event feed. */
@@ -30,6 +34,14 @@ const SOURCE_BADGE_CLASS: Record<string, string> = {
     "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-500/25 dark:bg-fuchsia-950/50 dark:text-fuchsia-200",
   mcp_proxy:
     "bg-orange-100 text-orange-900 ring-1 ring-orange-500/25 dark:bg-orange-950/50 dark:text-orange-200",
+  qwen:
+    "bg-rose-100 text-rose-900 ring-1 ring-rose-500/25 dark:bg-rose-950/50 dark:text-rose-200",
+  kimi:
+    "bg-indigo-100 text-indigo-900 ring-1 ring-indigo-500/25 dark:bg-indigo-950/50 dark:text-indigo-200",
+  crewai:
+    "bg-lime-100 text-lime-900 ring-1 ring-lime-500/25 dark:bg-lime-950/50 dark:text-lime-200",
+  opensre:
+    "bg-teal-100 text-teal-900 ring-1 ring-teal-500/25 dark:bg-teal-950/50 dark:text-teal-200",
 };
 
 const SOURCE_DOT_CLASS: Record<string, string> = {
@@ -39,6 +51,10 @@ const SOURCE_DOT_CLASS: Record<string, string> = {
   codex: "bg-cyan-400",
   antigravity: "bg-fuchsia-400",
   mcp_proxy: "bg-orange-400",
+  qwen: "bg-rose-400",
+  kimi: "bg-indigo-400",
+  crewai: "bg-lime-400",
+  opensre: "bg-teal-400",
 };
 
 /** Hex fills for Recharts source breakdown. */
@@ -49,6 +65,10 @@ export const SOURCE_CHART_COLOR: Record<string, string> = {
   codex: "#22d3ee",
   antigravity: "#e879f9",
   mcp_proxy: "#fb923c",
+  qwen: "#fb7185",
+  kimi: "#818cf8",
+  crewai: "#a3e635",
+  opensre: "#2dd4bf",
 };
 
 const DEFAULT_BADGE_CLASS =

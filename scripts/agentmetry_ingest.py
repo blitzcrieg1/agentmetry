@@ -6,7 +6,7 @@ POST adapter events to the local orchestrator ingest API.
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
   AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
-  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | mcp_proxy
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
@@ -770,10 +770,99 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
     return None
 
 
+def _patch_claude_family(
+    payload: dict[str, Any] | None,
+    *,
+    source_app: str,
+    adapter: str,
+    server: str,
+) -> dict[str, Any] | None:
+    if not payload:
+        return None
+    patched = dict(payload)
+    patched["source_app"] = source_app
+    patched["adapter"] = adapter
+    tool = patched.get("tool")
+    if isinstance(tool, dict):
+        tool = dict(tool)
+        tool["server"] = server
+        patched["tool"] = tool
+    return patched
+
+
+def _map_post_tool_use_failure(
+    source_app: str,
+    adapter: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", default=""))
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tin = _pick(data, "tool_input", default={})
+    initiator = _initiator_from_hook(hook_name, data)
+    return {
+        "source_app": source_app,
+        "adapter": adapter,
+        "event_type": "tool_failed",
+        "outcome": "error",
+        "reason": str(_pick(data, "error", "message", "reason", default="tool_failed")),
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        "tool": {
+            "qualified": tool_name,
+            "server": source_app,
+            "arguments": redact_arguments(tin),
+        },
+    }
+
+
+def _map_claude_family_hook(
+    source_app: str,
+    adapter: str,
+    server: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Qwen Code and Kimi Code share Claude's hook wire protocol (JSON on stdin)."""
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    if hook_name == "PostToolUseFailure":
+        return _map_post_tool_use_failure(source_app, adapter, hook_name, data)
+    if hook_name == "SessionEnd":
+        correlation = str(_pick(data, "session_id", default=""))
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+    return _patch_claude_family(
+        map_claude_hook(hook_name, data),
+        source_app=source_app,
+        adapter=adapter,
+        server=server,
+    )
+
+
+def map_qwen_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qwen", "qwen_hook", "qwen", hook_name, data)
+
+
+def map_kimi_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("kimi", "kimi_hook", "kimi", hook_name, data)
+
+
 def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     source = _source_app()
     if source == "claude":
         payload = map_claude_hook(hook_name, data)
+    elif source == "qwen":
+        payload = map_qwen_hook(hook_name, data)
+    elif source == "kimi":
+        payload = map_kimi_hook(hook_name, data)
     elif source == "codex":
         payload = map_codex_hook(hook_name, data)
     elif source == "antigravity":
@@ -977,7 +1066,9 @@ def cli_main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     # python scripts/agentmetry_ingest.py [cursor|claude|antigravity|codex] hook <EventName>
-    if len(sys.argv) >= 2 and sys.argv[1] in ("cursor", "claude", "antigravity", "codex"):
+    if len(sys.argv) >= 2 and sys.argv[1] in (
+        "cursor", "claude", "antigravity", "codex", "qwen", "kimi",
+    ):
         os.environ["AGENTMETRY_SOURCE_APP"] = sys.argv[1]
         if len(sys.argv) >= 4 and sys.argv[2] == "hook":
             sys.exit(hook_main(sys.argv[3]))

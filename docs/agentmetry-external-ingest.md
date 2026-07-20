@@ -5,7 +5,7 @@ Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents y
 ## Architecture
 
 ```
-Claude Code / Cursor / Codex / Antigravity / MCP clients
+Claude Code / Cursor / Codex / Antigravity / Qwen Code / Kimi Code / MCP clients
         ↓ hooks or mcp_audit_proxy.py
   scripts/agentmetry_ingest.py
         ↓ POST /api/v1/audit/ingest
@@ -57,6 +57,17 @@ powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
 **One-time:** fully quit Cursor after install so hooks load. Then any project you open logs to Agentmetry when the orchestrator is on `:8000`.
 
 Restart Cursor after pulling hooks so they load (Hooks tab in settings). Global hooks live in `%USERPROFILE%\.cursor\hooks.json`.
+
+## Quick start — Qwen Code & Kimi Code (Chinese CLI agents)
+
+Both use the **same hook wire protocol as Claude Code** (JSON on stdin, `PreToolUse` / `PostToolUse`).
+
+| Agent | Install | Config |
+|-------|---------|--------|
+| Qwen Code | `scripts\install_qwen_hooks.ps1` | `~/.qwen/settings.json` |
+| Kimi Code | `scripts\install_kimi_hooks.ps1` | `~/.kimi-code/config.toml` |
+
+Full guide: [`docs/integrations/chinese-agents.md`](integrations/chinese-agents.md)
 
 ## Ingest API
 

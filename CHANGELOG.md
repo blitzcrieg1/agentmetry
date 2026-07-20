@@ -10,6 +10,9 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Added
+- **Chinese agent capture (Sprint A).** Qwen Code and Kimi Code Tier B hooks:
+  `map_qwen_hook`, `map_kimi_hook`, `install_qwen_hooks.ps1`, `install_kimi_hooks.ps1`,
+  dashboard badges, and [`docs/integrations/chinese-agents.md`](docs/integrations/chinese-agents.md).
 - **Detection rules (HF July 2026 patterns).** Three sequence rules for agentic
   intrusion patterns seen in governed coding-agent sessions:
   `credential-read-then-cloud-api`, `dotfile-read-then-git-push`, and
@@ -21,6 +24,8 @@ separately (currently `1.1.0`) and changes additively.
   Face's July 2026 disclosure).
 
 ### Changed
+- **External ingest.** `qwen`, `kimi`, `crewai`, and `opensre` are first-class
+  `source_app` values (no longer rewritten to `cursor` in canonical events).
 - **MITRE credential paths:** `.docker/config.json` and `.config/gcloud` upgrade
   file reads to T1552 (Credentials In Files).
 

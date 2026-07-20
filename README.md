@@ -258,7 +258,7 @@ Two scope limits worth stating plainly:
 ```mermaid
 flowchart TB
   subgraph Capture["Capture Layer (Tier A + B)"]
-    HOOKS["IDE Lifecycle Hooks<br/>Claude · Cursor · Codex · Antigravity"]
+    HOOKS["IDE Lifecycle Hooks<br/>Claude · Cursor · Codex · Antigravity · Qwen · Kimi"]
     PROXY["MCP Audit Proxy<br/>mcp_audit_proxy.py"]
   end
 
@@ -394,7 +394,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 
 | Category | Supported today | Roadmap |
 | -------- | --------------- | ------- |
-| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity | Windsurf · VS Code Copilot |
+| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot · Qoder · CodeBuddy |
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) | LangChain · AutoGen |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
