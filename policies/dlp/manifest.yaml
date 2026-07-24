@@ -7,15 +7,23 @@ rules:
     category: "credentials"
     severity: "critical"
 
-  # The 40-char token class alone is useless: every git commit SHA is a
-  # 40-char [a-f0-9] string, so a bare pattern turned `git checkout <sha>` into
-  # a critical match — and in block mode, a denied tool call. Require an
-  # aws/secret context within 40 chars of the token, the same shape gitleaks
-  # uses, so real `AWS_SECRET_ACCESS_KEY=...` assignments still match.
+  # The 40-char token class alone is useless: every git commit SHA is a 40-char
+  # [a-f0-9] string, so a bare pattern turned `git checkout <sha>` into a
+  # critical match — and in block mode, a denied tool call. Anchor on the
+  # assignment instead, the shape gitleaks uses.
+  #
+  # NOTE the absence of \b around the key name: `_` is a word character, so
+  # `\bsecret` never matches inside `AWS_SECRET_ACCESS_KEY` and a boundary-based
+  # pattern silently matches nothing at all.
+  #
+  # The \\? before each quote is required, not defensive: scanner.py matches
+  # against json.dumps(arguments), so a quoted value like
+  # `aws_secret_access_key: "AKIA…"` arrives as `\"AKIA…\"`. Same escaping trap
+  # as invisible_unicode_instructions below.
   - id: "aws_secret_key"
     name: "AWS Secret Access Key"
-    description: "AWS secret access key near an aws/secret context (bare 40-char tokens like git SHAs excluded)"
-    pattern: "(?i)\\b(?:aws|secret[_-]?access[_-]?key)\\b.{0,40}?\\b([a-zA-Z0-9+/]{40})\\b"
+    description: "AWS secret access key assignment (bare 40-char tokens like git SHAs excluded)"
+    pattern: "(?i)(?:aws)?[_\\-]?secret[_\\-]?access[_\\-]?key\\\\?[\"']?\\s*[=:]\\s*\\\\?[\"']?([a-zA-Z0-9+/]{40})"
     category: "credentials"
     severity: "critical"
 
@@ -106,6 +114,18 @@ rules:
     pattern: "(?i)s1ngularity-repository|\\bresults\\.b64\\b"
     category: "exfiltration"
     severity: "critical"
+
+  # Thailand Ministry of Finance intrusion (Hunt.io, July 2026). Hermes writes
+  # results to /hermes-results/ with predictable filenames; Hunt.io found 575
+  # such directories exposed on the public internet, which is how the campaign
+  # was discovered. An agent output directory in a tool argument is worth a
+  # record: operators do not know their agent is writing there.
+  - id: "agent_result_dump_dir"
+    name: "Agent Result Dump Directory"
+    description: "Known autonomous-agent output directories (Hermes and similar)"
+    pattern: "(?i)[\\\\/](hermes-results|agent-results|openhands-results|\\.hermes)[\\\\/]"
+    category: "exfiltration"
+    severity: "high"
 
   - id: "double_base64_encode"
     name: "Double Base64 Encoding"

@@ -39,6 +39,11 @@ rules:
   # Nx "s1ngularity" (Aug 2025): malicious postinstall invoked locally installed
   # agent CLIs with guardrails off and prompted THEM to enumerate secrets. A tool
   # call spawning an agent CLI in non-interactive mode has no benign analogue.
+  #
+  # The leading negative lookahead exempts Agentmetry's own documented Kimi
+  # print-mode ingest (`kimi -p "…" | python scripts/agentmetry_ingest.py kimi
+  # stream-json`), which otherwise trips this rule in block mode and denies the
+  # capture pipeline the operator installed on purpose.
   - id: block_agent_cli_weaponization
     action: deny
     description: Tool call spawning an agent CLI with guardrails disabled
@@ -50,7 +55,26 @@ rules:
       - "powershell"
       - "antigravity.run_command"
       - "*.run_command"
-    command_pattern: '(?i)\b(claude|gemini|codex|cursor-agent|kimi|qwen|deepseek)\b[^|;&\n]*?(--dangerously-skip-permissions|--yolo|--auto|--allowedTools|\s-p\s|--print\b|--prompt\b)'
+    command_pattern: '(?i)^(?!.*agentmetry_ingest).*\b(claude|gemini|codex|cursor-agent|kimi|qwen|deepseek|hermes|openhands|aider|goose|opencode)\b[^|;&\n]*?(--dangerously-skip-permissions|--yolo|--auto|--allowedTools|\s-p\s|--print\b|--prompt\b)'
+
+  # Thailand Ministry of Finance intrusion (Hunt.io, July 2026): the operator ran
+  # Nous Research's Hermes assistant unattended with YOLO mode on, via its own
+  # documented command-line flag, and let it sweep for privilege escalation.
+  # These flags disable the human gate on ANY binary, so this rule deliberately
+  # does not enumerate agent names — a new agent CLI ships every month, and the
+  # flag is the behaviour worth denying, not the vendor.
+  - id: block_unattended_agent_flags
+    action: deny
+    description: Any command disabling the human approval gate (YOLO / auto-approve)
+    tools:
+      - "Bash"
+      - "Shell"
+      - "shell.run"
+      - "cursor.Shell"
+      - "powershell"
+      - "antigravity.run_command"
+      - "*.run_command"
+    command_pattern: '(?i)^(?!.*agentmetry_ingest).*(--yolo\b|--dangerously-skip-permissions\b|--auto-approve\b|--unattended\b|--no-confirm\b|--skip-permissions\b)'
 
   # Agent execution config is attacker-controlled in an untrusted repo
   # (CVE-2025-59536 / CVE-2026-21852). These files grant code execution: hooks,
