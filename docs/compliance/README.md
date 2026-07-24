@@ -18,9 +18,15 @@ Agentmetry is a **local-first SIEM for AI coding agents**. You (the operator) ar
 ## How to use
 
 1. Run Agentmetry on machines with AI coding agents (hooks + optional MCP proxy).
-2. Once per month: `agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD`
-3. Store exports in your org evidence store
-4. Fill templates in this folder for your firm's risk register / client DPIA pack
+2. Once per month, produce both artifacts — they have different readers:
+   - `agentmetry export --compliance-digest --from … --to …` → Markdown summary a
+     governance reviewer files (add `--json` for a machine-readable form)
+   - `agentmetry export --evidence --from … --to …` → full pack an incident
+     investigator queries
+3. Verify: `agentmetry verify <export.json>` and `agentmetry verify --trail <trail.jsonl>`
+4. Record the chain head somewhere the audited machine cannot write
+5. Store exports in your org evidence store
+6. Fill templates in this folder for your firm's risk register / client DPIA pack
 
 ## What we do **not** claim
 

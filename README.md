@@ -598,6 +598,7 @@ Integration guides → [docs/integrations/](docs/integrations/)
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
 | `agentmetry replay <correlation_id>` | ASCII audit timeline for one session (audit trail) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
+| `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
 | `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |

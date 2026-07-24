@@ -82,7 +82,9 @@ already 42001-certified, EN 18286 is an additional step, not a re-badge.
 
 ## Suggested audit workflow
 
-1. Export monthly: `agentmetry export --evidence --from … --to …`
+1. Export monthly, both artifacts:
+   - `agentmetry export --compliance-digest --from … --to …` — the cl. 7 review document
+   - `agentmetry export --evidence --from … --to …` — the underlying record
 2. Verify the pack: `agentmetry verify <export.json>`
 3. Verify the chain it points at: `agentmetry verify --trail <audit-forward.jsonl>` — compare `meta.trail_chain.head_sha256` in the pack against the current chain head
 4. Record the chain head somewhere the audited machine cannot write. A local hash chain proves in-place edits and reordering; it cannot prove the file was not truncated. This step is what closes that gap

@@ -369,6 +369,46 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------- export
 
 
+def _write_compliance_digest(from_date, to_date, args: argparse.Namespace) -> int:
+    """Periodic governance summary — the artifact a reviewer files monthly."""
+    import json
+
+    from core.audit.compliance_digest import build_digest, render_markdown
+    from core.audit.evidence_pack import default_export_path
+
+    digest = build_digest(from_date, to_date)
+    as_json = getattr(args, "json", False)
+
+    if args.output:
+        out = Path(args.output)
+    else:
+        out = default_export_path(from_date, to_date).with_name(
+            f"digest-{from_date.isoformat()}_to_{to_date.isoformat()}"
+            f".{'json' if as_json else 'md'}"
+        )
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        json.dumps(digest, indent=2, default=str) + "\n"
+        if as_json
+        else render_markdown(digest)
+    )
+    out.write_text(body, encoding="utf-8")
+
+    activity = digest["activity"]
+    oversight = digest["oversight"]
+    print(f"Compliance digest -> {out}")
+    print(
+        f"  {activity['events']} events, {activity['sessions']} sessions, "
+        f"{activity['tool_denials']} denials"
+    )
+    print(
+        f"  {len(digest['findings'])} distinct finding(s); "
+        f"{oversight['inferred']}/{oversight['approval_gates']} approvals inferred"
+    )
+    return 0
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     from core.audit.evidence_pack import (
         build_evidence_pack,
@@ -377,8 +417,12 @@ def cmd_export(args: argparse.Namespace) -> int:
         write_evidence_pack,
     )
 
-    if not args.evidence:
-        print("Use: agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD")
+    digest_mode = getattr(args, "compliance_digest", False)
+    if not args.evidence and not digest_mode:
+        print(
+            "Use: agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD\n"
+            "  or: agentmetry export --compliance-digest --from … --to …"
+        )
         return 1
     if not args.date_from or not args.date_to:
         print("--from and --to are required (YYYY-MM-DD)")
@@ -390,6 +434,9 @@ def cmd_export(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"Invalid date: {exc}")
         return 1
+
+    if digest_mode:
+        return _write_compliance_digest(from_date, to_date, args)
 
     pack = build_evidence_pack(from_date, to_date)
     out = Path(args.output) if args.output else default_export_path(from_date, to_date)
@@ -530,6 +577,14 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument(
         "--evidence", action="store_true",
         help="build EU AI Act-oriented evidence pack (JSON)",
+    )
+    export.add_argument(
+        "--compliance-digest", dest="compliance_digest", action="store_true",
+        help="periodic governance summary for control review (Markdown)",
+    )
+    export.add_argument(
+        "--json", action="store_true",
+        help="with --compliance-digest: emit JSON instead of Markdown",
     )
     export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
     export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
