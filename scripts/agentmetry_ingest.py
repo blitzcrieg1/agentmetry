@@ -610,15 +610,28 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
         }
 
-    if hook_name in ("Stop", "SubagentStop"):
+    # Interrupt fires in place of Stop when the human aborts a turn (Kimi/Claude
+    # family, v0.14+). It is a real end of the turn, so it resolves the session
+    # the same way Stop does — dropping it left the session looking like it was
+    # still running, which is exactly what the event was added to prevent.
+    if hook_name in ("Stop", "Interrupt"):
         return {
             "source_app": "claude",
             "adapter": "claude_hook",
             "event_type": "session_end",
             "correlation_id": correlation,
             "session_id": session_id,
+            "reason": "interrupted" if hook_name == "Interrupt" else "",
             "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
         }
+
+    # A SubagentStop is NOT a parent session_end. Mapping it to one made ingest
+    # flush every pending approval on the parent correlation as inferred-denied
+    # the moment a subagent finished mid-session — a lie about what the human
+    # decided. Record it as a lifecycle marker on the parent correlation so the
+    # subagent's work stays correlated, but never as a session boundary.
+    if hook_name == "SubagentStop":
+        return _subagent_stop_payload("claude", "claude_hook", "claude", data)
 
     if hook_name in ("PreToolUse", "Notification"):
         decision = str(_pick(data, "permissionDecision", default="ask"))
@@ -637,6 +650,17 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
 
     if hook_name == "PostToolUse":
         event_type, outcome, reason = _after_outcome(data)
+        # Claude Code spawns subagents through the Task tool — it emits no
+        # SubagentStart, so without this the swarm rule was blind on the most
+        # widely used agent CLI in the fleet. Tag a successful Task as a subagent
+        # start so subagent-swarm-burst can count it (the rule keys on the reason
+        # marker, so the tool name stays honest).
+        if tool_name == "Task" and outcome == "success":
+            subagent_type = str(
+                _pick(tin, "subagent_type", "agent_type", default="subagent")
+                if isinstance(tin, dict) else "subagent"
+            )
+            reason = f"subagent_start:{subagent_type}"
         return {
             "source_app": "claude",
             "adapter": "claude_hook",
@@ -895,6 +919,40 @@ def _map_post_tool_use_failure(
     }
 
 
+def _subagent_stop_payload(
+    source_app: str, adapter: str, server: str, data: dict[str, Any]
+) -> dict[str, Any]:
+    """A subagent finishing — a lifecycle marker, never a session boundary.
+
+    Kept on the PARENT correlation so the subagent's work stays grouped with the
+    session that spawned it, but recorded as a tool_called marker rather than a
+    session_end: a session_end here flushed the parent's pending approvals as
+    inferred-denied. The `subagent_stop:` reason and `.subagent_stop.` name are
+    deliberately distinct from the start markers so the swarm rule does not count
+    a finish as a spawn.
+    """
+    correlation = str(_pick(data, "session_id", default=""))
+    agent_type = str(
+        _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+    )
+    slug = agent_type.lower().replace("_", "").replace("-", "") or "subagent"
+    return {
+        "source_app": source_app,
+        "adapter": adapter,
+        "event_type": "tool_called",
+        "outcome": "success",
+        "reason": f"subagent_stop:{agent_type}",
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        "tool": {
+            "qualified": f"{source_app}.subagent_stop.{slug}",
+            "server": server,
+            "arguments": {},
+        },
+    }
+
+
 def _map_claude_family_hook(
     source_app: str,
     adapter: str,
@@ -938,19 +996,7 @@ def _map_claude_family_hook(
             },
         }
     if hook_name == "SubagentStop":
-        correlation = str(_pick(data, "session_id", default=""))
-        agent_type = str(
-            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
-        )
-        return {
-            "source_app": source_app,
-            "adapter": adapter,
-            "event_type": "session_end",
-            "correlation_id": correlation,
-            "session_id": correlation,
-            "reason": f"subagent_stop:{agent_type}",
-            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
-        }
+        return _subagent_stop_payload(source_app, adapter, server, data)
     return _patch_claude_family(
         map_claude_hook(hook_name, data),
         source_app=source_app,
@@ -1023,6 +1069,7 @@ def map_kimi_stream_json_line(
             "event_type": "tool_called",
             "outcome": "success",
             "reason": "stream_json:tool_call",
+            "_tool_call_id": str(tc.get("id") or ""),
             "tool": {
                 "qualified": f"kimi.{name}",
                 "server": "kimi",
@@ -1032,20 +1079,57 @@ def map_kimi_stream_json_line(
     return payloads
 
 
+def _stream_json_result(msg: dict[str, Any]) -> tuple[str, bool] | None:
+    """Detect a tool-result line and whether it reports an error.
+
+    Returns (tool_call_id, failed) or None if this is not a result message.
+    """
+    if str(msg.get("role") or "") != "tool":
+        return None
+    tcid = str(msg.get("tool_call_id") or msg.get("id") or "")
+    err = _pick(msg, "is_error", "isError", default=None)
+    failed = err is True or (isinstance(err, str) and err.strip().lower() in ("1", "true", "yes"))
+    error_field = msg.get("error")
+    if error_field is True or (isinstance(error_field, str) and error_field.strip()):
+        failed = True
+    return tcid, failed
+
+
 def stream_json_main(source_app: str = "kimi") -> int:
-    """Read JSONL from stdin (Kimi print mode) and POST each mapped event."""
+    """Ingest Kimi print-mode JSONL from stdin, with faithful outcomes.
+
+    A tool_call is *announced* in an assistant message and its result arrives in
+    a later `role: "tool"` message. The old code posted every announcement as
+    outcome:success immediately, so a call that later failed was recorded as a
+    success — wrong for every outcome-keyed detection rule. It also never closed
+    the session, leaving pending approvals unresolved forever.
+
+    So: buffer announced calls by id, post each with the outcome its result
+    reports, flush any call whose result never arrived at EOF (best-effort
+    success, as before), then emit a session_end so the turn actually closes.
+    Buffering means events land at result-time or EOF rather than immediately;
+    print mode is a bounded batch, so that is acceptable.
+    """
     import uuid
+
+    if source_app != "kimi":
+        print(f"stream-json ingest not implemented for source '{source_app}'", file=sys.stderr)
+        return 2
 
     session_id = (
         os.environ.get("AGENTMETRY_CORRELATION_ID", "").strip()
         or f"stream-{uuid.uuid4().hex[:12]}"
     )
-    mapper = map_kimi_stream_json_line if source_app == "kimi" else None
-    if mapper is None:
-        print(f"stream-json ingest not implemented for source '{source_app}'", file=sys.stderr)
-        return 2
 
-    posted = 0
+    pending: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    anon = 0
+    tool_posts = 0
+
+    def _post(payload: dict[str, Any]) -> bool:
+        payload.pop("_tool_call_id", None)
+        return post_ingest(_hash_tool_args(payload), quiet=True)
+
     for raw_line in sys.stdin:
         line = raw_line.strip()
         if not line:
@@ -1056,14 +1140,50 @@ def stream_json_main(source_app: str = "kimi") -> int:
             continue
         if not isinstance(msg, dict):
             continue
-        for payload in mapper(msg, session_id=session_id):
-            payload = _hash_tool_args(payload)
-            if post_ingest(payload, quiet=True):
-                posted += 1
 
-    if posted == 0:
+        result = _stream_json_result(msg)
+        if result is not None:
+            tcid, failed = result
+            payload = pending.pop(tcid, None) if tcid else None
+            if payload is None:
+                continue
+            if failed:
+                payload["event_type"] = "tool_failed"
+                payload["outcome"] = "error"
+                payload["reason"] = "stream_json:tool_error"
+            if _post(payload):
+                tool_posts += 1
+            continue
+
+        for payload in map_kimi_stream_json_line(msg, session_id=session_id):
+            tcid = str(payload.pop("_tool_call_id", "") or "")
+            if not tcid:
+                anon += 1
+                tcid = f"anon-{anon}"
+            pending[tcid] = payload
+            order.append(tcid)
+
+    # Calls announced but never resolved (no result line, or an interrupted run):
+    # post them as-is rather than dropping them.
+    for tcid in order:
+        payload = pending.pop(tcid, None)
+        if payload is not None and _post(payload):
+            tool_posts += 1
+
+    if tool_posts == 0:
         print("stream-json: no tool events posted (empty stdin or no tool_calls)", file=sys.stderr)
         return 1
+
+    # Close the turn so pending approvals resolve and analytics see an end.
+    _post({
+        "source_app": "kimi",
+        "adapter": "kimi_stream_json",
+        "event_type": "session_end",
+        "correlation_id": session_id,
+        "session_id": session_id,
+        "reason": "stream_json:session_end",
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+    })
     return 0
 
 

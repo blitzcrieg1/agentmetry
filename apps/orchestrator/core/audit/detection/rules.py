@@ -911,6 +911,20 @@ def _is_subagent_start(event: dict[str, Any]) -> bool:
     return ".subagent." in _tool_qualified(event).lower()
 
 
+def _is_subagent_lifecycle(event: dict[str, Any]) -> bool:
+    """Any subagent spawn or finish marker.
+
+    These have a dedicated rule (subagent-swarm-burst); counting them again in
+    the generic session-tool-burst is double jeopardy, and a subagent finish is
+    not a tool the agent chose to call. Excluded from the tool-burst count.
+    """
+    reason = str(_action(event).get("reason") or "")
+    if reason.startswith("subagent_start:") or reason.startswith("subagent_stop:"):
+        return True
+    qualified = _tool_qualified(event).lower()
+    return ".subagent." in qualified or ".subagent_stop." in qualified
+
+
 def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
     """Many subagent spawns in one session.
 
@@ -955,7 +969,9 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
     tools = [
         e
         for e in events
-        if _action_type(e) == "tool_called" and _outcome(e) == "success"
+        if _action_type(e) == "tool_called"
+        and _outcome(e) == "success"
+        and not _is_subagent_lifecycle(e)
     ]
     minutes = _threshold("session_tool_burst_window_minutes")
     window = _densest_window(tools, _threshold("session_tool_burst"), minutes)
