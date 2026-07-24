@@ -16,6 +16,13 @@ _DEFAULT_THRESHOLDS: dict[str, int] = {
     "subagent_burst": 5,
     "session_tool_burst": 40,
     "host_subagent_burst": 8,
+    # Burst rules need a clock as well as a count. Without one, 40 tool calls is
+    # an ordinary long coding session and 8 subagent starts is two quiet weeks —
+    # both fired as "autonomous campaign". Set a window to 0 to disable the time
+    # bound and match on the raw count (the pre-2026-07-24 behaviour).
+    "subagent_burst_window_minutes": 15,
+    "session_tool_burst_window_minutes": 10,
+    "host_subagent_burst_window_minutes": 60,
 }
 
 _cache: dict[str, Any] | None = None

@@ -10,7 +10,7 @@ Add a rule by writing a function and appending it to REGISTRY.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .models import Detection
@@ -863,6 +863,45 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
     return []
 
 
+def _parse_ts(ts: str) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def _densest_window(
+    events: list[dict[str, Any]], count: int, window_minutes: int
+) -> list[dict[str, Any]] | None:
+    """Return the first run of `count` events inside `window_minutes`, else None.
+
+    A count with no time bound is not a burst, it is a total. Forty tool calls
+    is an ordinary long coding session; forty in ten minutes is a machine. The
+    same logic un-breaks host aggregation, where a window of the last 500 events
+    with no clock meant eight subagent starts spread over two weeks of light use
+    fired a "coordinated campaign" alert.
+
+    Events with unparsable timestamps are counted as if in-window rather than
+    dropped: a broken clock should not silently disable a rule.
+    """
+    if count <= 0 or len(events) < count:
+        return None
+    if window_minutes <= 0:
+        return events[:count]
+
+    span = timedelta(minutes=window_minutes)
+    stamps = [_parse_ts(_ts(e)) for e in events]
+    for start in range(0, len(events) - count + 1):
+        end = start + count - 1
+        first, last = stamps[start], stamps[end]
+        if first is None or last is None or (last - first) <= span:
+            return events[start : end + 1]
+    return None
+
+
 def _is_subagent_start(event: dict[str, Any]) -> bool:
     if _action_type(event) != "tool_called" or _outcome(event) != "success":
         return False
@@ -880,7 +919,10 @@ def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
     disclosure (many short-lived workers in one campaign).
     """
     starts = [e for e in events if _is_subagent_start(e)]
-    if len(starts) < _threshold("subagent_burst"):
+    window = _densest_window(
+        starts, _threshold("subagent_burst"), _threshold("subagent_burst_window_minutes")
+    )
+    if window is None:
         return []
     return [
         Detection(
@@ -888,16 +930,17 @@ def rule_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detection]:
             title="Burst of subagent spawns in one session",
             severity="high",
             summary=(
-                f"{len(starts)} subagent starts in a single session. Common in "
-                "AgentSwarm / Agent Teams; worth confirming this was intended "
-                "parallel work and not an autonomous attack swarm."
+                f"{len(window)} subagent starts within "
+                f"{_threshold('subagent_burst_window_minutes')} minutes in a single "
+                "session. Common in AgentSwarm / Agent Teams; worth confirming this "
+                "was intended parallel work and not an autonomous attack swarm."
             ),
             correlation_id=_correlation_id(events),
             tactic_ids=["TA0002"],
             technique_ids=["T1059"],
-            event_ids=[_event_id(e) for e in starts],
-            first_seen_utc=_ts(starts[0]),
-            last_seen_utc=_ts(starts[-1]),
+            event_ids=[_event_id(e) for e in window],
+            first_seen_utc=_ts(window[0]),
+            last_seen_utc=_ts(window[-1]),
         )
     ]
 
@@ -914,7 +957,9 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
         for e in events
         if _action_type(e) == "tool_called" and _outcome(e) == "success"
     ]
-    if len(tools) < _threshold("session_tool_burst"):
+    minutes = _threshold("session_tool_burst_window_minutes")
+    window = _densest_window(tools, _threshold("session_tool_burst"), minutes)
+    if window is None:
         return []
     return [
         Detection(
@@ -922,15 +967,16 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
             title="Burst of tool calls in one session",
             severity="high",
             summary=(
-                f"{len(tools)} successful tool calls in a single session. Common in "
-                "autonomous agent campaigns; confirm this was intended work."
+                f"{len(window)} successful tool calls within {minutes} minutes in a "
+                "single session. Common in autonomous agent campaigns; confirm this "
+                "was intended work."
             ),
             correlation_id=_correlation_id(events),
             tactic_ids=["TA0002"],
             technique_ids=["T1059"],
-            event_ids=[_event_id(e) for e in tools[:20]],
-            first_seen_utc=_ts(tools[0]),
-            last_seen_utc=_ts(tools[-1]),
+            event_ids=[_event_id(e) for e in window[:20]],
+            first_seen_utc=_ts(window[0]),
+            last_seen_utc=_ts(window[-1]),
         )
     ]
 
@@ -951,26 +997,29 @@ def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detecti
     session stays under the per-session threshold.
     """
     starts = [e for e in events if _is_subagent_start(e)]
-    if len(starts) < _threshold("host_subagent_burst"):
+    minutes = _threshold("host_subagent_burst_window_minutes")
+    window = _densest_window(starts, _threshold("host_subagent_burst"), minutes)
+    if window is None:
         return []
     host = _host_id(events)
-    sessions = sorted({str(e.get("correlation_id") or "") for e in starts if e.get("correlation_id")})
+    sessions = sorted({str(e.get("correlation_id") or "") for e in window if e.get("correlation_id")})
     return [
         Detection(
             rule_id="host-subagent-swarm-burst",
             title="Subagent swarm across sessions on one host",
             severity="high",
             summary=(
-                f"{len(starts)} subagent starts across {len(sessions)} session(s) on "
-                f"host {host or 'unknown'}. May indicate a coordinated autonomous "
-                "campaign rather than a single interactive session."
+                f"{len(window)} subagent starts across {len(sessions)} session(s) "
+                f"within {minutes} minutes on host {host or 'unknown'}. May indicate "
+                "a coordinated autonomous campaign rather than a single interactive "
+                "session."
             ),
             correlation_id=host or _correlation_id(events),
             tactic_ids=["TA0002"],
             technique_ids=["T1059"],
-            event_ids=[_event_id(e) for e in starts[:20]],
-            first_seen_utc=_ts(starts[0]),
-            last_seen_utc=_ts(starts[-1]),
+            event_ids=[_event_id(e) for e in window[:20]],
+            first_seen_utc=_ts(window[0]),
+            last_seen_utc=_ts(window[-1]),
         )
     ]
 

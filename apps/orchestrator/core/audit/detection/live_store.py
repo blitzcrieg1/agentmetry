@@ -11,6 +11,7 @@ import logging
 import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,26 @@ logger = logging.getLogger(__name__)
 
 _MAX_SESSIONS = 256
 _MAX_EVENTS_PER_SESSION = 500
+
+# How long a host-level detection stays suppressed after firing. Session marks
+# are permanent (a session ends); host marks are not (a host does not), so
+# without this a single firing silenced the rule on that machine forever.
+HOST_EMIT_TTL_SECONDS = 6 * 3600
+
+
+def _is_expired(emitted_at: str, *, ttl_seconds: int = HOST_EMIT_TTL_SECONDS) -> bool:
+    """True when a host checkpoint is old enough to re-arm.
+
+    An unparsable timestamp counts as expired: re-alerting is a smaller failure
+    than a rule that is silently off.
+    """
+    try:
+        ts = datetime.fromisoformat(emitted_at.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return True
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts < datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS live_session_meta (
@@ -249,26 +270,63 @@ class LiveDetectionStore:
         return events
 
     def is_host_emitted(self, host_id: str, rule_id: str) -> bool:
+        """Has this host-level rule fired recently enough to stay suppressed?
+
+        Host checkpoints expire; session ones do not. A session ends, so a
+        permanent mark is correct there. A host does not: without an expiry the
+        first firing — quite possibly a false positive — silenced the rule on
+        that machine forever, and only deleting a SQLite row brought it back.
+        A recorder that goes permanently blind after one alert is worse than one
+        that occasionally repeats itself.
+        """
         with self._lock:
             conn = self._get_conn()
             row = conn.execute(
                 """
-                SELECT 1 FROM live_host_emitted
+                SELECT emitted_at FROM live_host_emitted
                 WHERE host_id = ? AND rule_id = ?
                 """,
                 (host_id, rule_id),
             ).fetchone()
-            return row is not None
+            if row is None:
+                return False
+            emitted_at = str(row[0] or "")
+            if not emitted_at:
+                # Pre-expiry rows carry no usable timestamp. Treat them as stale
+                # so an upgrade re-arms the rule instead of inheriting silence.
+                conn.execute(
+                    "DELETE FROM live_host_emitted WHERE host_id = ? AND rule_id = ?",
+                    (host_id, rule_id),
+                )
+                conn.commit()
+                return False
+            if _is_expired(emitted_at):
+                conn.execute(
+                    "DELETE FROM live_host_emitted WHERE host_id = ? AND rule_id = ?",
+                    (host_id, rule_id),
+                )
+                conn.commit()
+                return False
+            return True
 
     def mark_host_emitted(self, host_id: str, rule_id: str, emitted_at: str = "") -> None:
+        """Checkpoint a host-level detection, refreshing the suppression clock.
+
+        Upsert rather than INSERT OR IGNORE: the timestamp drives expiry, so a
+        re-fire must move it forward or the rule would re-arm on the original
+        schedule regardless of recent activity. An absent timestamp falls back to
+        now, so a row always carries a usable clock.
+        """
+        stamp = emitted_at or datetime.now(timezone.utc).isoformat()
         with self._lock:
             conn = self._get_conn()
             conn.execute(
                 """
-                INSERT OR IGNORE INTO live_host_emitted (host_id, rule_id, emitted_at)
+                INSERT INTO live_host_emitted (host_id, rule_id, emitted_at)
                 VALUES (?, ?, ?)
+                ON CONFLICT(host_id, rule_id) DO UPDATE SET emitted_at = excluded.emitted_at
                 """,
-                (host_id, rule_id, emitted_at),
+                (host_id, rule_id, stamp),
             )
             conn.commit()
 
