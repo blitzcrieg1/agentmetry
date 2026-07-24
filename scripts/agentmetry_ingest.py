@@ -343,7 +343,42 @@ def _after_outcome(data: dict[str, Any]) -> tuple[str, str, str]:
     return "tool_called", "success", ""
 
 
-def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
+def _spool_path() -> Path:
+    data_dir = Path(__file__).resolve().parent.parent / "apps" / "orchestrator" / "data"
+    return data_dir / "hook-spool.jsonl"
+
+
+# A spooled hook payload older than this is dropped rather than replayed. A
+# week-old tool call arriving in today's session would corrupt correlation
+# windows, and an unbounded spool is its own failure mode.
+_SPOOL_MAX_AGE_SECONDS = 7 * 24 * 3600
+_SPOOL_MAX_BYTES = 32 * 1024 * 1024
+
+
+def spool_payload(payload: dict[str, Any]) -> bool:
+    """Persist a payload the orchestrator could not accept, for replay at boot.
+
+    The hook must never block or crash the IDE, so every failure here is
+    swallowed. But failing silently into /dev/null was the old behaviour and it
+    punched holes in the trail on every orchestrator restart, update, and
+    IDE-launch race — in a product whose entire claim is a complete record.
+    """
+    try:
+        path = _spool_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_file() and path.stat().st_size > _SPOOL_MAX_BYTES:
+            return False
+        line = json.dumps(
+            {"spooled_at": _utc_now(), "payload": payload}, separators=(",", ":")
+        )
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
     url = f"{_base_url()}/api/v1/audit/ingest"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
@@ -357,7 +392,22 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False) -> bool:
             if response.status != 200:
                 print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
     except URLError as exc:
-        print(f"Agentmetry ingest connection failed: {exc.reason}", file=sys.stderr)
+        # Connection-level failure: the orchestrator is down or unreachable, so
+        # the event is recoverable — keep it for the boot drain.
+        if spool and spool_payload(payload):
+            if not quiet:
+                print(
+                    f"Agentmetry ingest unreachable ({exc.reason}); spooled for replay",
+                    file=sys.stderr,
+                )
+        else:
+            print(f"Agentmetry ingest connection failed: {exc.reason}", file=sys.stderr)
+        return False
+    except Exception as exc:  # pragma: no cover - defensive; hooks never crash the IDE
+        if spool:
+            spool_payload(payload)
+        if not quiet:
+            print(f"Agentmetry ingest error: {exc}", file=sys.stderr)
         return False
     return True
 
@@ -399,13 +449,15 @@ def selftest(dlp: bool = False) -> int:
         else:
             print("Agentmetry hooks: RED — DLP scanner failed to match an obvious AWS key.", file=sys.stderr)
             return 1
+    # spool=False: a probe is a liveness check, not captured activity. Spooling
+    # it would replay synthetic events into the trail on the next boot.
     posted = post_ingest({
         "source_app": source,
         "adapter": f"{source}_selftest",
         "event_type": "tool_called",
         "correlation_id": nonce,
         "tool": {"qualified": "agentmetry.selftest", "server": "agentmetry", "input_hash": "0" * 64},
-    })
+    }, spool=False)
     if not posted:
         print(
             f"Agentmetry hooks: RED — could not POST to ingest at {_base_url()}. "

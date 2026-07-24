@@ -113,6 +113,27 @@ def _check_trail(report: DoctorReport) -> None:
         report.fail("trail", f"Trail chain BROKEN: {result.message}")
 
 
+def _check_spool(report: DoctorReport) -> None:
+    """Surface events the hooks captured while the orchestrator was down.
+
+    A non-empty spool is normal right after a restart and drains on the next
+    boot. It is worth showing because a spool that never shrinks means the
+    orchestrator is not coming up, and the operator would otherwise see a
+    healthy-looking trail that is quietly missing sessions.
+    """
+    from core.audit.spool import read_spool, spool_path
+
+    path = spool_path()
+    if not path.is_file():
+        report.ok("spool", "No pending hook spool (nothing captured while down)")
+        return
+    payloads, dropped = read_spool(path)
+    message = f"{len(payloads)} spooled event(s) pending replay at next start"
+    if dropped:
+        message += f"; {dropped} stale or corrupt row(s) will be discarded"
+    report.warn("spool", message)
+
+
 def _check_manifests(report: DoctorReport) -> None:
     dlp_path = Path(settings.dlp_rules_path)
     if not dlp_path.is_file():
@@ -306,6 +327,7 @@ def run_doctor(
 
     _check_manifests(report)
     _check_trail(report)
+    _check_spool(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
     _check_extensions(report)

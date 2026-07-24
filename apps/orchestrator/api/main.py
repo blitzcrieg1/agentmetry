@@ -68,6 +68,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Audit trail backfill failed; continuing without it")
 
+    # Replay events the hooks captured while this process was down. Same
+    # non-fatal contract as the backfill: a broken spool must not stop the
+    # recorder from booting.
+    from core.audit.spool import drain_spool
+
+    try:
+        await drain_spool()
+    except Exception:
+        logger.exception("Hook spool drain failed; continuing without it")
+
     # Event bus first: everything downstream publishes onto it.
     bus.set_initial_seq(get_outbox().max_seq())
     bridge_tasks = [
