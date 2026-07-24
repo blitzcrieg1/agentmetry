@@ -209,6 +209,12 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     for detection, event, corr, host_id, ts in pending_detections:
         det_event = build_detection_event(detection, event)
         try:
+            # The trail insert is the durability guarantee: it raises on a local
+            # write failure and the rule stays un-checkpointed, so it re-fires on
+            # the next event. Network sinks (webhook/Elastic/Splunk/Loki) swallow
+            # their own errors, so a down SIEM does NOT raise here and does not
+            # block the checkpoint — forwarding is best-effort, the local trail
+            # is the source of truth.
             get_trail_db().insert(det_event)
             await sink.emit(det_event)
         except Exception:

@@ -109,9 +109,12 @@ tamper-evident JSONL trail you own.
 - Enforcement (`block`) is emitted only on genuinely pre-execution hooks. An
   after-hook match is recorded but never turned into a deny, since the tool has
   already run.
-- Live detections are checkpointed only after they are durably stored and
-  forwarded, so a transient sink failure re-fires on the next event instead of
-  being lost.
+- Live detections are written to the local trail before being checkpointed, so
+  a detection is never lost to a local write failure — it re-fires on the next
+  session event. Network sink forwarding (webhook, Elastic, Splunk, Loki) is
+  best-effort and does not gate the checkpoint: a down SIEM logs the error and
+  the local trail remains the source of truth, which is where the dashboard and
+  `verify --trail` read from.
 - Loki forwarding unwraps the hash-chain envelope, so the documented LogQL
   queries resolve their fields again.
 - API key comparison is constant-time (`secrets.compare_digest`), so the key
