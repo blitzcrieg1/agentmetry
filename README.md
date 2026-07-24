@@ -66,7 +66,6 @@ Run it yourself with <code>python scripts/demo_dashboard.py</code></p>
 - [Dashboard](#dashboard)
 - [Forwarding to a SIEM](#forwarding-to-a-siem)
 - [CLI Reference](#cli-reference)
-- [Advanced — governed runtime (optional)](#advanced--governed-runtime-optional)
 - [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)

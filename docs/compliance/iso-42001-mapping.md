@@ -18,15 +18,26 @@ Export command: `agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD`
 
 ---
 
-## Export schema fields (v1.1)
+## Evidence pack sections (schema 2.0)
 
-| Field | Location | Purpose |
-|-------|----------|---------|
-| `correlation_id` | All session events | Groups one agent conversation |
-| `host_id` | All events | Workstation identity |
-| `tool.input_hash` | Tool events | Tamper-evident args without plaintext |
-| `detection.*` | Detection events | Correlated rule findings |
-| `tool_allowlist_snapshot` | `meta` | SHA-256 of `drivers.json` at export time |
+The pack is built from the canonical audit trail (`audit.db`) — the same events
+the dashboard and SIEM sinks see.
+
+| Section | Contents | Governance use |
+|---------|----------|----------------|
+| `events` | Raw canonical events for the period | Full record; omit with `include_raw_events=False` for a summary-only pack |
+| `tool_calls` | Per-call tool, `input_hash`, outcome, MITRE ids, DLP/tool-policy verdicts | What the agents actually did |
+| `approvals` | Gates with `decision` and **`inferred`** | Human oversight — see the honesty note below |
+| `detections` | Correlated findings with severity and contributing `event_ids` | Observed risk |
+| `controls` | DLP + tool-policy **manifest SHA-256 and enforcement modes** | Which controls were in force during the period |
+| `meta.trail_chain` | `head_seq`, `head_sha256`, verification result | Binds the pack to a position in the hash chain |
+| `meta.integrity_sha256` | Hash over the pack body | `agentmetry verify <export.json>` |
+
+**Read `approvals[].inferred` before citing human oversight.** No IDE reports the
+human's click, so most approval responses are *derived* from the event stream and
+are marked `inferred: true`. On a typical dogfood month that is the large
+majority of gates. Presenting an inferred approval as an observed one would be
+the single easiest way to mislead an auditor with this pack.
 
 ---
 

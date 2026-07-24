@@ -9,6 +9,7 @@ Agentmetry is a **local-first SIEM for AI coding agents**. You (the operator) ar
 | File | Purpose |
 |------|---------|
 | [ai-act-deployer-checklist.md](./ai-act-deployer-checklist.md) | Step-by-step deployer checklist (Art. 9, 10, 12, 14, 52) |
+| [en-18286-mapping.md](./en-18286-mapping.md) | EN 18286:2026 clause mapping — including the clauses Agentmetry does **not** cover |
 | [iso-42001-mapping.md](./iso-42001-mapping.md) | How `agentmetry export --evidence` maps to ISO 42001 controls |
 | [incident-response-template.md](./incident-response-template.md) | Log agent incidents, detections, and tool denials |
 | [data-residency-statement.md](./data-residency-statement.md) | Local-first audit data as GDPR + AI Act mitigation |
@@ -26,3 +27,9 @@ Agentmetry is a **local-first SIEM for AI coding agents**. You (the operator) ar
 - "EU AI Act compliant" product certification
 - ISO 42001 certification for your organization
 - Legal suitability for your specific use case — consult qualified counsel
+- That your coding agents are in scope of the AI Act's high-risk regime. **They
+  almost certainly are not** — Annex III does not cover coding assistants. What
+  this kit supports is evidence about your **development lifecycle**, which
+  matters when your organisation *builds* AI systems.
+- Coverage of agents you have not wired in. Unmanaged browser assistants and
+  unhooked IDEs are invisible; absence of an event proves nothing about them.

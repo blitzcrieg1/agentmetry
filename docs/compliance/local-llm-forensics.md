@@ -24,7 +24,7 @@ Agentmetry is built for that gap:
 | Session tool-call trail | `audit-forward.jsonl` (hash-chained) |
 | Structured export | `agentmetry export --evidence --from … --to …` |
 | Integrity check | `agentmetry verify --trail` / `agentmetry verify <export.json>` |
-| Optional local inference | Ollama (`AGENTMETRY_LLM_PROVIDER=ollama`) |
+| Optional local inference | Any local runtime you already operate (Ollama, llama.cpp, vLLM) — Agentmetry does not call it for you |
 
 Nothing in core operation requires sending your trail to a third-party API.
 
@@ -173,5 +173,5 @@ the session** when hosted models refuse to look.
 
 - [HF July 2026 security incident disclosure](https://github.com/huggingface/blog/blob/main/security-incident-july-2026.md) — asymmetry problem, 17k-action swarm
 - [Agentmetry evidence pack format](../evidence-pack-format.md)
-- [Data residency statement](data-residency-statement.md) — Ollama / local-first modes
+- [Data residency statement](data-residency-statement.md) — local-first data handling
 - [Incident response template](incident-response-template.md)

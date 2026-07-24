@@ -21,6 +21,11 @@ Use this checklist when a client asks how you govern **AI coding agents**
 **Evidence fields (schema 1.1+):** `correlation_id`, `host_id`, `tool.input_hash`,
 `detection.*`, `dlp.rule_id`, `tool_policy.rule_id`.
 
+**Scope limit — state this to any auditor.** Agentmetry records the agents wired
+into it via IDE hooks and the MCP audit proxy. It does not see unmanaged
+assistants (browser ChatGPT, unhooked IDEs). *Absence of an event is not evidence
+that nothing happened outside the monitored boundary.*
+
 ---
 
 ## Art. 14 — Human oversight
@@ -31,6 +36,7 @@ Use this checklist when a client asks how you govern **AI coding agents**
 | 2 | Review detections in dashboard Detections tab | Live + durable in JSONL |
 | 3 | Treat hook **deny** as pre-execution control; post-ingest policy as annotation only | See `core/audit/policy.py` |
 | 4 | Export correlation packs for incidents | `agentmetry export --evidence` |
+| 5 | **Check `approvals[].inferred` before claiming oversight** | Inferred responses are derived, not observed — never cite them as a human decision |
 
 ---
 
