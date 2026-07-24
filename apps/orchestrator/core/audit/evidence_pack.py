@@ -1,87 +1,82 @@
 """Assemble tamper-evident compliance evidence packs from the audit trail.
 
-Reads the durable event outbox (events.db) and run ledger (runs.jsonl) — no
-kernel changes, no live orchestrator required. v1 exports JSON with an
-integrity hash; PDF/Merkle verification can extend this module later.
+Reads the canonical Tier B trail (`audit.db`) — the same events the dashboard
+and the SIEM sinks see — and binds each pack to a verifiable position in the
+JSONL hash chain.
+
+History worth keeping: until 2026-07-24 this module read the legacy event
+outbox and `runs.jsonl` from the removed governed runtime. The hook ingest path
+never published to that bus, so on a recorder-only install the flagship
+compliance export contained driver-mount noise while thousands of captured
+agent tool calls sat in the trail, unexported. Anything added here must read the
+trail; if a future feature needs a second source, it belongs alongside the
+trail, never instead of it.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 
-from core.bus.events import (
-    RUN_APPROVAL_DENIED,
-    RUN_APPROVAL_GRANTED,
-    RUN_COMPLETED,
-    RUN_FAILED,
-    RUN_STARTED,
-    RUN_TERMINATED,
-    RUN_WAITING,
-    TOOL_CALLED,
-    TOOL_DENIED,
-)
-from core.bus.outbox import EventOutbox, get_outbox
 from core.config import settings
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "2.0"
 
-
-def _runs_jsonl_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "data" / "runs.jsonl"
-
-
-def read_runs_between(start_ts: str, end_ts: str) -> list[dict[str, Any]]:
-    """Return legacy run-ledger rows in [start_ts, end_ts]; [] when file absent.
-
-    The runs.jsonl writer was removed with the legacy orchestrator; this reader
-    stays so evidence packs still include historical rows on older installs.
-    """
-    path = _runs_jsonl_path()
-    if not path.exists():
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        ts = row.get("ts", "")
-        if start_ts <= ts <= end_ts:
-            rows.append(row)
-    return rows
 
 _COMPLIANCE_MAPPING = {
     "art_12_logging": (
-        "EU AI Act Art. 12 (logging): events[] and runs[] record timestamps, "
-        "inputs/outputs, tool invocations, and lifecycle transitions with "
-        "monotonic seq ordering in the outbox."
-    ),
-    "art_13_transparency": (
-        "EU AI Act Art. 13 (transparency): tool_calls[] records tool name, "
-        "arguments, and outcomes; runs[] records skill name, session, and status."
+        "EU AI Act Art. 12 (record-keeping): events[] is the canonical, "
+        "time-ordered record of every captured agent tool call, approval gate "
+        "and correlated detection, with per-event input hashes. "
+        "meta.trail_chain binds this pack to a position in the tamper-evident "
+        "JSONL hash chain, verifiable with `agentmetry verify --trail`."
     ),
     "art_14_human_oversight": (
-        "EU AI Act Art. 14 (human oversight): approvals[] records every "
-        "human_approval gate (waiting, approved, terminated) with draft text "
-        "and confidence where captured."
+        "EU AI Act Art. 14 (human oversight): approvals[] records each gated "
+        "action and its resolution. Entries carry `inferred: true` when the "
+        "response was derived from the event stream rather than observed from "
+        "the IDE — no IDE reports the human's click, and an auditor must be "
+        "able to tell the difference."
+    ),
+    "art_15_cybersecurity": (
+        "EU AI Act Art. 15 (accuracy, robustness, cybersecurity): detections[] "
+        "records correlated behavioural findings (credential exfiltration, "
+        "guardrail bypass, download cradles, agent data injection). "
+        "controls[] records the DLP and tool-policy manifests in force, with "
+        "content hashes and enforcement modes."
+    ),
+    "art_17_qms": (
+        "EU AI Act Art. 17 / EN 18286 cl. 6 (operation and control): the pack "
+        "evidences which agents acted, under which policy configuration, and "
+        "what was denied — process evidence for a quality management system "
+        "covering AI-assisted development."
+    ),
+    "art_72_post_market": (
+        "EU AI Act Art. 72 (post-market monitoring): summary[] and detections[] "
+        "support periodic review; the trail supports incident reconstruction "
+        "within Art. 73 reporting windows."
+    ),
+    "scope_limits": (
+        "Agentmetry records the agents wired into it via IDE hooks and the MCP "
+        "audit proxy. It does not observe unmanaged assistants (browser "
+        "ChatGPT, unhooked IDEs) and is not a CASB, a sandbox, or a model "
+        "evaluation tool. Absence of an event is not evidence that nothing "
+        "happened outside the monitored boundary."
     ),
     "disclaimer": (
         "This pack is an operator-generated audit artifact. It is not legal "
         "advice or a certification of EU AI Act compliance. Map requirements "
-        "to your deployer's risk classification with qualified counsel."
+        "to your risk classification with qualified counsel."
     ),
 }
 
 
 def date_range_to_timestamps(from_date: date, to_date: date) -> tuple[str, str]:
-    """Inclusive calendar dates → UTC ISO bounds for outbox/ledger queries."""
+    """Inclusive calendar dates → UTC ISO bounds for trail queries."""
     if to_date < from_date:
         raise ValueError("--to must be on or after --from")
     start = datetime.combine(from_date, time.min, tzinfo=timezone.utc).isoformat()
@@ -93,177 +88,251 @@ def parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
-def _skill_definition_hash(vault: Path, skill_name: str | None) -> str | None:
-    if not skill_name:
-        return None
-    yaml_path = vault / ".system" / "skill-definitions" / f"{skill_name}.yaml"
-    if not yaml_path.is_file():
-        return None
-    digest = hashlib.sha256(yaml_path.read_bytes()).hexdigest()
-    return digest
+# --- canonical event accessors ------------------------------------------------
+# Events are plain dicts read back from SQLite; never assume a nested key exists.
 
 
-def _provider_metadata() -> dict[str, str]:
-    return {"provider": "agentmetry", "model": "siem"}
+def _action(event: dict[str, Any]) -> dict[str, Any]:
+    action = event.get("action")
+    return action if isinstance(action, dict) else {}
 
 
-def _drivers_snapshot(vault: Path) -> dict[str, Any]:
-    drivers_path = vault / ".system" / "drivers.json"
-    if not drivers_path.is_file():
-        return {"path": str(drivers_path), "sha256": None, "present": False}
-    raw = drivers_path.read_bytes()
+def _tool(event: dict[str, Any]) -> dict[str, Any]:
+    tool = event.get("tool")
+    return tool if isinstance(tool, dict) else {}
+
+
+def _source_app(event: dict[str, Any]) -> str:
+    source = event.get("source")
+    return str(source.get("app") or "") if isinstance(source, dict) else ""
+
+
+def _actor_type(event: dict[str, Any]) -> str:
+    initiator = event.get("initiator")
+    return str(initiator.get("actor_type") or "") if isinstance(initiator, dict) else ""
+
+
+def _extract_tool_calls(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    for event in events:
+        action = _action(event)
+        if action.get("type") != "tool_called":
+            continue
+        tool = _tool(event)
+        mitre = tool.get("mitre") if isinstance(tool.get("mitre"), dict) else {}
+        entry: dict[str, Any] = {
+            "ts": event.get("timestamp_utc"),
+            "event_id": event.get("event_id"),
+            "correlation_id": event.get("correlation_id"),
+            "source_app": _source_app(event),
+            "actor_type": _actor_type(event),
+            "tool": tool.get("qualified"),
+            "server": tool.get("server"),
+            "input_hash": tool.get("input_hash"),
+            "outcome": action.get("outcome"),
+            "reason": action.get("reason"),
+            "denied": action.get("outcome") == "denied",
+            "tactic_id": mitre.get("tactic_id"),
+            "technique_id": mitre.get("technique_id"),
+        }
+        # Command text is opt-in (AGENTMETRY_AUDIT_LOG_COMMANDS); traits are the
+        # privacy-preserving classification that is always available.
+        if tool.get("command"):
+            entry["command"] = tool.get("command")
+        if tool.get("traits"):
+            entry["traits"] = tool.get("traits")
+        dlp = event.get("dlp")
+        if isinstance(dlp, dict) and dlp.get("rule_id"):
+            entry["dlp_rule_id"] = dlp.get("rule_id")
+            entry["dlp_mode"] = dlp.get("mode")
+        policy = event.get("tool_policy")
+        if isinstance(policy, dict) and policy.get("rule_id"):
+            entry["tool_policy_rule_id"] = policy.get("rule_id")
+            entry["tool_policy_blocked"] = policy.get("blocked")
+        calls.append(entry)
+    return calls
+
+
+def _extract_approvals(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pair approval requests with their resolutions.
+
+    `inferred` is load-bearing for an auditor: no IDE reports the human's click,
+    so a response derived from the event stream must never be presented as an
+    observed one.
+    """
+    gates: list[dict[str, Any]] = []
+    open_by_corr: dict[str, list[int]] = {}
+
+    for event in events:
+        action = _action(event)
+        atype = action.get("type")
+        corr = str(event.get("correlation_id") or "")
+
+        if atype == "approval_request":
+            tool = _tool(event)
+            gates.append({
+                "correlation_id": corr,
+                "source_app": _source_app(event),
+                "requested_at": event.get("timestamp_utc"),
+                "tool": tool.get("qualified"),
+                "input_hash": tool.get("input_hash"),
+                "decision": "pending",
+                "inferred": False,
+            })
+            open_by_corr.setdefault(corr, []).append(len(gates) - 1)
+
+        elif atype == "approval_response":
+            reason = str(action.get("reason") or "")
+            inferred = reason.startswith("inferred:")
+            gated = event.get("gated_action")
+            gated = gated if isinstance(gated, dict) else {}
+            outcome = action.get("outcome")
+            decision = "granted" if outcome == "success" else "denied"
+
+            idx = None
+            for candidate in open_by_corr.get(corr, []):
+                gate = gates[candidate]
+                if gate["decision"] != "pending":
+                    continue
+                want = str(gated.get("input_hash") or "")
+                have = str(gate.get("input_hash") or "")
+                if want and have and want != have:
+                    continue
+                idx = candidate
+                break
+
+            if idx is None:
+                # A response with no recorded request still belongs in the pack.
+                gates.append({
+                    "correlation_id": corr,
+                    "source_app": _source_app(event),
+                    "requested_at": None,
+                    "tool": gated.get("tool"),
+                    "input_hash": gated.get("input_hash"),
+                    "decision": decision,
+                    "decided_at": event.get("timestamp_utc"),
+                    "reason": reason,
+                    "inferred": inferred,
+                    "orphan_response": True,
+                })
+            else:
+                gates[idx].update({
+                    "decision": decision,
+                    "decided_at": event.get("timestamp_utc"),
+                    "reason": reason,
+                    "inferred": inferred,
+                })
+    return gates
+
+
+def _extract_detections(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for event in events:
+        if _action(event).get("type") != "detection":
+            continue
+        detection = event.get("detection")
+        if not isinstance(detection, dict):
+            continue
+        found.append({
+            "ts": event.get("timestamp_utc"),
+            "correlation_id": event.get("correlation_id"),
+            "rule_id": detection.get("rule_id"),
+            "title": detection.get("title"),
+            "severity": detection.get("severity"),
+            "summary": detection.get("summary"),
+            "tactic_ids": detection.get("tactic_ids"),
+            "technique_ids": detection.get("technique_ids"),
+            "event_ids": detection.get("event_ids"),
+            "first_seen_utc": detection.get("first_seen_utc"),
+            "last_seen_utc": detection.get("last_seen_utc"),
+        })
+    return found
+
+
+def _file_sha256(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {"path": str(path), "sha256": None, "present": False}
     return {
-        "path": str(drivers_path),
-        "sha256": hashlib.sha256(raw).hexdigest(),
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "present": True,
     }
 
 
-def _approval_signature(thread_id: str, decided_at: str | None, session_id: str | None) -> str | None:
-    if not decided_at:
-        return None
-    material = f"{thread_id}|{decided_at}|{session_id or ''}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+def _controls_snapshot() -> dict[str, Any]:
+    """The enforcement configuration in force — the control-state evidence.
+
+    Replaces the old drivers.json snapshot, which described demo MCP drivers
+    that a recorder-only install does not have.
+    """
+    return {
+        "dlp": {
+            "mode": settings.dlp_mode,
+            "manifest": _file_sha256(Path(settings.dlp_rules_path)),
+        },
+        "tool_policy": {
+            "mode": settings.tool_policy_mode,
+            "manifest": _file_sha256(Path(settings.tool_policy_path)),
+        },
+        "detection": {
+            "off_hours_enabled": settings.detect_off_hours,
+        },
+        "operator_id": settings.operator_id.strip() or "local",
+    }
 
 
-def _extract_runs(
-    run_rows: list[dict[str, Any]], *, vault: Path
-) -> list[dict[str, Any]]:
-    """Normalize run ledger rows for the evidence bundle."""
-    runs: list[dict[str, Any]] = []
-    for row in run_rows:
-        skill = row.get("skill")
-        entry: dict[str, Any] = {
-            "ts": row.get("ts"),
-            "thread_id": row.get("thread_id"),
-            "skill": skill,
-            "status": row.get("status"),
-            "session_id": row.get("session_id"),
-            "triggered_by": row.get("triggered_by"),
-            "trigger_rule_id": row.get("trigger_rule_id"),
-            "cost": row.get("cost"),
-            "latency_ms": row.get("latency_ms"),
-            "archive_path": row.get("archive_path"),
-            "error": row.get("error"),
+def _trail_chain_state() -> dict[str, Any]:
+    """Bind the pack to a verifiable chain position.
+
+    Without this a pack is an unanchored JSON blob; with it, a reviewer can run
+    `agentmetry verify --trail` and confirm the trail still matches the state
+    this pack was drawn from.
+    """
+    trail_path = Path(settings.audit_export_path)
+    try:
+        from core.audit.trail_chain import verify_trail_file
+
+        result = verify_trail_file(trail_path)
+        return {
+            "path": str(trail_path),
+            "verified": result.ok,
+            "message": result.message,
+            "head_seq": result.head_seq,
+            "head_sha256": result.head_sha256,
+            "lines_chained": result.lines_chained,
+            "lines_legacy": result.lines_legacy,
         }
-        sop_hash = _skill_definition_hash(vault, skill)
-        if sop_hash:
-            entry["sop_version_hash"] = sop_hash
-        runs.append(entry)
-    return runs
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"path": str(trail_path), "verified": False, "message": str(exc)}
 
 
-def _extract_tool_calls(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    tools: list[dict[str, Any]] = []
-    for ev in events:
-        if ev["topic"] not in (TOOL_CALLED, TOOL_DENIED):
-            continue
-        payload = ev.get("payload") or {}
-        tools.append({
-            "seq": ev["seq"],
-            "ts": ev["ts"],
-            "thread_id": ev.get("thread_id") or payload.get("thread_id"),
-            "session_id": ev.get("session_id"),
-            "topic": ev["topic"],
-            "tool": payload.get("tool"),
-            "skill": payload.get("skill"),
-            "sandboxed": payload.get("sandboxed"),
-            "argv": payload.get("argv"),
-            "exit_code": payload.get("exit_code"),
-            "denied": ev["topic"] == TOOL_DENIED,
-        })
-    return tools
-
-
-def _extract_approvals(
-    events: list[dict[str, Any]], run_rows: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Reconstruct approval gate decisions from bus events + run ledger."""
-    gates: dict[str, dict[str, Any]] = {}
-
-    for ev in events:
-        tid = ev.get("thread_id") or (ev.get("payload") or {}).get("thread_id")
-        if not tid:
-            continue
-        payload = ev.get("payload") or {}
-
-        if ev["topic"] == RUN_WAITING:
-            gates.setdefault(tid, {"thread_id": tid})
-            gates[tid].update({
-                "gate": "human_approval",
-                "waiting_at": ev["ts"],
-                "draft": payload.get("draft"),
-                "confidence": payload.get("confidence"),
-                "session_id": ev.get("session_id"),
-            })
-        elif ev["topic"] == RUN_APPROVAL_GRANTED:
-            if tid in gates:
-                gates[tid]["decision"] = "approved"
-                gates[tid]["decided_at"] = ev["ts"]
-                if payload.get("edited"):
-                    gates[tid]["edited"] = True
-        elif ev["topic"] == RUN_APPROVAL_DENIED:
-            if tid in gates:
-                gates[tid]["decision"] = "terminated"
-                gates[tid]["decided_at"] = ev["ts"]
-        elif ev["topic"] == RUN_COMPLETED and payload.get("type") == "execution_completed":
-            if tid in gates:
-                gates[tid]["decision"] = "approved"
-                gates[tid]["decided_at"] = ev["ts"]
-                metrics = payload.get("metrics") or {}
-                gates[tid]["final_cost"] = metrics.get("cost")
-                gates[tid]["archive_path"] = payload.get("archive_path")
-                gates[tid]["approval_signature"] = _approval_signature(
-                    tid, ev["ts"], ev.get("session_id")
-                )
-        elif ev["topic"] == RUN_TERMINATED:
-            if tid in gates:
-                gates[tid]["decision"] = "terminated"
-                gates[tid]["decided_at"] = ev["ts"]
-        elif ev["topic"] == RUN_FAILED and tid in gates:
-            gates[tid]["decision"] = "failed"
-            gates[tid]["decided_at"] = ev["ts"]
-            gates[tid]["error"] = payload.get("error")
-
-    # Ledger rows refine decision labels (approved vs waiting_for_input).
-    for row in run_rows:
-        tid = row.get("thread_id")
-        if not tid or tid not in gates:
-            continue
-        status = row.get("status")
-        if status == "approved":
-            gates[tid]["decision"] = "approved"
-            gates[tid]["decided_at"] = row.get("ts")
-            gates[tid]["approval_signature"] = _approval_signature(
-                tid, row.get("ts"), row.get("session_id")
-            )
-        elif status == "terminated":
-            gates[tid]["decision"] = "terminated"
-            gates[tid]["decided_at"] = row.get("ts")
-        elif status == "waiting_for_input" and "decision" not in gates[tid]:
-            gates[tid]["decision"] = "pending"
-
-    for gate in gates.values():
-        conf = gate.get("confidence")
-        if conf is not None:
-            gate["confidence_score"] = conf
-
-    return sorted(gates.values(), key=lambda g: g.get("waiting_at") or "")
-
-
-def _summarize(runs: list, approvals: list, tool_calls: list, events: list) -> dict[str, int]:
-    decisions = [a.get("decision") for a in approvals]
+def _summarize(
+    events: list[dict[str, Any]],
+    tool_calls: list[dict[str, Any]],
+    approvals: list[dict[str, Any]],
+    detections: list[dict[str, Any]],
+) -> dict[str, Any]:
+    decisions = Counter(a.get("decision") for a in approvals)
     return {
         "event_count": len(events),
-        "run_ledger_rows": len(runs),
+        "tool_calls": sum(1 for t in tool_calls if not t["denied"]),
+        "tool_denials": sum(1 for t in tool_calls if t["denied"]),
+        "sessions": len({e.get("correlation_id") for e in events if e.get("correlation_id")}),
+        "agents": dict(Counter(_source_app(e) for e in events if _source_app(e))),
         "approval_gates": len(approvals),
-        "approvals_granted": sum(1 for d in decisions if d == "approved"),
-        "approvals_terminated": sum(1 for d in decisions if d == "terminated"),
-        "approvals_pending": sum(1 for d in decisions if d == "pending"),
-        "tool_calls": sum(1 for t in tool_calls if not t.get("denied")),
-        "tool_denials": sum(1 for t in tool_calls if t.get("denied")),
-        "runs_started": sum(1 for e in events if e["topic"] == RUN_STARTED),
-        "runs_failed": sum(1 for e in events if e["topic"] == RUN_FAILED),
+        "approvals_granted": decisions.get("granted", 0),
+        "approvals_denied": decisions.get("denied", 0),
+        "approvals_pending": decisions.get("pending", 0),
+        "approvals_inferred": sum(1 for a in approvals if a.get("inferred")),
+        "detections": len(detections),
+        "detections_by_severity": dict(Counter(d.get("severity") for d in detections)),
+        "detections_by_rule": dict(Counter(d.get("rule_id") for d in detections)),
+        "dlp_hits": dict(
+            Counter(t["dlp_rule_id"] for t in tool_calls if t.get("dlp_rule_id"))
+        ),
+        "tool_policy_hits": dict(
+            Counter(t["tool_policy_rule_id"] for t in tool_calls if t.get("tool_policy_rule_id"))
+        ),
     }
 
 
@@ -272,32 +341,45 @@ def _integrity_hash(body: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+_BODY_KEYS = (
+    "events",
+    "tool_calls",
+    "approvals",
+    "detections",
+    "controls",
+    "compliance_mapping",
+    "summary",
+)
+
+
 def build_evidence_pack(
     from_date: date,
     to_date: date,
     *,
-    outbox: EventOutbox | None = None,
-    vault_path: Path | None = None,
+    trail_db: Any | None = None,
+    include_raw_events: bool = True,
 ) -> dict[str, Any]:
     """Build a complete evidence pack dict (includes integrity hash in meta)."""
     start_ts, end_ts = date_range_to_timestamps(from_date, to_date)
-    box = outbox or get_outbox()
-    events = box.read_between(start_ts, end_ts)
-    run_rows = read_runs_between(start_ts, end_ts)
 
-    vault = vault_path or settings.vault_path
-    runs = _extract_runs(run_rows, vault=vault)
+    if trail_db is None:
+        from core.audit.trail_db import get_trail_db
+
+        trail_db = get_trail_db()
+    events = trail_db.read_between(start_ts, end_ts)
+
     tool_calls = _extract_tool_calls(events)
-    approvals = _extract_approvals(events, run_rows)
-    drivers = _drivers_snapshot(vault)
+    approvals = _extract_approvals(events)
+    detections = _extract_detections(events)
 
     body = {
-        "runs": runs,
-        "approvals": approvals,
+        "events": events if include_raw_events else [],
         "tool_calls": tool_calls,
-        "events": events,
+        "approvals": approvals,
+        "detections": detections,
+        "controls": _controls_snapshot(),
         "compliance_mapping": dict(_COMPLIANCE_MAPPING),
-        "summary": _summarize(runs, approvals, tool_calls, events),
+        "summary": _summarize(events, tool_calls, approvals, detections),
     }
 
     pack = {
@@ -306,11 +388,11 @@ def build_evidence_pack(
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "date_from": from_date.isoformat(),
             "date_to": to_date.isoformat(),
-            "vault_path": str(vault),
             "query_start_ts": start_ts,
             "query_end_ts": end_ts,
-            "provider_metadata": _provider_metadata(),
-            "tool_allowlist_snapshot": drivers,
+            "source": "audit_trail",
+            "raw_events_included": include_raw_events,
+            "trail_chain": _trail_chain_state(),
         },
         **body,
     }
@@ -318,10 +400,7 @@ def build_evidence_pack(
     return pack
 
 
-def write_evidence_pack(
-    pack: dict[str, Any],
-    output: Path,
-) -> Path:
+def write_evidence_pack(pack: dict[str, Any], output: Path) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(pack, indent=2, default=str) + "\n",
@@ -330,10 +409,20 @@ def write_evidence_pack(
     return output
 
 
-def default_export_path(from_date: date, to_date: date, vault_path: Path | None = None) -> Path:
-    vault = vault_path or settings.vault_path
+def default_export_path(
+    from_date: date, to_date: date, vault_path: Path | None = None
+) -> Path:
+    """Where an export lands by default.
+
+    Keeps the documented vault archive location when a vault exists, and falls
+    back to `data/exports/` next to the trail when it does not — a recorder-only
+    install has no vault, and compliance exports must still have a home.
+    """
     name = f"evidence-{from_date.isoformat()}_to_{to_date.isoformat()}.json"
-    return vault / "30-Archive" / "exports" / name
+    vault = Path(vault_path) if vault_path else Path(settings.vault_path)
+    if vault.is_dir():
+        return vault / "30-Archive" / "exports" / name
+    return Path(settings.audit_export_path).parent / "exports" / name
 
 
 def verify_evidence_pack(pack: dict[str, Any]) -> tuple[bool, str]:
@@ -343,14 +432,12 @@ def verify_evidence_pack(pack: dict[str, Any]) -> tuple[bool, str]:
     if not stored:
         return False, "missing meta.integrity_sha256"
 
-    body = {
-        "runs": pack.get("runs", []),
-        "approvals": pack.get("approvals", []),
-        "tool_calls": pack.get("tool_calls", []),
-        "events": pack.get("events", []),
-        "compliance_mapping": pack.get("compliance_mapping", {}),
-        "summary": pack.get("summary", {}),
-    }
+    body = {key: pack.get(key, [] if key != "controls" else {}) for key in _BODY_KEYS}
+    # compliance_mapping and summary default to dicts, not lists.
+    for key in ("compliance_mapping", "summary"):
+        if not isinstance(body.get(key), dict):
+            body[key] = {}
+
     expected = _integrity_hash(body)
     if expected != stored:
         return False, f"integrity mismatch (expected {expected[:16]}…, got {stored[:16]}…)"

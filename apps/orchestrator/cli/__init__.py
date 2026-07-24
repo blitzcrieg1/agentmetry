@@ -399,10 +399,18 @@ def cmd_export(args: argparse.Namespace) -> int:
     print(f"Evidence pack -> {out}")
     print(
         f"  {summary.get('event_count', 0)} events, "
-        f"{summary.get('run_ledger_rows', 0)} ledger rows, "
-        f"{summary.get('approval_gates', 0)} approval gates, "
-        f"{summary.get('tool_calls', 0)} tool calls"
+        f"{summary.get('sessions', 0)} sessions, "
+        f"{summary.get('tool_calls', 0)} tool calls, "
+        f"{summary.get('tool_denials', 0)} denials"
     )
+    print(
+        f"  {summary.get('approval_gates', 0)} approval gates "
+        f"({summary.get('approvals_inferred', 0)} inferred), "
+        f"{summary.get('detections', 0)} detections"
+    )
+    chain = pack["meta"].get("trail_chain", {})
+    if chain.get("head_sha256"):
+        print(f"  chain head: seq {chain.get('head_seq')} {chain['head_sha256'][:16]}…")
     print(f"  integrity: {pack['meta']['integrity_sha256'][:16]}…")
     return 0
 

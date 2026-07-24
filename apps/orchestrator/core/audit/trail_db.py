@@ -262,6 +262,30 @@ class AuditTrailDB:
         }
         return events, pagination
 
+    def read_between(
+        self, start_utc: str, end_utc: str, *, limit: int = 200_000
+    ) -> list[dict[str, Any]]:
+        """Return canonical events in [start_utc, end_utc], time-ordered.
+
+        The range query behind evidence exports. Timestamps are ISO-8601 UTC
+        strings, which sort lexicographically, so a plain BETWEEN is correct.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            """SELECT event_json FROM audit_events
+               WHERE timestamp_utc >= ? AND timestamp_utc <= ?
+               ORDER BY timestamp_utc ASC, id ASC
+               LIMIT ?""",
+            (start_utc, end_utc, limit),
+        ).fetchall()
+        events: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                events.append(json.loads(row["event_json"]))
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return events
+
     def session(self, correlation_id: str, limit: int = 2000) -> list[dict[str, Any]]:
         """Return all events for one correlation_id, time-ordered."""
         conn = self._get_conn()
