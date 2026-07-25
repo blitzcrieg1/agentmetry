@@ -14,6 +14,11 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "aiosqlite>=0.20.0",
     "mcp>=1.2",
+    # Windows ships no IANA timezone database, so `zoneinfo` cannot resolve
+    # AGENTMETRY_BUSINESS_TZ there without this. Without it the off-hours rule
+    # silently fell back to UTC and produced wrong findings on the platform this
+    # product primarily targets.
+    "tzdata; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

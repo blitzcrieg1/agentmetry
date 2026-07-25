@@ -335,3 +335,67 @@ def test_detections_ranked_most_severe_first():
     ]
     dets = run_detections(events)
     assert dets[0].severity == "critical"
+
+
+# --- ordering on a timestamp tie ---------------------------------------------
+
+def test_a_timestamp_tie_preserves_arrival_order():
+    """Every sequence rule asks "did A happen before B".
+
+    The tie-break used to end with `event_id`, a random UUID, so on a shared
+    timestamp the answer was a coin flip. Windows clock granularity is about
+    15 ms, so two calls in one agent turn tie routinely; this showed up as a
+    Windows-only failure where credential-read-then-cloud-api fired or did not
+    depending on which UUID won.
+    """
+    from core.audit.detection.engine import _sorted
+
+    ts = "2026-07-25T10:00:00+00:00"
+    arrival = [
+        {"event_id": "zzzzzzzz-first", "timestamp_utc": ts, "marker": "first"},
+        {"event_id": "aaaaaaaa-second", "timestamp_utc": ts, "marker": "second"},
+    ]
+    assert [e["marker"] for e in _sorted(arrival)] == ["first", "second"]
+
+
+def test_seq_still_wins_over_arrival_order():
+    """An explicit sequence number is better evidence than list position."""
+    from core.audit.detection.engine import _sorted
+
+    ts = "2026-07-25T10:00:00+00:00"
+    events = [
+        {"event_id": "a", "timestamp_utc": ts, "seq": 2, "marker": "later"},
+        {"event_id": "b", "timestamp_utc": ts, "seq": 1, "marker": "earlier"},
+    ]
+    assert [e["marker"] for e in _sorted(events)] == ["earlier", "later"]
+
+
+def test_timestamps_still_beat_arrival_order():
+    from core.audit.detection.engine import _sorted
+
+    events = [
+        {"event_id": "a", "timestamp_utc": "2026-07-25T10:00:05+00:00", "marker": "later"},
+        {"event_id": "b", "timestamp_utc": "2026-07-25T10:00:01+00:00", "marker": "earlier"},
+    ]
+    assert [e["marker"] for e in _sorted(events)] == ["earlier", "later"]
+
+
+def test_a_tied_credential_sequence_still_fires():
+    """The exact Windows failure, reproduced without needing Windows."""
+    from core.audit.detection import run_detections
+
+    ts = "2026-07-25T10:00:00+00:00"
+    cred = {
+        "event_id": "zzzz", "correlation_id": "s1", "timestamp_utc": ts,
+        "action": {"type": "tool_called", "outcome": "success"},
+        "tool": {"qualified": "cursor.Shell",
+                 "mitre": {"tactic_id": "TA0006", "technique_id": "T1552.004"}},
+    }
+    cloud = {
+        "event_id": "aaaa", "correlation_id": "s1", "timestamp_utc": ts,
+        "action": {"type": "tool_called", "outcome": "success"},
+        "tool": {"qualified": "cursor.Shell", "traits": ["cloud_api"],
+                 "mitre": {"tactic_id": "TA0002", "technique_id": "T1059"}},
+    }
+    rule_ids = {d.rule_id for d in run_detections([cred, cloud])}
+    assert "credential-read-then-cloud-api" in rule_ids

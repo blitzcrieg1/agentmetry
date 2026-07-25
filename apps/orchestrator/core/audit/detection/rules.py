@@ -10,6 +10,7 @@ Add a rule by writing a function and appending it to REGISTRY.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -41,6 +42,12 @@ from .traits import (
     STAGING_HOST as _STAGING_HOST,
     UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
 )
+
+logger = logging.getLogger(__name__)
+
+#: Timezone names already reported as unresolvable, so the warning fires
+#: once per name rather than once per event.
+_TZ_FALLBACK_WARNED: set[str] = set()
 
 # --- safe accessors ----------------------------------------------------------
 # Events are plain dicts read from JSONL; never assume a nested key exists.
@@ -123,14 +130,34 @@ def _norm_tool(name: str) -> str:
 
 
 def _business_tz(name: str) -> timezone | Any:
-    """Resolve the operator's timezone, falling back to UTC if unavailable."""
+    """Resolve the operator's timezone, falling back to UTC if unavailable.
+
+    The fallback is loud on purpose. Windows ships no IANA timezone database, so
+    without the `tzdata` package `ZoneInfo("America/New_York")` raises and this
+    silently returned UTC. Every off-hours decision for an operator outside UTC
+    was then made against the wrong clock: a 14:00 New York action was reported
+    as an out-of-hours event at 18:00, and a genuine 03:00 action could pass as
+    business hours. A detection rule quietly using the wrong timezone is worse
+    than one that does not run, so say so once.
+
+    `tzdata` is a declared dependency; this path should now be unreachable.
+    """
     if not name or name.upper() == "UTC":
         return timezone.utc
     try:
         from zoneinfo import ZoneInfo
 
         return ZoneInfo(name)
-    except Exception:
+    except Exception as exc:
+        if name not in _TZ_FALLBACK_WARNED:
+            _TZ_FALLBACK_WARNED.add(name)
+            logger.warning(
+                "Business timezone %r could not be resolved (%s); off-hours "
+                "detection is falling back to UTC and its findings will be "
+                "wrong for any operator not in UTC. Install `tzdata`.",
+                name,
+                exc,
+            )
         return timezone.utc
 
 

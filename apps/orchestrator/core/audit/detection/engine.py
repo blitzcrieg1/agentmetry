@@ -28,11 +28,28 @@ def _event_ts(event: dict[str, Any]) -> datetime:
 
 
 def _sorted(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    # Stable order: timestamp, then seq/event_id to break ties deterministically.
-    def _key(event: dict[str, Any]) -> tuple[datetime, int, str]:
+    """Time order, falling back to the order the caller supplied.
+
+    The tie-break used to end with `event_id`, which is a random UUID. Every
+    sequence rule in this package asks "did A happen before B", so on a
+    timestamp tie the answer was decided by a coin flip.
+
+    Ties are not rare. Windows clock granularity is around 15 ms, so two tool
+    calls from one agent turn routinely share a timestamp; this surfaced as a
+    Windows-only CI failure where `credential-read-then-cloud-api` fired or did
+    not depending on which UUID sorted first. The README claims ordering is
+    enforced by position rather than co-occurrence, and a random tie-break
+    quietly made that untrue.
+
+    `sorted` is stable, so omitting the UUID preserves the input order on ties.
+    Callers hand us events straight from the trail, which returns them ordered
+    by `timestamp_utc` then insert id, so input order *is* arrival order: the
+    best available evidence of what actually happened first.
+    """
+    def _key(event: dict[str, Any]) -> tuple[datetime, int]:
         seq = event.get("seq")
         seq_int = seq if isinstance(seq, int) else 0
-        return (_event_ts(event), seq_int, str(event.get("event_id") or ""))
+        return (_event_ts(event), seq_int)
 
     return sorted(events, key=_key)
 

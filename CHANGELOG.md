@@ -65,6 +65,19 @@ separately (currently `1.1.0`) and changes additively.
   future packaging that repeats the combination is caught.
 
 ### Fixed
+- **Sequence-rule ordering was decided by a coin flip on a timestamp tie.** The
+  tie-break ended with `event_id`, a random UUID, so "did A happen before B" —
+  the question every sequence rule asks — was answered at random whenever two
+  events shared a timestamp. Ties are common: Windows clock granularity is about
+  15 ms, so two tool calls in one agent turn routinely collide. Ordering now
+  falls back to arrival order, which the trail supplies. The README's claim that
+  ordering is enforced by position rather than co-occurrence is true again.
+- **Off-hours detection used the wrong clock on Windows.** Windows ships no IANA
+  timezone database, so `AGENTMETRY_BUSINESS_TZ` could not resolve and the rule
+  silently fell back to UTC: a 14:00 New York action was reported as
+  out-of-hours, and a genuine 03:00 action could pass as business hours.
+  `tzdata` is now a Windows dependency, and the fallback logs a warning instead
+  of being silent.
 - **Boot-time disposition replay could erase triage history.** Wiring
   `rebuild_from_trail()` into startup made an unconditional index wipe run on
   every boot, so a pruned, rotated, restored or repointed trail silently deleted
