@@ -1,6 +1,6 @@
 [project]
 name = "agentmetry-orchestrator"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Agentmetry — SIEM flight recorder for AI agent tool-use"
 requires-python = ">=3.11"
 dependencies = [
@@ -29,6 +29,9 @@ agentmetry = "cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "core/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "api", "cli"]

@@ -20,6 +20,7 @@ from core.bus.outbox import get_outbox
 from core.config import settings
 from core.extensions import load_extensions
 from core.health import get_system_health
+from core.version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Agentmetry",
     description="Open-source SIEM flight recorder for AI agent tool-use",
-    version="0.2.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
