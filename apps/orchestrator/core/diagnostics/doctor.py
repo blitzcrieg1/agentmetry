@@ -113,6 +113,38 @@ def _check_trail(report: DoctorReport) -> None:
         report.fail("trail", f"Trail chain BROKEN: {result.message}")
 
 
+def _check_triage(report: DoctorReport) -> None:
+    """Surface the triage backlog without making the operator open the UI.
+
+    A growing pile of undispositioned findings is the failure mode this product
+    is most exposed to: detection keeps working, nobody answers it, and the
+    evidence pack quietly says so. Warn, never fail — an untriaged detection is
+    a task, not a broken install.
+    """
+    from core.audit.detection.disposition import CLOSED_STATUSES, get_disposition_store
+
+    try:
+        counts = get_disposition_store().counts()
+    except Exception as exc:  # a missing store must not sink the whole report
+        report.warn("triage", f"Could not read triage state: {exc}")
+        return
+
+    decided = sum(counts.values())
+    if not decided:
+        report.warn(
+            "triage",
+            "No detections have been dispositioned. Detections evidence that "
+            "the system noticed, not that anyone acted.",
+        )
+        return
+
+    open_findings = sum(n for s, n in counts.items() if s not in CLOSED_STATUSES)
+    report.ok(
+        "triage",
+        f"{decided} detection(s) dispositioned; {open_findings} still open",
+    )
+
+
 def _check_spool(report: DoctorReport) -> None:
     """Surface events the hooks captured while the orchestrator was down.
 
@@ -327,6 +359,7 @@ def run_doctor(
 
     _check_manifests(report)
     _check_trail(report)
+    _check_triage(report)
     _check_spool(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)

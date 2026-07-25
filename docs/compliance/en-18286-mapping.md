@@ -36,7 +36,7 @@ nothing about the AI system you ship.
 | **cl. 6** Operation & Control — change control | Controlled, recorded changes across the lifecycle | Which agent changed what, under which policy configuration; `controls` section records DLP + tool-policy manifest hashes and modes in force | `evidence.controls` |
 | **cl. 6** Operation & Control — post-market surveillance | Monitoring plan with incident capability | Detections streamed as first-class events; hash-chained trail supports reconstruction inside Art. 73 windows | [local-llm-forensics.md](local-llm-forensics.md) |
 | **cl. 7** Performance Evaluation | Periodic review with real inputs | Weekly metrics: events, detections by rule/severity, denials, DLP hits | `agentmetry stats --days 7` |
-| **cl. 8** Improvement | Corrective action driven by findings | Detection triage workflow; rule and manifest changes are themselves version-controlled and hashed into the pack | `evidence.detections` |
+| **cl. 8** Improvement | Corrective action driven by findings | Every detection carries a disposition (acknowledged, resolved, false positive, accepted risk) with a decider, a timestamp and a written justification, recorded as an event on the same hash chain as the finding; rule and manifest changes are version-controlled and hashed into the pack | `evidence.dispositions`, `evidence.detections[].disposition`, `summary.detections_untriaged` |
 
 **Cross-reference:** EU AI Act Art. 12 (record-keeping), Art. 15 (cybersecurity of
 the development chain), Art. 17 (QMS), Art. 72 (post-market monitoring). See the

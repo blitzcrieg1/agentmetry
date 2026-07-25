@@ -32,6 +32,10 @@ class Detection:
     event_ids: list[str] = field(default_factory=list)
     first_seen_utc: str = ""
     last_seen_utc: str = ""
+    # Triage state, attached on read from the disposition store rather than
+    # produced by the rule. A detection nobody dispositioned is an alert, not a
+    # control, so every detection carries the field even when it is untouched.
+    disposition: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -45,4 +49,5 @@ class Detection:
             "event_ids": self.event_ids,
             "first_seen_utc": self.first_seen_utc,
             "last_seen_utc": self.last_seen_utc,
+            "disposition": self.disposition,
         }

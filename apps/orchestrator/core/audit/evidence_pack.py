@@ -22,9 +22,11 @@ from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 
+from core.audit.detection.disposition import extract_dispositions
 from core.config import settings
+from core.version import __version__
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 
 
 _COMPLIANCE_MAPPING = {
@@ -54,6 +56,17 @@ _COMPLIANCE_MAPPING = {
         "evidences which agents acted, under which policy configuration, and "
         "what was denied — process evidence for a quality management system "
         "covering AI-assisted development."
+    ),
+    "iso_42001_cl10_corrective_action": (
+        "ISO/IEC 42001 cl. 10 / EN 18286 cl. 8 (corrective action): "
+        "dispositions[] records what a human decided about each finding — "
+        "acknowledged, resolved, false positive or accepted risk — with the "
+        "decider, the timestamp and the written justification. Each decision "
+        "is itself an event on the same hash chain as the detection it "
+        "answers, and superseded decisions are retained. "
+        "summary.detections_untriaged is the count of findings with no human "
+        "decision at all; that number is the honest measure of whether the "
+        "detection capability is operating as a control."
     ),
     "art_72_post_market": (
         "EU AI Act Art. 72 (post-market monitoring): summary[] and detections[] "
@@ -306,13 +319,38 @@ def _trail_chain_state() -> dict[str, Any]:
         return {"path": str(trail_path), "verified": False, "message": str(exc)}
 
 
+def _attach_dispositions(detections: list[dict[str, Any]]) -> dict[str, int]:
+    """Stamp each detection with the triage state in force, and count them.
+
+    Read from the disposition index rather than the events in this period on
+    purpose: a detection that fired in June and was closed in July is closed,
+    and a pack that showed it as untriaged would misrepresent the control.
+    """
+    from core.audit.detection.disposition import DEFAULT_STATUS, get_disposition_store
+
+    store = get_disposition_store()
+    counts: Counter[str] = Counter()
+    for detection in detections:
+        current = store.get(
+            str(detection.get("correlation_id") or ""),
+            str(detection.get("rule_id") or ""),
+        )
+        detection["disposition"] = current
+        counts[current["status"] if current else DEFAULT_STATUS] += 1
+    return dict(counts)
+
+
 def _summarize(
     events: list[dict[str, Any]],
     tool_calls: list[dict[str, Any]],
     approvals: list[dict[str, Any]],
     detections: list[dict[str, Any]],
+    disposition_counts: dict[str, int],
 ) -> dict[str, Any]:
+    from core.audit.detection.disposition import CLOSED_STATUSES
+
     decisions = Counter(a.get("decision") for a in approvals)
+    triaged = sum(n for status, n in disposition_counts.items() if status != "new")
     return {
         "event_count": len(events),
         "tool_calls": sum(1 for t in tool_calls if not t["denied"]),
@@ -327,6 +365,12 @@ def _summarize(
         "detections": len(detections),
         "detections_by_severity": dict(Counter(d.get("severity") for d in detections)),
         "detections_by_rule": dict(Counter(d.get("rule_id") for d in detections)),
+        "detections_by_disposition": disposition_counts,
+        "detections_triaged": triaged,
+        "detections_untriaged": disposition_counts.get("new", 0),
+        "detections_closed": sum(
+            n for status, n in disposition_counts.items() if status in CLOSED_STATUSES
+        ),
         "dlp_hits": dict(
             Counter(t["dlp_rule_id"] for t in tool_calls if t.get("dlp_rule_id"))
         ),
@@ -346,6 +390,7 @@ _BODY_KEYS = (
     "tool_calls",
     "approvals",
     "detections",
+    "dispositions",
     "controls",
     "compliance_mapping",
     "summary",
@@ -371,20 +416,31 @@ def build_evidence_pack(
     tool_calls = _extract_tool_calls(events)
     approvals = _extract_approvals(events)
     detections = _extract_detections(events)
+    disposition_counts = _attach_dispositions(detections)
 
     body = {
         "events": events if include_raw_events else [],
         "tool_calls": tool_calls,
         "approvals": approvals,
         "detections": detections,
+        # The decisions made in this period, in the order they were made. The
+        # `detections` entries above carry the state currently in force; this
+        # is the audit trail of how it got there.
+        "dispositions": extract_dispositions(events),
         "controls": _controls_snapshot(),
         "compliance_mapping": dict(_COMPLIANCE_MAPPING),
-        "summary": _summarize(events, tool_calls, approvals, detections),
+        "summary": _summarize(
+            events, tool_calls, approvals, detections, disposition_counts
+        ),
     }
 
     pack = {
         "meta": {
             "schema_version": SCHEMA_VERSION,
+            # An auditor reading this pack in 2028 needs to know which build
+            # produced it: rules, redaction, and mappings all move between
+            # versions. Provenance, not decoration.
+            "producer": f"agentmetry-orchestrator/{__version__}",
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "date_from": from_date.isoformat(),
             "date_to": to_date.isoformat(),

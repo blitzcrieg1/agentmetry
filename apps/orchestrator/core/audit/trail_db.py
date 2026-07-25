@@ -29,6 +29,9 @@ _RUN_ACTION_TYPES = frozenset({
     "approval_request",
     "approval_response",
     "detection",
+    # The human's answer to a detection belongs in the same feed as the
+    # detection, or the decision is invisible where it matters most.
+    "detection_disposition",
 })
 
 _SCHEMA_SQL = """
@@ -307,6 +310,30 @@ class AuditTrailDB:
     def events_for_detection(self, correlation_id: str) -> list[dict[str, Any]]:
         """Return events for detection correlation — no limit, full session."""
         return self.session(correlation_id, limit=10000)
+
+    def events_by_action_type(
+        self, action_type: str, limit: int = 100_000
+    ) -> list[dict[str, Any]]:
+        """All events of one action type, oldest first.
+
+        Used to replay `detection_disposition` events, where the ordering is
+        the point: the last decision recorded for a detection is the one in
+        force.
+        """
+        rows = self._get_conn().execute(
+            """SELECT event_json FROM audit_events
+               WHERE action_type = ?
+               ORDER BY timestamp_utc ASC, id ASC
+               LIMIT ?""",
+            (action_type, limit),
+        ).fetchall()
+        events = []
+        for row in rows:
+            try:
+                events.append(json.loads(row["event_json"]))
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return events
 
     def status(self) -> dict[str, Any]:
         """Freshness + per-source counts for the dashboard badge."""

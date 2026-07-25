@@ -218,3 +218,113 @@ def test_rejects_inverted_date_range():
         build_evidence_pack(
             date.today(), date.today() - timedelta(days=1), trail_db=_FakeTrail([])
         )
+
+
+# --- triage (C1, 2026-07-24 release-readiness review) ------------------------
+
+def _detection_event(rule_id="credential-exfil", correlation_id="sess-1", **extra):
+    event = _event(correlation_id=correlation_id, **extra)
+    event["action"] = {"type": "detection", "outcome": "critical", "reason": "x"}
+    event["detection"] = {
+        "rule_id": rule_id,
+        "title": "Credential exfiltration",
+        "severity": "critical",
+        "summary": "credential read then network egress",
+        "correlation_id": correlation_id,
+        "event_ids": ["e-1"],
+        "first_seen_utc": "2026-07-22T10:00:00+00:00",
+        "last_seen_utc": "2026-07-22T10:01:00+00:00",
+    }
+    return event
+
+
+@pytest.fixture
+def isolated_dispositions(tmp_path, monkeypatch):
+    from core.audit.detection.disposition import (
+        get_disposition_store,
+        reset_disposition_store,
+    )
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "detection_disposition_db_path", tmp_path / "d.db")
+    reset_disposition_store()
+    yield get_disposition_store()
+    reset_disposition_store()
+
+
+def test_an_untriaged_detection_is_reported_as_untriaged(dates, isolated_dispositions):
+    from_date, to_date = dates
+    pack = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_detection_event()])
+    )
+    assert pack["summary"]["detections_untriaged"] == 1
+    assert pack["summary"]["detections_triaged"] == 0
+    assert pack["detections"][0]["disposition"] is None
+
+
+def test_a_triaged_detection_carries_the_decision(dates, isolated_dispositions):
+    from_date, to_date = dates
+    isolated_dispositions.record(
+        correlation_id="sess-1",
+        rule_id="credential-exfil",
+        status="risk_accepted",
+        note="internal test harness",
+        decided_by="alex",
+    )
+    pack = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_detection_event()])
+    )
+    current = pack["detections"][0]["disposition"]
+    assert current["status"] == "risk_accepted"
+    assert current["note"] == "internal test harness"
+    assert current["decided_by"] == "alex"
+    assert pack["summary"]["detections_untriaged"] == 0
+    assert pack["summary"]["detections_closed"] == 1
+
+
+def test_a_decision_made_outside_the_window_still_counts(dates, isolated_dispositions):
+    """A finding closed last month is closed, not untriaged.
+
+    The disposition is read from the index rather than from the events in this
+    period, or every pack would understate the triage that actually happened.
+    """
+    from_date, to_date = dates
+    isolated_dispositions.record(
+        correlation_id="sess-1", rule_id="credential-exfil", status="resolved"
+    )
+    pack = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_detection_event()])
+    )
+    assert pack["summary"]["detections_untriaged"] == 0
+    assert pack["dispositions"] == [], "no decision event fell inside the window"
+
+
+def test_decisions_in_the_window_are_listed(dates, isolated_dispositions):
+    from core.audit.detection.disposition import build_disposition_event
+
+    from_date, to_date = dates
+    decision = build_disposition_event(
+        correlation_id="sess-1",
+        rule_id="credential-exfil",
+        status="false_positive",
+        note="known CI bot",
+        decided_by="alex",
+    )
+    decision["timestamp_utc"] = "2026-07-22T11:00:00+00:00"
+    pack = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_detection_event(), decision])
+    )
+    assert len(pack["dispositions"]) == 1
+    assert pack["dispositions"][0]["status"] == "false_positive"
+    assert pack["dispositions"][0]["note"] == "known CI bot"
+
+
+def test_the_integrity_hash_covers_dispositions(dates, isolated_dispositions):
+    """A pack whose hash ignored triage could be edited to invent decisions."""
+    from_date, to_date = dates
+    pack = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_detection_event()])
+    )
+    assert verify_evidence_pack(pack)[0] is True
+    pack["dispositions"].append({"rule_id": "credential-exfil", "status": "resolved"})
+    assert verify_evidence_pack(pack)[0] is False

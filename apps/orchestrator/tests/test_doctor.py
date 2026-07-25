@@ -52,3 +52,30 @@ def test_manifests_load_in_repo_checkout(tmp_path: Path):
     assert "dlp" in ok_codes, "shipped DLP manifest should load"
     assert "tool_policy" in ok_codes, "shipped tool policy manifest should load"
     assert "detection" in ok_codes, "shipped detection manifest should load"
+
+
+def test_triage_backlog_is_reported_but_never_fatal(tmp_path: Path):
+    """An unanswered detection is a task for the operator, not a broken install."""
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert "triage" not in _codes(report, "fail")
+    assert "triage" in {f.code for f in report.findings}
+
+
+def test_no_dispositions_at_all_is_called_out(tmp_path: Path):
+    """The default state is the one worth naming: detection without response."""
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    triage = next(f for f in report.findings if f.code == "triage")
+    assert triage.severity == "warn"
+    assert "not that anyone acted" in triage.message
+
+
+def test_a_dispositioned_finding_turns_the_check_green(tmp_path: Path):
+    from core.audit.detection.disposition import get_disposition_store
+
+    get_disposition_store().record(
+        correlation_id="s1", rule_id="r1", status="resolved", note="fixed"
+    )
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    triage = next(f for f in report.findings if f.code == "triage")
+    assert triage.severity == "ok"
+    assert "0 still open" in triage.message

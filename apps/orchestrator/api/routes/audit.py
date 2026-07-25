@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from core.auth import require_api_key
+from core.audit.detection.disposition import STATUSES, get_disposition_store
 from core.audit.ingest import ingest_external_event
 from core.config import settings
 
@@ -23,6 +24,7 @@ _RUN_ACTION_TYPES = frozenset({
     "approval_request",
     "approval_response",
     "detection",  # correlated findings — must not be filtered out of the feed
+    "detection_disposition",  # and the human's answer to them
 })
 
 
@@ -244,11 +246,67 @@ async def audit_detections(correlation_id: str):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     detections = run_detections(events)
+    dispositions = get_disposition_store().for_correlation(correlation_id)
+    for detection in detections:
+        detection.disposition = dispositions.get(detection.rule_id)
     return {
         "detections": [d.as_dict() for d in detections],
         "correlation_id": correlation_id,
         "enabled": True,
         "count": len(detections),
+        "untriaged": sum(1 for d in detections if d.disposition is None),
+    }
+
+
+class DispositionBody(BaseModel):
+    """A triage decision. `note` is operator prose, never captured content."""
+
+    correlation_id: str = ""
+    rule_id: str
+    status: str
+    assignee: str = ""
+    note: str = ""
+    decided_by: str = ""
+    severity: str = ""
+
+
+@router.post("/detections/disposition", dependencies=[Depends(require_api_key)])
+async def audit_set_disposition(body: DispositionBody):
+    """Record what a human decided about a detection.
+
+    The decision is appended to the trail as a `detection_disposition` event
+    before the index is updated, so it lands on the same hash chain as the
+    finding it answers. Superseding a disposition keeps the previous one in
+    `history`: "false positive" later becoming "confirmed" is precisely the
+    transition an auditor needs to see.
+    """
+    from core.audit.detection.disposition import DispositionError, apply_disposition
+
+    try:
+        current = await apply_disposition(
+            correlation_id=body.correlation_id,
+            rule_id=body.rule_id,
+            status=body.status,
+            assignee=body.assignee,
+            note=body.note,
+            decided_by=body.decided_by,
+            severity=body.severity,
+        )
+    except DispositionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"disposition": current}
+
+
+@router.get("/detections/dispositions/all", dependencies=[Depends(require_api_key)])
+async def audit_list_dispositions():
+    """Every triage decision in force, plus the status breakdown."""
+    store = get_disposition_store()
+    return {
+        "dispositions": store.all(),
+        "counts": store.counts(),
+        "statuses": list(STATUSES),
     }
 
 

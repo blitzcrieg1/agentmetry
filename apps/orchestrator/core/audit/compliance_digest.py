@@ -15,6 +15,7 @@ it. Neither form contains command text or arguments.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from typing import Any
 
@@ -47,6 +48,8 @@ def build_digest(
                 "severity": detection.get("severity") or "unknown",
                 "count": 0,
                 "sessions": set(),
+                "untriaged": 0,
+                "dispositions": Counter(),
                 "first_seen_utc": detection.get("first_seen_utc"),
                 "last_seen_utc": detection.get("last_seen_utc"),
             },
@@ -54,13 +57,22 @@ def build_digest(
         entry["count"] += 1
         if detection.get("correlation_id"):
             entry["sessions"].add(str(detection["correlation_id"]))
+        current = detection.get("disposition")
+        status = str(current.get("status")) if isinstance(current, dict) else "new"
+        entry["dispositions"][status] += 1
+        if status == "new":
+            entry["untriaged"] += 1
         last = detection.get("last_seen_utc")
         if last and (not entry["last_seen_utc"] or last > entry["last_seen_utc"]):
             entry["last_seen_utc"] = last
 
     findings = sorted(
         (
-            {**entry, "sessions": len(entry["sessions"])}
+            {
+                **entry,
+                "sessions": len(entry["sessions"]),
+                "dispositions": dict(entry["dispositions"]),
+            }
             for entry in by_rule.values()
         ),
         key=lambda f: (
@@ -90,6 +102,14 @@ def build_digest(
         },
         "findings": findings,
         "findings_by_severity": summary["detections_by_severity"],
+        "triage": {
+            "total": summary["detections"],
+            "triaged": summary["detections_triaged"],
+            "untriaged": summary["detections_untriaged"],
+            "closed": summary["detections_closed"],
+            "by_disposition": summary["detections_by_disposition"],
+            "decisions_this_period": pack["dispositions"],
+        },
         "dlp_hits": summary["dlp_hits"],
         "tool_policy_hits": summary["tool_policy_hits"],
         "controls": pack["controls"],
@@ -100,6 +120,80 @@ def build_digest(
 
 def _pct(part: int, whole: int) -> str:
     return f"{(100 * part / whole):.0f}%" if whole else "n/a"
+
+
+_STATUS_LABELS = {
+    "new": "untriaged",
+    "acknowledged": "acknowledged",
+    "in_progress": "under investigation",
+    "resolved": "resolved",
+    "false_positive": "false positive",
+    "risk_accepted": "accepted risk",
+}
+
+
+def _triage_section(triage: dict[str, Any]) -> list[str]:
+    """The corrective-action half of the loop (ISO 42001 cl. 10, EN 18286 cl. 8).
+
+    A reviewer signing this off needs one number above all others: how many
+    findings nobody looked at. It is stated first and without softening.
+    """
+    total = triage["total"]
+    untriaged = triage["untriaged"]
+    lines = ["", "## Triage (ISO/IEC 42001 cl. 10, EN 18286 cl. 8)", ""]
+    if not total:
+        lines.append("No detections to triage in this period.")
+        return lines
+
+    lines.append(
+        f"- **{triage['triaged']} of {total}** findings carry a human decision "
+        f"({_pct(triage['triaged'], total)})."
+    )
+    if untriaged:
+        lines.append(
+            f"- **{untriaged} findings have no disposition.** An untriaged "
+            "detection is not evidence of a control: it shows the system "
+            "noticed, not that anyone acted."
+        )
+    else:
+        lines.append("- Every finding in this period has been dispositioned.")
+
+    by_disposition = triage["by_disposition"]
+    if by_disposition:
+        breakdown = ", ".join(
+            f"{n} {_STATUS_LABELS.get(status, status)}"
+            for status, n in sorted(by_disposition.items(), key=lambda kv: -kv[1])
+        )
+        lines.append(f"- Disposition: {breakdown}")
+
+    accepted = by_disposition.get("risk_accepted", 0)
+    if accepted:
+        lines.append(
+            f"- **{accepted} findings were closed as accepted risk.** Each one "
+            "is a decision to keep operating with a known exposure and should "
+            "be re-reviewed at the next period, not carried forward silently."
+        )
+
+    decisions = triage["decisions_this_period"]
+    if decisions:
+        lines += [
+            "",
+            f"{len(decisions)} triage decisions were recorded in this period. "
+            "Each is an event on the same hash chain as the finding it answers.",
+            "",
+            "| When | Rule | Decision | By | Note |",
+            "|------|------|----------|----|------|",
+        ]
+        for decision in decisions[-25:]:
+            note = str(decision.get("note") or "").replace("|", "\\|")
+            if len(note) > 80:
+                note = note[:77] + "..."
+            lines.append(
+                f"| {decision.get('ts') or '—'} | {decision.get('rule_id') or '—'} "
+                f"| {decision.get('status') or '—'} | {decision.get('decided_by') or '—'} "
+                f"| {note or '—'} |"
+            )
+    return lines
 
 
 def render_markdown(digest: dict[str, Any]) -> str:
@@ -144,19 +238,17 @@ def render_markdown(digest: dict[str, Any]) -> str:
         lines.append("No detections fired in this period.")
     else:
         lines += [
-            "| Severity | Rule | Count | Sessions | Last seen |",
-            "|----------|------|-------|----------|-----------|",
+            "| Severity | Rule | Count | Sessions | Untriaged | Last seen |",
+            "|----------|------|-------|----------|-----------|-----------|",
         ]
         for finding in digest["findings"]:
             lines.append(
                 f"| {finding['severity']} | {finding['rule_id']} | {finding['count']} "
-                f"| {finding['sessions']} | {finding.get('last_seen_utc') or '—'} |"
+                f"| {finding['sessions']} | {finding.get('untriaged', 0)} "
+                f"| {finding.get('last_seen_utc') or '—'} |"
             )
-        lines += [
-            "",
-            "*Each finding needs a triage note: confirmed, false positive, or "
-            "accepted risk. An untriaged detection is not evidence of control.*",
-        ]
+
+    lines += _triage_section(digest["triage"])
 
     if digest["dlp_hits"]:
         lines += ["", "## DLP matches", ""]

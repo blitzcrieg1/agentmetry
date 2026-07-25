@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
     audit_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit.db"
     detection_live_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "detection_live.db"
+    # Triage state. An index over the `detection_disposition` events in the
+    # trail, which remain the record — see core/audit/detection/disposition.py.
+    detection_disposition_db_path: Path = (
+        _ORCHESTRATOR_ROOT / "data" / "detection_disposition.db"
+    )
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"
 

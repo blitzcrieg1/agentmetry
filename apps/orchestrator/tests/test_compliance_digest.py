@@ -130,8 +130,17 @@ def test_markdown_omits_the_prevention_caveat_when_blocking(digest):
     assert "evidences detection, not prevention" not in render_markdown(digest)
 
 
-def test_markdown_demands_triage_notes(digest):
-    assert "untriaged detection is not evidence of control" in render_markdown(digest)
+def test_markdown_names_the_untriaged_count(digest):
+    """The digest used to ask for a triage note the product could not store.
+
+    Now it reports the real number, and says what an untriaged finding is
+    worth as evidence.
+    """
+    out = render_markdown(digest)
+    assert "Triage (ISO/IEC 42001 cl. 10, EN 18286 cl. 8)" in out
+    assert "findings have no disposition" in out
+    assert "untriaged" in out
+    assert "not evidence of a control" in out
 
 
 def test_markdown_states_the_truncation_limit(digest):

@@ -6,6 +6,20 @@ import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import { eventSourceApp, sourceBadgeClass, sourceLabel } from "@/lib/audit-source";
+import {
+  CLOSED_STATUSES,
+  DISPOSITION_STATUSES,
+  type Disposition,
+  STATUS_CHIP,
+  STATUS_LABELS,
+  countUntriaged,
+  dispositionBlocker,
+  dispositionKey,
+  fetchDispositions,
+  isTriaged,
+  saveDisposition,
+  statusOf,
+} from "@/lib/disposition";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -49,7 +63,9 @@ export function DetectionsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [ruleFilter, setRuleFilter] = useState<string>("all");
+  const [triageFilter, setTriageFilter] = useState<string>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +81,22 @@ export function DetectionsPanel() {
     } finally {
       setLoading(false);
     }
+    // Triage state is a separate call on purpose: a detection list that fails
+    // to load is an outage, a triage list that fails is a degraded view. The
+    // findings still render without it.
+    try {
+      setDispositions(await fetchDispositions());
+    } catch {
+      /* leave the last known triage state in place */
+    }
+  }, []);
+
+  const applyDisposition = useCallback((updated: Disposition) => {
+    setDispositions((prev) => ({
+      ...prev,
+      [updated.detection_key ?? dispositionKey(updated.correlation_id, updated.rule_id)]:
+        updated,
+    }));
   }, []);
 
   useEffect(() => {
@@ -93,14 +125,27 @@ export function DetectionsPanel() {
     return c;
   }, [detections]);
 
+  const untriaged = useMemo(
+    () => countUntriaged(detections, dispositions),
+    [detections, dispositions],
+  );
+
   const visible = useMemo(
     () =>
-      detections.filter(
-        (d) =>
+      detections.filter((d) => {
+        const current = dispositions[dispositionKey(d.correlation_id, d.rule_id)];
+        const triageOk =
+          triageFilter === "all" ||
+          (triageFilter === "untriaged" && !isTriaged(current)) ||
+          (triageFilter === "open" && !CLOSED_STATUSES.has(statusOf(current))) ||
+          triageFilter === statusOf(current);
+        return (
           (severityFilter === "all" || d.severity === severityFilter) &&
-          (ruleFilter === "all" || d.rule_id === ruleFilter),
-      ),
-    [detections, severityFilter, ruleFilter],
+          (ruleFilter === "all" || d.rule_id === ruleFilter) &&
+          triageOk
+        );
+      }),
+    [detections, severityFilter, ruleFilter, triageFilter, dispositions],
   );
 
   const selected = useMemo(
@@ -154,7 +199,31 @@ export function DetectionsPanel() {
               </option>
             ))}
           </select>
+          <select
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground"
+            value={triageFilter}
+            onChange={(e) => setTriageFilter(e.target.value)}
+          >
+            <option value="all">All triage states</option>
+            <option value="untriaged">Untriaged only</option>
+            <option value="open">Open (not closed)</option>
+            {DISPOSITION_STATUSES.filter((s) => s !== "new").map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
           <span className="font-mono text-xs text-muted-foreground">{visible.length} shown</span>
+          {untriaged > 0 ? (
+            <button
+              type="button"
+              onClick={() => setTriageFilter("untriaged")}
+              className="rounded-md bg-amber-500/15 px-2 py-1 font-mono text-xs text-amber-700 ring-1 ring-inset ring-amber-500/30 transition hover:bg-amber-500/25 dark:text-amber-300"
+              title="A detection nobody dispositioned is an alert, not a control"
+            >
+              {untriaged} untriaged
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void load()}
@@ -185,6 +254,7 @@ export function DetectionsPanel() {
                 <DetectionRow
                   key={detectionKey(d)}
                   det={d}
+                  disposition={dispositions[dispositionKey(d.correlation_id, d.rule_id)]}
                   selected={detectionKey(d) === selectedKey}
                   onSelect={() => setSelectedKey(detectionKey(d))}
                 />
@@ -197,6 +267,8 @@ export function DetectionsPanel() {
           <div className="flex min-h-0 w-full shrink-0 flex-col border-t border-border/60 lg:w-[26rem] lg:border-l lg:border-t-0">
             <DetectionDetail
               det={selected}
+              disposition={dispositions[dispositionKey(selected.correlation_id, selected.rule_id)]}
+              onDispositionSaved={applyDisposition}
               onClose={() => setSelectedKey(null)}
               onOpenInStream={() => requestPinnedDetection(selected.correlation_id, selected.rule_id)}
             />
@@ -207,16 +279,31 @@ export function DetectionsPanel() {
   );
 }
 
+function StatusChip({ status }: { status: string }) {
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ${
+        STATUS_CHIP[status] ?? STATUS_CHIP.new
+      }`}
+    >
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
+
 function DetectionRow({
   det,
+  disposition,
   selected,
   onSelect,
 }: {
   det: Detection;
+  disposition?: Disposition;
   selected: boolean;
   onSelect: () => void;
 }) {
   const chain = det.technique_ids?.length ? det.technique_ids : det.tactic_ids;
+  const status = statusOf(disposition);
   return (
     <button
       type="button"
@@ -247,6 +334,7 @@ function DetectionRow({
         <p className="truncate text-sm font-medium text-foreground">{det.title || det.rule_id}</p>
         <p className="truncate text-xs text-muted-foreground">{det.summary}</p>
       </div>
+      <StatusChip status={status} />
       {chain?.length ? (
         <div className="hidden shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground xl:flex">
           {chain.slice(0, 3).map((t, i) => (
@@ -267,12 +355,150 @@ function DetectionRow({
   );
 }
 
+function TriagePanel({
+  det,
+  disposition,
+  onSaved,
+}: {
+  det: Detection;
+  disposition?: Disposition;
+  onSaved: (updated: Disposition) => void;
+}) {
+  const current = statusOf(disposition);
+  const [status, setStatus] = useState<string>(current === "new" ? "acknowledged" : current);
+  const [assignee, setAssignee] = useState(disposition?.assignee ?? "");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Switching detections must not carry the previous one's draft across, or
+  // a note written about finding A gets filed against finding B.
+  useEffect(() => {
+    setStatus(current === "new" ? "acknowledged" : current);
+    setAssignee(disposition?.assignee ?? "");
+    setNote("");
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [det.rule_id, det.correlation_id]);
+
+  const blocker = dispositionBlocker(status, note);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      onSaved(
+        await saveDisposition({
+          correlationId: det.correlation_id,
+          ruleId: det.rule_id,
+          status,
+          assignee,
+          note,
+          severity: det.severity,
+        }),
+      );
+      setNote("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Triage</p>
+        <StatusChip status={current} />
+      </div>
+
+      {current === "new" ? (
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          No one has dispositioned this finding. Until someone does, it is an alert,
+          not a control.
+        </p>
+      ) : null}
+
+      <div className="flex gap-1.5">
+        <select
+          aria-label="Disposition"
+          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          {DISPOSITION_STATUSES.filter((s) => s !== "new").map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label="Assignee"
+          className="w-28 shrink-0 rounded border border-border bg-background px-2 py-1.5 text-xs"
+          placeholder="Assignee"
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+        />
+      </div>
+
+      <textarea
+        aria-label="Triage note"
+        className="h-16 w-full resize-none rounded border border-border bg-background px-2 py-1.5 text-xs"
+        placeholder={
+          NOTE_REQUIRED_HINT.has(status)
+            ? "Required: why is this not a real finding?"
+            : "Note (optional)"
+        }
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      {error ? (
+        <p className="text-[10px] text-red-500 dark:text-red-400">{error}</p>
+      ) : blocker ? (
+        <p className="text-[10px] text-muted-foreground">{blocker}</p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => void save()}
+        disabled={saving || blocker !== null}
+        className="w-full rounded border border-border px-2 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {saving ? "Recording…" : "Record decision"}
+      </button>
+
+      {disposition?.history?.length ? (
+        <div className="space-y-1 border-t border-border/50 pt-2">
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
+            Decision history
+          </p>
+          {[...disposition.history].reverse().map((entry, i) => (
+            <div key={`${entry.decided_at_utc}-${i}`} className="text-[10px] text-muted-foreground">
+              <span className="font-mono">{formatTime(entry.decided_at_utc)}</span>{" "}
+              <span className="text-foreground">{STATUS_LABELS[entry.status] ?? entry.status}</span>
+              {entry.decided_by ? ` by ${entry.decided_by}` : ""}
+              {entry.note ? <span className="block pl-1 italic">{entry.note}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const NOTE_REQUIRED_HINT: ReadonlySet<string> = new Set(["false_positive", "risk_accepted"]);
+
 function DetectionDetail({
   det,
+  disposition,
+  onDispositionSaved,
   onClose,
   onOpenInStream,
 }: {
   det: Detection;
+  disposition?: Disposition;
+  onDispositionSaved: (updated: Disposition) => void;
   onClose: () => void;
   onOpenInStream: () => void;
 }) {
@@ -358,6 +584,8 @@ function DetectionDetail({
           <span title={det.correlation_id}>{shortSession(det.correlation_id)}</span>
           <span>{formatTime(det.first_seen_utc)}</span>
         </div>
+
+        <TriagePanel det={det} disposition={disposition} onSaved={onDispositionSaved} />
 
         <div>
           <p className="mb-1.5 text-[9px] uppercase tracking-wider text-muted-foreground">
