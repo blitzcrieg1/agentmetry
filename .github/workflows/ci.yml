@@ -8,7 +8,14 @@ on:
 
 jobs:
   orchestrator:
-    runs-on: ubuntu-latest
+    # Agentmetry is installed on Windows first. Running the suite only on Linux
+    # is how a path bug reached a release once already, so Windows is a required
+    # leg, not an optional nightly.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: apps/orchestrator
@@ -26,11 +33,63 @@ jobs:
       - name: Lint
         run: ruff check core api tests
       - name: Secret scan
+        # The gitleaks action ships a Linux container only.
+        if: matrix.os == 'ubuntu-latest'
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run tests
         run: pytest -q
+
+  hooks-windows:
+    # The PowerShell installers and the hook client are the parts a user runs
+    # before anything else works. Exercise them on the OS they target.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        working-directory: apps/orchestrator
+        run: pip install -e ".[dev]"
+      - name: Start orchestrator
+        shell: pwsh
+        working-directory: apps/orchestrator
+        run: |
+          Start-Process python -ArgumentList @(
+            "-m","uvicorn","api.main:app","--host","127.0.0.1","--port","8000"
+          ) -WindowStyle Hidden
+          $deadline = (Get-Date).AddSeconds(60)
+          do {
+            Start-Sleep -Seconds 2
+            try {
+              Invoke-RestMethod http://127.0.0.1:8000/api/v1/health -TimeoutSec 3 | Out-Null
+              $up = $true
+            } catch { $up = $false }
+          } while (-not $up -and (Get-Date) -lt $deadline)
+          if (-not $up) { throw "orchestrator did not come up" }
+      - name: Hook client selftest
+        # The one check that proves capture works end to end on Windows: the
+        # hook posts a real event and the orchestrator accepts it.
+        run: python scripts/agentmetry_ingest.py selftest
+      - name: Doctor
+        working-directory: apps/orchestrator
+        run: python -m cli doctor
+      - name: Parse installer scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) {
+              Write-Host "::error file=$($_.FullName)::$($errors[0].Message)"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
 
   dashboard:
     runs-on: ubuntu-latest
@@ -48,5 +107,7 @@ jobs:
         run: npm ci
       - name: Lint dashboard
         run: npm run lint
+      - name: Test dashboard
+        run: npm run test
       - name: Build dashboard
         run: npm run build

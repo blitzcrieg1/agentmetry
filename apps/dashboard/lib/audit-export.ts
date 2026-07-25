@@ -11,7 +11,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 // Colons are illegal in Windows filenames; browsers silently substitute them.
-function exportStamp(): string {
+export function exportStamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
@@ -24,14 +24,20 @@ function csvField(value: string): string {
   return `"${guarded.replace(/"/g, '""')}"`;
 }
 
+// Serialization is kept separate from the download so the escaping above can
+// be tested directly. jsdom's Blob has no `.text()`, so a test that only sees
+// the Blob cannot assert on what was actually written.
+export function toAuditJsonl(events: AuditEvent[]): string {
+  return events.map((ev) => JSON.stringify(ev)).join("\n");
+}
+
 export function downloadAuditJsonl(events: AuditEvent[]) {
   if (events.length === 0) return;
-  const jsonl = events.map((ev) => JSON.stringify(ev)).join("\n");
+  const jsonl = toAuditJsonl(events);
   triggerDownload(new Blob([jsonl], { type: "application/jsonl" }), `audit-export-${exportStamp()}.jsonl`);
 }
 
-export function downloadAuditCsv(events: AuditEvent[]) {
-  if (events.length === 0) return;
+export function toAuditCsv(events: AuditEvent[]): string {
   const headers = [
     "Time",
     "Event ID",
@@ -58,6 +64,11 @@ export function downloadAuditCsv(events: AuditEvent[]) {
       .map((field) => csvField(String(field)))
       .join(","),
   );
-  const csv = [headers.join(","), ...rows].join("\n");
+  return [headers.join(","), ...rows].join("\n");
+}
+
+export function downloadAuditCsv(events: AuditEvent[]) {
+  if (events.length === 0) return;
+  const csv = toAuditCsv(events);
   triggerDownload(new Blob([csv], { type: "text/csv" }), `audit-export-${exportStamp()}.csv`);
 }
