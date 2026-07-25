@@ -7,6 +7,7 @@ Portable [Sigma](https://sigmahq.io/) rules for Agentmetry canonical events, por
 | Tool denial burst | `agentmetry_tool_denial_burst.yml` | medium | Injection / policy probing / misconfigured allowlist |
 | High-risk tool success | `agentmetry_highrisk_tool_success.yml` | high | Shell/exec-family tool passed the allowlist |
 | MCP driver mounted | `agentmetry_mcp_driver_mounted.yml` | medium | New/unexpected MCP server joined the host (supply chain) |
+| Risk accepted disposition | `agentmetry_disposition_risk_accepted.yml` | medium | Operator closed a detection as accepted risk |
 
 ## Field mapping — read before deploying
 

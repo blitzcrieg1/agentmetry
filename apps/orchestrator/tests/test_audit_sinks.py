@@ -136,6 +136,21 @@ def test_canonical_to_ecs_maps_core_fields():
     assert doc["user"]["id"] == "u"
 
 
+def test_canonical_to_ecs_maps_disposition_as_iam():
+    doc = canonical_to_ecs({
+        "event_id": "x",
+        "timestamp_utc": "2026-07-12T10:00:00+00:00",
+        "host_id": "h",
+        "fleet_id": "fleet-a",
+        "correlation_id": "c",
+        "action": {"type": "detection_disposition", "outcome": "risk_accepted"},
+        "agent": {"name": "agentmetry"},
+        "schema_version": "1.1.0",
+    })
+    assert doc["event"]["category"] == ["iam"]
+    assert doc["organization"]["id"] == "fleet-a"
+
+
 def test_canonical_to_hec_event():
     hec = canonical_to_hec_event(
         {

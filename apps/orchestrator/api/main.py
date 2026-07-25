@@ -79,6 +79,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Hook spool drain failed; continuing without it")
 
+    from core.audit.detection.disposition import rebuild_from_trail
+
+    try:
+        replayed = await asyncio.to_thread(rebuild_from_trail)
+        if replayed:
+            logger.info("Replayed %d disposition(s) from trail", replayed)
+    except Exception:
+        logger.exception("Disposition rebuild from trail failed; continuing without it")
+
     # Event bus first: everything downstream publishes onto it.
     bus.set_initial_seq(get_outbox().max_seq())
     bridge_tasks = [

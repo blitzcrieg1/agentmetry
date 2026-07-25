@@ -340,6 +340,8 @@ Every run emits typed, SIEM-ready JSON. A single `tool_called` line:
   "schema_version": "1.1.0",
   "correlation_id": "thread-8892",
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
+  "host_id": "dev-laptop",
+  "fleet_id": "consulting-pilot",
   "actor": {"type": "user", "id": "dev_01", "role": "operator"},
   "action": {"type": "tool_called", "outcome": "success"},
   "agent": {"name": "cursor", "skill_id": ""},
@@ -397,7 +399,7 @@ Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) | LangChain · AutoGen |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
-| **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) | STIX/TAXII export |
+| **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (4 rules) | STIX/TAXII export |
 | **Policy engines** | Regex DLP manifest (`policies/dlp/`) · tool allow/deny YAML (`policies/tool/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
@@ -507,6 +509,8 @@ Three properties make this evidence rather than a checkbox:
    lands on the same hash chain as the finding it answers and forwards to your
    SIEM with the new status in `action.outcome`. You can alert on
    `action.type:detection_disposition AND action.outcome:risk_accepted`.
+   A [Sigma rule](docs/integrations/sigma/agentmetry_disposition_risk_accepted.yml)
+   ships for this pattern.
 2. **History is append-only.** A disposition is superseded, never edited.
    "False positive" later becoming "confirmed" is exactly the transition that
    matters, so both survive.
@@ -516,7 +520,8 @@ Three properties make this evidence rather than a checkbox:
 
 `agentmetry export --compliance-digest` leads with the untriaged count, and
 `agentmetry doctor` reports the backlog. The SQLite table is an index: the trail
-is the record, and it can be replayed back into the index at any time.
+is the record, replayed into the index on orchestrator startup and at any time
+via `rebuild_from_trail()`.
 
 ### Agent Data Injection
 
@@ -631,8 +636,10 @@ not want fifteen dashboards.
 
 [**Fleet via your SIEM**](docs/integrations/fleet-via-siem.md) covers the
 pattern: every machine records locally and forwards a copy, and the fleet
-questions get answered where your other detections already live. It includes the
-four queries worth alerting on (including detections nobody triaged, and hosts
+questions get answered where your other detections already live. Set
+`AGENTMETRY_FLEET_ID` per deployment (org or customer) alongside
+`AGENTMETRY_OPERATOR_ID` per machine so multi-host queries are not anonymous.
+It includes the four queries worth alerting on (including detections nobody triaged, and hosts
 that went quiet), measured storage sizing, and a plain statement of the three
 things it does not give you: no central enforcement, no central triage, and no
 visibility into agents Agentmetry does not orchestrate.

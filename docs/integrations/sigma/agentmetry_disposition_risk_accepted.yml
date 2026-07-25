@@ -1,0 +1,35 @@
+# Agentmetry Sigma rule — Risk accepted disposition
+# Alerts when an operator closes a detection as accepted risk.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+---
+title: Agentmetry - Risk Accepted Disposition
+id: c4e8a1f2-7b3d-4c9e-a6f0-1d2e3f4a5b6c
+status: experimental
+description: >
+  An operator dispositioned a detection as accepted risk. This is a governance
+  decision to keep operating with a known exposure and should be reviewed weekly.
+references:
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/fleet-via-siem.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/agentmetry-event-schema.md
+author: Agentmetry
+date: 2026-07-25
+logsource:
+  product: agentmetry
+  service: governed-host
+detection:
+  selection:
+    action.type: detection_disposition
+    action.outcome: risk_accepted
+  condition: selection
+fields:
+  - fleet_id
+  - host_id
+  - correlation_id
+  - disposition.rule_id
+  - disposition.decided_by
+  - disposition.note
+falsepositives:
+  - Planned risk acceptance documented in change control
+level: medium
+tags:
+  - attack.impact

@@ -17,7 +17,7 @@ def _event_category(action_type: str) -> list[str]:
         return ["process"]
     if action_type == "config_change":
         return ["configuration"]
-    if action_type.startswith("approval"):
+    if action_type.startswith("approval") or action_type == "detection_disposition":
         return ["iam"]
     return ["process"]
 
@@ -81,5 +81,9 @@ def canonical_to_ecs(canonical: dict[str, Any]) -> dict[str, Any]:
 
     if outcome == "denied":
         doc["event"]["type"] = ["denied"]
+
+    fleet_id = str(canonical.get("fleet_id") or "").strip()
+    if fleet_id:
+        doc["organization"] = {"id": fleet_id}
 
     return doc

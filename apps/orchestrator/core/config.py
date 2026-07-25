@@ -25,6 +25,10 @@ class Settings(BaseSettings):
             "AGENTMETRY_OPERATOR_ID",
         ),
     )
+    fleet_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_FLEET_ID"),
+    )
     api_key: str = Field(
         default="",
         validation_alias=AliasChoices("AGENTMETRY_API_KEY"),

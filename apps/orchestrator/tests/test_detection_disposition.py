@@ -301,6 +301,17 @@ def test_disposition_event_carries_a_host_id():
         correlation_id="s1", rule_id="r1", status="acknowledged"
     )
     assert event["host_id"]
+    assert "fleet_id" in event
+
+
+def test_disposition_event_includes_configured_fleet_id(monkeypatch):
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "fleet_id", "pilot-east")
+    event = build_disposition_event(
+        correlation_id="s1", rule_id="r1", status="acknowledged"
+    )
+    assert event["fleet_id"] == "pilot-east"
 
 
 def test_disposition_event_matches_the_canonical_envelope():
@@ -317,6 +328,6 @@ def test_disposition_event_matches_the_canonical_envelope():
         correlation_id="s1", rule_id="r1", status="acknowledged"
     )
     shared = {"schema_version", "event_id", "correlation_id", "timestamp_utc",
-              "host_id", "source", "actor", "initiator", "action", "agent"}
+              "host_id", "fleet_id", "source", "actor", "initiator", "action", "agent"}
     assert shared <= set(detection)
     assert shared <= set(disposition)

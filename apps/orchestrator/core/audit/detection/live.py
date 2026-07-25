@@ -19,16 +19,14 @@ recomputes from it.
 
 from __future__ import annotations
 
-import socket
 import uuid
 from typing import Any
+
+from core.audit.identity import identity_fields
 
 from .engine import run_detections, run_host_detections
 from .live_store import get_live_store
 from .models import Detection
-
-_HOST_ID = socket.gethostname()
-
 
 def reset_live_state() -> None:
     """Test helper — clear live detection checkpoint."""
@@ -114,7 +112,7 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
         "session_id": source_event.get("session_id", ""),
         "correlation_id": detection.correlation_id or source_event.get("correlation_id", ""),
         "timestamp_utc": source_event.get("timestamp_utc", ""),
-        "host_id": _HOST_ID,
+        **identity_fields(),
         "source_topic": f"detection/{detection.rule_id}",
         "source": source if isinstance(source, dict) else {"tier": "detection", "app": "agentmetry"},
         "initiator": source_event.get("initiator", {}),

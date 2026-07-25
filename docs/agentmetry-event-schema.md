@@ -9,6 +9,8 @@ Disable JSONL export: `AGENTMETRY_AUDIT_EXPORT_ENABLED=0`
 
 Set operator identity for multi-user SIEM queries: `AGENTMETRY_OPERATOR_ID=dev_01`
 
+Set fleet scope for org-level SIEM queries: `AGENTMETRY_FLEET_ID=consulting-pilot`
+
 ### Forward sinks
 
 | Env | Default | Description |
@@ -56,6 +58,7 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 | Field | When present | Purpose |
 |-------|--------------|---------|
 | `initiator` | All audited run events | Server-derived run origin: `{actor_type, trigger, operator_id}` |
+| `fleet_id` | All canonical events | Org or deployment tag from `AGENTMETRY_FLEET_ID`; empty when unset |
 | `gated_action` | `approval_request` | Binds the gate to `{tool, server, input_hash}` |
 | `dlp` | `tool_called` (when `outcome` is `denied` or `mode` is `log`) | Records DLP scanner matches: `{rule_id, mode, pattern_type}` |
 | `actor.type` | Derived | `user` for human-initiated runs; `agent` for cron/vault/ingress |
@@ -87,6 +90,7 @@ Agentmetry's rule vocabulary.
   "correlation_id": "thread-8892",
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "host_id": "dev-laptop",
+  "fleet_id": "consulting-pilot",
   "source_topic": "external/cursor/tool_called",
   "source": {"tier": "external", "app": "cursor", "adapter": "cursor_hook"},
   "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "dev_01"},

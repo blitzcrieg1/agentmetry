@@ -42,7 +42,8 @@ Three fields do the heavy lifting. They are on every canonical event.
 
 | Field | Why it matters at fleet scale |
 | ----- | ----------------------------- |
-| `host_id` | Which machine. Set it to something your asset inventory recognizes. |
+| `fleet_id` | Which org or deployment. Set `AGENTMETRY_FLEET_ID` at install time so multi-team SIEM queries can scope to one customer or business unit. |
+| `host_id` | Which machine. Defaults to the OS hostname; set it to something your asset inventory recognizes. |
 | `actor.id` / `initiator.id` | Which human the session belongs to. Defaults to `AGENTMETRY_OPERATOR_ID`. |
 | `correlation_id` | One agent session. This is the join key for everything, and it is why sequence questions are answerable at all. |
 
@@ -51,6 +52,7 @@ one anonymous blob:
 
 ```bash
 # apps/orchestrator/.env on each machine
+AGENTMETRY_FLEET_ID=consulting-pilot
 AGENTMETRY_OPERATOR_ID=alex.chen
 AGENTMETRY_AUDIT_SINK=file,splunk
 AGENTMETRY_SPLUNK_HEC_URL=https://splunk.internal:8088/services/collector
@@ -80,7 +82,7 @@ exposure, and it should never be silent.
 
 ```
 index=agentmetry action.type=detection_disposition action.outcome=risk_accepted
-| table _time, host_id, disposition.rule_id, disposition.decided_by, disposition.note
+| table _time, fleet_id, host_id, disposition.rule_id, disposition.decided_by, disposition.note
 ```
 
 **3. Detections nobody answered.** Join detections against dispositions and look
@@ -108,7 +110,7 @@ index=agentmetry | stats latest(_time) as last by host_id
 1. **Pick one machine and run it for two weeks** before touching anyone else's.
    You will tune thresholds in `policies/detection/manifest.yaml`, and you would
    rather do that against your own noise than the team's.
-2. **Set `AGENTMETRY_OPERATOR_ID` and a real `host_id` per machine.** Everything
+2. **Set `AGENTMETRY_FLEET_ID`, `AGENTMETRY_OPERATOR_ID`, and a recognizable `host_id` per machine.** Everything
    downstream depends on these being meaningful.
 3. **Start in `log` mode.** DLP and tool policy default to recording matches
    without blocking. Move to `block` only for rules you have watched fire

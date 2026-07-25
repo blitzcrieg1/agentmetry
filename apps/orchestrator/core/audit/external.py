@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import socket
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 from core.audit.canonical import SCHEMA_VERSION
+from core.audit.identity import identity_fields
 from core.audit.hashing import arguments_sha256
 from core.audit.redaction import scrub_arg_values, scrub_secrets
 from core.audit.run_context import actor_from_initiator, build_initiator
@@ -22,8 +22,6 @@ KNOWN_EXTERNAL_APPS = frozenset({
     "cursor", "claude", "antigravity", "codex", "mcp_proxy",
     "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre",
 })
-
-_HOST_ID = socket.gethostname()
 
 _ACTION_MAP = {
     "session_start": ("session_start", "success"),
@@ -105,7 +103,7 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         "session_id": session_id,
         "correlation_id": correlation_id,
         "timestamp_utc": str(payload.get("timestamp_utc") or _utc_now()),
-        "host_id": _HOST_ID,
+        **identity_fields(),
         "source_topic": f"external/{source_app}/{event_type}",
         "source": {
             "tier": "external",

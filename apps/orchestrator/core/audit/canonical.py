@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import socket
 import uuid
 from typing import Any
 
 from core.audit.hashing import arguments_sha256
+from core.audit.identity import identity_fields
 from core.audit.mitre import get_mitre_mapping
 from core.audit.run_context import actor_from_initiator, resolve_initiator
 from core.bus.events import (
@@ -23,8 +23,6 @@ from core.bus.events import (
     TOOL_DENIED,
 )
 SCHEMA_VERSION = "1.1.0"
-
-_HOST_ID = socket.gethostname()
 
 _TOPIC_ACTION: dict[str, tuple[str, str]] = {
     RUN_STARTED: ("session_start", "success"),
@@ -93,7 +91,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "session_id": row.get("session_id") or "",
         "correlation_id": thread_id,
         "timestamp_utc": row.get("ts") or "",
-        "host_id": _HOST_ID,
+        **identity_fields(),
         "source_topic": topic,
         "initiator": initiator,
         "actor": actor,
