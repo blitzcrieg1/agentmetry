@@ -480,6 +480,44 @@ GET /api/v1/audit/detections/{correlation_id}
 X-API-Key: <optional>
 ```
 
+### Triage: what the human decided
+
+A detection nobody answered is an alert, not a control. Every finding carries a
+disposition, set from the Detections tab or over the API:
+
+| Status | Meaning |
+| ------ | ------- |
+| `new` | Nobody has looked at it yet. This is the number that matters. |
+| `acknowledged` | Seen, not yet worked. |
+| `in_progress` | Under investigation. |
+| `resolved` | Handled. |
+| `false_positive` | Not a real finding. **Requires a written reason.** |
+| `risk_accepted` | Real, and we are choosing to live with it. **Requires a written reason.** |
+
+```http
+POST /api/v1/audit/detections/disposition
+{"correlation_id": "...", "rule_id": "credential-exfil",
+ "status": "risk_accepted", "note": "known internal test harness"}
+```
+
+Three properties make this evidence rather than a checkbox:
+
+1. **The decision is an event.** Each change is appended to the trail as
+   `action.type: detection_disposition` before anything else happens, so it
+   lands on the same hash chain as the finding it answers and forwards to your
+   SIEM with the new status in `action.outcome`. You can alert on
+   `action.type:detection_disposition AND action.outcome:risk_accepted`.
+2. **History is append-only.** A disposition is superseded, never edited.
+   "False positive" later becoming "confirmed" is exactly the transition that
+   matters, so both survive.
+3. **Closing a finding costs a sentence.** `false_positive` and `risk_accepted`
+   are refused without a note, in the UI and in the API. An unexplained
+   dismissal is not a disposition.
+
+`agentmetry export --compliance-digest` leads with the untriaged count, and
+`agentmetry doctor` reports the backlog. The SQLite table is an index: the trail
+is the record, and it can be replayed back into the index at any time.
+
 ### Agent Data Injection
 
 [*Agent Data Injection Attacks are Realistic Threats to AI Agents*](https://arxiv.org/abs/2607.05120)
@@ -584,6 +622,20 @@ docker compose -f docker-compose.loki.yml up -d
 ```
 
 Integration guides → [docs/integrations/](docs/integrations/)
+
+### Running this across a team
+
+Agentmetry keeps its evidence on the machine that produced it, which is
+deliberate but is also the first thing a security engineer asks about. You do
+not want fifteen dashboards.
+
+[**Fleet via your SIEM**](docs/integrations/fleet-via-siem.md) covers the
+pattern: every machine records locally and forwards a copy, and the fleet
+questions get answered where your other detections already live. It includes the
+four queries worth alerting on (including detections nobody triaged, and hosts
+that went quiet), measured storage sizing, and a plain statement of the three
+things it does not give you: no central enforcement, no central triage, and no
+visibility into agents Agentmetry does not orchestrate.
 
 ---
 

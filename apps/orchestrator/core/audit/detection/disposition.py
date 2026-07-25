@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import sqlite3
 import threading
 import uuid
@@ -36,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_HOST_ID = socket.gethostname()
 
 DISPOSITION_EVENT_TYPE = "detection_disposition"
 
@@ -309,6 +312,10 @@ def build_disposition_event(
         "correlation_id": correlation_id,
         "session_id": "",
         "timestamp_utc": _now(),
+        # Every other canonical event carries host_id, and a fleet forwarding
+        # to one SIEM cannot attribute a decision without it: "somebody accepted
+        # this risk" is not an answer.
+        "host_id": _HOST_ID,
         "source_topic": f"disposition/{rule_id}",
         "source": {"tier": "detection", "app": "agentmetry"},
         "actor": {"id": decided_by or settings.operator_id, "type": "human"},

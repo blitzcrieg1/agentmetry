@@ -289,3 +289,34 @@ def test_a_separate_store_path_is_isolated(tmp_path):
     b = DispositionStore(tmp_path / "b.db")
     a.record(correlation_id="s1", rule_id="r1", status="resolved")
     assert b.get("s1", "r1") is None
+
+
+def test_disposition_event_carries_a_host_id():
+    """A fleet forwarding to one SIEM must be able to attribute the decision.
+
+    Every other canonical event carries host_id; this one was built by hand and
+    omitted it, so "somebody accepted this risk" had no answer.
+    """
+    event = build_disposition_event(
+        correlation_id="s1", rule_id="r1", status="acknowledged"
+    )
+    assert event["host_id"]
+
+
+def test_disposition_event_matches_the_canonical_envelope():
+    """Same top-level keys a SIEM parser already expects from detections."""
+    from core.audit.detection.live import build_detection_event
+    from core.audit.detection.models import Detection
+
+    detection = build_detection_event(
+        Detection(rule_id="r1", title="t", severity="high", summary="s",
+                  correlation_id="s1"),
+        {"timestamp_utc": "2026-07-24T00:00:00+00:00"},
+    )
+    disposition = build_disposition_event(
+        correlation_id="s1", rule_id="r1", status="acknowledged"
+    )
+    shared = {"schema_version", "event_id", "correlation_id", "timestamp_utc",
+              "host_id", "source", "actor", "initiator", "action", "agent"}
+    assert shared <= set(detection)
+    assert shared <= set(disposition)

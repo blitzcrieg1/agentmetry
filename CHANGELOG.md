@@ -43,6 +43,11 @@ separately (currently `1.1.0`) and changes additively.
   never exercised it.
 - **Dashboard tests.** Vitest smoke coverage for the detection, event and
   triage surfaces, run in CI.
+- **Fleet guide** — [`docs/integrations/fleet-via-siem.md`](docs/integrations/fleet-via-siem.md):
+  running Agentmetry across a team using the SIEM you already operate, with the
+  four queries worth alerting on, measured storage sizing, and an explicit
+  statement of what it does not give you (no central enforcement, no central
+  triage, no visibility into unorchestrated agents).
 
 ### Fixed
 - **Evidence packs were exporting the wrong store.** `build_evidence_pack` still
@@ -76,6 +81,8 @@ separately (currently `1.1.0`) and changes additively.
 - **`agentmetry doctor` failed on a missing demo vault** for a SIEM-only
   install. It now checks the recorder path first (trail chain, spool, detection,
   manifests, hooks) and treats vault and drivers as optional warnings.
+- **Disposition events carried no `host_id`,** so a fleet forwarding to one SIEM
+  could not attribute a decision. "Somebody accepted this risk" is not an answer.
 - **Version drift.** `pyproject.toml` and the API advertised 0.2.0 while 0.2.1
   was tagged and shipped. The version now has one home (`core/version.py`), the
   API and evidence-pack `meta.producer` read it, and a test fails if it
