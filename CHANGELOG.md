@@ -9,6 +9,88 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+- **Detection triage.** Detections now carry a disposition (`new`,
+  `acknowledged`, `in_progress`, `resolved`, `false_positive`, `risk_accepted`)
+  with an assignee and a note, set from the dashboard or
+  `POST /api/v1/audit/detections/disposition`. Every change appends an
+  immutable entry to the canonical trail as a `detection_disposition` event, so
+  the decision is evidence on the same hash chain as the finding. This closes
+  the corrective-action half of ISO/IEC 42001 cl. 10 and EN 18286 cl. 8: the
+  compliance digest previously asked for a triage note the product could not
+  store.
+- **`agentmetry export --compliance-digest`** — a period digest for ISO 42001 /
+  EU AI Act evidence review, reporting inferred-approval share, detection
+  disposition, control modes and trail-chain state. It states plainly when a
+  period evidences detection rather than prevention.
+- **Hook event spool.** When the orchestrator is unreachable the hook writes
+  events to a local spool (7-day, 32 MB bounded) and the orchestrator drains it
+  at boot, so an agent session during a restart is no longer a hole in the
+  trail.
+- **Unattended-agent policy** (`block_unattended_agent_flags`) — flags such as
+  `--yolo` and `--dangerously-skip-permissions` on any binary, plus Hermes,
+  OpenHands, aider, goose and opencode coverage in
+  `block_agent_cli_weaponization`.
+- **Hermes IoC** — `agent_result_dump_dir` DLP rule for the result-dump
+  directory used in the July 2026 Hermes agent intrusion.
+- **EN 18286:2026 mapping** — [`docs/compliance/en-18286-mapping.md`](docs/compliance/en-18286-mapping.md),
+  routed through Annex ZA to EU AI Act Arts. 11, 17 and 72.
+- **Open-core extension point.** Commercial packages register through the
+  `agentmetry.extensions` entry point; see
+  [`docs/architecture/extensions.md`](docs/architecture/extensions.md).
+- **Windows CI.** The orchestrator suite runs on `windows-latest` as well as
+  `ubuntu-latest`. A Windows-only path bug had already shipped once because CI
+  never exercised it.
+- **Dashboard tests.** Vitest smoke coverage for the detection, event and
+  triage surfaces, run in CI.
+
+### Fixed
+- **Evidence packs were exporting the wrong store.** `build_evidence_pack` still
+  read the removed governed runtime's outbox, so the flagship EU AI Act export
+  contained driver-mount noise while thousands of real captured events sat
+  unexported. It now reads the canonical audit trail. Pack schema is **2.0**,
+  adding `tool_calls`, `approvals` (with an explicit `inferred` flag),
+  `detections`, a `controls` snapshot with policy-manifest hashes, and the
+  trail-chain head.
+- **Burst rules had no clock.** `session-tool-burst`, `destructive-delete-burst`
+  and the swarm rules counted events across a whole session rather than a time
+  window, so a long normal session eventually tripped them. They now measure the
+  densest window.
+- **Host detection checkpoints never expired,** so one host-level firing
+  silenced that rule on that host permanently. Checkpoints now age out after 6
+  hours.
+- **`SubagentStop` was mapped to `session_end`** on the parent correlation,
+  which flushed the parent's still-pending approvals as inferred-denied in the
+  middle of a live session. It is now a `tool_called` lifecycle marker.
+- **Claude Code subagents were invisible to the swarm rule.** Claude spawns
+  through the `Task` tool and emits no `SubagentStart`, so the most used agent
+  CLI was the one blind spot. `Task` calls are now tagged `subagent_start:<type>`
+  and excluded from the generic tool-burst count.
+- **Kimi `stream-json` recorded every call as a success** and never closed the
+  turn. Results are now buffered by `tool_call` id and honour `is_error`,
+  unresolved calls are flushed at EOF, and `Interrupt` ends the session.
+- **`aws_secret_key` DLP matched no real key.** The pattern relied on `\b`
+  against `AWS_SECRET_ACCESS_KEY`, where `_` is a word character, and did not
+  survive the JSON escaping the scanner sees. It is now anchored on the
+  assignment and no longer fires on 40-character git SHAs.
+- **`agentmetry doctor` failed on a missing demo vault** for a SIEM-only
+  install. It now checks the recorder path first (trail chain, spool, detection,
+  manifests, hooks) and treats vault and drivers as optional warnings.
+- **Version drift.** `pyproject.toml` and the API advertised 0.2.0 while 0.2.1
+  was tagged and shipped. The version now has one home (`core/version.py`), the
+  API and evidence-pack `meta.producer` read it, and a test fails if it
+  disagrees with the newest CHANGELOG section.
+
+### Changed
+- Detection rules match on hook-side traits **or** the plaintext command, so
+  correlated detection works under the default privacy configuration where no
+  `tool.command` reaches the trail. Most sequence rules were previously dead on
+  real traffic.
+- The live-detection durability claim is scoped to what it actually covers: the
+  local trail insert gates the checkpoint, so a detection re-fires after a local
+  write failure. Network sink forwarding is best-effort by design and a down
+  SIEM does not block the checkpoint.
+
 ## [0.2.1] - 2026-07-20
 
 ### Added
