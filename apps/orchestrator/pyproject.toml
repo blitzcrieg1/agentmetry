@@ -17,7 +17,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.8"]
+# ruff is pinned exactly. `ruff>=0.8` meant CI installed whatever was newest,
+# so a linter release could turn a green branch red with no change to this repo.
+# It did: 0.16.0 widened the default rule set and CI reported 132 errors against
+# code that passed locally on 0.15.x. Bump this deliberately, not by accident.
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff==0.16.0"]
 
 [project.scripts]
 agentmetry = "cli:main"
@@ -39,6 +43,13 @@ packages = ["core", "api", "cli"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# The rule set is stated rather than inherited. Ruff's defaults are not a
+# stable contract across releases, so an unstated selection makes lint results
+# depend on install date. These are ruff's classic defaults: pyflakes plus the
+# pycodestyle errors worth failing a build over.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
