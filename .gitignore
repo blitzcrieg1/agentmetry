@@ -66,3 +66,6 @@ apps/dashboard/scratch/
 # Ignored so a stray `git add -A` cannot commit them.
 /agentmetry/
 /apps/landing/
+
+# Local dev launch config (absolute machine paths)
+.claude/launch.json

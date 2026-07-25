@@ -53,10 +53,11 @@ separately (currently `1.1.0`) and changes additively.
 - **Evidence packs were exporting the wrong store.** `build_evidence_pack` still
   read the removed governed runtime's outbox, so the flagship EU AI Act export
   contained driver-mount noise while thousands of real captured events sat
-  unexported. It now reads the canonical audit trail. Pack schema is **2.0**,
+  unexported. It now reads the canonical audit trail. Pack schema is **2.1**,
   adding `tool_calls`, `approvals` (with an explicit `inferred` flag),
-  `detections`, a `controls` snapshot with policy-manifest hashes, and the
-  trail-chain head.
+  `detections` with the triage state in force, `dispositions`, a `controls`
+  snapshot with policy-manifest hashes, `meta.producer`, and the trail-chain
+  head.
 - **Burst rules had no clock.** `session-tool-burst`, `destructive-delete-burst`
   and the swarm rules counted events across a whole session rather than a time
   window, so a long normal session eventually tripped them. They now measure the
