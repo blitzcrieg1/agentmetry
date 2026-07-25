@@ -527,6 +527,22 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if rows else 1
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    """Replay the recorded detection corpus and score the rules.
+
+    Exists so the product's central claim is checkable rather than asserted.
+    Anyone can clone this repo and run it: which rules fired on which recorded
+    sessions, and how many times they fired on benign ones. A false-positive
+    count you publish is worth more than a detection count you assert.
+    """
+    sys.path.insert(0, str(_ORCH_ROOT))
+    from core.audit.detection.benchmark import render_report, run_benchmark
+
+    report = run_benchmark(getattr(args, "corpus", None))
+    print(render_report(report))
+    return 0 if report.passed else 1
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """SIEM preflight: manifests, trail chain, orchestrator health, hooks."""
     sys.path.insert(0, str(_ORCH_ROOT))
@@ -607,6 +623,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rewrite drivers.json to portable {PYTHON}/{VAULT_PATH} tokens",
     )
+    benchmark = sub.add_parser(
+        "benchmark",
+        help="replay the recorded detection corpus and score the rules",
+    )
+    benchmark.add_argument(
+        "--corpus",
+        type=Path,
+        default=None,
+        help="corpus directory (default: tests/fixtures/detection_corpus)",
+    )
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
     replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
 
@@ -624,6 +650,7 @@ def main(argv: list[str] | None = None) -> int:
         "export": cmd_export,
         "verify": cmd_verify,
         "doctor": cmd_doctor,
+        "benchmark": cmd_benchmark,
         "replay": cmd_replay,
     }
     return handlers[args.command](args)

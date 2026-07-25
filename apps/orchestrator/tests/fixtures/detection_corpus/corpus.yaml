@@ -1,0 +1,137 @@
+# Detection benchmark corpus.
+#
+# Each case is one recorded session as canonical JSONL, exactly what the trail
+# stores, plus the rules that must fire on it. Expectations are written by hand
+# from what the session *is*, never pasted from what the engine currently does.
+# A corpus that records current behaviour cannot detect a regression in it.
+#
+# Run:  python -m cli benchmark
+# Gate: tests/test_detection_benchmark.py fails CI on any missed rule or any
+#       false positive.
+#
+# Adding a case: drop a .jsonl session in this directory and add an entry here.
+# Real sessions are better than written ones; `agentmetry export` output and the
+# raw audit-forward.jsonl are both valid sources, with secrets already hashed.
+
+cases:
+  # --- attack sessions -------------------------------------------------------
+
+  - name: credential read then network egress
+    session: attack_credential_exfil.jsonl
+    expect: [credential-exfil]
+    note: The canonical chain. A private key read, then a POST off the box.
+
+  - name: credential read then cloud API
+    session: attack_credential_then_cloud_api.jsonl
+    expect: [credential-read-then-cloud-api]
+    note: >
+      Hugging Face July 2026 pattern. Note it does NOT trip credential-exfil:
+      `aws sts` names no host, so it earns no TA0011 tag. That is the rules
+      being precise rather than a gap, and this case pins the distinction.
+
+  - name: dotfile read then git push
+    session: attack_dotfile_then_git_push.jsonl
+    expect: [dotfile-read-then-git-push]
+    note: >
+      `git push` carries no URL either, so credential-exfil correctly stays
+      silent and the specific rule carries the finding.
+
+  - name: staged download then execute
+    session: attack_remote_staging_then_execute.jsonl
+    expect: [remote-staging-then-execute]
+    note: Fetch from a public staging host, execute in a later step.
+
+  - name: download cradle
+    session: attack_encoded_command_download.jsonl
+    expect: [encoded-command-download]
+    note: Raw-IP fetch piped straight into a shell.
+
+  - name: approval denied then executed anyway
+    session: attack_approval_denied_then_executed.jsonl
+    expect: [approval-denied-then-executed]
+    note: The guardrail-bypass chain. A human said no and the tool ran later.
+
+  - name: recon burst then collection
+    session: attack_discovery_then_collect.jsonl
+    expect: [discovery-then-collect]
+
+  - name: destructive delete burst
+    session: attack_destructive_delete_burst.jsonl
+    expect: [destructive-delete-burst]
+
+  - name: pull request merged without reading the diff
+    session: attack_pr_merged_without_review.jsonl
+    expect: [pr-merged-without-review]
+    note: Agent Data Injection section 4.3, supply chain via tool-response injection.
+
+  # --- the two conditions that shipped past 546 unit tests on 2026-07-25 ------
+
+  - name: tied timestamps must not reorder the sequence
+    session: attack_timestamp_collision.jsonl
+    expect: [credential-read-then-cloud-api]
+    note: >
+      Both events carry the same timestamp. Windows clock granularity is about
+      15 ms, so two calls in one agent turn tie routinely. Ordering used to be
+      broken by a random event_id, making this fire or not at random. Every
+      unit test hand-builds distinct timestamps, so none of them caught it.
+
+  - name: hashed-only events must still detect
+    session: attack_hashed_only_no_command.jsonl
+    expect: [credential-read-then-cloud-api]
+    note: >
+      Default privacy config keeps tool.command out of the trail entirely, so
+      the rules have only hook-side trait labels to work with. Most sequence
+      rules were once dead on real traffic for exactly this reason.
+
+  # --- benign sessions: these are the false-positive measurement -------------
+
+  - name: ordinary development session
+    session: benign_ordinary_development.jsonl
+    expect: []
+    benign: true
+    note: install, build, commit, push. A push alone is not exfiltration.
+
+  - name: egress before credential read is not exfiltration
+    session: benign_reversed_order_is_not_exfil.jsonl
+    expect: []
+    benign: true
+    note: >
+      The reversed pair. These rules claim ordering is enforced by position
+      rather than co-occurrence; if this case fires, that claim is false.
+
+  - name: loopback is not egress
+    session: benign_loopback_is_not_egress.jsonl
+    expect: []
+    benign: true
+    note: >
+      Reading a key then hitting your own health endpoint. Tagging localhost as
+      command and control buries the one event that matters under a hundred
+      that do not.
+
+  - name: package manager after a fetch
+    session: benign_package_manager_after_fetch.jsonl
+    expect: []
+    benign: true
+    note: Fetching a requirements file then running pip is not a download cradle.
+
+  - name: long but calm session
+    session: benign_long_but_calm_session.jsonl
+    expect: []
+    benign: true
+    note: >
+      Thirty read-only calls spread over half an hour. Burst rules measure a
+      time window; a long session must not trip them by length alone.
+
+  - name: human-driven deletes currently fire
+    session: benign_human_driven_deletes.jsonl
+    expect: [destructive-delete-burst]
+    note: >
+      OPEN QUESTION, recorded as current behaviour rather than silently changed.
+      A person clearing build artifacts trips destructive-delete-burst, because
+      that rule is the only session rule that does not check actor_type;
+      autonomous-unapproved-write and off-hours-activity both do. The rule's own
+      docstring frames it as being about agents, and flagging an operator's own
+      cleanup as HIGH is the "trains operators to ignore the feed" failure the
+      off-hours docstring warns against. Changing detection semantics is the
+      operator's call, so this case pins today's behaviour and will fail loudly
+      if it changes either way.

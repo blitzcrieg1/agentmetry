@@ -43,6 +43,21 @@ separately (currently `1.1.0`) and changes additively.
   never exercised it.
 - **Dashboard tests.** Vitest smoke coverage for the detection, event and
   triage surfaces, run in CI.
+- **Detection benchmark** (`agentmetry benchmark`). A corpus of 17 recorded
+  sessions, 12 attack and 5 benign, replayed through the real rule engine, with
+  expectations written by hand rather than pasted from current behaviour. CI
+  fails on any missed rule or any false positive.
+
+  It exists because two real defects shipped past 546 passing tests on
+  2026-07-25: sequence ordering decided by a random UUID on a timestamp tie, and
+  off-hours detection silently using UTC on Windows. Neither was reachable by a
+  unit test that hand-builds events with distinct timestamps in a clean
+  environment. Two corpus cases pin exactly those conditions; reintroducing the
+  ordering bug makes the benchmark exit non-zero.
+
+  The benign half is the point. A published false-positive count is worth more
+  than an asserted detection count, and anyone can reproduce it from a clean
+  clone.
 - **Sigma rule for untriaged critical detections**
   (`docs/integrations/sigma/agentmetry_critical_detection_untriaged.yml`), with
   the backend anti-join written out for Splunk, Elasticsearch and Loki. An

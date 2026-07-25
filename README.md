@@ -523,6 +523,47 @@ Three properties make this evidence rather than a checkbox:
 is the record, replayed into the index on orchestrator startup and at any time
 via `rebuild_from_trail()`.
 
+### Check the rules yourself
+
+Detection claims are cheap. This one is checkable from a clean clone:
+
+```bash
+cd apps/orchestrator && python -m cli benchmark
+```
+
+It replays a corpus of recorded sessions through the real rule engine and prints
+what fired:
+
+```
+  cases            17 (12 attack, 5 benign)
+  rules covered    9
+  expected firings 12
+  detected         12
+  missed           0
+  false positives  0
+```
+
+The benign half is the number that matters. Any tool can fire on an attack; the
+question is what it does on a normal working day, because a feed that cries wolf
+gets muted and then it is not a control at all. The corpus deliberately includes
+the cases that are easy to get wrong: a credential read *after* network egress
+rather than before (ordering must matter), a read followed by a call to
+localhost (loopback is not exfiltration), a fetch followed by `pip install`
+(not every download is a cradle), and a thirty-call session that must not trip a
+burst rule by length alone.
+
+Two cases exist because they caught real bugs. One gives both events the same
+timestamp, which is routine on Windows where clock granularity is around 15 ms;
+sequence ordering was once broken by a random UUID, so that case fired or did
+not at random. The other strips `tool.command` entirely, which is the default
+privacy configuration, so the rules have only hook-side trait labels to work
+with. Neither was catchable by a unit test that hand-builds events.
+
+Corpus and expectations live in
+[`apps/orchestrator/tests/fixtures/detection_corpus/`](apps/orchestrator/tests/fixtures/detection_corpus/).
+Adding a case is a JSONL session plus a few lines of YAML, and CI fails on any
+missed rule or any false positive.
+
 ### Agent Data Injection
 
 [*Agent Data Injection Attacks are Realistic Threats to AI Agents*](https://arxiv.org/abs/2607.05120)
@@ -661,6 +702,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
 | `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
+| `agentmetry benchmark` | Replay the recorded detection corpus and score the rules |
 
 `scripts\agentmetry.bat` remains as a legacy alias.
 
