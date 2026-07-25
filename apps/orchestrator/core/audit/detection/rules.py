@@ -1087,3 +1087,73 @@ REGISTRY = [
 HOST_REGISTRY = [
     rule_host_subagent_swarm_burst,
 ]
+
+#: Every rule id the built-in rules can emit.
+#:
+#: Written out rather than derived, because the ids live inside the functions
+#: and the alternative is calling every rule to find out what it might say.
+#: `test_detection_rule_identity.py` greps this module and fails if the two
+#: disagree, so it cannot drift silently.
+BUILTIN_RULE_IDS: frozenset[str] = frozenset({
+    "credential-exfil",
+    "autonomous-unapproved-write",
+    "discovery-then-collect",
+    "approval-denied-then-executed",
+    "encoded-command-download",
+    "destructive-delete-burst",
+    "off-hours-activity",
+    "untrusted-input-then-risky-action",
+    "pr-merged-without-review",
+    "credential-read-then-cloud-api",
+    "dotfile-read-then-git-push",
+    "remote-staging-then-execute",
+    "subagent-swarm-burst",
+    "session-tool-burst",
+    "host-subagent-swarm-burst",
+})
+
+#: Renames, as `old id -> current id`.
+#:
+#: A rule id is not an implementation detail once someone has dispositioned a
+#: finding under it. Renaming `credential-exfil` without this map would orphan
+#: every "we checked, it was our CI bot" ever recorded against it, and the
+#: evidence pack would report those periods as untriaged. Add an entry here
+#: instead of renaming in place, and the triage history follows the rule.
+#:
+#: Entries are permanent. Removing one re-orphans exactly the decisions it was
+#: added to protect.
+RULE_ALIASES: dict[str, str] = {
+    # "old-rule-id": "current-rule-id",
+}
+
+
+def canonical_rule_id(rule_id: str) -> str:
+    """Resolve a possibly historical rule id to the one in force today."""
+    seen: set[str] = set()
+    current = (rule_id or "").strip()
+    while current in RULE_ALIASES and current not in seen:
+        seen.add(current)
+        current = RULE_ALIASES[current]
+    return current
+
+
+def historical_rule_ids(rule_id: str) -> list[str]:
+    """Every id this rule has ever been called, oldest names first.
+
+    Used to find triage recorded before a rename.
+    """
+    canonical = canonical_rule_id(rule_id)
+    return [old for old, new in RULE_ALIASES.items() if canonical_rule_id(new) == canonical]
+
+
+def known_rule_ids() -> frozenset[str]:
+    """Ids a detection can legitimately carry right now.
+
+    Built-ins, analyst-authored YAML count rules, and historical names. A rule
+    id outside this set on a disposition means someone typed it or the rule was
+    deleted, and both are worth catching rather than storing.
+    """
+    from .yaml_config import count_rules
+
+    yaml_ids = {str(spec["id"]) for spec in count_rules() if spec.get("id")}
+    return frozenset(BUILTIN_RULE_IDS | yaml_ids | set(RULE_ALIASES))

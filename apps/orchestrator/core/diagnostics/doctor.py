@@ -193,6 +193,22 @@ def _check_triage(report: DoctorReport) -> None:
         f"{decided} detection(s) dispositioned; {open_findings} still open",
     )
 
+    # A decision about a rule that no longer exists is still evidence somebody
+    # reviewed something, so it is never dropped. It does need saying out loud,
+    # or an auditor reads a retired rule as an unreviewed finding.
+    try:
+        orphans = get_disposition_store().orphaned()
+    except Exception:
+        return
+    if orphans:
+        rules = sorted({str(o["rule_id"]) for o in orphans})
+        report.warn(
+            "triage_orphans",
+            f"{len(orphans)} disposition(s) reference rules that no longer exist "
+            f"({', '.join(rules[:3])}). Kept as evidence; add a RULE_ALIASES "
+            "entry if the rule was renamed rather than retired.",
+        )
+
 
 def _check_spool(report: DoctorReport) -> None:
     """Surface events the hooks captured while the orchestrator was down.

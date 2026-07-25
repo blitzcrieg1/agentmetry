@@ -80,6 +80,16 @@ separately (currently `1.1.0`) and changes additively.
   future packaging that repeats the combination is caught.
 
 ### Fixed
+- **A rule rename orphaned every disposition recorded against it,** and deleting
+  a rule left decisions pointing at nothing. Both failures were silent, and both
+  made a reviewed period read as unreviewed, which is the opposite of what the
+  triage loop exists to prove. Renames are now declared in `RULE_ALIASES`, keys
+  canonicalise through it, and a row written under an old name migrates to the
+  new one on the next decision rather than forking into two. Dispositions whose
+  rule has been retired are kept as evidence and surfaced by `doctor` instead of
+  being dropped. An unknown `rule_id` is refused at the write boundary, so a
+  typo cannot become an orphan; replay stays permissive, because the trail is
+  the record and an event naming a retired rule still happened.
 - **Sequence-rule ordering was decided by a coin flip on a timestamp tie.** The
   tie-break ended with `event_id`, a random UUID, so "did A happen before B" —
   the question every sequence rule asks — was answered at random whenever two

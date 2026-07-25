@@ -64,21 +64,21 @@ def test_detection_key_requires_a_rule():
 
 def test_unknown_status_is_rejected(store):
     with pytest.raises(DispositionError):
-        store.record(correlation_id="s1", rule_id="r1", status="probably_fine")
+        store.record(correlation_id="s1", rule_id="credential-exfil", status="probably_fine")
 
 
 @pytest.mark.parametrize("status", ["false_positive", "risk_accepted"])
 def test_closing_without_a_reason_is_rejected(store, status):
     """A bare 'false positive' is a dismissal wearing a disposition's clothes."""
     with pytest.raises(DispositionError):
-        store.record(correlation_id="s1", rule_id="r1", status=status)
-    assert store.get("s1", "r1") is None
+        store.record(correlation_id="s1", rule_id="credential-exfil", status=status)
+    assert store.get("s1", "credential-exfil") is None
 
 
 @pytest.mark.parametrize("status", ["false_positive", "risk_accepted"])
 def test_closing_with_a_reason_is_accepted(store, status):
     current = store.record(
-        correlation_id="s1", rule_id="r1", status=status, note="known CI bot"
+        correlation_id="s1", rule_id="credential-exfil", status=status, note="known CI bot"
     )
     assert current["status"] == status
     assert current["note"] == "known CI bot"
@@ -86,13 +86,13 @@ def test_closing_with_a_reason_is_accepted(store, status):
 
 
 def test_acknowledge_does_not_require_a_note(store):
-    assert store.record(correlation_id="s1", rule_id="r1", status="acknowledged")
+    assert store.record(correlation_id="s1", rule_id="credential-exfil", status="acknowledged")
 
 
 def test_an_overlong_note_is_rejected(store):
     with pytest.raises(DispositionError):
         store.record(
-            correlation_id="s1", rule_id="r1", status="resolved", note="x" * 4001
+            correlation_id="s1", rule_id="credential-exfil", status="resolved", note="x" * 4001
         )
 
 
@@ -113,11 +113,11 @@ def test_closed_statuses_are_the_ones_that_end_a_finding():
 
 def test_superseding_a_decision_keeps_the_previous_one(store):
     store.record(
-        correlation_id="s1", rule_id="r1", status="false_positive", note="ci bot"
+        correlation_id="s1", rule_id="credential-exfil", status="false_positive", note="ci bot"
     )
     current = store.record(
         correlation_id="s1",
-        rule_id="r1",
+        rule_id="credential-exfil",
         status="in_progress",
         note="turned out to be real",
     )
@@ -127,8 +127,8 @@ def test_superseding_a_decision_keeps_the_previous_one(store):
 
 
 def test_first_seen_survives_a_supersede(store):
-    first = store.record(correlation_id="s1", rule_id="r1", status="acknowledged")
-    second = store.record(correlation_id="s1", rule_id="r1", status="resolved")
+    first = store.record(correlation_id="s1", rule_id="credential-exfil", status="acknowledged")
+    second = store.record(correlation_id="s1", rule_id="credential-exfil", status="resolved")
     assert second["first_seen_utc"] == first["first_seen_utc"]
     assert second["decided_at_utc"] >= first["decided_at_utc"]
 
@@ -138,19 +138,19 @@ def test_an_untouched_detection_has_no_disposition(store):
 
 
 def test_counts_group_by_status(store):
-    store.record(correlation_id="s1", rule_id="r1", status="acknowledged")
-    store.record(correlation_id="s2", rule_id="r1", status="acknowledged")
-    store.record(correlation_id="s3", rule_id="r2", status="resolved")
+    store.record(correlation_id="s1", rule_id="credential-exfil", status="acknowledged")
+    store.record(correlation_id="s2", rule_id="credential-exfil", status="acknowledged")
+    store.record(correlation_id="s3", rule_id="session-tool-burst", status="resolved")
     assert store.counts() == {"acknowledged": 2, "resolved": 1}
 
 
 def test_for_correlation_is_keyed_by_rule(store):
-    store.record(correlation_id="s1", rule_id="r1", status="acknowledged")
-    store.record(correlation_id="s1", rule_id="r2", status="in_progress")
-    store.record(correlation_id="s2", rule_id="r1", status="resolved")
+    store.record(correlation_id="s1", rule_id="credential-exfil", status="acknowledged")
+    store.record(correlation_id="s1", rule_id="session-tool-burst", status="in_progress")
+    store.record(correlation_id="s2", rule_id="credential-exfil", status="resolved")
     by_rule = store.for_correlation("s1")
-    assert set(by_rule) == {"r1", "r2"}
-    assert by_rule["r2"]["status"] == "in_progress"
+    assert set(by_rule) == {"credential-exfil", "session-tool-burst"}
+    assert by_rule["session-tool-burst"]["status"] == "in_progress"
 
 
 # --- the decision is an event ------------------------------------------------
@@ -179,11 +179,11 @@ def test_extract_dispositions_ignores_other_events():
     events = [
         {"action": {"type": "tool_called"}},
         {"action": {"type": DISPOSITION_EVENT_TYPE}},  # no disposition block
-        build_disposition_event(correlation_id="s1", rule_id="r1", status="resolved"),
+        build_disposition_event(correlation_id="s1", rule_id="credential-exfil", status="resolved"),
     ]
     found = extract_dispositions(events)
     assert len(found) == 1
-    assert found[0]["rule_id"] == "r1"
+    assert found[0]["rule_id"] == "credential-exfil"
 
 
 async def test_apply_disposition_writes_the_trail_before_the_index(
@@ -221,11 +221,11 @@ async def test_a_rejected_disposition_writes_nothing(store, tmp_path, monkeypatc
 
     with pytest.raises(DispositionError):
         await apply_disposition(
-            correlation_id="s1", rule_id="r1", status="false_positive"
+            correlation_id="s1", rule_id="credential-exfil", status="false_positive"
         )
 
     assert get_trail_db().events_by_action_type(DISPOSITION_EVENT_TYPE) == []
-    assert store.get("s1", "r1") is None
+    assert store.get("s1", "credential-exfil") is None
     reset_trail_db()
 
 
@@ -245,9 +245,9 @@ async def test_a_down_sink_does_not_lose_the_decision(store, tmp_path, monkeypat
     monkeypatch.setattr(ingest, "_get_sink", lambda: ExplodingSink())
 
     await apply_disposition(
-        correlation_id="s1", rule_id="r1", status="acknowledged", decided_by="alex"
+        correlation_id="s1", rule_id="credential-exfil", status="acknowledged", decided_by="alex"
     )
-    assert store.get("s1", "r1")["status"] == "acknowledged"
+    assert store.get("s1", "credential-exfil")["status"] == "acknowledged"
     assert len(get_trail_db().events_by_action_type(DISPOSITION_EVENT_TYPE)) == 1
     reset_trail_db()
 
@@ -263,12 +263,12 @@ async def test_the_index_rebuilds_from_the_trail(store, tmp_path, monkeypatch):
     reset_trail_db()
 
     await apply_disposition(
-        correlation_id="s1", rule_id="r1", status="false_positive", note="ci bot"
+        correlation_id="s1", rule_id="credential-exfil", status="false_positive", note="ci bot"
     )
     await apply_disposition(
-        correlation_id="s1", rule_id="r1", status="in_progress", note="actually real"
+        correlation_id="s1", rule_id="credential-exfil", status="in_progress", note="actually real"
     )
-    await apply_disposition(correlation_id="s2", rule_id="r2", status="acknowledged")
+    await apply_disposition(correlation_id="s2", rule_id="session-tool-burst", status="acknowledged")
 
     store.clear()
     assert store.all() == []
@@ -277,18 +277,18 @@ async def test_the_index_rebuilds_from_the_trail(store, tmp_path, monkeypatch):
     assert replayed == 3
     # The last decision recorded is the one in force, and the earlier one is
     # still visible in history.
-    current = store.get("s1", "r1")
+    current = store.get("s1", "credential-exfil")
     assert current["status"] == "in_progress"
     assert [h["status"] for h in current["history"]] == ["false_positive", "in_progress"]
-    assert store.get("s2", "r2")["status"] == "acknowledged"
+    assert store.get("s2", "session-tool-burst")["status"] == "acknowledged"
     reset_trail_db()
 
 
 def test_a_separate_store_path_is_isolated(tmp_path):
     a = DispositionStore(tmp_path / "a.db")
     b = DispositionStore(tmp_path / "b.db")
-    a.record(correlation_id="s1", rule_id="r1", status="resolved")
-    assert b.get("s1", "r1") is None
+    a.record(correlation_id="s1", rule_id="credential-exfil", status="resolved")
+    assert b.get("s1", "credential-exfil") is None
 
 
 def test_disposition_event_carries_a_host_id():
@@ -298,7 +298,7 @@ def test_disposition_event_carries_a_host_id():
     omitted it, so "somebody accepted this risk" had no answer.
     """
     event = build_disposition_event(
-        correlation_id="s1", rule_id="r1", status="acknowledged"
+        correlation_id="s1", rule_id="credential-exfil", status="acknowledged"
     )
     assert event["host_id"]
 
@@ -313,7 +313,7 @@ def test_fleet_id_is_absent_rather_than_empty_when_unset(monkeypatch):
 
     monkeypatch.setattr(settings, "fleet_id", "")
     event = build_disposition_event(
-        correlation_id="s1", rule_id="r1", status="acknowledged"
+        correlation_id="s1", rule_id="credential-exfil", status="acknowledged"
     )
     assert "fleet_id" not in event
 
@@ -323,7 +323,7 @@ def test_disposition_event_includes_configured_fleet_id(monkeypatch):
 
     monkeypatch.setattr(settings, "fleet_id", "pilot-east")
     event = build_disposition_event(
-        correlation_id="s1", rule_id="r1", status="acknowledged"
+        correlation_id="s1", rule_id="credential-exfil", status="acknowledged"
     )
     assert event["fleet_id"] == "pilot-east"
 
@@ -337,12 +337,12 @@ def test_disposition_event_matches_the_canonical_envelope(monkeypatch):
 
     monkeypatch.setattr(settings, "fleet_id", "pilot-east")
     detection = build_detection_event(
-        Detection(rule_id="r1", title="t", severity="high", summary="s",
+        Detection(rule_id="credential-exfil", title="t", severity="high", summary="s",
                   correlation_id="s1"),
         {"timestamp_utc": "2026-07-24T00:00:00+00:00"},
     )
     disposition = build_disposition_event(
-        correlation_id="s1", rule_id="r1", status="acknowledged"
+        correlation_id="s1", rule_id="credential-exfil", status="acknowledged"
     )
     shared = {"schema_version", "event_id", "correlation_id", "timestamp_utc",
               "host_id", "fleet_id", "source", "actor", "initiator", "action", "agent"}

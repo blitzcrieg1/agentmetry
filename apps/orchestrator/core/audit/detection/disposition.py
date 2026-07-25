@@ -95,16 +95,59 @@ def detection_key(correlation_id: str, rule_id: str) -> str:
     Rules are re-run over the trail rather than stored, so the key is the scope
     plus the rule, matching the pair `mark_detection_emitted` checkpoints on.
     Host-level rules carry their host in `correlation_id` already.
+
+    The rule id is canonicalised through `RULE_ALIASES` first. A rule id stops
+    being an implementation detail the moment someone dispositions a finding
+    under it: rename it in place and every "we checked, it was our CI bot" ever
+    recorded is orphaned, and the evidence pack reports those periods as
+    untriaged. Renames are declared, and the key follows the rule.
     """
+    from .rules import canonical_rule_id
+
     corr = (correlation_id or "").strip()
     rule = (rule_id or "").strip()
     if not rule:
         raise DispositionError("rule_id is required")
-    return f"{corr}::{rule}"
+    return f"{corr}::{canonical_rule_id(rule)}"
+
+
+def _candidate_keys(correlation_id: str, rule_id: str) -> list[str]:
+    """The canonical key first, then any this detection used to be stored under."""
+    from .rules import canonical_rule_id, historical_rule_ids
+
+    corr = (correlation_id or "").strip()
+    canonical = canonical_rule_id(rule_id)
+    keys = [f"{corr}::{canonical}"]
+    keys.extend(f"{corr}::{old}" for old in historical_rule_ids(canonical))
+    return keys
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def validate_rule_id(rule_id: str) -> str:
+    """Reject a decision about a rule that does not exist.
+
+    The cheapest place to stop an orphan is before it is written. A typo in a
+    rule id produces a disposition nothing will ever match, which reads later as
+    a finding somebody reviewed and a separate finding nobody did.
+
+    Deliberately not applied on replay: the trail is the record, and an event
+    naming a since-retired rule still happened. `orphaned()` surfaces those.
+    """
+    from .rules import canonical_rule_id, known_rule_ids
+
+    rule = (rule_id or "").strip()
+    if not rule:
+        raise DispositionError("rule_id is required")
+    known = known_rule_ids()
+    if rule not in known and canonical_rule_id(rule) not in known:
+        raise DispositionError(
+            f"unknown rule_id {rule!r}. Dispositioning a rule that does not "
+            "exist would create a decision nothing can ever match."
+        )
+    return canonical_rule_id(rule)
 
 
 def _validate(status: str, note: str) -> tuple[str, str]:
@@ -163,17 +206,19 @@ class DispositionStore:
         event_id: str = "",
     ) -> dict[str, Any]:
         """Upsert current state and append to this detection's history."""
+        from .rules import canonical_rule_id
+
         normalized, clean_note = _validate(status, note)
         key = detection_key(correlation_id, rule_id)
         decided_at = decided_at_utc or _now()
         clean_assignee = (assignee or "").strip()[:_MAX_ASSIGNEE_CHARS]
 
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT history_json, first_seen_utc FROM detection_dispositions "
-            "WHERE detection_key = ?",
-            (key,),
-        ).fetchone()
+        # Look under historical keys too. A rule renamed since the last decision
+        # must continue that decision's history rather than starting a second
+        # row beside it, which would read as an untriaged finding plus an
+        # orphan. Writing under the canonical key migrates the row in passing.
+        row = self._find_row(correlation_id, rule_id)
         history: list[dict[str, Any]] = []
         first_seen = decided_at
         if row is not None:
@@ -182,6 +227,13 @@ class DispositionStore:
             except (json.JSONDecodeError, TypeError):
                 history = []
             first_seen = row["first_seen_utc"] or decided_at
+            stale_key = str(row["detection_key"])
+            if stale_key != key:
+                conn.execute(
+                    "DELETE FROM detection_dispositions WHERE detection_key = ?",
+                    (stale_key,),
+                )
+                logger.info("Migrated disposition %s -> %s after rule rename", stale_key, key)
 
         history.append({
             "status": normalized,
@@ -208,7 +260,10 @@ class DispositionStore:
             (
                 key,
                 (correlation_id or "").strip(),
-                rule_id.strip(),
+                # Store the canonical id so `orphaned()` and the dashboard agree
+                # with the key. The name used at decision time survives in the
+                # trail event, which is the record.
+                canonical_rule_id(rule_id),
                 normalized,
                 clean_assignee,
                 clean_note,
@@ -232,20 +287,51 @@ class DispositionStore:
     # Read
     # ------------------------------------------------------------------
 
+    def _find_row(self, correlation_id: str, rule_id: str) -> sqlite3.Row | None:
+        """Look under the current key, then under any pre-rename key."""
+        conn = self._get_conn()
+        for key in _candidate_keys(correlation_id, rule_id):
+            row = conn.execute(
+                "SELECT * FROM detection_dispositions WHERE detection_key = ?",
+                (key,),
+            ).fetchone()
+            if row is not None:
+                return row
+        return None
+
     def get(self, correlation_id: str, rule_id: str) -> dict[str, Any] | None:
-        row = self._get_conn().execute(
-            "SELECT * FROM detection_dispositions WHERE detection_key = ?",
-            (detection_key(correlation_id, rule_id),),
-        ).fetchone()
+        row = self._find_row(correlation_id, rule_id)
         return _row_to_dict(row) if row is not None else None
 
     def for_correlation(self, correlation_id: str) -> dict[str, dict[str, Any]]:
-        """Current state for one session, keyed by rule_id."""
+        """Current state for one session, keyed by the rule id in force today.
+
+        Rows written before a rename are returned under the new name, so a
+        caller holding today's detections finds yesterday's decisions.
+        """
+        from .rules import canonical_rule_id
+
         rows = self._get_conn().execute(
             "SELECT * FROM detection_dispositions WHERE correlation_id = ?",
             ((correlation_id or "").strip(),),
         ).fetchall()
-        return {str(row["rule_id"]): _row_to_dict(row) for row in rows}
+        return {
+            canonical_rule_id(str(row["rule_id"])): _row_to_dict(row) for row in rows
+        }
+
+    def orphaned(self) -> list[dict[str, Any]]:
+        """Dispositions whose rule no longer exists.
+
+        Deleting a rule does not delete the decisions made about it, and it must
+        not: they are evidence of what a human concluded, and quietly dropping
+        them would make a reviewed period look unreviewed. They are surfaced
+        instead, so an auditor sees "decided, rule since retired" rather than a
+        silent gap.
+        """
+        from .rules import known_rule_ids
+
+        known = known_rule_ids()
+        return [row for row in self.all() if row["rule_id"] not in known]
 
     def all(self) -> list[dict[str, Any]]:
         rows = self._get_conn().execute(
@@ -415,6 +501,7 @@ async def apply_disposition(
     from core.audit.trail_db import get_trail_db
 
     normalized, clean_note = _validate(status, note)
+    rule_id = validate_rule_id(rule_id)
     store = get_disposition_store()
     existing = store.get(correlation_id, rule_id)
     previous = existing["status"] if existing else DEFAULT_STATUS

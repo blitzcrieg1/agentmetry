@@ -100,14 +100,14 @@ async def test_force_accepts_the_loss_when_the_operator_asks(tmp_path, monkeypat
 
 async def test_a_trail_with_extra_decisions_still_rebuilds():
     """A superset is safe: nothing in the index goes missing."""
-    await _decide("s1", "r1")
+    await _decide("s1", "credential-exfil")
     store = get_disposition_store()
     store.clear()
-    await _decide("s2", "r2")
+    await _decide("s2", "session-tool-burst")
 
     # Trail holds both; index holds only s2. Rebuild restores s1.
     assert rebuild_from_trail() == 2
-    assert store.get("s1", "r1") is not None
+    assert store.get("s1", "credential-exfil") is not None
 
 
 # --- reconcile_at_boot degrades, it does not fail ----------------------------

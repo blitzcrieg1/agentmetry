@@ -60,7 +60,7 @@ def test_setting_a_disposition_returns_the_new_state(client: TestClient):
 def test_an_unknown_status_is_a_400_not_a_500(client: TestClient):
     resp = client.post(
         _DISPOSITION_URL,
-        json={"correlation_id": "s1", "rule_id": "r1", "status": "probably_fine"},
+        json={"correlation_id": "s1", "rule_id": "credential-exfil", "status": "probably_fine"},
     )
     assert resp.status_code == 400
     assert "probably_fine" in resp.json()["detail"]
@@ -69,7 +69,7 @@ def test_an_unknown_status_is_a_400_not_a_500(client: TestClient):
 def test_closing_without_a_reason_is_a_400(client: TestClient):
     resp = client.post(
         _DISPOSITION_URL,
-        json={"correlation_id": "s1", "rule_id": "r1", "status": "false_positive"},
+        json={"correlation_id": "s1", "rule_id": "credential-exfil", "status": "false_positive"},
     )
     assert resp.status_code == 400
     assert "requires a note" in resp.json()["detail"]
@@ -85,7 +85,7 @@ def test_the_decision_lands_in_the_trail(client: TestClient):
         _DISPOSITION_URL,
         json={
             "correlation_id": "s1",
-            "rule_id": "r1",
+            "rule_id": "credential-exfil",
             "status": "risk_accepted",
             "note": "internal harness",
             "decided_by": "alex",
@@ -103,7 +103,7 @@ def test_the_decision_shows_in_the_session_feed(client: TestClient):
     """A disposition belongs next to the finding it answers."""
     client.post(
         _DISPOSITION_URL,
-        json={"correlation_id": "s1", "rule_id": "r1", "status": "acknowledged"},
+        json={"correlation_id": "s1", "rule_id": "credential-exfil", "status": "acknowledged"},
     )
     body = client.get("/api/v1/audit/tail?limit=50&scope=runs").json()
     types = [e.get("action", {}).get("type") for e in body["events"]]
@@ -114,7 +114,7 @@ def test_listing_dispositions_reports_counts(client: TestClient):
     for corr in ("s1", "s2"):
         client.post(
             _DISPOSITION_URL,
-            json={"correlation_id": corr, "rule_id": "r1", "status": "acknowledged"},
+            json={"correlation_id": corr, "rule_id": "credential-exfil", "status": "acknowledged"},
         )
     body = client.get("/api/v1/audit/detections/dispositions/all").json()
     assert body["counts"] == {"acknowledged": 2}
@@ -133,14 +133,14 @@ def test_superseding_over_http_keeps_history(client: TestClient):
         _DISPOSITION_URL,
         json={
             "correlation_id": "s1",
-            "rule_id": "r1",
+            "rule_id": "credential-exfil",
             "status": "false_positive",
             "note": "ci bot",
         },
     )
     resp = client.post(
         _DISPOSITION_URL,
-        json={"correlation_id": "s1", "rule_id": "r1", "status": "in_progress"},
+        json={"correlation_id": "s1", "rule_id": "credential-exfil", "status": "in_progress"},
     )
     history = resp.json()["disposition"]["history"]
     assert [h["status"] for h in history] == ["false_positive", "in_progress"]
