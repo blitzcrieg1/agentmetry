@@ -43,13 +43,39 @@ separately (currently `1.1.0`) and changes additively.
   never exercised it.
 - **Dashboard tests.** Vitest smoke coverage for the detection, event and
   triage surfaces, run in CI.
+- **Sigma rule for untriaged critical detections**
+  (`docs/integrations/sigma/agentmetry_critical_detection_untriaged.yml`), with
+  the backend anti-join written out for Splunk, Elasticsearch and Loki. An
+  untriaged detection is the health metric for the deployment.
 - **Fleet guide** — [`docs/integrations/fleet-via-siem.md`](docs/integrations/fleet-via-siem.md):
   running Agentmetry across a team using the SIEM you already operate, with the
   four queries worth alerting on, measured storage sizing, and an explicit
   statement of what it does not give you (no central enforcement, no central
   triage, no visibility into unorchestrated agents).
 
+### Security
+- **The enterprise MSI installed an unauthenticated remote API.** It set
+  `AGENTMETRY_HOST=0.0.0.0` and registered a LocalSystem service bound to all
+  interfaces, while `require_api_key` is deliberately a no-op when no key is
+  set, and the MSI set none. Anyone able to reach the host could read the trail,
+  download the evidence pack, inject forged events into the tamper-evident
+  chain, and close detections as `risk_accepted` — a decision then recorded as a
+  legitimate human action. The MSI now binds `127.0.0.1`, and
+  `agentmetry doctor` **fails** on a non-loopback bind with no API key, so any
+  future packaging that repeats the combination is caught.
+
 ### Fixed
+- **Boot-time disposition replay could erase triage history.** Wiring
+  `rebuild_from_trail()` into startup made an unconditional index wipe run on
+  every boot, so a pruned, rotated, restored or repointed trail silently deleted
+  every disposition. The findings survived, so the period read as *untriaged*
+  rather than *unknown*, which is backwards for ISO/IEC 42001 cl. 10 evidence. A
+  rebuild that cannot account for a key already in the index now refuses
+  (`DispositionRebuildRefused`); boot logs the refusal and carries on.
+- **Replayed dispositions lost their `event_id`,** so a rebuilt row could not be
+  traced back to the trail line that recorded the decision.
+- **`host_id` was resolved per event.** It is cached again; a hostname does not
+  change under a running process.
 - **Evidence packs were exporting the wrong store.** `build_evidence_pack` still
   read the removed governed runtime's outbox, so the flagship EU AI Act export
   contained driver-mount noise while thousands of real captured events sat
@@ -90,6 +116,14 @@ separately (currently `1.1.0`) and changes additively.
   disagrees with the newest CHANGELOG section.
 
 ### Changed
+- **`fleet_id` is omitted when unset** rather than emitted as an empty string.
+  An empty value on every event is noise in the trail and a trap in a SIEM,
+  where `fleet_id="*"` would match unconfigured hosts. `doctor` warns when it is
+  not set.
+- **ECS categories are semantically correct.** `detection` maps to
+  `intrusion_detection`, and `tool_denied` / `tool_failed` carry both `process`
+  and `intrusion_detection`. A correlated finding filed under `process`
+  disappeared among the tool calls it was raised about.
 - Detection rules match on hook-side traits **or** the plaintext command, so
   correlated detection works under the default privacy configuration where no
   `tool.command` reaches the trail. Most sequence rules were previously dead on

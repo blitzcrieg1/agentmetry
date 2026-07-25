@@ -13,6 +13,20 @@ def _parse_timestamp(ts: str) -> str:
 
 
 def _event_category(action_type: str) -> list[str]:
+    """Map a canonical action type onto ECS `event.category`.
+
+    ECS categories drive Elastic's prebuilt dashboards and detection rules, so a
+    correlated finding filed under `process` disappears among the tool calls it
+    was raised about. `intrusion_detection` is the category Elastic reserves for
+    exactly this: an alert produced by a rule rather than an observation.
+
+    A denied tool call is both a process event and the enforcement of a policy,
+    which is why it carries two categories. ECS is explicitly multi-valued here.
+    """
+    if action_type == "detection":
+        return ["intrusion_detection"]
+    if action_type in ("tool_denied", "tool_failed"):
+        return ["process", "intrusion_detection"]
     if action_type in ("tool_called", "session_start", "session_end"):
         return ["process"]
     if action_type == "config_change":

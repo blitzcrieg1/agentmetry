@@ -8,6 +8,7 @@ Portable [Sigma](https://sigmahq.io/) rules for Agentmetry canonical events, por
 | High-risk tool success | `agentmetry_highrisk_tool_success.yml` | high | Shell/exec-family tool passed the allowlist |
 | MCP driver mounted | `agentmetry_mcp_driver_mounted.yml` | medium | New/unexpected MCP server joined the host (supply chain) |
 | Risk accepted disposition | `agentmetry_disposition_risk_accepted.yml` | medium | Operator closed a detection as accepted risk |
+| Critical detection left untriaged | `agentmetry_critical_detection_untriaged.yml` | medium | Nobody answered a CRITICAL finding. Health metric for the deployment, not the agent. Needs a backend anti-join; tested SPL, ES\|QL and LogQL are in the rule file |
 
 ## Field mapping — read before deploying
 

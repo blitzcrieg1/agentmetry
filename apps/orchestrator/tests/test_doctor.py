@@ -79,3 +79,75 @@ def test_a_dispositioned_finding_turns_the_check_green(tmp_path: Path):
     triage = next(f for f in report.findings if f.code == "triage")
     assert triage.severity == "ok"
     assert "0 still open" in triage.message
+
+
+# --- exposure: the combination that shipped in the MSI ------------------------
+#
+# `require_api_key` is a no-op when no key is set (core/auth.py). That is the
+# right default on loopback and an open door on 0.0.0.0, and the enterprise MSI
+# reached the second by setting AGENTMETRY_HOST without setting a key. Anyone
+# who could reach the host could read the trail, export the evidence pack,
+# inject forged events, and close findings as accepted risk.
+
+def _finding(report, code):
+    return next(f for f in report.findings if f.code == code)
+
+
+def test_loopback_without_a_key_is_fine(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("AGENTMETRY_HOST", raising=False)
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert _finding(report, "exposure").severity == "ok"
+
+
+def test_open_bind_without_a_key_fails_the_doctor(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENTMETRY_HOST", "0.0.0.0")
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    finding = _finding(report, "exposure")
+    assert finding.severity == "fail", "an unauthenticated remote API must fail"
+    assert "NO API key" in finding.message
+
+
+def test_open_bind_with_a_key_is_allowed(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENTMETRY_HOST", "0.0.0.0")
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "s3cret")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert _finding(report, "exposure").severity == "ok"
+
+
+def test_a_lan_address_counts_as_exposed(tmp_path: Path, monkeypatch):
+    """0.0.0.0 is not the only way to be reachable."""
+    monkeypatch.setenv("AGENTMETRY_HOST", "192.168.1.50")
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert _finding(report, "exposure").severity == "fail"
+
+
+def test_ipv6_loopback_is_not_exposed(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENTMETRY_HOST", "::1")
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert _finding(report, "exposure").severity == "ok"
+
+
+def test_doctor_output_is_ascii_safe():
+    """`doctor` is now a command inside the MSI, run on a cp1252 console.
+
+    An em-dash in a finding renders as a replacement character there, which
+    makes a security warning look like a corrupted install. Same failure the
+    enterprise build scripts had.
+    """
+    source = Path("core/diagnostics/doctor.py").resolve()
+    offenders = sorted({c for c in source.read_text(encoding="utf-8") if ord(c) > 127})
+    assert not offenders, f"doctor.py contains non-ASCII: {offenders}"

@@ -1,4 +1,4 @@
-"""Agentmetry doctor — SIEM preflight (manifests, trail chain, hooks, health).
+"""Agentmetry doctor - SIEM preflight (manifests, trail chain, hooks, health).
 
 Vault/drivers checks are optional-runtime extras and can only warn.
 """
@@ -6,6 +6,7 @@ Vault/drivers checks are optional-runtime extras and can only warn.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -66,8 +67,56 @@ def _check_health_endpoint(report: DoctorReport) -> None:
     except Exception:
         report.warn(
             "orchestrator_up",
-            f"Orchestrator not reachable at {url} — start it with `agentmetry start`",
+            f"Orchestrator not reachable at {url} - start it with `agentmetry start`",
         )
+
+
+#: Bind addresses that keep the API on this machine.
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1", ""})
+
+
+def _check_exposure(report: DoctorReport) -> None:
+    """Is the API reachable by anyone who cannot already read the trail?
+
+    `require_api_key` is deliberately a no-op when no key is set, which is the
+    right default for a recorder bound to loopback. Combined with a non-loopback
+    bind it is not a weak default, it is an open door: the ingest route accepts
+    forged events into the tamper-evident trail, the export route hands over the
+    whole evidence pack, and the disposition route lets a stranger close a
+    finding as accepted risk - a decision that is then written into the trail as
+    a legitimate human action.
+
+    The enterprise MSI reached exactly that combination by setting
+    AGENTMETRY_HOST=0.0.0.0 without setting a key, so this check fails rather
+    than warns. Any future packaging that repeats the mistake trips it here.
+    """
+    if not settings.fleet_id.strip():
+        report.warn(
+            "fleet_id",
+            "AGENTMETRY_FLEET_ID not set - fleet SIEM queries cannot scope to "
+            "this org or business unit",
+        )
+    else:
+        report.ok("fleet_id", f"Fleet id: {settings.fleet_id.strip()}")
+
+    host = os.environ.get("AGENTMETRY_HOST", "127.0.0.1").strip()
+    has_key = bool(settings.api_key.strip())
+
+    if host in _LOOPBACK:
+        detail = "loopback only" if has_key else "loopback only (no API key needed)"
+        report.ok("exposure", f"API bound to {host or '127.0.0.1'} - {detail}")
+        return
+
+    if has_key:
+        report.ok("exposure", f"API bound to {host} with an API key set")
+        return
+
+    report.fail(
+        "exposure",
+        f"API bound to {host} with NO API key. Anyone who can reach this host "
+        "can read the trail, export evidence, inject events, and close "
+        "detections. Set AGENTMETRY_API_KEY, or bind 127.0.0.1.",
+    )
 
 
 def _check_hooks_installed(report: DoctorReport) -> None:
@@ -101,7 +150,7 @@ def _check_trail(report: DoctorReport) -> None:
     if not trail.is_file():
         report.warn(
             "trail",
-            f"No trail yet at {trail.name} — run `python scripts/demo.py` or capture a session",
+            f"No trail yet at {trail.name} - run `python scripts/demo.py` or capture a session",
         )
         return
     from core.audit.trail_chain import verify_trail_file
@@ -118,7 +167,7 @@ def _check_triage(report: DoctorReport) -> None:
 
     A growing pile of undispositioned findings is the failure mode this product
     is most exposed to: detection keeps working, nobody answers it, and the
-    evidence pack quietly says so. Warn, never fail — an untriaged detection is
+    evidence pack quietly says so. Warn, never fail - an untriaged detection is
     a task, not a broken install.
     """
     from core.audit.detection.disposition import CLOSED_STATUSES, get_disposition_store
@@ -221,13 +270,13 @@ def _check_manifests(report: DoctorReport) -> None:
 def _check_optional_vault(
     report: DoctorReport, vault: Path, *, fix_drivers: bool
 ) -> None:
-    """Demo MCP vault checks — optional runtime, never a doctor failure.
+    """Demo MCP vault checks - optional runtime, never a doctor failure.
 
     The SIEM records IDE hook traffic with no vault at all. These checks only
     run when a vault directory exists, and the worst they produce is a warn.
     """
     if not vault.is_dir():
-        report.ok("vault", "Demo MCP vault not present (optional) — skipped")
+        report.ok("vault", "Demo MCP vault not present (optional) - skipped")
         return
 
     report.ok("vault", f"Demo vault found at {vault} (optional runtime)")
@@ -241,7 +290,7 @@ def _check_optional_vault(
         else:
             report.warn(
                 "drivers",
-                f"No {drivers_path.name} — demo MCP drivers disabled "
+                f"No {drivers_path.name} - demo MCP drivers disabled "
                 "(copy drivers.json.example or run `agentmetry doctor --fix`)",
             )
             return
@@ -309,7 +358,7 @@ def _check_extensions(report: DoctorReport) -> None:
     names = ", ".join(sorted(ep.name for ep in eps))
     report.ok(
         "extensions",
-        f"Enterprise extension packages installed ({names}) — loaded on orchestrator start",
+        f"Enterprise extension packages installed ({names}) - loaded on orchestrator start",
     )
 
 
@@ -321,7 +370,7 @@ def run_doctor(
     """SIEM preflight. The recorder is the product; the demo vault is optional.
 
     Order and severity reflect that: a missing DLP manifest or a broken trail
-    chain is a failure, a missing vault is not — the previous doctor hard-failed
+    chain is a failure, a missing vault is not - the previous doctor hard-failed
     on vault/drivers.json and returned early, so a recorder-only install (the
     documented quick start) showed FAIL while capturing perfectly. Vault checks
     now run last and can only warn.
@@ -339,13 +388,13 @@ def run_doctor(
     if py.is_file():
         report.ok("python", f"Python interpreter {py}")
     else:
-        report.warn("python", f"Python not found at {py} — run pip install -e '.[dev]'")
+        report.warn("python", f"Python not found at {py} - run pip install -e '.[dev]'")
 
     env_file = orch / ".env"
     if env_file.is_file():
         report.ok("env", f"Found {env_file.name} (secrets stay gitignored)")
     else:
-        report.warn("env", f"No {env_file} — copy from .env.example if needed")
+        report.warn("env", f"No {env_file} - copy from .env.example if needed")
 
     data_dir = orch / "data"
     try:
@@ -358,6 +407,7 @@ def run_doctor(
         report.fail("data", f"Data directory not writable ({data_dir}): {exc}")
 
     _check_manifests(report)
+    _check_exposure(report)
     _check_trail(report)
     _check_triage(report)
     _check_spool(report)

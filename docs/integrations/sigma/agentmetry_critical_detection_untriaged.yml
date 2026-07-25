@@ -1,0 +1,77 @@
+# Agentmetry Sigma rule — Critical detection with no disposition
+# Alerts when a CRITICAL finding has gone unanswered past the review window.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+#
+# Sigma cannot express "event A without a later event B" on its own; that join
+# belongs in the backend. This rule selects the left half (the critical finding)
+# and the correlation notes below give the tested SPL, ES|QL and LogQL for the
+# anti-join. See fleet-via-siem.md query 3 for the full Splunk form.
+---
+title: Agentmetry - Critical Detection Left Untriaged
+id: 9f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f
+status: experimental
+description: >
+  A detection fired at CRITICAL and no operator has recorded a disposition for
+  it. An untriaged detection evidences that the system noticed, not that anyone
+  acted, so this is the health metric for the deployment rather than a finding
+  about the agent. Sustained non-zero counts mean the detection capability is
+  not operating as a control, which is the gap ISO/IEC 42001 cl. 10 and
+  EN 18286 cl. 8 ask you to close.
+references:
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/fleet-via-siem.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/compliance/iso-42001-mapping.md
+author: Agentmetry
+date: 2026-07-25
+logsource:
+  product: agentmetry
+  service: governed-host
+detection:
+  selection:
+    action.type: detection
+    action.outcome: critical
+  condition: selection
+fields:
+  - fleet_id
+  - host_id
+  - correlation_id
+  - detection.rule_id
+  - detection.severity
+falsepositives:
+  - A finding raised inside the review window that has not yet been worked
+  - Synthetic detections from scripts/demo.py
+level: medium
+tags:
+  - attack.impact
+---
+# Backend anti-join notes
+#
+# Splunk (join key must match core/audit/detection/disposition.py detection_key):
+#
+#   index=agentmetry action.type=detection action.outcome=critical earliest=-7d
+#   | eval key=correlation_id."::".'detection.rule_id'
+#   | search NOT [ search index=agentmetry action.type=detection_disposition earliest=-30d
+#                  | eval key=correlation_id."::".'disposition.rule_id'
+#                  | fields key ]
+#   | stats count by fleet_id, host_id, detection.rule_id
+#
+#   The disposition lookback is deliberately wider than the detection window: a
+#   finding raised in June and closed in July is closed, and a narrower lookback
+#   would report it as untriaged.
+#
+# Elasticsearch (ES|QL, requires the disposition keys as an enrich policy or a
+# second query; ECS carries fleet_id as organization.id):
+#
+#   FROM agentmetry-*
+#   | WHERE event.action == "detection" AND event.outcome == "critical"
+#   | EVAL key = CONCAT(agentmetry.correlation_id, "::", agentmetry.detection.rule_id)
+#   | STATS count = COUNT(*) BY organization.id, host.name, agentmetry.detection.rule_id
+#
+# Loki:
+#
+#   count by (fleet_id, rule_id) (
+#     count_over_time({job="agentmetry"} | json
+#       | action_type="detection" | action_outcome="critical" [7d])
+#   )
+#
+#   Loki has no anti-join; alert on the ratio of detection to
+#   detection_disposition events instead, or export both counts to Prometheus.

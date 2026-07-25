@@ -348,6 +348,9 @@ def extract_dispositions(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         found.append({
             "ts": event.get("timestamp_utc"),
             "correlation_id": event.get("correlation_id"),
+            # The trail event's own id, so a replayed row still points back at
+            # the line that recorded the decision.
+            "event_id": event.get("event_id"),
             **{
                 k: disposition.get(k)
                 for k in (
@@ -456,22 +459,23 @@ async def apply_disposition(
     return current
 
 
-def rebuild_from_trail(trail_db: Any | None = None) -> int:
-    """Replay disposition events from the trail into the store.
+class DispositionRebuildRefused(RuntimeError):
+    """The trail cannot account for decisions the index already holds.
 
-    The trail is the record; this table is an index over it. Used after a
-    restore, and by tests that need to prove the two agree.
+    Raised instead of destroying them. Carries the orphaned keys so the
+    operator is told exactly what would have been lost.
     """
-    if trail_db is None:
-        from core.audit.trail_db import get_trail_db
 
-        trail_db = get_trail_db()
+    def __init__(self, missing: set[str]) -> None:
+        self.missing = missing
+        super().__init__(
+            f"{len(missing)} disposition(s) in the index have no matching event "
+            "in the trail; refusing to rebuild. Restore the trail, or pass "
+            "force=True to accept the loss."
+        )
 
-    events = trail_db.events_by_action_type(DISPOSITION_EVENT_TYPE)
-    decisions = extract_dispositions(events)
 
-    store = get_disposition_store()
-    store.clear()
+def _replay_decisions(decisions: list[dict[str, Any]], store: DispositionStore) -> int:
     replayed = 0
     for decision in decisions:
         try:
@@ -483,8 +487,78 @@ def rebuild_from_trail(trail_db: Any | None = None) -> int:
                 note=str(decision.get("note") or ""),
                 decided_by=str(decision.get("decided_by") or ""),
                 decided_at_utc=str(decision.get("ts") or ""),
+                event_id=str(decision.get("event_id") or ""),
             )
             replayed += 1
         except DispositionError as exc:
             logger.warning("skipping unreplayable disposition: %s", exc)
+    return replayed
+
+
+def rebuild_from_trail(
+    trail_db: Any | None = None, *, force: bool = False
+) -> int:
+    """Replay disposition events from the trail into the index.
+
+    The trail is the record and this table is an index over it, so replaying is
+    normally safe. It is not unconditionally safe, and that distinction is the
+    whole point of this function's shape.
+
+    Rebuilding starts by emptying the index. If the trail has been pruned,
+    rotated, restored from a partial backup, or simply repointed at a different
+    path, replay produces fewer decisions than the index held and the missing
+    ones are gone. Losing triage history is worse than losing detections: the
+    findings survive, so the period reads as *untriaged* rather than *unknown*,
+    which is exactly backwards for ISO/IEC 42001 cl. 10 evidence.
+
+    So a rebuild that cannot account for every key already in the index raises
+    `DispositionRebuildRefused` rather than proceeding. `force=True` accepts the
+    loss and is for an operator who knows why.
+    """
+    if trail_db is None:
+        from core.audit.trail_db import get_trail_db
+
+        trail_db = get_trail_db()
+
+    decisions = extract_dispositions(
+        trail_db.events_by_action_type(DISPOSITION_EVENT_TYPE)
+    )
+
+    store = get_disposition_store()
+    in_trail = {
+        detection_key(
+            str(d.get("correlation_id") or ""), str(d.get("rule_id") or "")
+        )
+        for d in decisions
+        if d.get("rule_id")
+    }
+    in_index = {str(row["detection_key"]) for row in store.all()}
+
+    missing = in_index - in_trail
+    if missing and not force:
+        raise DispositionRebuildRefused(missing)
+
+    store.clear()
+    return _replay_decisions(decisions, store)
+
+
+def reconcile_at_boot(trail_db: Any | None = None) -> int:
+    """Bring the index up to date at startup without ever destroying it.
+
+    Returns the number of decisions replayed, or -1 when reconciliation was
+    declined. Declining is a warning, never a failure: an orchestrator that
+    refuses to start because its triage index disagrees with its trail is worse
+    than one that starts and says so.
+    """
+    try:
+        replayed = rebuild_from_trail(trail_db)
+    except DispositionRebuildRefused as exc:
+        logger.warning(
+            "Triage index NOT rebuilt: %s Sample: %s",
+            exc,
+            ", ".join(sorted(exc.missing)[:5]),
+        )
+        return -1
+    if replayed:
+        logger.info("Replayed %d disposition(s) from the trail", replayed)
     return replayed

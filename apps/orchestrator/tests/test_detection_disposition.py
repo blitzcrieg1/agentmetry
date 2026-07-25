@@ -301,7 +301,21 @@ def test_disposition_event_carries_a_host_id():
         correlation_id="s1", rule_id="r1", status="acknowledged"
     )
     assert event["host_id"]
-    assert "fleet_id" in event
+
+
+def test_fleet_id_is_absent_rather_than_empty_when_unset(monkeypatch):
+    """An empty string on every event is noise in the trail and a trap in a SIEM.
+
+    `fleet_id="*"` would then match unconfigured hosts, and excluding them would
+    need an explicit `fleet_id!=""` on every query. Absent means absent.
+    """
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "fleet_id", "")
+    event = build_disposition_event(
+        correlation_id="s1", rule_id="r1", status="acknowledged"
+    )
+    assert "fleet_id" not in event
 
 
 def test_disposition_event_includes_configured_fleet_id(monkeypatch):
@@ -314,11 +328,14 @@ def test_disposition_event_includes_configured_fleet_id(monkeypatch):
     assert event["fleet_id"] == "pilot-east"
 
 
-def test_disposition_event_matches_the_canonical_envelope():
+def test_disposition_event_matches_the_canonical_envelope(monkeypatch):
     """Same top-level keys a SIEM parser already expects from detections."""
+    from core.config import settings
+
     from core.audit.detection.live import build_detection_event
     from core.audit.detection.models import Detection
 
+    monkeypatch.setattr(settings, "fleet_id", "pilot-east")
     detection = build_detection_event(
         Detection(rule_id="r1", title="t", severity="high", summary="s",
                   correlation_id="s1"),

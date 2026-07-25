@@ -79,14 +79,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Hook spool drain failed; continuing without it")
 
-    from core.audit.detection.disposition import rebuild_from_trail
+    # Bring the triage index back in step with the trail. `reconcile_at_boot`
+    # declines rather than rebuilding when the trail cannot account for a
+    # decision the index already holds — a pruned or repointed trail must not
+    # silently erase the corrective-action record.
+    from core.audit.detection.disposition import reconcile_at_boot
 
     try:
-        replayed = await asyncio.to_thread(rebuild_from_trail)
-        if replayed:
-            logger.info("Replayed %d disposition(s) from trail", replayed)
+        await asyncio.to_thread(reconcile_at_boot)
     except Exception:
-        logger.exception("Disposition rebuild from trail failed; continuing without it")
+        logger.exception("Disposition reconcile failed; continuing without it")
 
     # Event bus first: everything downstream publishes onto it.
     bus.set_initial_seq(get_outbox().max_seq())
