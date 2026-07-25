@@ -35,6 +35,8 @@ from core.audit.detection.rules import (
     known_rule_ids,
 )
 
+_REPO_DOCS = Path(__file__).resolve().parents[3] / "docs"
+
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
@@ -231,4 +233,30 @@ def test_the_store_still_accepts_a_retired_rule_on_replay(store):
     """
     assert store.record(
         correlation_id="s1", rule_id="long-gone-rule", status="acknowledged"
+    )
+
+
+# --- the published rule table is part of the contract -------------------------
+
+def test_every_rule_is_documented():
+    """A rule nobody published is a rule nobody can tune or dispute.
+
+    Found on 2026-07-26: `session-tool-burst` and `host-subagent-swarm-burst`
+    had both shipped without ever reaching the public table, so the README
+    understated coverage and the two rules an operator is most likely to want
+    to tune were the two they could not read about.
+    """
+    doc = _REPO_DOCS / "detection-rules.md"
+    documented = set(re.findall(r"^\| `([a-z0-9-]+)` \|", doc.read_text(encoding="utf-8"), re.M))
+    assert set(BUILTIN_RULE_IDS) - documented == set(), (
+        "rules missing from docs/detection-rules.md: "
+        f"{sorted(set(BUILTIN_RULE_IDS) - documented)}"
+    )
+
+
+def test_the_docs_do_not_advertise_rules_that_do_not_exist():
+    doc = _REPO_DOCS / "detection-rules.md"
+    documented = set(re.findall(r"^\| `([a-z0-9-]+)` \|", doc.read_text(encoding="utf-8"), re.M))
+    assert documented - set(BUILTIN_RULE_IDS) == set(), (
+        f"documented but not implemented: {sorted(documented - set(BUILTIN_RULE_IDS))}"
     )

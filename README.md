@@ -78,7 +78,7 @@ When an autonomous agent runs a tool, most stacks keep nothing you could hand to
 
 Agentmetry is the open-source **endpoint flight recorder** for AI agents. It runs entirely on your machine, with optional forwarding to the SIEM you already operate.
 
-**Observability-first by design.** Agentmetry records and correlates what happened at the tool boundary. It is not a sandbox and not a CASB. Prevention (block mode for DLP and tool policy) is opt-in. The default is **detect and record**: every tool call, denial, and approval lands in a JSONL trail you own, with correlated sequence alerts when individually-innocent calls add up to an attack. That is the layer EDR never had: the agent's session, not just the host process.
+**Observability-first by design.** Every tool call, denial, and approval lands in a JSONL trail you own, with correlated sequence alerts when individually-innocent calls add up to an attack. That is the layer EDR never had: the agent's session, not just the host process. Prevention is opt-in; the default is detect and record. What that does *not* cover is set out in [Coverage & Limitations](#coverage--limitations).
 
 > an immutable, operator-owned audit trail for governed AI agents, capturing tool execution at the IDE lifecycle boundary and the MCP wire, not in a vendor cloud
 
@@ -90,7 +90,7 @@ We do that by:
 - **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
 - **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook, without making the cloud the system of record
 
-**Agentmetry is not a shadow-AI spy.** It records the agents you wire in. If your problem is unmanaged ChatGPT in the browser, you need network/endpoint policy, not a flight recorder.
+**Agentmetry is not a shadow-AI spy.** If your problem is unmanaged ChatGPT in the browser, you need network or endpoint policy, not a flight recorder.
 
 ---
 
@@ -367,13 +367,51 @@ Full schema → [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.m
 
 ## Coverage & Limitations
 
-Agentmetry records agents you wire in — **IDE hooks** or the **MCP proxy**. It is honest about what it cannot see.
+Everything Agentmetry cannot do is here, in one place, so you can decide in two
+minutes instead of finding out in month two.
+
+### What it sees
 
 | Tier | Setup | Agentmetry coverage |
 |------|-------|---------------------|
 | **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture** — every `tools/call` + error responses, arg hashes, session correlation |
 | **B** | IDE hooks (Claude, Cursor, Codex, Antigravity) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
 | **C** | Unmanaged ChatGPT, Cursor with hooks off | **Not visible.** CASB / secure-web-gateway territory |
+
+### What it does not do
+
+**It is not a sandbox and not a CASB.** The default is detect and record.
+Prevention (`block` mode for DLP and tool policy) is opt-in and works only at
+the hook boundary, before a tool runs. An after-the-fact hook records a match
+and never denies, because the tool already ran.
+
+**Hooks are cooperative.** An agent invoked outside a hooked IDE, an IDE with
+hooks disabled, a renamed binary, or an MCP server reached over HTTP rather than
+the stdio proxy are all invisible. **Absence of an event is not evidence that
+nothing happened.**
+
+**Approval responses are inferred, not observed.** No IDE reports the human's
+click, so a tool that runs after a prompt is treated as approved. Every inferred
+event is marked `inferred:*` and must never be cited as a human decision. On a
+typical month that is the large majority of gates.
+
+**It does not prevent prompt injection or Agent Data Injection.** Prevention
+requires isolating trusted from untrusted data inside the agent, which a
+recorder cannot do. Agentmetry detects the consequence, as a sequence.
+
+**Tamper evidence has a boundary.** The hash chain covers JSONL lines written
+after chaining was enabled, and it protects the JSONL, not the SQLite index the
+dashboard reads. It proves in-place edits and reordering; it cannot prove the
+file was not truncated. Record the chain head somewhere the audited machine
+cannot write.
+
+**Detection state is per-process.** Checkpoints survive a restart but are not
+shared across orchestrator instances. The trail stays authoritative and every
+detection can be recomputed from it.
+
+**Across a team there is no central enforcement and no central triage.** Policy
+and decisions are per machine, forwarded to your SIEM as events. See
+[fleet via your SIEM](docs/integrations/fleet-via-siem.md).
 
 ---
 
@@ -413,73 +451,18 @@ Per-event MITRE tags say *what* a single tool call is. The detection engine says
 
 Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else, so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
 
-> **Alpha limitation.** Live detection checkpoint state persists in SQLite across orchestrator restarts (emitted rules and session windows are not re-fired). Detection state is still per-process and not shared across multiple orchestrator instances. The JSONL trail stays authoritative; every detection can be recomputed on query via `GET /audit/detections/{correlation_id}`.
+Matching is **ordered within a session**, not a threshold on one row.
+`credential-exfil` requires credential access (T1552) *then* network egress
+(TA0011), in that order. Reversed, it does not fire.
 
-### How sequence rules work
+Fourteen rules ship today, covering credential exfiltration, guardrail bypass,
+download cradles, supply-chain merges, recon-then-collect, and both published
+[Agent Data Injection](https://arxiv.org/abs/2607.05120) chains.
 
-No single event in the demo session looks like an incident. The engine waits for an ordered pattern inside one `correlation_id` (one agent session), then emits one detection event:
-
-```mermaid
-flowchart LR
-  E1["1. Read private key<br/>T1552 · normal tool call"]
-  E2["2. Shell with AWS key<br/>DLP log · still no alert"]
-  E3["3. WebFetch URL<br/>TA0011 · still no alert"]
-  ENG["Sequence engine<br/>rules.py"]
-  D["4. detection event<br/>credential-exfil · CRITICAL"]
-
-  E1 --> ENG
-  E2 --> ENG
-  E3 --> ENG
-  ENG --> D
-```
-
-Each rule in the table below is the same idea: **ordered steps within a session**, not a threshold on one row. `credential-exfil` requires credential access (T1552) *then* network egress (TA0011) in that order. Reversed order does not fire.
-
-```mermaid
-sequenceDiagram
-  participant IDE as IDE / MCP Proxy
-  participant IN as Ingest API
-  participant DB as JSONL Outbox
-  participant ENG as Detection Engine
-  participant API as GET /audit/detections/{id}
-
-  IDE->>IN: tool_called / approval_response / session_end
-  IN->>DB: append canonical event
-  Note over ENG: Rules run over time-ordered session events
-  ENG->>ENG: credential-exfil
-  ENG->>ENG: approval-denied-then-executed
-  ENG->>ENG: encoded-command-download
-  ENG->>ENG: pr-merged-without-review
-  ENG->>ENG: untrusted-input-then-risky-action
-  ENG->>ENG: destructive-delete-burst
-  ENG->>ENG: autonomous-unapproved-write
-  ENG->>ENG: discovery-then-collect
-  API->>DB: load events for correlation_id
-  API->>ENG: run_detections(events)
-  ENG-->>API: ranked Detection list
-```
-
-| Rule ID | Severity | Pattern |
-| ------- | -------- | ------- |
-| `credential-exfil` | critical | Credential access (T1552) → network egress (TA0011) |
-| `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
-| `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |
-| `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
-| `subagent-swarm-burst` | high | ≥5 subagent starts in one session (Kimi AgentSwarm, Qwen Agent Teams) |
-| `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
-| `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
-| `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
-| `autonomous-unapproved-write` | high | Autonomous agent writes/deletes with no prior human approval |
-| `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
-| `destructive-delete-burst` | high | 5+ deletions in one session, by technique or command (`rm -rf`) |
-| `discovery-then-collect` | medium | Filesystem recon burst (TA0007) → data collection |
-| `off-hours-activity` | medium | Unscheduled autonomous impact action outside business hours. **Opt-in** (`AGENTMETRY_DETECT_OFF_HOURS=1`) with an operator-set window; scheduled jobs excluded |
-
-Query detections for a session:
+**[Every rule, how ordered matching works, and the research behind it →](docs/detection-rules.md)**
 
 ```http
 GET /api/v1/audit/detections/{correlation_id}
-X-API-Key: <optional>
 ```
 
 ### Triage: what the human decided
@@ -563,39 +546,6 @@ Corpus and expectations live in
 [`apps/orchestrator/tests/fixtures/detection_corpus/`](apps/orchestrator/tests/fixtures/detection_corpus/).
 Adding a case is a JSONL session plus a few lines of YAML, and CI fails on any
 missed rule or any false positive.
-
-### Agent Data Injection
-
-[*Agent Data Injection Attacks are Realistic Threats to AI Agents*](https://arxiv.org/abs/2607.05120)
-(Choi et al., July 2026) demonstrates remote code execution and supply-chain
-compromise against **Claude Code, Codex, Gemini CLI and Antigravity**. ADI hides
-malicious data inside content an agent already trusts, such as a GitHub issue
-comment carrying forged author metadata, so the agent runs an attacker's command
-believing it came from a maintainer.
-
-The paper tested model hardening, input guardrails, alignment output guardrails,
-plan-then-execute, sandboxing and dual-LLM. All of them fail on ADI, for a
-reason worth quoting:
-
-> ADI "corrupts only the data the agent acts on, leaving the agent's task
-> aligned with the user prompt."
-
-Nothing about the request looks wrong. The agent is doing what you asked. When
-the prompt looks clean and the guardrails pass, the agent's **behaviour** is the
-only evidence left, which is the layer Agentmetry works at. Both published
-chains are sequences of tool calls, and both are detected:
-
-| Paper | Chain | Fires |
-|-------|-------|-------|
-| §4.2 RCE via origin injection | `gh issue view` → attacker's command | `encoded-command-download` + `untrusted-input-then-risky-action` |
-| §4.3 Supply chain via tool-response injection | `gh pr view` → merge, diff never read | `pr-merged-without-review` |
-
-**To be clear about the boundary: Agentmetry does not prevent ADI, and nothing
-here should be read as claiming otherwise.** Prevention requires isolating
-trusted from untrusted data inside the agent, which is the paper's own
-conclusion and is not something a recorder can do. We detect the consequence.
-
----
 
 ## Data Loss Prevention (DLP)
 
