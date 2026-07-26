@@ -527,6 +527,37 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if rows else 1
 
 
+def cmd_dogfood(args: argparse.Namespace) -> int:
+    """Score the dogfood period, or start the clock.
+
+    The beta gate is four consecutive green weeks. It went unstarted for weeks
+    because checking a week meant a twenty-minute manual pass, so it never got
+    checked. This makes the question cheap enough to actually ask.
+    """
+    sys.path.insert(0, str(_ORCH_ROOT))
+    from core.audit.dogfood import assess, read_marker, render, start_clock
+
+    if getattr(args, "start", False):
+        existing = read_marker()
+        if existing and not getattr(args, "restart", False):
+            print(f"Clock already started {existing['started_utc']}. "
+                  "Use --restart to reset it, which discards the current run.")
+            return 1
+        from core.config import settings
+
+        marker = start_clock(operator=settings.operator_id)
+        print(f"Dogfood clock started {marker['started_utc']}.")
+        print("Check progress any time with: agentmetry dogfood")
+        return 0
+
+    report = assess()
+    print(render(report))
+    # Exit non-zero only when a *finished* week failed, so this can be run as a
+    # weekly check without crying wolf on day one for the crime of not yet
+    # having four weeks of history.
+    return 1 if any(w.complete and not w.green for w in report.weeks) else 0
+
+
 def cmd_benchmark(args: argparse.Namespace) -> int:
     """Replay the recorded detection corpus and score the rules.
 
@@ -633,6 +664,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="corpus directory (default: tests/fixtures/detection_corpus)",
     )
+    dogfood = sub.add_parser(
+        "dogfood", help="score the four-week dogfood gate, or start the clock"
+    )
+    dogfood.add_argument("--start", action="store_true", help="start the clock today")
+    dogfood.add_argument(
+        "--restart", action="store_true", help="with --start, discard the current run"
+    )
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
     replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
 
@@ -651,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         "verify": cmd_verify,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,
+        "dogfood": cmd_dogfood,
         "replay": cmd_replay,
     }
     return handlers[args.command](args)

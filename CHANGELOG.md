@@ -9,6 +9,19 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+- **`agentmetry dogfood`** — scores the four-week beta gate from the trail.
+  A week is green when the recorder ran on at least three days, the chain
+  verifies, every critical or high detection was dispositioned, and nothing is
+  stuck in the hook spool. `--start` records the clock.
+
+  The gate went unstarted for weeks, and the reason was mechanical rather than
+  motivational: answering "was this week green?" meant a twenty-minute manual
+  checklist, so it never got asked. This makes it one command. Volume is
+  deliberately not a criterion; a slow week is fine, a week the recorder missed
+  is not, because an empty trail from a switched-off recorder looks exactly like
+  an empty trail from a quiet developer.
+
 ## [0.3.0] - 2026-07-26
 
 ### Added
