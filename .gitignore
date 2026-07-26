@@ -69,3 +69,8 @@ apps/dashboard/scratch/
 
 # Local dev launch config (absolute machine paths)
 .claude/launch.json
+
+# Internal review prompts and audit reports. These name pilot pricing, kill
+# gates, and the private repo contents; they belong in agentmetry-notes.
+docs/*review*prompt*.md
+docs/*-review-*.md
