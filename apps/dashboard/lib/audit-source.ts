@@ -23,6 +23,9 @@ export const SOURCE_LABELS: Record<string, string> = {
   opensre: "OpenSRE",
 };
 
+/** Every known source_app for /audit/tail `sources=` — keep in sync with labels. */
+export const ALL_SOURCE_APPS = Object.keys(SOURCE_LABELS);
+
 /** Light + dark Tailwind classes for source badges in the event feed. */
 const SOURCE_BADGE_CLASS: Record<string, string> = {
   agentmetry:

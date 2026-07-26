@@ -20,6 +20,7 @@ import {
   saveDisposition,
   statusOf,
 } from "@/lib/disposition";
+import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -69,7 +70,16 @@ export function DetectionsPanel() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`, {
+      // Same trap as Analytics → Denied: the newest 500 trail lines often have
+      // zero `detection` events even when stats show dozens over 7 days. Ask
+      // the server for detection rows directly.
+      const params = new URLSearchParams({
+        limit: "500",
+        scope: "all",
+        focus: "detection",
+        since_minutes: String(FEED_FOCUS_SINCE_MINUTES),
+      });
+      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
         headers: apiHeaders(),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -245,7 +255,7 @@ export function DetectionsPanel() {
             <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
               <ShieldCheck className="h-6 w-6 opacity-50" />
               {detections.length === 0
-                ? "No correlated detections in the loaded window. Widen capture or enable a Tier B source."
+                ? "No detections in the last 7 days. Run agents with hooks installed, or check agentmetry doctor."
                 : "No detections match these filters."}
             </div>
           ) : (

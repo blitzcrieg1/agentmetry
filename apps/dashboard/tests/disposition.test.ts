@@ -57,7 +57,7 @@ describe("status vocabulary", () => {
   });
 
   it("treats the same statuses as closing a finding", () => {
-    expect([...CLOSED_STATUSES].sort()).toEqual([
+    expect(Array.from(CLOSED_STATUSES).sort()).toEqual([
       "false_positive",
       "resolved",
       "risk_accepted",
@@ -65,7 +65,7 @@ describe("status vocabulary", () => {
   });
 
   it("requires a reason for the two dismissive states", () => {
-    expect([...NOTE_REQUIRED].sort()).toEqual(["false_positive", "risk_accepted"]);
+    expect(Array.from(NOTE_REQUIRED).sort()).toEqual(["false_positive", "risk_accepted"]);
   });
 
   it("gives every status a label and a chip", () => {

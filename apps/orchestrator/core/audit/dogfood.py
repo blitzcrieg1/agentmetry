@@ -123,6 +123,33 @@ class DogfoodReport:
     def passed(self) -> bool:
         return self.consecutive_green >= 4
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "started": self.started.isoformat() if self.started else None,
+            "consecutive_green": self.consecutive_green,
+            "required": 4,
+            "passed": self.passed,
+            "chain_ok": self.chain_ok,
+            "chain_message": self.chain_message,
+            "spooled": self.spooled,
+            "weeks": [
+                {
+                    "index": w.index,
+                    "start": w.start.isoformat(),
+                    "end": w.end.isoformat(),
+                    "events": w.events,
+                    "active_days": w.active_days,
+                    "sessions": w.sessions,
+                    "detections": w.detections,
+                    "untriaged": w.untriaged,
+                    "complete": w.complete,
+                    "verdict": w.verdict,
+                    "reasons": w.reasons,
+                }
+                for w in self.weeks
+            ],
+        }
+
 
 def _week_bounds(start: date, index: int) -> tuple[date, date]:
     begin = start + timedelta(days=7 * index)

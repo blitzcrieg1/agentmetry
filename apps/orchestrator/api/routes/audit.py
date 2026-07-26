@@ -172,6 +172,13 @@ async def audit_tail(
         None,
         description="Return events strictly after this ISO timestamp (page newer)",
     ),
+    focus: Literal["denied", "dlp", "policy", "detection"] | None = Query(
+        None,
+        description=(
+            "Server-side slice matching Analytics dogfood counts: "
+            "denied | dlp | policy | detection"
+        ),
+    ),
 ):
     """Return canonical audit events from the local JSONL forwarder."""
     from core.audit.trail_db import get_trail_db
@@ -192,6 +199,7 @@ async def audit_tail(
             since_minutes=since_minutes,
             before_utc=before_utc,
             after_utc=after_utc,
+            focus=focus,
         )
     except HTTPException:
         raise
@@ -308,6 +316,22 @@ async def audit_list_dispositions():
         "counts": store.counts(),
         "statuses": list(STATUSES),
     }
+
+
+@router.get("/dogfood", dependencies=[Depends(require_api_key)])
+async def audit_dogfood():
+    """Progress against the four-week beta gate.
+
+    Exposed so the dashboard can show it. A gate you have to remember to run a
+    command for is one you stop running, which is how this one went weeks
+    without being started in the first place.
+    """
+    from core.audit.dogfood import assess
+
+    try:
+        return assess().as_dict()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/export/evidence", dependencies=[Depends(require_api_key)])

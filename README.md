@@ -88,7 +88,7 @@ We do that by:
 - **Normalizing** every event into a canonical schema v1.1.0 with MITRE ATT&CK enrichment and SHA-256 argument hashing
 - **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, download cradles, agent data injection, recon-then-grab)
 - **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
-- **Forwarding** the same JSONL trail to Loki, Elastic ECS, Splunk HEC, or a generic webhook, without making the cloud the system of record
+- **Forwarding** the same JSONL trail to Elastic ECS, Splunk HEC, or a generic webhook (Loki via Alloy tailing the local file), without making the cloud the system of record
 
 **Agentmetry is not a shadow-AI spy.** If your problem is unmanaged ChatGPT in the browser, you need network or endpoint policy, not a flight recorder.
 
@@ -425,7 +425,7 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | 🛡️ **Local DLP** | Regex scanner detects AWS keys, GitHub tokens, Slack tokens, and PII at the hook boundary (`block` mode optional) |
 | 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
 | 🔐 **Argument hashing** | SHA-256 of tool args by default — plaintext never crosses the wire from hooks |
-| 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, Loki/LogQL, generic webhook, alert webhook on denials |
+| 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, generic webhook, alert webhook; Loki/LogQL via Alloy file tail |
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
 | 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity — global hook install scripts |
 
@@ -455,7 +455,7 @@ Matching is **ordered within a session**, not a threshold on one row.
 `credential-exfil` requires credential access (T1552) *then* network egress
 (TA0011), in that order. Reversed, it does not fire.
 
-Fourteen rules ship today, covering credential exfiltration, guardrail bypass,
+Fifteen built-in rules ship today (plus YAML count rules), covering credential exfiltration, guardrail bypass,
 download cradles, supply-chain merges, recon-then-collect, and both published
 [Agent Data Injection](https://arxiv.org/abs/2607.05120) chains.
 

@@ -21,6 +21,13 @@ separately (currently `1.1.0`) and changes additively.
   deliberately not a criterion; a slow week is fine, a week the recorder missed
   is not, because an empty trail from a switched-off recorder looks exactly like
   an empty trail from a quiet developer.
+- **Dashboard dogfood gate + Analytics drill-down.** Clickable weekly stats
+  (Denied / DLP / Policy / Detections) open Event stream or Detections with
+  server-side `GET /audit/tail?focus=…` over the last 7 days, so counts match
+  visible rows. Fleet vs this-session scope toggle; hunt focus survives tab
+  switches until Clear.
+- **`GET /audit/tail?focus=`** — `denied` | `dlp` | `policy` | `detection`,
+  sharing the same SQL predicates as `/audit/stats`.
 
 ## [0.3.0] - 2026-07-26
 

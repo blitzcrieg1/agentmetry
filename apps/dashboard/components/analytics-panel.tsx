@@ -22,6 +22,7 @@ import { eventSourceApp, sourceChartColor, sourceLabel } from "@/lib/audit-sourc
 import { EventHistogram } from "./event-histogram";
 import { ProcessTree } from "./process-tree";
 import { DogfoodStatsStrip } from "./dogfood-stats-strip";
+import { DogfoodGate } from "./dogfood-gate";
 
 const OUTCOME_COLORS: Record<string, string> = {
   success: "#34d399",
@@ -35,8 +36,21 @@ const CHART_TOOLTIP = {
   itemStyle: { color: "hsl(var(--foreground))" },
 };
 
+type WeekStats = {
+  enabled: boolean;
+  window_days?: number;
+  total_events?: number;
+  sessions?: number;
+  detections?: number;
+  denied?: number;
+  dlp_matches?: number;
+  tool_policy_blocks?: number;
+  by_source?: Record<string, number>;
+};
+
 export function AnalyticsPanel() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [week, setWeek] = useState<WeekStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string>("");
@@ -44,12 +58,20 @@ export function AnalyticsPanel() {
   useEffect(() => {
     async function fetchAll() {
       try {
-        const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`, {
-          headers: apiHeaders(),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setEvents(data.events || []);
+        const [tailRes, statsRes] = await Promise.all([
+          fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`, {
+            headers: apiHeaders(),
+          }),
+          fetch(`${ORCHESTRATOR_URL}/api/v1/audit/stats?days=7`, {
+            headers: apiHeaders(),
+          }),
+        ]);
+        if (!tailRes.ok) throw new Error(`tail HTTP ${tailRes.status}`);
+        if (!statsRes.ok) throw new Error(`stats HTTP ${statsRes.status}`);
+        const tailData = await tailRes.json();
+        const statsData = (await statsRes.json()) as WeekStats;
+        setEvents(tailData.events || []);
+        setWeek(statsData);
         setError(null);
       } catch (err) {
         setError(String(err));
@@ -60,7 +82,7 @@ export function AnalyticsPanel() {
     void fetchAll();
   }, []);
 
-  const stats = useMemo(() => {
+  const chartStats = useMemo(() => {
     let successCount = 0;
     let pendingCount = 0;
     let issueCount = 0;
@@ -98,6 +120,11 @@ export function AnalyticsPanel() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
+    const weekSourceData = Object.entries(week?.by_source ?? {})
+      .map(([name, value]) => ({ name: sourceLabel(name), key: name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
     const mitreData = Object.entries(mitreCounts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
@@ -106,14 +133,14 @@ export function AnalyticsPanel() {
 
     return {
       pieData,
-      sourceData,
+      sourceData: weekSourceData.length > 0 ? weekSourceData : sourceData,
       mitreData,
-      total: events.length,
-      sessionCount: sessions.size,
-      detectionCount: detections.length,
+      sampleTotal: events.length,
+      sampleSessions: sessions.size,
+      sampleDetections: detections.length,
       successRate: events.length ? Math.round((successCount / events.length) * 100) : 0,
     };
-  }, [events]);
+  }, [events, week]);
 
   const uniqueSessions = useMemo(() => {
     const sessions = new Set<string>();
@@ -145,12 +172,14 @@ export function AnalyticsPanel() {
     );
   }
 
+  const days = week?.window_days ?? 7;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg border border-border bg-card/20">
       <div className="border-b border-border/60 px-4 py-3">
         <p className="text-sm font-semibold tracking-tight">Overview</p>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Last {stats.total} events · {stats.sessionCount} sessions
+          Last {days} days · same counts as dogfood pills below
         </p>
       </div>
 
@@ -158,22 +187,40 @@ export function AnalyticsPanel() {
         <DogfoodStatsStrip />
       </div>
 
+      <div className="border-b border-border/60 px-4 py-3">
+        <DogfoodGate />
+      </div>
+
       <div className="grid grid-cols-2 gap-2 border-b border-border/60 px-4 py-3 sm:grid-cols-4">
-        <StatCard label="Events" value={String(stats.total)} />
-        <StatCard label="Sessions" value={String(stats.sessionCount)} />
-        <StatCard label="Detections" value={String(stats.detectionCount)} accent={stats.detectionCount > 0} />
-        <StatCard label="Success rate" value={`${stats.successRate}%`} />
+        <StatCard label="Events (7d)" value={String(week?.total_events ?? 0)} />
+        <StatCard label="Sessions (7d)" value={String(week?.sessions ?? 0)} />
+        <StatCard
+          label="Detections (7d)"
+          value={String(week?.detections ?? 0)}
+          accent={(week?.detections ?? 0) > 0}
+        />
+        <StatCard
+          label="Denied (7d)"
+          value={String(week?.denied ?? 0)}
+          accent={(week?.denied ?? 0) > 0}
+        />
+      </div>
+
+      <div className="border-b border-border/60 px-4 py-2">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Charts below sample the newest {chartStats.sampleTotal} events (not the full week)
+        </p>
       </div>
 
       <EventHistogram events={events} />
 
       <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-        <ChartCard title="Action outcomes">
+        <ChartCard title="Action outcomes (sample)">
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={stats.pieData}
+                  data={chartStats.pieData}
                   cx="50%"
                   cy="50%"
                   innerRadius={50}
@@ -181,7 +228,7 @@ export function AnalyticsPanel() {
                   paddingAngle={5}
                   dataKey="value"
                 >
-                  {stats.pieData.map((entry, index) => {
+                  {chartStats.pieData.map((entry, index) => {
                     let color = OUTCOME_COLORS.success;
                     if (entry.name === "Pending") color = OUTCOME_COLORS.pending;
                     if (entry.name === "Issues") color = OUTCOME_COLORS.denied;
@@ -194,16 +241,16 @@ export function AnalyticsPanel() {
           </div>
         </ChartCard>
 
-        <ChartCard title="Activity by source">
+        <ChartCard title="Activity by source (7d)">
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.sourceData} layout="vertical" margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
+              <BarChart data={chartStats.sourceData} layout="vertical" margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
                 <XAxis type="number" className="text-muted-foreground" fontSize={10} />
                 <YAxis dataKey="name" type="category" className="text-muted-foreground" fontSize={10} width={70} />
                 <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {stats.sourceData.map((entry) => (
+                  {chartStats.sourceData.map((entry) => (
                     <Cell key={entry.key} fill={sourceChartColor(entry.key)} />
                   ))}
                 </Bar>
@@ -212,11 +259,11 @@ export function AnalyticsPanel() {
           </div>
         </ChartCard>
 
-        <ChartCard title="MITRE ATT&CK tactics" className="md:col-span-2">
-          {stats.mitreData.length > 0 ? (
+        <ChartCard title="MITRE ATT&CK tactics (sample)" className="md:col-span-2">
+          {chartStats.mitreData.length > 0 ? (
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.mitreData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={chartStats.mitreData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                   <XAxis dataKey="name" className="text-muted-foreground" fontSize={10} />
                   <YAxis className="text-muted-foreground" fontSize={10} />
@@ -227,40 +274,36 @@ export function AnalyticsPanel() {
             </div>
           ) : (
             <div className="flex h-48 items-center justify-center">
-              <p className="text-xs text-muted-foreground">No MITRE tactics logged in this window.</p>
+              <p className="text-xs text-muted-foreground">No MITRE tactics logged in this sample.</p>
             </div>
           )}
         </ChartCard>
       </div>
 
-      <div className="mx-4 mb-4 rounded-lg border border-border/60 bg-card/40 p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold">Session process tree</h3>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Tool-call chain for one correlation id
-            </p>
-          </div>
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              list="session-options"
-              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
-              placeholder="Search session id…"
-              value={selectedSession}
-              onChange={(e) => setSelectedSession(e.target.value)}
-            />
-            <datalist id="session-options">
-              {uniqueSessions.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-          </div>
+      <div className="border-t border-border/60 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <p className="text-sm font-semibold tracking-tight">Process tree</p>
+          <select
+            className="ml-auto rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-xs text-muted-foreground"
+            value={selectedSession}
+            onChange={(e) => setSelectedSession(e.target.value)}
+          >
+            <option value="">Select a session…</option>
+            {uniqueSessions.map((id) => (
+              <option key={id} value={id}>
+                {id.length > 36 ? `${id.slice(0, 20)}…${id.slice(-8)}` : id}
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="h-[420px] w-full rounded-md border border-border/60 bg-background/50">
+        {selectedSession ? (
           <ProcessTree events={treeEvents} />
-        </div>
+        ) : (
+          <p className="py-8 text-center text-xs text-muted-foreground">
+            Pick a session from the sample above to render its horizontal timeline.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -268,11 +311,9 @@ export function AnalyticsPanel() {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="rounded-md border border-border/60 bg-background/50 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={`mt-0.5 font-mono text-lg font-semibold ${accent ? "text-red-400" : "text-foreground"}`}>
-        {value}
-      </p>
+    <div className="rounded-md border border-border bg-card px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${accent ? "text-amber-500" : ""}`}>{value}</div>
     </div>
   );
 }
@@ -287,8 +328,8 @@ function ChartCard({
   className?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-border/60 bg-card/40 p-4 ${className}`}>
-      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+    <div className={`rounded-lg border border-border bg-card/40 p-3 ${className}`}>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
       {children}
     </div>
   );

@@ -297,6 +297,69 @@ def test_audit_detections_empty_for_benign_session(audit_client: TestClient):
     assert body["detections"] == []
 
 
+def test_audit_tail_focus_dlp_and_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Analytics counts DLP/policy across the trail; focus must use the same SQL."""
+    events = [
+        {
+            "event_id": "e-ok",
+            "schema_version": "1.1.0",
+            "correlation_id": "c1",
+            "timestamp_utc": "2026-07-26T10:00:00+00:00",
+            "action": {"type": "tool_called", "outcome": "success"},
+            "source": {"app": "cursor"},
+        },
+        {
+            "event_id": "e-dlp",
+            "schema_version": "1.1.0",
+            "correlation_id": "c2",
+            "timestamp_utc": "2026-07-26T10:01:00+00:00",
+            "action": {"type": "tool_called", "outcome": "success", "reason": ""},
+            "source": {"app": "claude"},
+            "dlp": {"rule_id": "aws_access_key", "mode": "log"},
+        },
+        {
+            "event_id": "e-pol",
+            "schema_version": "1.1.0",
+            "correlation_id": "c3",
+            "timestamp_utc": "2026-07-26T10:02:00+00:00",
+            "action": {"type": "tool_called", "outcome": "denied", "reason": "tool_policy:r1"},
+            "source": {"app": "cursor"},
+            "tool_policy": {"rule_id": "r1", "action": "deny", "blocked": True},
+        },
+        {
+            "event_id": "e-den",
+            "schema_version": "1.1.0",
+            "correlation_id": "c4",
+            "timestamp_utc": "2026-07-26T10:03:00+00:00",
+            "action": {"type": "tool_called", "outcome": "denied", "reason": "allowlist"},
+            "source": {"app": "cursor"},
+        },
+    ]
+    jsonl = tmp_path / "audit-forward.jsonl"
+    jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "audit_export_path", jsonl)
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    from core.audit.trail_db import get_trail_db, reset_trail_db
+
+    reset_trail_db()
+    get_trail_db().insert_batch(events)
+
+    from api.main import app
+
+    client = TestClient(app)
+    dlp = client.get("/api/v1/audit/tail?scope=all&focus=dlp").json()["events"]
+    assert len(dlp) == 1
+    assert dlp[0]["event_id"] == "e-dlp"
+
+    policy = client.get("/api/v1/audit/tail?scope=all&focus=policy").json()["events"]
+    assert len(policy) == 1
+    assert policy[0]["event_id"] == "e-pol"
+
+    denied = client.get("/api/v1/audit/tail?scope=all&focus=denied").json()["events"]
+    assert {e["event_id"] for e in denied} == {"e-pol", "e-den"}
+
+
 def test_evidence_export_endpoint_writes_a_windows_safe_filename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -190,6 +190,7 @@ class AuditTrailDB:
         since_minutes: int | None = None,
         before_utc: str | None = None,
         after_utc: str | None = None,
+        focus: Literal["denied", "dlp", "policy", "detection"] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Query the tail of the audit trail with filters and pagination."""
         clauses: list[str] = []
@@ -213,6 +214,20 @@ class AuditTrailDB:
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).isoformat()
             clauses.append("timestamp_utc >= ?")
             params.append(cutoff)
+
+        # Analytics dogfood counts are over the whole window; a client that only
+        # loads the newest N rows will miss older DLP/policy hits. Focus pushes
+        # the same predicates the stats query uses down into SQL.
+        if focus == "denied":
+            clauses.append("action_outcome = 'denied'")
+        elif focus == "dlp":
+            clauses.append("json_extract(event_json, '$.dlp.rule_id') IS NOT NULL")
+        elif focus == "policy":
+            clauses.append("json_extract(event_json, '$.tool_policy.blocked') = 1")
+        elif focus == "detection":
+            clauses.append("action_type = 'detection'")
+        elif focus is not None:
+            raise ValueError(f"Unknown focus: {focus}")
 
         if before_utc and after_utc:
             raise ValueError("Use only one of before_utc or after_utc")

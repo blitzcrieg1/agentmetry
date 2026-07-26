@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { type GraphNodeState, type NodeStatus, resolveNodeUpdates } from "@/lib/graph-utils";
+import type { FeedFocus, FeedFocusKind } from "@/lib/feed-focus";
 import { generateSessionId } from "@/lib/utils";
+
+export type { FeedFocus, FeedFocusKind };
 
 export type { GraphNodeState, NodeStatus };
 
@@ -59,11 +62,16 @@ interface AgentStore {
   memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
   runsRefreshKey: number;
-  devMode: boolean;
+  /** Fleet = all hosts/sessions (SIEM default). Session = this dashboard browser id. */
+  fleetScope: boolean;
   // Set by the Detections section to hand a detection to the flight recorder:
   // switch to the recorder tab, pin the session, and filter to the rule. The
   // recorder clears it once consumed.
   pinnedDetection: { correlationId: string; ruleId: string } | null;
+  // One-shot handoff from Analytics pills. Cleared once the target tab consumes it.
+  feedFocus: FeedFocus | null;
+  // Active hunt filter on Event stream. Survives tab switches until Clear.
+  huntFocus: FeedFocusKind | null;
 
   setSkills: (skills: Skill[]) => void;
   setActiveSkill: (skill: string) => void;
@@ -89,9 +97,12 @@ interface AgentStore {
   incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
   bumpRunsRefresh: () => void;
-  setDevMode: (enabled: boolean) => void;
+  setFleetScope: (enabled: boolean) => void;
   requestPinnedDetection: (correlationId: string, ruleId: string) => void;
   clearPinnedDetection: () => void;
+  requestFeedFocus: (kind: FeedFocusKind) => void;
+  clearFeedFocus: () => void;
+  setHuntFocus: (kind: FeedFocusKind | null) => void;
   reset: (nodes?: GraphNodeState[]) => void;
   clearPipelineView: () => void;
 }
@@ -120,8 +131,10 @@ export const useAgentStore = create<AgentStore>((set) => ({
   memoryHeatmap: {},
   wsConnected: false,
   runsRefreshKey: 0,
-  devMode: false,
+  fleetScope: true,
   pinnedDetection: null,
+  feedFocus: null,
+  huntFocus: null,
 
   setSkills: (skills) => set({ skills }),
   setActiveSkill: (skill) => set({ activeSkill: skill }),
@@ -182,10 +195,13 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setWsConnected: (connected) => set({ wsConnected: connected }),
   bumpRunsRefresh: () =>
     set((state) => ({ runsRefreshKey: state.runsRefreshKey + 1 })),
-  setDevMode: (enabled) => set({ devMode: enabled }),
+  setFleetScope: (enabled) => set({ fleetScope: enabled }),
   requestPinnedDetection: (correlationId, ruleId) =>
     set({ pinnedDetection: { correlationId, ruleId } }),
   clearPinnedDetection: () => set({ pinnedDetection: null }),
+  requestFeedFocus: (kind) => set({ feedFocus: { kind } }),
+  clearFeedFocus: () => set({ feedFocus: null }),
+  setHuntFocus: (kind) => set({ huntFocus: kind }),
   reset: (nodes) =>
     set((state) => {
       const base = nodes ?? state.graphNodes;

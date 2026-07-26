@@ -15,9 +15,22 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
+import {
+  FEED_FOCUS_LABELS,
+  FEED_FOCUS_SINCE_MINUTES,
+  eventMatchesFocus,
+  outcomeFiltersForFocus,
+  tailFocusParam,
+  type FeedFocusKind,
+} from "@/lib/feed-focus";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { eventSourceApp, sourceBadgeClass, sourceLabel } from "@/lib/audit-source";
+import {
+  ALL_SOURCE_APPS,
+  eventSourceApp,
+  sourceBadgeClass,
+  sourceLabel,
+} from "@/lib/audit-source";
 import { DetectionsStrip } from "@/components/detections-strip";
 import { EventHistogram } from "@/components/event-histogram";
 import { EventInspector } from "@/components/event-inspector";
@@ -38,6 +51,8 @@ export interface AuditEvent {
   initiator?: { actor_type?: string; trigger?: string; operator_id?: string };
   model?: { id?: string; provider?: string };
   mcp?: { server_id?: string; tools?: string[] };
+  dlp?: { rule_id?: string; mode?: string; pattern_type?: string };
+  tool_policy?: { rule_id?: string; action?: string; mode?: string; blocked?: boolean };
   detection?: Detection;
 }
 
@@ -54,14 +69,14 @@ export interface Detection {
   last_seen_utc: string;
 }
 
-const ALL_SOURCES = ["agentmetry", "claude", "cursor", "codex", "antigravity", "mcp_proxy"] as const;
-
 const EVENT_TYPES = [
   "session_start",
   "session_end",
   "tool_called",
   "approval_request",
   "approval_response",
+  "detection",
+  "detection_disposition",
 ] as const;
 
 const TIME_WINDOWS: { label: string; minutes: number | null; limit: number }[] = [
@@ -179,9 +194,17 @@ function eventSearchHaystack(event: AuditEvent): string {
     event.agent?.skill_id,
     event.action?.type,
     event.action?.outcome,
+    event.action?.reason,
+    event.dlp && typeof event.dlp === "object" ? JSON.stringify(event.dlp) : "",
+    event.tool_policy && typeof event.tool_policy === "object"
+      ? JSON.stringify(event.tool_policy)
+      : "",
   ];
   return parts.filter(Boolean).join(" ").toLowerCase();
 }
+
+/** TIME_WINDOWS index for "All" — matches weekly stats better than 15m/1h. */
+const ALL_TIME_WINDOW_IDX = TIME_WINDOWS.length - 1;
 
 export type ColumnId = "time" | "action" | "tool" | "mitre" | "command" | "source" | "actor" | "correlation_id" | "agent" | "initiator" | "model" | "skill" | "host_id" | "reason" | "mcp_server";
 
@@ -382,10 +405,15 @@ function FilterChip({
 export function FlightRecorderPanel() {
   const threadId = useAgentStore((s) => s.threadId);
   const sessionId = useAgentStore((s) => s.sessionId);
-  const devMode = useAgentStore((s) => s.devMode);
+  const fleetScope = useAgentStore((s) => s.fleetScope);
+  const setFleetScope = useAgentStore((s) => s.setFleetScope);
   const runsRefreshKey = useAgentStore((s) => s.runsRefreshKey);
   const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
   const clearPinnedDetection = useAgentStore((s) => s.clearPinnedDetection);
+  const feedFocus = useAgentStore((s) => s.feedFocus);
+  const clearFeedFocus = useAgentStore((s) => s.clearFeedFocus);
+  const huntFocus = useAgentStore((s) => s.huntFocus);
+  const setHuntFocus = useAgentStore((s) => s.setHuntFocus);
 
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -463,29 +491,46 @@ export function FlightRecorderPanel() {
   const timeWindow = TIME_WINDOWS[timeWindowIdx] ?? TIME_WINDOWS[1];
 
   const buildParams = useCallback(
-    (extra?: { before_utc?: string; after_utc?: string }) => {
+    (
+      extra?: { before_utc?: string; after_utc?: string },
+      focusOverride?: FeedFocusKind | null,
+    ) => {
+      // Hunt mode mirrors Analytics stats (fleet, 7 days, server focus).
+      // Default SIEM view is fleet-wide; "This session" narrows to the browser id.
+      const focusKind = focusOverride === undefined ? huntFocus : focusOverride;
+      const hunting = focusKind != null;
       const params = new URLSearchParams({
-        limit: String(timeWindow.limit),
-        scope: devMode ? "all" : "runs",
-        sources: ALL_SOURCES.join(","),
+        limit: String(hunting ? 500 : timeWindow.limit),
+        scope: hunting || fleetScope ? "all" : "runs",
       });
-      if (!devMode && sessionId) params.set("session_id", sessionId);
-      if (timeWindow.minutes != null) params.set("since_minutes", String(timeWindow.minutes));
+      if (!hunting) params.set("sources", ALL_SOURCE_APPS.join(","));
+      if (!hunting && !fleetScope && sessionId) params.set("session_id", sessionId);
+      if (hunting) {
+        params.set("since_minutes", String(FEED_FOCUS_SINCE_MINUTES));
+        const focus = tailFocusParam(focusKind);
+        if (focus) params.set("focus", focus);
+      } else if (timeWindow.minutes != null) {
+        params.set("since_minutes", String(timeWindow.minutes));
+      }
       if (extra?.before_utc) params.set("before_utc", extra.before_utc);
       if (extra?.after_utc) params.set("after_utc", extra.after_utc);
       return params;
     },
-    [devMode, sessionId, timeWindow],
+    [huntFocus, fleetScope, sessionId, timeWindow],
   );
 
   const fetchPage = useCallback(
-    async (mode: "latest" | "older" | "newer", cursor?: string) => {
+    async (
+      mode: "latest" | "older" | "newer",
+      cursor?: string,
+      focusOverride?: FeedFocusKind | null,
+    ) => {
       const params =
         mode === "older" && cursor
-          ? buildParams({ before_utc: cursor })
+          ? buildParams({ before_utc: cursor }, focusOverride)
           : mode === "newer" && cursor
-            ? buildParams({ after_utc: cursor })
-            : buildParams();
+            ? buildParams({ after_utc: cursor }, focusOverride)
+            : buildParams(undefined, focusOverride);
 
       const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
         headers: apiHeaders(),
@@ -608,7 +653,7 @@ export function FlightRecorderPanel() {
     if (sessionView) return; // don't clobber a pinned session view
     setLoading(true);
     void fetchTail();
-  }, [fetchTail, runsRefreshKey, timeWindowIdx, devMode, sessionId, sessionView]);
+  }, [fetchTail, runsRefreshKey, timeWindowIdx, fleetScope, sessionId, sessionView]);
 
   useEffect(() => {
     if (!atLatest || sessionView) return;
@@ -624,6 +669,37 @@ export function FlightRecorderPanel() {
     void openSession(correlationId).then(() => setDetectionRuleFilter(ruleId));
     clearPinnedDetection();
   }, [pinnedDetection, openSession, clearPinnedDetection]);
+
+  // Analytics dogfood stats → filter the feed to the events behind a count.
+  useEffect(() => {
+    if (!feedFocus || feedFocus.kind === "detections") return;
+    const kind = feedFocus.kind;
+    setSessionView(null);
+    setSessionTruncated(false);
+    setDetectionRuleFilter(null);
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+    setSourceFilter("all");
+    setEventTypeFilter("all");
+    setTimeWindowIdx(ALL_TIME_WINDOW_IDX);
+    setOutcomeFilters(outcomeFiltersForFocus(kind));
+    setHuntFocus(kind);
+    clearFeedFocus();
+  }, [feedFocus, clearFeedFocus, setHuntFocus]);
+
+  // Re-fetch once hunt focus is applied so buildParams includes the server filter.
+  useEffect(() => {
+    if (!huntFocus || sessionView) return;
+    setLoading(true);
+    void fetchTail();
+  }, [huntFocus]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: only on focus change
+
+  const clearActiveFocus = useCallback(() => {
+    setHuntFocus(null);
+    setOutcomeFilters({ success: true, pending: true, issues: true });
+    setLoading(true);
+    void fetchPage("latest", undefined, null).finally(() => setLoading(false));
+  }, [fetchPage, setHuntFocus]);
 
   const filteredEvents = useMemo(() => {
     const q = debouncedSearchQuery.trim().toLowerCase();
@@ -642,10 +718,18 @@ export function FlightRecorderPanel() {
         (isIssue && outcomeFilters.issues) ||
         (!outcome && outcomeFilters.success);
       if (!outcomeOk) return false;
+      if (huntFocus && !eventMatchesFocus(ev, huntFocus)) return false;
       if (q && !eventSearchHaystack(ev).includes(q)) return false;
       return true;
     });
-  }, [events, sourceFilter, eventTypeFilter, outcomeFilters, debouncedSearchQuery]);
+  }, [
+    events,
+    sourceFilter,
+    eventTypeFilter,
+    outcomeFilters,
+    debouncedSearchQuery,
+    huntFocus,
+  ]);
 
   const visibleDetections = useMemo(() => {
     const merged = new Map<string, Detection>();
@@ -679,6 +763,24 @@ export function FlightRecorderPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card/20">
       <div className="space-y-3 border-b border-border/60 px-3 py-3">
+        {huntFocus ? (
+          <div className="flex items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-100">
+            <span>
+              Focus:{" "}
+              <span className="font-medium">{FEED_FOCUS_LABELS[huntFocus]}</span>
+              <span className="ml-2 text-amber-800/80 dark:text-amber-200/80">
+                · last 7 days · fleet · up to 500 rows · click a row for reason / tool
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={clearActiveFocus}
+              className="shrink-0 rounded border border-amber-400/50 px-2 py-0.5 text-xs uppercase tracking-wider hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
         {sessionView ? (
           <div className="flex items-center justify-between gap-2 rounded border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-950/30 dark:text-sky-200">
             <span className="truncate font-mono">
@@ -714,7 +816,7 @@ export function FlightRecorderPanel() {
             onChange={(e) => setSourceFilter(e.target.value)}
           >
             <option value="all">All sources</option>
-            {ALL_SOURCES.map((s) => (
+            {ALL_SOURCE_APPS.map((s) => (
               <option key={s} value={s}>
                 {sourceLabel(s)}
               </option>
@@ -732,12 +834,27 @@ export function FlightRecorderPanel() {
               </option>
             ))}
           </select>
+          <div className="flex rounded-md border border-border p-0.5">
+            <FilterChip
+              active={fleetScope}
+              label="Fleet"
+              onClick={() => setFleetScope(true)}
+            />
+            <FilterChip
+              active={!fleetScope}
+              label="This session"
+              onClick={() => setFleetScope(false)}
+            />
+          </div>
           {TIME_WINDOWS.map((w, i) => (
             <FilterChip
               key={w.label}
-              active={timeWindowIdx === i}
+              active={!huntFocus && timeWindowIdx === i}
               label={w.label}
-              onClick={() => setTimeWindowIdx(i)}
+              onClick={() => {
+                if (huntFocus) return;
+                setTimeWindowIdx(i);
+              }}
             />
           ))}
         </div>
@@ -749,7 +866,8 @@ export function FlightRecorderPanel() {
           <FilterChip active={outcomeFilters.issues} label="Issues" onClick={() => toggleOutcome("issues")} />
           <span className="ml-2 font-mono text-xs text-muted-foreground">
             {displayEvents.length} shown
-            {sessionView ? " · session" : !atLatest ? " · history" : ""}
+            {huntFocus ? " · hunt" : fleetScope ? " · fleet" : " · this session"}
+            {sessionView ? " · pinned session" : !atLatest ? " · history" : ""}
           </span>
         </div>
 
@@ -840,7 +958,11 @@ export function FlightRecorderPanel() {
               <p className="py-8 text-center text-sm text-red-400">{error}</p>
             ) : displayEvents.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No events match filters. Widen the time window or enable a Tier B source.
+                {huntFocus
+                  ? `No ${FEED_FOCUS_LABELS[huntFocus].toLowerCase()} in the last 7 days. Clear focus or check ingest.`
+                  : fleetScope
+                    ? "No events match filters. Try a wider time window, or open Analytics for weekly counts."
+                    : "No events for this dashboard session. Switch to Fleet to see all hosts."}
               </p>
             ) : (
               <div className="overflow-x-auto">

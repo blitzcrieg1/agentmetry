@@ -23,6 +23,8 @@ export function MissionControl() {
   useWebSocket();
   const wsConnected = useAgentStore((s) => s.wsConnected);
   const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
+  const feedFocus = useAgentStore((s) => s.feedFocus);
+  const clearFeedFocus = useAgentStore((s) => s.clearFeedFocus);
   const [activeTab, setActiveTab] = useState<Tab>("recorder");
 
   // Opening a detection from the Detections section hands off to the flight
@@ -30,6 +32,17 @@ export function MissionControl() {
   useEffect(() => {
     if (pinnedDetection) setActiveTab("recorder");
   }, [pinnedDetection]);
+
+  // Analytics stats pills: detections → Detections tab; everything else → feed.
+  useEffect(() => {
+    if (!feedFocus) return;
+    if (feedFocus.kind === "detections") {
+      setActiveTab("detections");
+      clearFeedFocus();
+      return;
+    }
+    setActiveTab("recorder");
+  }, [feedFocus, clearFeedFocus]);
 
   const navItems: { id: Tab; label: string; icon: typeof Terminal }[] = [
     { id: "recorder", label: "Event stream", icon: Terminal },
