@@ -9,6 +9,8 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
 ### Added
 - **Detection triage.** Detections now carry a disposition (`new`,
   `acknowledged`, `in_progress`, `resolved`, `false_positive`, `risk_accepted`)
@@ -299,6 +301,7 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/blitzcrieg1/agentmetry/releases/tag/v0.2.0
