@@ -6,6 +6,26 @@ on:
   pull_request:
     branches: [master, main]
 
+# The job names below are mirrored by hand in branch protection on master
+# (Settings > Branches > Require status checks). GitHub matches required checks
+# by exact string, so renaming a job, or adding an OS to the matrix, leaves a
+# required context that nothing will ever report. Master then silently accepts
+# no pull requests at all, which you will not notice while pushing direct and
+# the next contributor will. Adding windows-latest here did exactly that: the
+# jobs became "orchestrator (ubuntu-latest)" and "orchestrator (windows-latest)"
+# while protection still waited on a bare "orchestrator".
+#
+# Rename or re-matrix a job here, update the required contexts in the same
+# sitting. Current list:
+#
+#   orchestrator (ubuntu-latest)
+#   orchestrator (windows-latest)
+#   hooks-windows
+#   dashboard
+#   CLAAssistant           <- from cla.yml, not this file
+#
+# Read them back with:
+#   gh api repos/blitzcrieg1/agentmetry/branches/master/protection/required_status_checks --jq .contexts
 jobs:
   orchestrator:
     # Agentmetry is installed on Windows first. Running the suite only on Linux
