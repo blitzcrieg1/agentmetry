@@ -71,7 +71,7 @@ def test_antigravity_v2_pre_tool_use_run_command(monkeypatch):
             "name": "run_command",
             "args": {
                 "CommandLine": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5",
-                "Cwd": r"C:\Users\spiro\.gemini\antigravity\scratch",
+                "Cwd": r"C:\Users\testuser\.gemini\antigravity\scratch",
             },
         },
         "conversationId": "ec33ebf9-0cba-4100-8142-c61503f6c587",
