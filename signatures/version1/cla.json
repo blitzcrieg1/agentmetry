@@ -1,12 +1,20 @@
 {
-   "signedContributors": [
-      {
-         "name": "blitzcrieg1",
-         "id": 44038245,
-         "comment_id": 4994319954,
-         "created_at": "2026-07-16T16:36:58Z",
-         "repoId": 1287296895,
-         "pullRequestNo": 9
-      }
-   ]
+  "signedContributors": [
+    {
+      "name": "blitzcrieg1",
+      "id": 44038245,
+      "comment_id": 4994319954,
+      "created_at": "2026-07-16T16:36:58Z",
+      "repoId": 1287296895,
+      "pullRequestNo": 9
+    },
+    {
+      "name": "jeetsingh008",
+      "id": 158179537,
+      "comment_id": 5117115070,
+      "created_at": "2026-07-29T11:27:44Z",
+      "repoId": 1287296895,
+      "pullRequestNo": 30
+    }
+  ]
 }
