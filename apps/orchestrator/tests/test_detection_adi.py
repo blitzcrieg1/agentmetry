@@ -253,6 +253,53 @@ def test_pr_merged_after_reading_the_diff_is_clean():
     assert rule_pr_merged_without_review(events) == []
 
 
+def test_writing_a_merge_command_into_a_file_is_not_merging(monkeypatch):
+    """Issue #24, found by dogfooding.
+
+    A command whose *content* was `gh pr merge 42 --squash` fired this rule at
+    critical. Nothing was merged: the text was being written into a test fixture.
+    Rules match command text and cannot tell performing an action from writing
+    about one, and that lands hardest on the people writing detection content,
+    security docs, and corpus cases. A security tool that punishes you for
+    writing about security gets uninstalled.
+    """
+    from core.audit.detection.traits import classify_command
+
+    for cmd in (
+        'echo "gh pr merge 42 --squash" > fixture.txt',
+        "printf 'gh pr merge 42 --squash' | tee fixture.txt",
+        'git commit -m "explain why gh pr merge is risky"',
+        "cat > fixture.txt <<EOF\ngh pr merge 42 --squash\nEOF",
+        "python - <<'PY'\npayload = 'gh pr merge 42 --squash'\nPY",
+    ):
+        assert "pr_merge" not in classify_command(cmd), f"still reads as a merge: {cmd}"
+
+
+def test_a_real_merge_still_sets_the_trait():
+    """The half that matters more. A guard that swallowed real merges would pass
+    every false-positive test and leave the rule useless."""
+    from core.audit.detection.traits import classify_command
+
+    for cmd in (
+        "gh pr merge 42 --squash",
+        "git merge origin/main",
+        'gh pr merge 42 --squash --body "ship it"',
+        "gh pr checkout 42 && gh pr merge 42",
+    ):
+        assert "pr_merge" in classify_command(cmd), f"missed a real merge: {cmd}"
+
+
+def test_masking_preserves_offsets():
+    """Callers may still want to know where in the original a match sat."""
+    from core.audit.detection.traits import mask_literals
+
+    cmd = 'echo "gh pr merge 42" > f'
+    masked = mask_literals(cmd)
+    assert len(masked) == len(cmd)
+    assert masked.startswith("echo ")
+    assert masked.rstrip().endswith("> f")
+
+
 def test_merge_without_any_pr_context_is_not_flagged():
     """A local branch merge is not a supply-chain event."""
     events = [_ev("Bash", command="git merge feature/x", event_id="a")]

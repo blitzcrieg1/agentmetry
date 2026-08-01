@@ -10,6 +10,30 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Fixed
+- **Writing `gh pr merge` into a file read as merging a pull request** (#24).
+  A command whose *content* was `gh pr merge 42 --squash` fired
+  `pr-merged-without-review` at critical. Nothing was merged: the text was being
+  written into a test fixture.
+
+  Trait regexes match command text and cannot tell performing an action from
+  writing about one. That lands hardest on the people most likely to adopt this:
+  anyone authoring detection content, security documentation, or corpus cases
+  spends the day typing the exact strings the rules hunt for, and a security tool
+  that punishes you for writing about security gets uninstalled.
+
+  The PR traits now read a copy of the command with quoted strings and heredoc
+  bodies blanked out, so `echo "gh pr merge 42" > f`, `printf ... | tee f`,
+  `git commit -m "...gh pr merge..."` and heredoc'd fixtures no longer set
+  `pr_merge`, while `gh pr merge 42 --squash` and `git merge origin/main` still
+  do. Masking preserves offsets rather than deleting, so callers can still locate
+  a match in the original.
+
+  Applied only to the three PR traits for now. The same confusion exists for
+  other text traits, but a general fix means parsing shell quoting properly, and
+  each trait wants its own corpus case before its semantics change. Anything the
+  heuristic cannot account for stays visible, so the failure mode is a trait that
+  still fires rather than one that silently stops.
+
 - **`encoded-command-download` fired critical on piping a loopback service into
   an interpreter** (#38). `curl http://127.0.0.1:8000/... | python` has the exact
   shape of a download cradle and none of the substance, and developers query

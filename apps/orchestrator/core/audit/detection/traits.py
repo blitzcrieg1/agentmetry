@@ -135,6 +135,100 @@ KNOWN_TRAITS = frozenset({
 })
 
 
+# A heredoc opener: `<<EOF`, `<<-EOF`, `<< 'PY'`, `<<"SQL"`.
+_HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def mask_literals(command: str) -> str:
+    """Blank out quoted strings and heredoc bodies, preserving length and layout.
+
+    Trait regexes match command text, which cannot tell performing an action from
+    writing about one. A command whose *content* was the string
+    `gh pr merge 42 --squash` fired `pr-merged-without-review` at critical, and no
+    pull request was merged: the text was being written into a test fixture.
+
+    That failure lands hardest on the people most likely to adopt this. Anyone
+    authoring detection content, security documentation, or corpus cases spends
+    their day typing the exact strings the rules hunt for, and a security tool
+    that punishes you for writing about security gets uninstalled.
+
+    Masking rather than deleting keeps every offset intact, so a caller can still
+    reason about where in the original command a match sat.
+
+    This is a heuristic and is meant to be. Full shell quoting is a parser's job,
+    and a parser that is wrong about an exotic case fails closed in a way nobody
+    can debug from a hashed command. The shapes handled here -- single quotes,
+    double quotes, heredocs -- are the ones that actually produced false
+    positives. Anything it cannot account for stays visible, so the failure mode
+    is a trait that still fires rather than one that silently stops.
+    """
+    if not command or not isinstance(command, str):
+        return command or ""
+
+    out = list(command)
+    i = 0
+    n = len(command)
+    quote: str | None = None
+
+    while i < n:
+        ch = command[i]
+
+        if quote is None:
+            # A heredoc body is content by definition, whatever it contains.
+            m = _HEREDOC_OPEN.match(command, i)
+            if m:
+                delimiter = m.group(2)
+                body_start = command.find("\n", m.end())
+                if body_start == -1:
+                    i = m.end()
+                    continue
+                body_start += 1
+                end = n
+                for line_start, line in _iter_lines(command, body_start):
+                    if line.strip() == delimiter:
+                        end = line_start
+                        break
+                for j in range(body_start, min(end, n)):
+                    if out[j] != "\n":
+                        out[j] = " "
+                i = min(end, n)
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                out[i] = " "
+            i += 1
+            continue
+
+        # Inside a quote.
+        if ch == "\\" and quote == '"' and i + 1 < n:
+            out[i] = " "
+            out[i + 1] = " "
+            i += 2
+            continue
+        if ch == quote:
+            quote = None
+            out[i] = " "
+            i += 1
+            continue
+        if ch != "\n":
+            out[i] = " "
+        i += 1
+
+    return "".join(out)
+
+
+def _iter_lines(text: str, start: int):
+    """(offset, line) for each line from `start`, so a heredoc end can be located."""
+    idx = start
+    while idx < len(text):
+        nl = text.find("\n", idx)
+        if nl == -1:
+            yield idx, text[idx:]
+            return
+        yield idx, text[idx:nl]
+        idx = nl + 1
+
+
 def pipes_only_loopback(command: str) -> bool:
     """True when every URL in a pipe-to-interpreter command points at this host.
 
@@ -199,10 +293,20 @@ def classify_command(command: str) -> list[str]:
         traits.append("delete_cmd")
     if UNTRUSTED_INPUT_COMMAND.search(command):
         traits.append("untrusted_input")
-    if PR_DESC_COMMAND.search(command):
+    # The PR traits read a masked copy: a command that *writes* `gh pr merge`
+    # into a file is not merging anything, and treating it as though it were
+    # fired `pr-merged-without-review` at critical on someone authoring a test
+    # fixture (issue #24).
+    #
+    # Only these three for now. The same confusion exists for other text traits,
+    # and the general fix means understanding shell quoting properly, so each
+    # trait wants its own corpus case before its semantics change. These are the
+    # ones with a reproducer.
+    written = mask_literals(command)
+    if PR_DESC_COMMAND.search(written):
         traits.append("pr_desc")
-    if PR_COMMIT_COMMAND.search(command):
+    if PR_COMMIT_COMMAND.search(written):
         traits.append("pr_commit")
-    if PR_MERGE_COMMAND.search(command):
+    if PR_MERGE_COMMAND.search(written):
         traits.append("pr_merge")
     return traits
