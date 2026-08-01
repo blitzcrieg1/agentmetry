@@ -10,7 +10,14 @@ interface AuditStatus {
   last_event_utc: string | null;
   recent: number;
   by_source: Record<string, number>;
+  spool_pending?: number;
+  spool_oldest_age_seconds?: number | null;
 }
+
+// Below this, a backlog is just a restart clearing itself and saying so would
+// be noise. Above it, capture is not reaching the trail and the feed is
+// misleading the reader.
+const SPOOL_ALERT_PENDING = 25;
 
 const SOURCE_ORDER = ["agentmetry", "claude", "cursor", "codex", "antigravity", "mcp_proxy"] as const;
 
@@ -82,6 +89,24 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
   const minutes = minutesSince(status?.last_event_utc ?? null);
   const recent = status?.recent ?? 0;
   const bySource = status?.by_source ?? {};
+  const pending = status?.spool_pending ?? 0;
+
+  // A backlog outranks freshness. "Last event 2m ago" next to a thousand
+  // unreplayed events is a true statement that leaves a false impression, and
+  // the whole product rests on the feed being complete rather than merely
+  // recent.
+  if (pending >= SPOOL_ALERT_PENDING) {
+    const ageHours = (status?.spool_oldest_age_seconds ?? 0) / 3600;
+    return (
+      <div
+        className="flex items-center gap-2 font-mono text-xs text-amber-600 dark:text-amber-400"
+        title={`Hooks are capturing, but the trail is not accepting. Oldest pending event is ${ageHours.toFixed(1)}h old and stops being replayable after 7 days.`}
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" />
+        {pending.toLocaleString()} events pending replay
+      </div>
+    );
+  }
   const stale = !enabled || (recent > 0 && minutes !== null && minutes > STALE_MINUTES);
   const label = ingestLabel(minutes, enabled, recent);
 

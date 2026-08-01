@@ -363,18 +363,25 @@ async def audit_status():
     Powers the freshness badge and `selftest` — makes silent hook failure visible
     instead of the operator falsely believing they are being audited.
     """
+    from core.audit.spool import spool_depth, spool_oldest_age_seconds
     from core.audit.trail_db import get_trail_db
     path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
         return {"enabled": False, "last_event_utc": None, "recent": 0, "by_source": {}, "path": str(path)}
 
     status_data = get_trail_db().status()
+    # Pending spool depth belongs in the same payload as freshness. A feed that
+    # looks quiet because nothing happened and a feed that looks quiet because
+    # capture is backing up are indistinguishable without it, and that
+    # ambiguity is how a multi-day gap goes unnoticed.
     return {
         "enabled": True,
         "last_event_utc": status_data["last_event_utc"],
         "recent": status_data["recent"],
         "by_source": status_data["by_source"],
         "path": str(path),
+        "spool_pending": spool_depth(),
+        "spool_oldest_age_seconds": spool_oldest_age_seconds(),
     }
 
 

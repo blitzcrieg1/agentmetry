@@ -9,7 +9,42 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+- **The hook spool could delete events it had never replayed.** Draining read the
+  whole file, replayed it, then unlinked the path. A drain of a few thousand
+  events takes minutes and the hooks keep appending throughout, so the unlink
+  destroyed everything captured during the drain. The spool is now rotated aside
+  first: hooks immediately begin a fresh file and only the rotated copy is ever
+  removed. A drain interrupted by a crash resumes from the rotated file instead
+  of losing it.
+
+- **The spool drained only at boot, so a backlog could grow unnoticed for days.**
+  Nothing supervises the orchestrator on the OSS install path, so hooks kept
+  capturing into a spool that nothing came back for. Found in real use: 1,880
+  events across five days, still growing, with a dashboard that looked healthy
+  because an empty feed and a stopped recorder rendered identically. Draining
+  now runs on a timer for as long as the process lives.
+
+- **Boot draining held the ingest port closed.** Awaiting the drain inside the
+  application lifespan meant every hook firing during a large drain was refused
+  and spooled, making the next drain larger. The boot drain is now a background
+  task, so the recorder is reachable first and catches up second.
+
+- **Expired payloads are quarantined rather than discarded.** Payloads past the
+  seven-day replay window still cannot be replayed, because injecting a week-old
+  tool call into today's correlation window invents sequences that never
+  happened. They now move to `hook-spool.expired.jsonl`. A gap in an audit trail
+  is a fact about the audit trail, and this product does not get to quietly
+  forget one.
+
 ### Added
+- **Spool depth and age are now visible.** `GET /api/v1/audit/status` reports
+  `spool_pending` and `spool_oldest_age_seconds`; `doctor` **fails** above 100
+  pending or 24h old, naming how long remains before the oldest become
+  unreplayable; and the dashboard's feed status bar replaces the freshness label
+  with a pending-replay count. "Last event 2m ago" beside a thousand unreplayed
+  events is a true statement that leaves a false impression.
+
 - **`agentmetry dogfood`** — scores the four-week beta gate from the trail.
   A week is green when the recorder ran on at least three days, the chain
   verifies, every critical or high detection was dispositioned, and nothing is

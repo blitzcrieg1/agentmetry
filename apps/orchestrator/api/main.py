@@ -72,12 +72,19 @@ async def lifespan(app: FastAPI):
     # Replay events the hooks captured while this process was down. Same
     # non-fatal contract as the backfill: a broken spool must not stop the
     # recorder from booting.
-    from core.audit.spool import drain_spool
+    #
+    # Deliberately not awaited. Draining a few thousand spooled events takes
+    # minutes, and awaiting it here holds the ingest port closed for the whole
+    # time — so every hook that fires during the drain is refused and spooled,
+    # which makes the next drain larger. The recorder has to be reachable first
+    # and catch up second.
+    from core.audit.spool import drain_forever, drain_spool
 
-    try:
-        await drain_spool()
-    except Exception:
-        logger.exception("Hook spool drain failed; continuing without it")
+    async def _boot_drain() -> None:
+        try:
+            await drain_spool()
+        except Exception:
+            logger.exception("Hook spool drain failed; continuing without it")
 
     # Bring the triage index back in step with the trail. `reconcile_at_boot`
     # declines rather than rebuilding when the trail cannot account for a
@@ -96,6 +103,11 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(ws_event_bridge(), name="ws-bridge"),
         asyncio.create_task(outbox_persister(), name="outbox-persister"),
         asyncio.create_task(audit_exporter(), name="audit-exporter"),
+        asyncio.create_task(_boot_drain(), name="spool-boot-drain"),
+        # Keep draining for as long as we run. A boot-only drain leaves a
+        # backlog growing unnoticed whenever ingest is unreachable while the
+        # process itself stays up.
+        asyncio.create_task(drain_forever(), name="spool-drain"),
     ]
 
     # Drivers mount in the background: a slow npx download must not delay boot.

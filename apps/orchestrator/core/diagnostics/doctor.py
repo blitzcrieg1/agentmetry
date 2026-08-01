@@ -210,24 +210,56 @@ def _check_triage(report: DoctorReport) -> None:
         )
 
 
+# A backlog this deep, or this old, is no longer "the orchestrator restarted a
+# moment ago". It means capture is not reaching the trail, and for a flight
+# recorder that is a failure, not a note.
+_SPOOL_FAIL_DEPTH = 100
+_SPOOL_FAIL_AGE_SECONDS = 24 * 3600
+
+
 def _check_spool(report: DoctorReport) -> None:
-    """Surface events the hooks captured while the orchestrator was down.
+    """Surface events the hooks captured but the trail has not accepted.
 
-    A non-empty spool is normal right after a restart and drains on the next
-    boot. It is worth showing because a spool that never shrinks means the
-    orchestrator is not coming up, and the operator would otherwise see a
-    healthy-looking trail that is quietly missing sessions.
+    A small spool is normal for a moment after a restart and drains on a timer.
+    A large or old one means the orchestrator is not reachable from the hooks,
+    and the operator would otherwise see a healthy-looking trail that is quietly
+    missing sessions. Events past MAX_AGE_SECONDS stop being replayable, so the
+    age is a countdown, not a statistic.
     """
-    from core.audit.spool import read_spool, spool_path
+    from core.audit.spool import (
+        MAX_AGE_SECONDS,
+        expired_path,
+        spool_depth,
+        spool_oldest_age_seconds,
+    )
 
-    path = spool_path()
-    if not path.is_file():
-        report.ok("spool", "No pending hook spool (nothing captured while down)")
+    depth = spool_depth()
+    quarantined = expired_path()
+
+    if depth == 0:
+        if quarantined.is_file():
+            report.warn(
+                "spool",
+                f"Spool empty, but past events were quarantined unreplayed: {quarantined}",
+            )
+        else:
+            report.ok("spool", "No pending hook spool (capture is reaching the trail)")
         return
-    payloads, dropped = read_spool(path)
-    message = f"{len(payloads)} spooled event(s) pending replay at next start"
-    if dropped:
-        message += f"; {dropped} stale or corrupt row(s) will be discarded"
+
+    age = spool_oldest_age_seconds() or 0.0
+    hours = age / 3600
+    message = f"{depth} event(s) pending replay; oldest {hours:.1f}h old"
+
+    if depth >= _SPOOL_FAIL_DEPTH or age >= _SPOOL_FAIL_AGE_SECONDS:
+        remaining = (MAX_AGE_SECONDS - age) / 3600
+        if remaining <= 0:
+            message += ". The oldest are past the replay window already"
+        else:
+            message += f". The oldest become unreplayable in {remaining:.0f}h"
+        message += ". Is the orchestrator running and reachable at the hook's base URL?"
+        report.fail("spool", message)
+        return
+
     report.warn("spool", message)
 
 
