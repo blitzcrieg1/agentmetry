@@ -44,9 +44,13 @@ separately (currently `1.1.0`) and changes additively.
   been run. On the machine where this was found it never had been, which is how
   five days of capture ended up in the spool behind a healthy-looking trail.
 
-  It now registers a restart-on-failure logon task on Windows (via a task
-  definition rather than the limited `schtasks` flags), a `Restart=always`
-  systemd user unit on Linux, and a `KeepAlive` launch agent on macOS.
+  It now registers a self-healing task on Windows (via a task definition rather
+  than the limited `schtasks` flags), a `Restart=always` systemd user unit on
+  Linux, and a `KeepAlive` launch agent on macOS. The Windows keep-alive is a
+  repeating trigger plus `IgnoreNew`, not `RestartOnFailure`: despite the name,
+  that setting covers a task which fails to launch, not one whose process dies
+  later. Verified by killing the recorder and watching it come back on its own
+  inside a minute.
   `agentmetry uninstall` reverses whichever applies. Packaged builds refuse and
   say why: the installer already supervises them, and a second registration
   would race it. `doctor` now warns when nothing will restart the recorder and

@@ -123,6 +123,36 @@ def cmd_start(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Run the orchestrator in the foreground, logging to a file.
+
+    This is the entry point autostart registers, and it exists because of a
+    specific Windows failure. A background task must not flash a console window,
+    which means `pythonw.exe` — and under `pythonw.exe` there is no console, so
+    `sys.stdout` and `sys.stderr` are None. Uvicorn configures a logging handler
+    against `sys.stdout` on startup and dies before serving a single request.
+    The scheduled task ran, exited 1, and left no trace of why, which is the
+    same shape of silent failure the spool had.
+
+    So: point the streams at the same log `agentmetry start` uses, then run in
+    the foreground. Foreground matters. A supervisor watching a process that
+    forks and exits is watching the wrong process, and would never restart the
+    one that actually died.
+    """
+    log_dir = _DATA_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    out_log = log_dir / "uvicorn.out"
+
+    stream = out_log.open("a", buffering=1, encoding="utf-8", errors="replace")
+    sys.stdout = stream
+    sys.stderr = stream
+
+    import uvicorn
+
+    uvicorn.run("api.main:app", host=args.host, port=args.port)
+    return 0
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     if not _PID_FILE.exists():
         if _fetch_health(args.port):
@@ -618,6 +648,12 @@ def main(argv: list[str] | None = None) -> int:
         default="127.0.0.1",
         help="bind address — use 0.0.0.0 for phone/LAN access (default: 127.0.0.1)",
     )
+    serve = sub.add_parser(
+        "serve",
+        help="run the orchestrator in the foreground (what autostart registers)",
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
     sub.add_parser("status", help="orchestrator health and audit export status")
     stats = sub.add_parser("stats", help="audit trail metrics for dogfood (events, detections)")
     stats.add_argument("--days", type=int, default=7)
@@ -687,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handlers = {
         "start": cmd_start,
+        "serve": cmd_serve,
         "stop": cmd_stop,
         "status": cmd_status,
         "stats": cmd_stats,

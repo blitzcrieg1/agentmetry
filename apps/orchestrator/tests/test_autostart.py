@@ -22,9 +22,17 @@ def test_launch_command_avoids_a_shell_wrapper():
     """A cmd.exe in the middle means the restart policy watches the wrapper."""
     executable, args, workdir = autostart.launch_command()
     assert "cmd" not in os.path.basename(executable).lower()
-    assert "uvicorn" in args
     assert "127.0.0.1" in args, "an unattended recorder must not bind beyond loopback"
     assert (workdir / "api" / "main.py").is_file()
+
+
+def test_autostart_runs_serve_not_uvicorn_directly():
+    """Under pythonw.exe there is no console, so sys.stdout is None and
+    uvicorn's logging setup dies before it serves anything. The task ran, exited
+    1, and explained nothing. `cli serve` redirects the streams first."""
+    _executable, args, _workdir = autostart.launch_command()
+    assert args[:3] == ["-m", "cli", "serve"]
+    assert "uvicorn" not in args
 
 
 def test_packaged_builds_refuse_to_register_a_second_autostart(monkeypatch):
@@ -39,9 +47,42 @@ def test_packaged_builds_refuse_to_register_a_second_autostart(monkeypatch):
     assert "packaged build" in message.lower()
 
 
-def test_windows_task_asks_for_restart_on_failure():
-    """Start-at-logon alone leaves a crashed recorder dead until the next logon,
-    which on a workstation is days."""
+def test_windows_task_keeps_alive_with_a_repeating_trigger():
+    """The property that actually revives a dead recorder.
+
+    RestartOnFailure does not do this, despite the name: it covers a task that
+    fails to launch, not an action that starts fine and is killed later.
+    Verified on a real machine — the recorder was killed, LastTaskResult was
+    0xFFFFFFFF, and nothing came back. A repeating trigger plus IgnoreNew does
+    the job: a repeat is a no-op while an instance lives, and a restart once it
+    does not.
+    """
+    xml = autostart.render_windows_task_xml(user="EXAMPLE\\dev")
+    assert "<Repetition>" in xml
+    assert "<StopAtDurationEnd>false</StopAtDurationEnd>" in xml, (
+        "a repetition that stops leaves the recorder dead after the window"
+    )
+    assert "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml, (
+        "without IgnoreNew the repeat starts a second recorder every interval"
+    )
+
+
+def test_keepalive_does_not_wait_for_a_logon():
+    """A logon trigger's repetition only engages once a logon fires.
+
+    Someone installing autostart mid-session would otherwise have no keep-alive
+    until they next logged out, which is precisely the window in which they
+    decided they wanted one. The time trigger starts in the past so the repeat
+    is live the moment the task is registered.
+    """
+    xml = autostart.render_windows_task_xml(user="EXAMPLE\\dev")
+    assert "<TimeTrigger>" in xml
+    assert f"<StartBoundary>{autostart.KEEPALIVE_EPOCH}</StartBoundary>" in xml
+    assert xml.count("<Repetition>") == 2, "both triggers carry the repeat"
+
+
+def test_windows_task_still_asks_for_restart_on_failure():
+    """Kept as a second line for launch failures, which it does cover."""
     xml = autostart.render_windows_task_xml(user="EXAMPLE\\dev")
     assert "<RestartOnFailure>" in xml
     assert f"<Interval>PT{autostart.RESTART_INTERVAL_MINUTES}M</Interval>" in xml
@@ -65,7 +106,7 @@ def test_systemd_unit_restarts_always():
     unit = autostart.render_systemd_unit()
     assert "Restart=always" in unit
     assert "WantedBy=default.target" in unit
-    assert "--host 127.0.0.1" in unit
+    assert "cli serve" in unit and "--host 127.0.0.1" in unit
 
 
 def test_launchd_plist_keeps_alive():

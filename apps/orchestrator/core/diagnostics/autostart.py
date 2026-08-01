@@ -48,6 +48,11 @@ LAUNCH_LABEL = "ai.agentmetry.orchestrator"
 RESTART_INTERVAL_MINUTES = 1
 RESTART_COUNT = 999
 
+# Any boundary in the past works; the repetition is what carries the schedule
+# forward. Fixed rather than "now" so a re-registration produces an identical
+# task and diffs stay empty.
+KEEPALIVE_EPOCH = "2020-01-01T00:00:00"
+
 
 @dataclass(frozen=True)
 class AutostartStatus:
@@ -93,7 +98,11 @@ def launch_command() -> tuple[str, list[str], Path]:
         candidate = Path(sys.executable).with_name("pythonw.exe")
         if candidate.is_file():
             executable = str(candidate)
-    args = ["-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8000"]
+    # `cli serve`, never `-m uvicorn` directly. Under pythonw.exe there is no
+    # console, so sys.stdout is None and uvicorn's own logging setup dies before
+    # it serves anything -- observed as a task that ran, exited 1, and explained
+    # nothing. `serve` points the streams at the log file first.
+    args = ["-m", "cli", "serve", "--host", "127.0.0.1", "--port", "8000"]
     return executable, args, workdir
 
 
@@ -117,7 +126,24 @@ def render_windows_task_xml(user: str | None = None) -> str:
     <LogonTrigger>
       <Enabled>true</Enabled>
       <UserId>{account}</UserId>
+      <Repetition>
+        <Interval>PT{RESTART_INTERVAL_MINUTES}M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
     </LogonTrigger>
+    <!-- The logon trigger's repetition only engages once a logon fires. Someone
+         who installs autostart mid-session would therefore have no keep-alive
+         until they next logged out, which is exactly the window where they
+         just decided they wanted one. This trigger starts in the past, so the
+         repeat is live the moment the task is registered. -->
+    <TimeTrigger>
+      <Enabled>true</Enabled>
+      <StartBoundary>{KEEPALIVE_EPOCH}</StartBoundary>
+      <Repetition>
+        <Interval>PT{RESTART_INTERVAL_MINUTES}M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -137,6 +163,13 @@ def render_windows_task_xml(user: str | None = None) -> str:
     <Enabled>true</Enabled>
     <Hidden>true</Hidden>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <!-- RestartOnFailure is not the keep-alive, despite the name. It covers a
+         task that fails to launch, not an action that starts fine and dies an
+         hour later. Verified: killing the recorder left LastTaskResult
+         0xFFFFFFFF and nothing restarted it. The repeating trigger above is
+         what actually brings it back, since IgnoreNew makes a repeat a no-op
+         while an instance is alive and a restart once it is not. This stays as
+         a second line for launch failures. -->
     <RestartOnFailure>
       <Interval>PT{RESTART_INTERVAL_MINUTES}M</Interval>
       <Count>{RESTART_COUNT}</Count>
@@ -293,8 +326,9 @@ def _install_windows() -> tuple[bool, str]:
     if result.returncode != 0:
         return False, (result.stderr.strip() or result.stdout.strip() or "schtasks failed")
     return True, (
-        f"Registered '{TASK_NAME}' to start at logon and restart on failure "
-        f"(every {RESTART_INTERVAL_MINUTES}m, up to {RESTART_COUNT} times)."
+        f"Registered '{TASK_NAME}'. It starts at logon and is re-checked every "
+        f"{RESTART_INTERVAL_MINUTES}m, so a recorder that dies comes back within "
+        "about a minute."
     )
 
 
