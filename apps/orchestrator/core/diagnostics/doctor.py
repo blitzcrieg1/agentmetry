@@ -210,6 +210,32 @@ def _check_triage(report: DoctorReport) -> None:
         )
 
 
+def _check_autostart(report: DoctorReport) -> None:
+    """Say whether anything will restart the recorder without a human.
+
+    `agentmetry install` has existed for a while and nothing ever mentioned it.
+    On the machine where this check was written it had never been run, and the
+    result was five days of agent activity sitting in the hook spool while the
+    trail looked healthy. A capability nobody is told about is worth about as
+    much as one that does not exist.
+
+    A warning rather than a failure: running the recorder by hand is a
+    legitimate choice, and doctor should not fail an operator for making it.
+    """
+    from core.diagnostics import autostart
+
+    state = autostart.status()
+    if state.configured:
+        report.ok("autostart", f"Starts automatically ({state.backend}): {state.detail}")
+        return
+    report.warn(
+        "autostart",
+        f"Nothing restarts the recorder ({state.backend}: {state.detail}). "
+        "Hooks keep capturing to the spool while it is down, and spooled events "
+        "expire after 7 days. Run `agentmetry install` to fix.",
+    )
+
+
 # A backlog this deep, or this old, is no longer "the orchestrator restarted a
 # moment ago". It means capture is not reaching the trail, and for a flight
 # recorder that is a failure, not a note.
@@ -459,6 +485,7 @@ def run_doctor(
     _check_trail(report)
     _check_triage(report)
     _check_spool(report)
+    _check_autostart(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
     _check_extensions(report)

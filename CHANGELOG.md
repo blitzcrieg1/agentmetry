@@ -37,6 +37,21 @@ separately (currently `1.1.0`) and changes additively.
   is a fact about the audit trail, and this product does not get to quietly
   forget one.
 
+- **Autostart was Windows-only, had no restart policy, and told nobody it
+  existed.** `agentmetry install` registered a logon task with no recovery, so a
+  crashed recorder stayed dead until the next logon; on Linux and macOS it
+  printed "Windows-only" and exited. Worse, nothing ever reported whether it had
+  been run. On the machine where this was found it never had been, which is how
+  five days of capture ended up in the spool behind a healthy-looking trail.
+
+  It now registers a restart-on-failure logon task on Windows (via a task
+  definition rather than the limited `schtasks` flags), a `Restart=always`
+  systemd user unit on Linux, and a `KeepAlive` launch agent on macOS.
+  `agentmetry uninstall` reverses whichever applies. Packaged builds refuse and
+  say why: the installer already supervises them, and a second registration
+  would race it. `doctor` now warns when nothing will restart the recorder and
+  names the command that fixes it.
+
 ### Added
 - **Spool depth and age are now visible.** `GET /api/v1/audit/status` reports
   `spool_pending` and `spool_oldest_age_seconds`; `doctor` **fails** above 100

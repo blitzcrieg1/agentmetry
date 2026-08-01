@@ -335,34 +335,44 @@ def cmd_restore(args: argparse.Namespace) -> int:
 
 
 def cmd_install(args: argparse.Namespace) -> int:
-    if os.name != "nt":
-        print("install is Windows-only (Task Scheduler).")
+    """Register the orchestrator to start by itself and stay up.
+
+    This used to be Windows-only, and used to start at logon with no restart
+    policy, so a crashed recorder stayed dead until the next logon. Both are
+    fixed. It is still opt-in: a persistent background process is the user's
+    decision, and `doctor` only points at this command rather than running it.
+    """
+    from core.diagnostics import autostart
+
+    current = autostart.status()
+    if current.configured:
+        print(f"Already configured via {current.backend}: {current.detail}")
+        return 0
+
+    ok, message = autostart.install()
+    print(message)
+    if not ok:
         return 1
-    bat = _REPO_ROOT / "scripts" / "agentmetry.bat"
-    tr = f'cmd /c ""{bat}" start"'
-    result = subprocess.run(
-        ["schtasks", "/Create", "/TN", _TASK_NAME, "/TR", tr,
-         "/SC", "ONLOGON", "/RL", "LIMITED", "/IT", "/F"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(f"schtasks failed: {result.stderr.strip() or result.stdout.strip()}")
-        return 1
-    print(f"Registered '{_TASK_NAME}' to start at logon (user session, so toasts work).")
+    print("The recorder now starts by itself. Check it with `agentmetry doctor`.")
     return 0
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
-    if os.name != "nt":
-        print("uninstall is Windows-only (Task Scheduler).")
+    from core.diagnostics import autostart
+
+    current = autostart.status()
+    if not current.configured:
+        print(f"Nothing to remove ({current.backend}: {current.detail}).")
+        return 0
+
+    ok, message = autostart.remove()
+    print(message)
+    if not ok:
         return 1
-    result = subprocess.run(
-        ["schtasks", "/Delete", "/TN", _TASK_NAME, "/F"], capture_output=True, text=True
+    print(
+        "Autostart removed. The hooks keep capturing whether or not the recorder "
+        "is up, but events only reach the trail while it is running."
     )
-    if result.returncode != 0:
-        print(f"schtasks failed: {result.stderr.strip() or result.stdout.strip()}")
-        return 1
-    print(f"Removed scheduled task '{_TASK_NAME}'.")
     return 0
 
 
