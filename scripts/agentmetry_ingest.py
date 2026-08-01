@@ -379,6 +379,15 @@ def spool_payload(payload: dict[str, Any]) -> bool:
 
 
 def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
+    # Stamp when the tool call happened, here, at capture. The orchestrator falls
+    # back to its own clock when this is absent, which is accurate to the
+    # millisecond while ingest is live and wrong by up to a week when it is not:
+    # a spooled event replayed days later was recorded as having happened at
+    # replay time. That put five days of activity in the trail under a
+    # three-minute window, made every "A then B inside N minutes" rule fire on
+    # unrelated events, and misstated when things happened in a record whose
+    # whole purpose is to say when things happened.
+    payload.setdefault("timestamp_utc", _utc_now())
     url = f"{_base_url()}/api/v1/audit/ingest"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}

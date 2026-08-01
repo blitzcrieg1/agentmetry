@@ -130,6 +130,40 @@ def test_read_spool_missing_file_is_not_an_error(tmp_path):
     assert read_spool(tmp_path / "absent.jsonl") == ([], 0)
 
 
+def test_replay_keeps_when_the_tool_call_happened(tmp_path):
+    """Replay must not restamp events with the time of the replay.
+
+    The orchestrator falls back to its own clock for an event carrying no
+    timestamp. That is accurate to the millisecond while ingest is live and
+    wrong by up to a week when it is not: draining a five-day spool recorded
+    every event as having happened during the drain. It put five days of
+    activity under a three-minute window, fired every "A then B within N
+    minutes" rule on unrelated events, and misstated when things happened in a
+    record whose entire purpose is to say when things happened.
+    """
+    captured = "2026-07-27T14:13:12.480361+00:00"
+    spool = tmp_path / "hook-spool.jsonl"
+    spool.write_text(_spool_line(_payload("old"), spooled_at=captured) + "\n", encoding="utf-8")
+
+    payloads, _ = read_spool(spool)
+    assert payloads[0]["timestamp_utc"] == captured
+
+
+def test_replay_does_not_overwrite_a_timestamp_the_hook_sent(tmp_path):
+    """`spooled_at` is when we gave up posting, which is a hair later than the
+    call itself. If the hook told us, believe the hook."""
+    spool = tmp_path / "hook-spool.jsonl"
+    payload = _payload("precise")
+    payload["timestamp_utc"] = "2026-07-27T14:13:12.000000+00:00"
+    spool.write_text(
+        _spool_line(payload, spooled_at="2026-07-27T14:13:19.999999+00:00") + "\n",
+        encoding="utf-8",
+    )
+
+    payloads, _ = read_spool(spool)
+    assert payloads[0]["timestamp_utc"] == "2026-07-27T14:13:12.000000+00:00"
+
+
 @pytest.mark.asyncio
 async def test_drain_replays_through_ingest_and_removes_the_spool(tmp_path, monkeypatch):
     spool = tmp_path / "hook-spool.jsonl"

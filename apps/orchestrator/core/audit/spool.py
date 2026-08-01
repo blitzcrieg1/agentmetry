@@ -217,9 +217,19 @@ def _parse_file(target: Path) -> tuple[list[dict[str, Any]], list[str], int]:
                 if not isinstance(payload, dict):
                     corrupt += 1
                     continue
-                if _too_old(str(row.get("spooled_at") or ""), now=now):
+                spooled_at = str(row.get("spooled_at") or "")
+                if _too_old(spooled_at, now=now):
                     expired.append(stripped)
                     continue
+                # When the tool call happened, not when we got round to it. The
+                # orchestrator falls back to its own clock for an event with no
+                # timestamp, so replaying a five-day-old spool used to record
+                # every event as having happened during the replay. `spooled_at`
+                # is written by the hook at capture, so it is the closest thing
+                # to the truth we still hold. Hooks now send `timestamp_utc`
+                # themselves; this covers spools written before they did.
+                if spooled_at:
+                    payload.setdefault("timestamp_utc", spooled_at)
                 payloads.append(payload)
     except OSError:
         logger.exception("Could not read hook spool at %s", target)

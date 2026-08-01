@@ -10,6 +10,24 @@ separately (currently `1.1.0`) and changes additively.
 ## [Unreleased]
 
 ### Fixed
+- **Replayed events were stamped with the time of the replay, not the time of
+  the tool call.** The hook sent no timestamp, so the orchestrator fell back to
+  its own clock. That is accurate to the millisecond while ingest is live and
+  wrong by up to a week when it is not. Draining a five-day spool therefore
+  recorded 1,880 events as having happened inside a three-minute window.
+
+  Two consequences, both serious. Every sequence rule keys on "A then B within N
+  minutes", so unrelated events days apart became correlated: one drain produced
+  twelve detections including two criticals, and reconstruction showed the
+  "correlated" sequences actually spanned 4 days 6 hours and 1 day 9.5 hours.
+  And a record whose entire purpose is to say when things happened was saying it
+  wrongly.
+
+  The hook now stamps `timestamp_utc` at capture, so live and replayed events
+  are equally accurate. Replay also backfills from the spool's `spooled_at` for
+  entries written by older hooks, and never overwrites a timestamp the hook
+  supplied.
+
 - **The hook spool could delete events it had never replayed.** Draining read the
   whole file, replayed it, then unlinked the path. A drain of a few thousand
   events takes minutes and the hooks keep appending throughout, so the unlink
