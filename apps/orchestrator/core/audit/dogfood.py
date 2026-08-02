@@ -25,6 +25,7 @@ about volume. A slow week is fine. A week the recorder missed is not.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -56,16 +57,76 @@ def read_marker() -> dict[str, Any] | None:
         return None
 
 
+# Files whose contents define what a detection means. A change to any of them
+# changes what the gate is measuring, which is why the fingerprint covers whole
+# sources rather than just the rule id list: today's two fixes changed severities
+# and trait classification without adding or removing a single rule.
+_RULESET_SOURCES = (
+    "core/audit/detection/rules.py",
+    "core/audit/detection/traits.py",
+    "core/audit/detection/engine.py",
+    "core/audit/mitre.py",
+)
+
+
+def _orchestrator_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def ruleset_fingerprint() -> str:
+    """A hash of everything that decides whether a detection fires, and how hard.
+
+    The gate exists to produce a number worth quoting. Four green weeks measured
+    against four different rulesets is not that number, and nothing was stopping
+    it: three detection changes shipped into week one on the day the clock
+    started, each one an improvement, and collectively they made the week
+    meaningless.
+
+    A promise to freeze the rules is the same kind of promise as an install
+    command nobody runs. This makes the freeze checkable.
+
+    Whole-file hashing is deliberately blunt. It flags a comment-only edit as a
+    change, which is a small annoyance, and it cannot miss a real one, which is
+    the point. Being told to look is cheap; a silently invalidated month is not.
+    """
+    digest = hashlib.sha256()
+    root = _orchestrator_root()
+    for rel in _RULESET_SOURCES:
+        path = root / rel
+        digest.update(rel.encode("utf-8"))
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+
+    # The YAML rules are ruleset too, and they are the half an operator is most
+    # likely to edit without thinking of it as changing the product.
+    try:
+        from core.config import settings
+
+        manifest = Path(settings.detection_rules_path)
+        digest.update(b"detection-manifest")
+        digest.update(manifest.read_bytes() if manifest.is_file() else b"<absent>")
+    except Exception:
+        digest.update(b"<manifest-unavailable>")
+
+    return digest.hexdigest()
+
+
 def start_clock(when: date | None = None, *, operator: str = "") -> dict[str, Any]:
     """Record the start of the dogfood period.
 
     Deliberately an explicit act rather than inferred from the first event. The
     gate is a commitment to watch for four weeks, and a commitment nobody made
     on a particular day is one nobody is keeping.
+
+    The ruleset fingerprint is recorded here so the commitment includes what was
+    being measured, not just when the measuring began.
     """
     marker = {
         "started_utc": (when or datetime.now(timezone.utc).date()).isoformat(),
         "operator": operator,
+        "ruleset_fingerprint": ruleset_fingerprint(),
         "note": "Four consecutive green weeks. See core/audit/dogfood.py for what green means.",
     }
     path = marker_path()
@@ -105,6 +166,9 @@ class DogfoodReport:
     chain_ok: bool = True
     chain_message: str = ""
     spooled: int = 0
+    # False when the detection rules have changed since the clock started, which
+    # means the weeks measured different products and cannot be added together.
+    ruleset_frozen: bool = True
 
     @property
     def consecutive_green(self) -> int:
@@ -121,7 +185,12 @@ class DogfoodReport:
 
     @property
     def passed(self) -> bool:
-        return self.consecutive_green >= 4
+        # A changed ruleset does not turn individual weeks red, because the
+        # operator's behaviour that week was real and worth recording. It does
+        # stop the run adding up to a pass, because four weeks measured against
+        # four different rulesets is not four weeks of evidence about one
+        # product.
+        return self.consecutive_green >= 4 and self.ruleset_frozen
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -132,6 +201,7 @@ class DogfoodReport:
             "chain_ok": self.chain_ok,
             "chain_message": self.chain_message,
             "spooled": self.spooled,
+            "ruleset_frozen": self.ruleset_frozen,
             "weeks": [
                 {
                     "index": w.index,
@@ -175,6 +245,11 @@ def assess(
         started = date.fromisoformat(marker["started_utc"])
 
     report = DogfoodReport(started=started)
+    # A marker written before fingerprints existed has nothing to compare, and
+    # assuming it drifted would be inventing a failure. Absence is not evidence.
+    recorded = (marker or {}).get("ruleset_fingerprint")
+    if recorded:
+        report.ruleset_frozen = recorded == ruleset_fingerprint()
     _attach_health(report)
     if started is None:
         return report
@@ -306,6 +381,14 @@ def render(report: DogfoodReport) -> str:
     else:
         remaining = 4 - report.consecutive_green
         lines.append(f"  {remaining} more green week(s) needed.")
+
+    if not report.ruleset_frozen:
+        lines += [
+            "",
+            "  RULESET CHANGED since the clock started, so these weeks did not all",
+            "  measure the same product and the run cannot pass. Land rule changes",
+            "  and restart the clock: agentmetry dogfood --start --restart",
+        ]
 
     if not report.chain_ok:
         lines.append(f"  Trail chain: BROKEN - {report.chain_message}")

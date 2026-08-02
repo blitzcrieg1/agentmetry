@@ -9,6 +9,24 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+- **The dogfood gate now notices when the rules changed underneath it.**
+  `dogfood --start` records a fingerprint of everything that decides whether a
+  detection fires and how hard: the detection engine, rules, traits and MITRE
+  sources, plus the YAML manifest. `dogfood` compares it on every run.
+
+  Three detection changes shipped into week one on the day the clock started.
+  Each was an improvement. Together they meant the week measured three different
+  products, and nothing said so. The gate exists to produce a number worth
+  quoting, and four green weeks measured against four rulesets is not that
+  number.
+
+  A drifted ruleset does not turn individual weeks red, because the operator's
+  behaviour that week was real. It does stop the run passing, and the report
+  names the fix. Whole-file hashing is blunt on purpose: it flags a comment-only
+  edit, and it cannot miss a real change. A marker written before fingerprints
+  existed is treated as unknown rather than drifted.
+
 ### Fixed
 - **Writing `gh pr merge` into a file read as merging a pull request** (#24).
   A command whose *content* was `gh pr merge 42 --squash` fired
