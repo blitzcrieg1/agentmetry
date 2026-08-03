@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from core.config import settings
+from agentmetry.core.config import settings
 
 
 @pytest.fixture
@@ -22,14 +22,14 @@ def audit_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     return TestClient(app)
 
@@ -53,11 +53,11 @@ def test_audit_tail_excludes_config_change_by_default(tmp_path: Path, monkeypatc
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     get_trail_db().insert_batch(events)
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     client = TestClient(app)
     body = client.get("/api/v1/audit/tail?scope=runs").json()
@@ -77,11 +77,11 @@ def test_audit_tail_filters_by_session(audit_client: TestClient, tmp_path: Path,
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     get_trail_db().insert_batch(events)
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     client = TestClient(app)
     body = client.get("/api/v1/audit/tail?session_id=sess-a&scope=runs").json()
@@ -93,13 +93,13 @@ def test_audit_tail_empty_when_missing_file(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "missing.jsonl")
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     client = TestClient(app)
     resp = client.get("/api/v1/audit/tail")
@@ -120,13 +120,13 @@ def test_audit_status_reports_freshness_and_sources(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     body = TestClient(app).get("/api/v1/audit/status").json()
     assert body["enabled"] is True
@@ -140,13 +140,13 @@ def test_audit_status_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "x.jsonl")
     monkeypatch.setattr(settings, "audit_export_enabled", False)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     body = TestClient(app).get("/api/v1/audit/status").json()
     assert body["enabled"] is False
@@ -165,13 +165,13 @@ def test_audit_tail_pagination_before_utc(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     client = TestClient(app)
     latest = client.get("/api/v1/audit/tail?limit=2&scope=runs").json()
@@ -203,13 +203,13 @@ def test_audit_tail_pagination_after_utc(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     newer = TestClient(app).get(
         "/api/v1/audit/tail",
@@ -239,13 +239,13 @@ def test_audit_session_returns_full_session(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     body = TestClient(app).get("/api/v1/audit/session/sess-X").json()
     assert body["count"] == 3
@@ -277,13 +277,13 @@ def test_audit_detections_correlate_across_session(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
     except NameError:
         pass  # events not defined in this scope
-    from api.main import app
+    from agentmetry.api.main import app
 
     body = TestClient(app).get("/api/v1/audit/detections/sess-D").json()
     assert body["count"] == 1
@@ -340,12 +340,12 @@ def test_audit_tail_focus_dlp_and_policy(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_enabled", True)
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
 
     reset_trail_db()
     get_trail_db().insert_batch(events)
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     client = TestClient(app)
     dlp = client.get("/api/v1/audit/tail?scope=all&focus=dlp").json()["events"]
@@ -366,15 +366,15 @@ def test_evidence_export_endpoint_writes_a_windows_safe_filename(
     """The route passed datetimes into a date-typed helper; the isoformat colons
     made an invalid Windows filename and every Export Pack click returned 500.
     Never caught before because CI runs on Linux, where colons are legal."""
-    import core.audit.evidence_pack as ep
-    from core.config import settings as cfg
+    import agentmetry.core.audit.evidence_pack as ep
+    from agentmetry.core.config import settings as cfg
 
     monkeypatch.setattr(cfg, "audit_export_enabled", True)
     monkeypatch.setattr(cfg, "vault_path", tmp_path)
     monkeypatch.setattr(
         ep, "build_evidence_pack", lambda *a, **k: {"meta": {}, "events": []}
     )
-    from api.main import app
+    from agentmetry.api.main import app
 
     resp = TestClient(app).get("/api/v1/audit/export/evidence")
     assert resp.status_code == 200

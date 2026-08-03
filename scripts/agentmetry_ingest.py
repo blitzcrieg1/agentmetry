@@ -26,8 +26,8 @@ from typing import Any
 
 try:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from apps.orchestrator.core.audit.dlp import scan as dlp_scan
-    from apps.orchestrator.core.audit.tool_policy import evaluate as tool_policy_eval
+    from apps.orchestrator.agentmetry.core.audit.dlp import scan as dlp_scan
+    from apps.orchestrator.agentmetry.core.audit.tool_policy import evaluate as tool_policy_eval
 except ImportError:
     dlp_scan = None
     tool_policy_eval = None
@@ -35,8 +35,8 @@ except ImportError:
 # Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
 # trait/MITRE tagging, which only needs the stdlib.
 try:
-    from apps.orchestrator.core.audit.detection.traits import classify_command
-    from apps.orchestrator.core.audit.mitre import get_mitre_mapping
+    from apps.orchestrator.agentmetry.core.audit.detection.traits import classify_command
+    from apps.orchestrator.agentmetry.core.audit.mitre import get_mitre_mapping
 except ImportError:
     classify_command = None
     get_mitre_mapping = None

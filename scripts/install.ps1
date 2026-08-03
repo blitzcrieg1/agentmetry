@@ -92,7 +92,7 @@ function Set-OrchestratorEnvKey {
         if (Test-Path $envExample) { Copy-Item $envExample $envFile }
         else { New-Item -ItemType File -Path $envFile -Force | Out-Null }
     }
-    & $VenvPython -c "from core.diagnostics.env_file import upsert_env_key; from pathlib import Path; upsert_env_key(Path(r'$envFile'), r'$Key', r'$Value')"
+    & $VenvPython -c "from agentmetry.core.diagnostics.env_file import upsert_env_key; from pathlib import Path; upsert_env_key(Path(r'$envFile'), r'$Key', r'$Value')"
     Write-Host "  $Key=$Value"
 }
 

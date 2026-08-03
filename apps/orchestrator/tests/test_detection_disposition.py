@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.detection.disposition import (
+from agentmetry.core.audit.detection.disposition import (
     CLOSED_STATUSES,
     DEFAULT_STATUS,
     DISPOSITION_EVENT_TYPE,
@@ -35,7 +35,7 @@ from core.audit.detection.disposition import (
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "detection_disposition_db_path", tmp_path / "disp.db")
     reset_disposition_store()
@@ -189,8 +189,8 @@ def test_extract_dispositions_ignores_other_events():
 async def test_apply_disposition_writes_the_trail_before_the_index(
     store, tmp_path, monkeypatch
 ):
-    from core.audit.trail_db import get_trail_db, reset_trail_db
-    from core.config import settings
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_enabled", False)
@@ -212,8 +212,8 @@ async def test_apply_disposition_writes_the_trail_before_the_index(
 
 
 async def test_a_rejected_disposition_writes_nothing(store, tmp_path, monkeypatch):
-    from core.audit.trail_db import get_trail_db, reset_trail_db
-    from core.config import settings
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_enabled", False)
@@ -231,9 +231,9 @@ async def test_a_rejected_disposition_writes_nothing(store, tmp_path, monkeypatc
 
 async def test_a_down_sink_does_not_lose_the_decision(store, tmp_path, monkeypatch):
     """Forwarding is best-effort; the operator's decision is not."""
-    from core.audit import ingest
-    from core.audit.trail_db import get_trail_db, reset_trail_db
-    from core.config import settings
+    from agentmetry.core.audit import ingest
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     reset_trail_db()
@@ -255,8 +255,8 @@ async def test_a_down_sink_does_not_lose_the_decision(store, tmp_path, monkeypat
 # --- the table is an index, the trail is the record --------------------------
 
 async def test_the_index_rebuilds_from_the_trail(store, tmp_path, monkeypatch):
-    from core.audit.trail_db import get_trail_db, reset_trail_db
-    from core.config import settings
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_enabled", False)
@@ -309,7 +309,7 @@ def test_fleet_id_is_absent_rather_than_empty_when_unset(monkeypatch):
     `fleet_id="*"` would then match unconfigured hosts, and excluding them would
     need an explicit `fleet_id!=""` on every query. Absent means absent.
     """
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "fleet_id", "")
     event = build_disposition_event(
@@ -319,7 +319,7 @@ def test_fleet_id_is_absent_rather_than_empty_when_unset(monkeypatch):
 
 
 def test_disposition_event_includes_configured_fleet_id(monkeypatch):
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "fleet_id", "pilot-east")
     event = build_disposition_event(
@@ -330,10 +330,10 @@ def test_disposition_event_includes_configured_fleet_id(monkeypatch):
 
 def test_disposition_event_matches_the_canonical_envelope(monkeypatch):
     """Same top-level keys a SIEM parser already expects from detections."""
-    from core.config import settings
+    from agentmetry.core.config import settings
 
-    from core.audit.detection.live import build_detection_event
-    from core.audit.detection.models import Detection
+    from agentmetry.core.audit.detection.live import build_detection_event
+    from agentmetry.core.audit.detection.models import Detection
 
     monkeypatch.setattr(settings, "fleet_id", "pilot-east")
     detection = build_detection_event(

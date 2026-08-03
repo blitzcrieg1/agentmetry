@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from core.config import settings
+from agentmetry.core.config import settings
 
 _DISPOSITION_URL = "/api/v1/audit/detections/disposition"
 
@@ -25,13 +25,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "api_key", "")
 
-    from core.audit.detection.disposition import reset_disposition_store
-    from core.audit.trail_db import reset_trail_db
+    from agentmetry.core.audit.detection.disposition import reset_disposition_store
+    from agentmetry.core.audit.trail_db import reset_trail_db
 
     reset_trail_db()
     reset_disposition_store()
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     yield TestClient(app)
 
@@ -91,7 +91,7 @@ def test_the_decision_lands_in_the_trail(client: TestClient):
             "decided_by": "alex",
         },
     )
-    from core.audit.trail_db import get_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db
 
     events = get_trail_db().events_by_action_type("detection_disposition")
     assert len(events) == 1

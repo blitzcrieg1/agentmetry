@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.audit.replay import format_timeline
-from core.bus.events import RUN_STARTED, TOOL_DENIED
+from agentmetry.core.audit.replay import format_timeline
+from agentmetry.core.bus.events import RUN_STARTED, TOOL_DENIED
 
 
 def test_format_timeline_includes_events():

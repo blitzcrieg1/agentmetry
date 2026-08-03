@@ -16,7 +16,7 @@ from urllib.error import URLError
 
 import pytest
 
-from core.audit.spool import (
+from agentmetry.core.audit.spool import (
     MAX_AGE_SECONDS,
     drain_spool,
     expired_path,
@@ -195,7 +195,7 @@ async def test_drain_replays_through_ingest_and_removes_the_spool(tmp_path, monk
         seen.append(payload["correlation_id"])
         return {}
 
-    import core.audit.ingest as ingest_mod
+    import agentmetry.core.audit.ingest as ingest_mod
     monkeypatch.setattr(ingest_mod, "ingest_external_event", _fake_ingest)
 
     result = await drain_spool(spool)
@@ -212,7 +212,7 @@ async def test_failed_replay_keeps_the_spool_for_the_next_boot(tmp_path, monkeyp
     async def _fail(_payload):
         raise RuntimeError("no sinks configured")
 
-    import core.audit.ingest as ingest_mod
+    import agentmetry.core.audit.ingest as ingest_mod
     monkeypatch.setattr(ingest_mod, "ingest_external_event", _fail)
 
     result = await drain_spool(spool)
@@ -269,7 +269,7 @@ async def test_events_spooled_during_a_drain_are_not_deleted(tmp_path, monkeypat
             fh.write(_spool_line(_payload(f"during-{len(seen)}")) + "\n")
         return {}
 
-    import core.audit.ingest as ingest_mod
+    import agentmetry.core.audit.ingest as ingest_mod
     monkeypatch.setattr(ingest_mod, "ingest_external_event", _slow_ingest)
 
     result = await drain_spool(spool)
@@ -297,7 +297,7 @@ async def test_drain_resumes_a_rotated_file_left_by_a_crash(tmp_path, monkeypatc
         seen.append(payload["correlation_id"])
         return {}
 
-    import core.audit.ingest as ingest_mod
+    import agentmetry.core.audit.ingest as ingest_mod
     monkeypatch.setattr(ingest_mod, "ingest_external_event", _fake_ingest)
 
     result = await drain_spool(spool)

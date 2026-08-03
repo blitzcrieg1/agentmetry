@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.tool_policy import evaluate, reset_policy
-from core.config import settings
+from agentmetry.core.audit.tool_policy import evaluate, reset_policy
+from agentmetry.core.config import settings
 
 
 @pytest.fixture(autouse=True)
@@ -130,7 +130,7 @@ rules:
 
 
 def test_tool_policy_survives_canonicalization():
-    from core.audit.external import build_external_canonical
+    from agentmetry.core.audit.external import build_external_canonical
 
     event = build_external_canonical(
         {

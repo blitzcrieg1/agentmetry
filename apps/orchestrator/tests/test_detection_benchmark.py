@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.detection.benchmark import load_corpus, render_report, run_benchmark
+from agentmetry.core.audit.detection.benchmark import load_corpus, render_report, run_benchmark
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +63,7 @@ def test_the_corpus_has_both_attack_and_benign_sides(report):
 
 def test_the_corpus_exercises_a_meaningful_share_of_the_rules(report):
     """Not every rule, but enough that the number means something."""
-    from core.audit.detection.rules import REGISTRY
+    from agentmetry.core.audit.detection.rules import REGISTRY
 
     assert len(report.rules_covered) >= 8, sorted(report.rules_covered)
     assert len(report.rules_covered) <= len(REGISTRY)

@@ -12,7 +12,7 @@ import re
 import tomllib
 from pathlib import Path
 
-from core.version import __version__
+from agentmetry.core.version import __version__
 
 _ORCHESTRATOR = Path(__file__).resolve().parents[1]
 _REPO = _ORCHESTRATOR.parents[1]
@@ -29,11 +29,11 @@ def test_pyproject_takes_its_version_from_the_module():
     data = tomllib.loads((_ORCHESTRATOR / "pyproject.toml").read_text(encoding="utf-8"))
     assert "version" in data["project"].get("dynamic", []), "version must stay dynamic"
     assert "version" not in data["project"], "hard-coded version reintroduces drift"
-    assert data["tool"]["hatch"]["version"]["path"] == "core/version.py"
+    assert data["tool"]["hatch"]["version"]["path"] == "agentmetry/core/version.py"
 
 
 def test_api_advertises_the_module_version():
-    from api.main import app
+    from agentmetry.api.main import app
 
     assert app.version == __version__
 
@@ -41,7 +41,7 @@ def test_api_advertises_the_module_version():
 def test_evidence_pack_records_the_producing_version():
     from datetime import date
 
-    from core.audit.evidence_pack import build_evidence_pack
+    from agentmetry.core.audit.evidence_pack import build_evidence_pack
 
     pack = build_evidence_pack(date(2000, 1, 1), date(2000, 1, 2))
     assert pack["meta"]["producer"] == f"agentmetry-orchestrator/{__version__}"

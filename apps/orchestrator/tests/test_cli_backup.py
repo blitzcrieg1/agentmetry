@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from cli import create_backup, restore_backup
+from agentmetry.cli import create_backup, restore_backup
 
 
 @pytest.fixture

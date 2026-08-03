@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.external import build_external_canonical
-from core.audit.redaction import scrub_arg_values, scrub_secrets
+from agentmetry.core.audit.external import build_external_canonical
+from agentmetry.core.audit.redaction import scrub_arg_values, scrub_secrets
 
 _SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(_SCRIPTS))

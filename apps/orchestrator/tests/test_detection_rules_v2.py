@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.detection.rules import (
+from agentmetry.core.audit.detection.rules import (
     rule_destructive_delete_burst,
     rule_off_hours_activity,
 )
-from core.audit.policy import annotate, evaluate_policy
-from core.config import settings
+from agentmetry.core.audit.policy import annotate, evaluate_policy
+from agentmetry.core.config import settings
 
 
 def _ev(

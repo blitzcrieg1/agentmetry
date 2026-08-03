@@ -19,14 +19,14 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.detection.disposition import (
+from agentmetry.core.audit.detection.disposition import (
     DispositionRebuildRefused,
     apply_disposition,
     get_disposition_store,
     rebuild_from_trail,
     reconcile_at_boot,
 )
-from core.audit.trail_db import get_trail_db, reset_trail_db
+from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
 
 
 async def _decide(corr: str, rule: str, status: str = "acknowledged") -> None:
@@ -46,7 +46,7 @@ def _prune_trail(tmp_path, monkeypatch, name: str = "pruned.db") -> None:
     AGENTMETRY_AUDIT_DB_PATH. Resetting the singleton alone would reopen the
     same file, which is not the failure being tested.
     """
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / name)
     reset_trail_db()
@@ -150,7 +150,7 @@ async def test_lifespan_boots_with_triage_intact(monkeypatch):
     """Start the real app and assert the recovery steps preserved state."""
     from fastapi.testclient import TestClient
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     await _decide("s1", "credential-exfil", "risk_accepted")
 
@@ -166,8 +166,8 @@ async def test_lifespan_survives_a_broken_reconcile(monkeypatch):
     """A recorder that will not boot records nothing."""
     from fastapi.testclient import TestClient
 
-    import core.audit.detection.disposition as disposition_module
-    from api.main import app
+    import agentmetry.core.audit.detection.disposition as disposition_module
+    from agentmetry.api.main import app
 
     def _explode(*_a, **_kw):
         raise RuntimeError("disk on fire")

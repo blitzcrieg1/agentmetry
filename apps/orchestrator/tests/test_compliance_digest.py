@@ -12,7 +12,7 @@ from datetime import date
 
 import pytest
 
-from core.audit.compliance_digest import build_digest, render_markdown
+from agentmetry.core.audit.compliance_digest import build_digest, render_markdown
 
 _FROM, _TO = date(2026, 7, 1), date(2026, 7, 31)
 

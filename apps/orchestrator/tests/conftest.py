@@ -19,7 +19,7 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     dropped on both sides of the test. A test that wants the real paths has to
     ask for them explicitly, which is the right way round.
     """
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     data = tmp_path_factory.mktemp("agentmetry-data")
     monkeypatch.setattr(settings, "audit_export_path", data / "audit-forward.jsonl")
@@ -35,10 +35,10 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
 
 
 def _reset_singletons() -> None:
-    from core.audit.detection.disposition import reset_disposition_store
-    from core.audit.detection.live_store import reset_live_store_singleton
-    from core.audit.ingest import reset_ingest_sink_cache, reset_pending_approvals
-    from core.audit.trail_db import reset_trail_db
+    from agentmetry.core.audit.detection.disposition import reset_disposition_store
+    from agentmetry.core.audit.detection.live_store import reset_live_store_singleton
+    from agentmetry.core.audit.ingest import reset_ingest_sink_cache, reset_pending_approvals
+    from agentmetry.core.audit.trail_db import reset_trail_db
 
     reset_trail_db()
     reset_live_store_singleton()

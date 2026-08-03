@@ -20,15 +20,15 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.detection import rules as rules_module
-from core.audit.detection.disposition import (
+from agentmetry.core.audit.detection import rules as rules_module
+from agentmetry.core.audit.detection.disposition import (
     DispositionError,
     detection_key,
     get_disposition_store,
     reset_disposition_store,
     validate_rule_id,
 )
-from core.audit.detection.rules import (
+from agentmetry.core.audit.detection.rules import (
     BUILTIN_RULE_IDS,
     canonical_rule_id,
     historical_rule_ids,
@@ -40,7 +40,7 @@ _REPO_DOCS = Path(__file__).resolve().parents[3] / "docs"
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "detection_disposition_db_path", tmp_path / "d.db")
     reset_disposition_store()
@@ -74,7 +74,7 @@ def test_builtin_rule_ids_match_what_the_rules_actually_emit():
 
 
 def test_known_rule_ids_includes_yaml_count_rules():
-    from core.audit.detection.yaml_config import count_rules
+    from agentmetry.core.audit.detection.yaml_config import count_rules
 
     known = known_rule_ids()
     for spec in count_rules():
@@ -207,9 +207,9 @@ def test_a_historical_name_still_validates(renamed):
 
 
 async def test_the_api_path_refuses_an_unknown_rule(store, tmp_path, monkeypatch):
-    from core.audit.detection.disposition import apply_disposition
-    from core.audit.trail_db import reset_trail_db
-    from core.config import settings
+    from agentmetry.core.audit.detection.disposition import apply_disposition
+    from agentmetry.core.audit.trail_db import reset_trail_db
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_enabled", False)

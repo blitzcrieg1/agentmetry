@@ -51,7 +51,7 @@ jobs:
       - name: Install orchestrator
         run: pip install -e ".[dev]"
       - name: Lint
-        run: ruff check core api tests
+        run: ruff check agentmetry tests
       - name: Secret scan
         # The gitleaks action ships a Linux container only.
         if: matrix.os == 'ubuntu-latest'
@@ -78,7 +78,7 @@ jobs:
         working-directory: apps/orchestrator
         run: |
           Start-Process python -ArgumentList @(
-            "-m","uvicorn","api.main:app","--host","127.0.0.1","--port","8000"
+            "-m","uvicorn","agentmetry.api.main:app","--host","127.0.0.1","--port","8000"
           ) -WindowStyle Hidden
           $deadline = (Get-Date).AddSeconds(60)
           do {
@@ -95,7 +95,7 @@ jobs:
         run: python scripts/agentmetry_ingest.py selftest
       - name: Doctor
         working-directory: apps/orchestrator
-        run: python -m cli doctor
+        run: python -m agentmetry.cli doctor
       - name: Parse installer scripts
         shell: pwsh
         run: |

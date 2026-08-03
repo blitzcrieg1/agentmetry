@@ -16,12 +16,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from core.audit.detection.live_store import (
+from agentmetry.core.audit.detection.live_store import (
     HOST_EMIT_TTL_SECONDS,
     LiveDetectionStore,
     _is_expired,
 )
-from core.audit.detection.rules import (
+from agentmetry.core.audit.detection.rules import (
     rule_host_subagent_swarm_burst,
     rule_session_tool_burst,
     rule_subagent_swarm_burst,

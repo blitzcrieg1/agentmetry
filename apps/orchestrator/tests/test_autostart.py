@@ -15,7 +15,7 @@ import sys
 
 import pytest
 
-from core.diagnostics import autostart
+from agentmetry.core.diagnostics import autostart
 
 
 def test_launch_command_avoids_a_shell_wrapper():
@@ -23,7 +23,7 @@ def test_launch_command_avoids_a_shell_wrapper():
     executable, args, workdir = autostart.launch_command()
     assert "cmd" not in os.path.basename(executable).lower()
     assert "127.0.0.1" in args, "an unattended recorder must not bind beyond loopback"
-    assert (workdir / "api" / "main.py").is_file()
+    assert (workdir / "agentmetry" / "api" / "main.py").is_file()
 
 
 def test_autostart_runs_serve_not_uvicorn_directly():
@@ -31,7 +31,7 @@ def test_autostart_runs_serve_not_uvicorn_directly():
     uvicorn's logging setup dies before it serves anything. The task ran, exited
     1, and explained nothing. `cli serve` redirects the streams first."""
     _executable, args, _workdir = autostart.launch_command()
-    assert args[:3] == ["-m", "cli", "serve"]
+    assert args[:3] == ["-m", "agentmetry.cli", "serve"]
     assert "uvicorn" not in args
 
 
@@ -140,7 +140,7 @@ def test_status_reports_absence_rather_than_guessing(monkeypatch):
 
 
 def test_doctor_warns_when_nothing_will_restart_the_recorder(monkeypatch):
-    from core.diagnostics.doctor import DoctorReport, _check_autostart
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_autostart
 
     monkeypatch.setattr(
         autostart, "status", lambda: autostart.AutostartStatus(False, "schtasks", "no task")
@@ -153,7 +153,7 @@ def test_doctor_warns_when_nothing_will_restart_the_recorder(monkeypatch):
 
 
 def test_doctor_is_quiet_when_autostart_is_configured(monkeypatch):
-    from core.diagnostics.doctor import DoctorReport, _check_autostart
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_autostart
 
     monkeypatch.setattr(
         autostart,

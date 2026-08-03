@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.audit.adapters.ecs import canonical_to_ecs
-from core.audit.adapters.splunk import canonical_to_hec_event
-from core.audit.sinks import (
+from agentmetry.core.audit.adapters.ecs import canonical_to_ecs
+from agentmetry.core.audit.adapters.splunk import canonical_to_hec_event
+from agentmetry.core.audit.sinks import (
     ElasticEcsSink,
     FileAuditSink,
     MultiAuditSink,
@@ -30,7 +30,7 @@ async def test_file_sink_appends_jsonl(tmp_path: Path):
     await sink.emit(event)
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     assert unwrap_trail_record(json.loads(lines[0]))["event_id"] == "abc"
 
@@ -47,7 +47,7 @@ async def test_webhook_sink_posts_json():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
+    with patch("agentmetry.core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
         await sink.emit(payload)
 
     mock_client.post.assert_awaited_once()
@@ -78,7 +78,7 @@ async def test_elastic_sink_posts_ecs_document():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
+    with patch("agentmetry.core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
         await sink.emit(canonical)
 
     call_kwargs = mock_client.post.await_args.kwargs
@@ -108,7 +108,7 @@ async def test_splunk_sink_posts_hec_envelope():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
+    with patch("agentmetry.core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
         await sink.emit(canonical)
 
     payload = mock_client.post.await_args.kwargs["json"]

@@ -6,17 +6,17 @@ import json
 from pathlib import Path
 
 
-from core.audit.canonical import SCHEMA_VERSION, normalize_outbox_row
-from core.audit.run_context import (
+from agentmetry.core.audit.canonical import SCHEMA_VERSION, normalize_outbox_row
+from agentmetry.core.audit.run_context import (
     build_initiator,
     last_gated_action,
     record_tool_call,
     resolve_initiator,
     set_thread_initiator,
 )
-from core.audit.sinks import FileAuditSink
-from core.bus.audit_exporter import event_to_outbox_row
-from core.bus.events import (
+from agentmetry.core.audit.sinks import FileAuditSink
+from agentmetry.core.bus.audit_exporter import event_to_outbox_row
+from agentmetry.core.bus.events import (
     RUN_APPROVAL_DENIED,
     RUN_APPROVAL_GRANTED,
     RUN_STARTED,
@@ -25,7 +25,7 @@ from core.bus.events import (
     TOOL_DENIED,
     Event,
 )
-from core.bus.outbox import EventOutbox
+from agentmetry.core.bus.outbox import EventOutbox
 
 
 def test_normalize_tool_called():
@@ -129,7 +129,7 @@ async def test_jsonl_append(tmp_path: Path):
     await sink.emit(canonical)
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     parsed = unwrap_trail_record(json.loads(lines[0]))
     assert parsed["action"]["type"] == "session_start"

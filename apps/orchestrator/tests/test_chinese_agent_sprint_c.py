@@ -10,12 +10,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 import agentmetry_ingest as ingest  # noqa: E402
 
-from core.audit.detection.live import (  # noqa: E402
+from agentmetry.core.audit.detection.live import (  # noqa: E402
     mark_host_detection_emitted,
     observe_host,
     reset_live_state,
 )
-from core.audit.detection.rules import (  # noqa: E402
+from agentmetry.core.audit.detection.rules import (  # noqa: E402
     rule_host_subagent_swarm_burst,
     rule_session_tool_burst,
 )

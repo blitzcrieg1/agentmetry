@@ -201,7 +201,7 @@ def main() -> int:
     os.environ["AGENTMETRY_AUDIT_EXPORT_PATH"] = str(out)
     os.environ["AGENTMETRY_AUDIT_DB_PATH"] = str(demo_db)
     os.environ["AGENTMETRY_DETECTION_LIVE_DB_PATH"] = str(demo_live_db)
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     settings.audit_export_path = out
     settings.audit_db_path = demo_db
@@ -215,16 +215,16 @@ def main() -> int:
 
     # The trail bakes in the machine hostname; a shared demo shouldn't leak it.
     # Both the canonical builder and the detection emitter stamp host_id.
-    import core.audit.detection.live as _live
-    import core.audit.external as _ext
+    import agentmetry.core.audit.detection.live as _live
+    import agentmetry.core.audit.external as _ext
 
     _ext._HOST_ID = "demo-lab"
     _live._HOST_ID = "demo-lab"
 
-    from core.audit.detection.live import reset_live_state
-    from core.audit.detection.live_store import reset_live_store_singleton
-    from core.audit.ingest import ingest_external_event, reset_ingest_sink_cache
-    from core.audit.trail_db import reset_trail_db
+    from agentmetry.core.audit.detection.live import reset_live_state
+    from agentmetry.core.audit.detection.live_store import reset_live_store_singleton
+    from agentmetry.core.audit.ingest import ingest_external_event, reset_ingest_sink_cache
+    from agentmetry.core.audit.trail_db import reset_trail_db
 
     reset_ingest_sink_cache()
     reset_trail_db()
@@ -238,7 +238,7 @@ def main() -> int:
     asyncio.run(run())
 
     import json as _json
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     written = [
         unwrap_trail_record(_json.loads(x))

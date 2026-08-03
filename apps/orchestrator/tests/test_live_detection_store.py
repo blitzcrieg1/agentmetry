@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.detection.live import reset_live_state
-from core.audit.detection.live_store import LiveDetectionStore, reset_live_store_singleton
+from agentmetry.core.audit.detection.live import reset_live_state
+from agentmetry.core.audit.detection.live_store import LiveDetectionStore, reset_live_store_singleton
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def test_restart_preserves_emitted_rules(tmp_path, monkeypatch: pytest.MonkeyPat
     reset_live_store_singleton()
     reset_live_state()
 
-    from core.audit.detection.live_store import get_live_store
+    from agentmetry.core.audit.detection.live_store import get_live_store
 
     s1 = get_live_store()
     s1.mark_emitted("sess-r", "credential-exfil")
@@ -64,7 +64,7 @@ def test_restart_preserves_emitted_rules(tmp_path, monkeypatch: pytest.MonkeyPat
 @pytest.mark.asyncio
 async def test_detection_not_refired_after_restart(tmp_path, monkeypatch: pytest.MonkeyPatch):
     """Simulate orchestrator restart: same session must not re-alert."""
-    from core.audit.ingest import ingest_external_event, reset_ingest_sink_cache, reset_pending_approvals
+    from agentmetry.core.audit.ingest import ingest_external_event, reset_ingest_sink_cache, reset_pending_approvals
 
     db = tmp_path / "detection_live.db"
     monkeypatch.setenv("AGENTMETRY_DETECTION_LIVE_DB_PATH", str(db))
@@ -79,7 +79,7 @@ async def test_detection_not_refired_after_restart(tmp_path, monkeypatch: pytest
         async def emit(self, event: dict) -> None:
             captured.append(event)
 
-    monkeypatch.setattr("core.audit.ingest._get_sink", lambda: _Sink())
+    monkeypatch.setattr("agentmetry.core.audit.ingest._get_sink", lambda: _Sink())
 
     await ingest_external_event(
         {

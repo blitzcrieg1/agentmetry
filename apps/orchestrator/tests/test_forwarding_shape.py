@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from core.audit.external import build_external_canonical
-from core.audit.sinks import FileAuditSink
+from agentmetry.core.audit.external import build_external_canonical
+from agentmetry.core.audit.sinks import FileAuditSink
 
 _REPO = Path(__file__).resolve().parents[3]
 ALLOY_CONFIG = _REPO / "infra" / "loki" / "alloy.config"

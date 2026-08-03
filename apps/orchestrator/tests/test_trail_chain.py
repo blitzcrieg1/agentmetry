@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.audit.trail_chain import (
+from agentmetry.core.audit.trail_chain import (
     GENESIS_SHA256,
     append_chained_line,
     compute_record_sha256,
@@ -96,7 +96,7 @@ def test_missing_sidecar_verifies_with_a_truncation_caveat(tmp_path: Path):
     """A copied .jsonl without its sidecar is legitimate (verify on another
     machine), but the result must say tail deletion cannot be ruled out
     rather than imply a guarantee the file alone cannot carry."""
-    from core.audit.trail_chain import chain_sidecar_path
+    from agentmetry.core.audit.trail_chain import chain_sidecar_path
 
     trail = tmp_path / "audit-forward.jsonl"
     for i in range(3):
@@ -120,7 +120,7 @@ def test_verify_reports_the_chain_head(tmp_path: Path):
 
 
 def test_sidecar_head_hash_mismatch_fails_verify(tmp_path: Path):
-    from core.audit.trail_chain import chain_sidecar_path
+    from agentmetry.core.audit.trail_chain import chain_sidecar_path
 
     trail = tmp_path / "audit-forward.jsonl"
     append_chained_line(trail, {"event_id": "e0", "action": {"type": "tool_called"}})

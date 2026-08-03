@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from core.diagnostics.doctor import run_doctor
-from core.diagnostics.driver_paths import (
+from agentmetry.core.diagnostics.doctor import run_doctor
+from agentmetry.core.diagnostics.driver_paths import (
     expand_placeholders,
     load_resolved_driver_specs,
     normalize_drivers_file,
@@ -23,7 +23,7 @@ def _stub_python(orch: Path) -> str:
 
 
 def test_expand_placeholders_resolves_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import core.diagnostics.driver_paths as dp
+    import agentmetry.core.diagnostics.driver_paths as dp
 
     vault = tmp_path / "vault"
     vault.mkdir()
@@ -41,8 +41,8 @@ def test_expand_placeholders_resolves_tokens(tmp_path: Path, monkeypatch: pytest
 
 
 def test_load_resolved_driver_specs_expands_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import core.config as config_module
-    import core.diagnostics.driver_paths as dp
+    import agentmetry.core.config as config_module
+    import agentmetry.core.diagnostics.driver_paths as dp
 
     vault = tmp_path / "vault"
     (vault / ".system").mkdir(parents=True)
@@ -75,7 +75,7 @@ def test_load_resolved_driver_specs_expands_paths(tmp_path: Path, monkeypatch: p
 def test_normalize_drivers_file_rewrites_absolute_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    import core.diagnostics.driver_paths as dp
+    import agentmetry.core.diagnostics.driver_paths as dp
 
     vault = tmp_path / "vault"
     (vault / ".system").mkdir(parents=True)
@@ -110,8 +110,8 @@ def test_normalize_drivers_file_rewrites_absolute_paths(
 
 
 def test_doctor_passes_on_portable_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import core.config as config_module
-    import core.diagnostics.driver_paths as dp
+    import agentmetry.core.config as config_module
+    import agentmetry.core.diagnostics.driver_paths as dp
 
     vault = tmp_path / "vault"
     (vault / ".system").mkdir(parents=True)

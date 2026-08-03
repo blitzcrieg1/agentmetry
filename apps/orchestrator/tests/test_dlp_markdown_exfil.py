@@ -7,10 +7,10 @@ import re
 
 import pytest
 
-from core.audit.dlp import scan
-from core.audit.dlp.loader import load_dlp_rules
-from core.audit.dlp.scanner import reset_rules
-from core.config import settings
+from agentmetry.core.audit.dlp import scan
+from agentmetry.core.audit.dlp.loader import load_dlp_rules
+from agentmetry.core.audit.dlp.scanner import reset_rules
+from agentmetry.core.config import settings
 
 MARKDOWN_RULE = "markdown_image_exfil"
 PROXY_RULE = "image_proxy_exfil_host"

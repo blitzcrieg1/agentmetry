@@ -10,8 +10,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 from agentmetry_ingest import map_kimi_hook, map_qwen_hook  # noqa: E402
 
-from core.audit.external import build_external_canonical  # noqa: E402
-from core.audit.hook_bootstrap import (  # noqa: E402
+from agentmetry.core.audit.external import build_external_canonical  # noqa: E402
+from agentmetry.core.audit.hook_bootstrap import (  # noqa: E402
     FAMILY_HOOK_EVENTS,
     install_kimi_global_hooks,
     install_qwen_global_hooks,
@@ -103,7 +103,7 @@ def test_install_qwen_global_hooks(tmp_path: Path, monkeypatch):
     ingest.parent.mkdir(parents=True)
     ingest.write_text("# stub", encoding="utf-8")
     home = tmp_path / "home"
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_qwen_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path == home / ".qwen" / "settings.json"
@@ -128,9 +128,9 @@ def test_install_qoder_global_hooks(tmp_path: Path, monkeypatch):
     ingest.parent.mkdir(parents=True)
     ingest.write_text("# stub", encoding="utf-8")
     home = tmp_path / "home"
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
-    from core.audit.hook_bootstrap import install_qoder_global_hooks
+    from agentmetry.core.audit.hook_bootstrap import install_qoder_global_hooks
 
     path = install_qoder_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path == home / ".qoder" / "settings.json"
@@ -143,7 +143,7 @@ def test_install_kimi_global_hooks(tmp_path: Path, monkeypatch):
     ingest.parent.mkdir(parents=True)
     ingest.write_text("# stub", encoding="utf-8")
     home = tmp_path / "home"
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_kimi_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path == home / ".kimi-code" / "config.toml"

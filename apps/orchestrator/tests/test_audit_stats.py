@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from core.config import settings
+from agentmetry.core.config import settings
 
 
 def _event(
@@ -38,7 +38,7 @@ def stats_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
 
     reset_trail_db()
     db = get_trail_db()
@@ -68,7 +68,7 @@ def stats_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]
     db.insert_batch(events)
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     return TestClient(app)
 
@@ -87,7 +87,7 @@ def test_audit_stats_endpoint(stats_client: TestClient):
 
 def test_trail_db_stats_excludes_outside_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import AuditTrailDB, reset_trail_db
+    from agentmetry.core.audit.trail_db import AuditTrailDB, reset_trail_db
 
     reset_trail_db()
     db = AuditTrailDB(tmp_path / "audit.db")

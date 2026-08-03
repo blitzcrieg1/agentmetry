@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.detection.benchmark import load_corpus
+from agentmetry.core.audit.detection.benchmark import load_corpus
 
 README = Path(__file__).resolve().parents[3] / "README.md"
 
@@ -95,7 +95,7 @@ def _cli_commands() -> set[str]:
     import contextlib
     import io as _io
 
-    import cli as cli_module
+    import agentmetry.cli as cli_module
 
     buf = _io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.suppress(SystemExit):

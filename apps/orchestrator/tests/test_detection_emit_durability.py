@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import pytest
 
-from core.config import settings
-from core.audit.detection.live import reset_live_state
-from core.audit.detection.live_store import get_live_store
-from core.audit.ingest import (
+from agentmetry.core.config import settings
+from agentmetry.core.audit.detection.live import reset_live_state
+from agentmetry.core.audit.detection.live_store import get_live_store
+from agentmetry.core.audit.ingest import (
     ingest_external_event,
     reset_ingest_sink_cache,
     reset_pending_approvals,
@@ -47,7 +47,7 @@ class _FlakyDetectionSink:
 
 def _trail_detections(corr: str) -> list[dict]:
     """Detection events actually written to the trail for a session."""
-    from core.audit.trail_db import get_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db
 
     return [
         e
@@ -61,14 +61,14 @@ def flaky_sink(monkeypatch: pytest.MonkeyPatch, tmp_path) -> _FlakyDetectionSink
     # Isolate the trail DB so detection-row assertions are not polluted by other
     # tests (same pattern as test_audit_tail / test_external_ingest).
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import reset_trail_db
+    from agentmetry.core.audit.trail_db import reset_trail_db
 
     reset_trail_db()
     reset_live_state()
     reset_pending_approvals()
     reset_ingest_sink_cache()
     s = _FlakyDetectionSink()
-    monkeypatch.setattr("core.audit.ingest._get_sink", lambda: s)
+    monkeypatch.setattr("agentmetry.core.audit.ingest._get_sink", lambda: s)
     return s
 
 

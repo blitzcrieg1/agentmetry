@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from core.audit.dlp import scanner as dlp_scanner
-from core.audit.dlp.scanner import scan
+from agentmetry.core.audit.dlp import scanner as dlp_scanner
+from agentmetry.core.audit.dlp.scanner import scan
 
 _MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "dlp" / "manifest.yaml"
 
@@ -12,7 +12,7 @@ _MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "dlp" / "manifest
 @pytest.fixture(autouse=True)
 def mock_settings():
     dlp_scanner._COMPILED_RULES.clear()
-    with patch("core.audit.dlp.scanner.settings") as mock_settings:
+    with patch("agentmetry.core.audit.dlp.scanner.settings") as mock_settings:
         mock_settings.dlp_mode = "block"
         mock_settings.dlp_pii = True
         mock_settings.dlp_rules_path = _MANIFEST

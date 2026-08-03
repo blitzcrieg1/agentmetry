@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from core.audit.detection.rules import rule_session_tool_burst, rule_subagent_swarm_burst
+from agentmetry.core.audit.detection.rules import rule_session_tool_burst, rule_subagent_swarm_burst
 
 _REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO / "scripts"))
@@ -58,7 +58,7 @@ def test_claude_real_stop_still_ends_the_session():
 
 def test_subagent_stop_does_not_count_as_a_spawn():
     """The swarm rule must not read a finish as a start."""
-    from core.audit.external import build_external_canonical
+    from agentmetry.core.audit.external import build_external_canonical
 
     # Ten stops in a window must not trip the swarm rule.
     events = [build_external_canonical(
@@ -80,7 +80,7 @@ def test_claude_task_is_tagged_as_a_subagent_start():
 
 
 def test_claude_task_swarm_fires():
-    from core.audit.external import build_external_canonical
+    from agentmetry.core.audit.external import build_external_canonical
 
     events = []
     for i in range(6):
@@ -108,7 +108,7 @@ def test_ordinary_claude_tool_is_not_a_subagent():
 def test_subagent_markers_excluded_from_session_tool_burst():
     """Swarm activity has its own rule; it must not also drive the generic
     tool-burst count (double jeopardy)."""
-    from core.audit.external import build_external_canonical
+    from agentmetry.core.audit.external import build_external_canonical
 
     events = []
     for i in range(45):

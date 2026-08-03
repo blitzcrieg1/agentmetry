@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from core.extensions import EXTENSION_GROUP, get_extension_registry, load_extensions
+from agentmetry.core.extensions import EXTENSION_GROUP, get_extension_registry, load_extensions
 
 
 def test_load_extensions_empty_when_none_installed():
     app = MagicMock()
     settings = MagicMock()
 
-    with patch("core.extensions._iter_extension_entry_points", return_value=[]):
+    with patch("agentmetry.core.extensions._iter_extension_entry_points", return_value=[]):
         registry = load_extensions(app, settings=settings)
 
     assert registry.loaded == []
@@ -29,8 +29,8 @@ def test_load_extensions_invokes_entry_point():
     ep.module = "fake_plugin.register"
     ep.load.return_value = register_fn
 
-    with patch("core.extensions._iter_extension_entry_points", return_value=[ep]):
-        with patch("core.extensions._distribution_for_module", return_value="1.2.3"):
+    with patch("agentmetry.core.extensions._iter_extension_entry_points", return_value=[ep]):
+        with patch("agentmetry.core.extensions._distribution_for_module", return_value="1.2.3"):
             registry = load_extensions(app, settings=settings)
 
     register_fn.assert_called_once_with(app, settings=settings)

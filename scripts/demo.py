@@ -116,7 +116,7 @@ class DemoContext:
 
 
 def show_trail(settings: Any, *, leaked_check: str = "") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     events = [
         unwrap_trail_record(json.loads(line))
@@ -263,23 +263,23 @@ def main() -> int:
 
     tmp = Path(tempfile.mkdtemp(prefix="agentmetry-demo-"))
     try:
-        from core.config import settings
+        from agentmetry.core.config import settings
 
         settings.audit_export_path = tmp / "audit-forward.jsonl"
         settings.audit_export_enabled = True
         settings.audit_sink = "file"
         settings.dlp_mode = "log"
 
-        from core.audit.detection.live import reset_live_state
-        from core.audit.dlp import scan
-        from core.audit.ingest import reset_ingest_sink_cache
+        from agentmetry.core.audit.detection.live import reset_live_state
+        from agentmetry.core.audit.dlp import scan
+        from agentmetry.core.audit.ingest import reset_ingest_sink_cache
 
         reset_ingest_sink_cache()
         reset_live_state()
 
         from fastapi.testclient import TestClient
 
-        from api.main import app
+        from agentmetry.api.main import app
 
         client = TestClient(app)
         ctx = DemoContext(client, scan)

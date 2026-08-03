@@ -1,7 +1,28 @@
 [project]
 name = "agentmetry-orchestrator"
 dynamic = ["version"]
-description = "Agentmetry — SIEM flight recorder for AI agent tool-use"
+description = "Local-first flight recorder for AI coding agents: hash-chained audit trail, MITRE-mapped sequence detection, DLP"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ioannis L." }]
+keywords = [
+    "ai-security", "ai-agents", "agentic-ai", "audit-log", "siem",
+    "mitre-attack", "dlp", "claude-code", "cursor", "devsecops", "local-first",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Logging",
+    "Topic :: System :: Monitoring",
+]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -28,8 +49,14 @@ dependencies = [
 # code that passed locally on 0.15.x. Bump this deliberately, not by accident.
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff==0.16.0"]
 
+[project.urls]
+Homepage = "https://agentmetry.ai"
+Source = "https://github.com/blitzcrieg1/agentmetry"
+Issues = "https://github.com/blitzcrieg1/agentmetry/issues"
+Changelog = "https://github.com/blitzcrieg1/agentmetry/blob/master/CHANGELOG.md"
+
 [project.scripts]
-agentmetry = "cli:main"
+agentmetry = "agentmetry.cli:main"
 
 # Third-party enterprise packages register here, e.g.:
 # [project.entry-points."agentmetry.extensions"]
@@ -40,10 +67,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "core/version.py"
+path = "agentmetry/core/version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["core", "api", "cli"]
+packages = ["agentmetry"]
 
 [tool.ruff]
 line-length = 100

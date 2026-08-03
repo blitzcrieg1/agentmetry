@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.diagnostics.doctor import run_doctor
+from agentmetry.core.diagnostics.doctor import run_doctor
 
 
 def _codes(report, severity):
@@ -70,7 +70,7 @@ def test_no_dispositions_at_all_is_called_out(tmp_path: Path):
 
 
 def test_a_dispositioned_finding_turns_the_check_green(tmp_path: Path):
-    from core.audit.detection.disposition import get_disposition_store
+    from agentmetry.core.audit.detection.disposition import get_disposition_store
 
     get_disposition_store().record(
         correlation_id="s1", rule_id="r1", status="resolved", note="fixed"
@@ -95,7 +95,7 @@ def _finding(report, code):
 
 def test_loopback_without_a_key_is_fine(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("AGENTMETRY_HOST", raising=False)
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
@@ -104,7 +104,7 @@ def test_loopback_without_a_key_is_fine(tmp_path: Path, monkeypatch):
 
 def test_open_bind_without_a_key_fails_the_doctor(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("AGENTMETRY_HOST", "0.0.0.0")
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
@@ -115,7 +115,7 @@ def test_open_bind_without_a_key_fails_the_doctor(tmp_path: Path, monkeypatch):
 
 def test_open_bind_with_a_key_is_allowed(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("AGENTMETRY_HOST", "0.0.0.0")
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "s3cret")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
@@ -125,7 +125,7 @@ def test_open_bind_with_a_key_is_allowed(tmp_path: Path, monkeypatch):
 def test_a_lan_address_counts_as_exposed(tmp_path: Path, monkeypatch):
     """0.0.0.0 is not the only way to be reachable."""
     monkeypatch.setenv("AGENTMETRY_HOST", "192.168.1.50")
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
@@ -134,7 +134,7 @@ def test_a_lan_address_counts_as_exposed(tmp_path: Path, monkeypatch):
 
 def test_ipv6_loopback_is_not_exposed(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("AGENTMETRY_HOST", "::1")
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
@@ -148,6 +148,6 @@ def test_doctor_output_is_ascii_safe():
     makes a security warning look like a corrupted install. Same failure the
     enterprise build scripts had.
     """
-    source = Path("core/diagnostics/doctor.py").resolve()
+    source = Path("agentmetry/core/diagnostics/doctor.py").resolve()
     offenders = sorted({c for c in source.read_text(encoding="utf-8") if ord(c) > 127})
     assert not offenders, f"doctor.py contains non-ASCII: {offenders}"

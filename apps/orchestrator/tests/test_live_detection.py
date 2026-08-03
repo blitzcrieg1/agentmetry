@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.detection.live import reset_live_state
-from core.audit.external import build_external_canonical
-from core.audit.ingest import ingest_external_event, reset_ingest_sink_cache, reset_pending_approvals
+from agentmetry.core.audit.detection.live import reset_live_state
+from agentmetry.core.audit.external import build_external_canonical
+from agentmetry.core.audit.ingest import ingest_external_event, reset_ingest_sink_cache, reset_pending_approvals
 
 
 class _CapturingSink:
@@ -30,7 +30,7 @@ def sink(monkeypatch: pytest.MonkeyPatch) -> _CapturingSink:
     reset_pending_approvals()
     reset_ingest_sink_cache()
     s = _CapturingSink()
-    monkeypatch.setattr("core.audit.ingest._get_sink", lambda: s)
+    monkeypatch.setattr("agentmetry.core.audit.ingest._get_sink", lambda: s)
     return s
 
 

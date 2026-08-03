@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from core.config import settings
+from agentmetry.core.config import settings
 
 _ORCHESTRATOR = Path(__file__).resolve().parents[1]
 _REAL_DATA = _ORCHESTRATOR / "data"
@@ -41,7 +41,7 @@ def test_store_paths_are_redirected_away_from_operator_data(field):
 
 
 def test_writing_a_detection_does_not_touch_the_real_trail():
-    from core.audit.trail_db import get_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db
 
     real_db = _REAL_DATA / "audit.db"
     before = real_db.stat().st_mtime_ns if real_db.exists() else None
@@ -60,6 +60,6 @@ def test_writing_a_detection_does_not_touch_the_real_trail():
 
 def test_each_test_starts_from_an_empty_trail():
     """Proves the previous test's write did not survive into this one."""
-    from core.audit.trail_db import get_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db
 
     assert get_trail_db().count() == 0

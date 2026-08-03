@@ -3,13 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from core.config import settings
+from agentmetry.core.config import settings
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(settings, "api_key", "test-secret")
-    from api.main import app
+    from agentmetry.api.main import app
 
     with TestClient(app) as test_client:
         yield test_client

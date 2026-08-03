@@ -26,7 +26,7 @@ crew.kickoff()
 ```
 
 Start Agentmetry first (`scripts\agentmetry.bat start`, or
-`python -m uvicorn api.main:app --port 8000` from `apps/orchestrator`), then run
+`python -m uvicorn agentmetry.api.main:app --port 8000` from `apps/orchestrator`), then run
 your Crew. Events appear in the Flight Recorder within a second.
 
 ## What it records

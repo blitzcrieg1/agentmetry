@@ -1,0 +1,396 @@
+"""Agentmetry API — JSONL tail + external Tier B ingest."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+from agentmetry.core.auth import require_api_key
+from agentmetry.core.audit.detection.disposition import STATUSES, get_disposition_store
+from agentmetry.core.audit.ingest import ingest_external_event
+from agentmetry.core.config import settings
+
+router = APIRouter(prefix="/audit", tags=["audit"])
+
+_RUN_ACTION_TYPES = frozenset({
+    "session_start",
+    "session_end",
+    "tool_called",
+    "approval_request",
+    "approval_response",
+    "detection",  # correlated findings — must not be filtered out of the feed
+    "detection_disposition",  # and the human's answer to them
+})
+
+
+class IngestToolBody(BaseModel):
+    qualified: str = ""
+    server: str = ""
+    arguments: dict[str, Any] | None = None
+    input_hash: str = ""
+    command: str = ""
+    # Hook-side detection features, computed from the plaintext command before
+    # it was hashed away: category labels (`traits`) and the ATT&CK mapping.
+    # Without these fields pydantic silently drops them and default-config
+    # (hashed-only) events are invisible to every command-based sequence rule.
+    traits: list[str] = Field(default_factory=list)
+    mitre: dict[str, str] | None = None
+
+
+class ExternalIngestBody(BaseModel):
+    """Adapter payload — normalized to canonical v1.1 on ingest."""
+
+    source_app: str = Field(
+        ...,
+        description="cursor | claude | antigravity | codex | mcp_proxy | qwen | kimi | qoder | codebuddy | trae | crewai | opensre",
+    )
+    event_type: str = Field(
+        ...,
+        description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response",
+    )
+    correlation_id: str = ""
+    session_id: str = ""
+    outcome: str = ""
+    reason: str = ""
+    skill_id: str = ""
+    tool_qualified: str = ""
+    tool: IngestToolBody | None = None
+    input_hash: str = ""
+    model_id: str = ""
+    adapter: str = ""
+    triggered_by: str = "manual"
+    timestamp_utc: str = ""
+    gated_action: dict[str, str] | None = None
+    # DLP verdict from the hook process. It scans plaintext before hashing, so
+    # this is the only place the finding can be captured — without this field
+    # pydantic drops it and a `log`-mode match is silently lost.
+    dlp: dict[str, Any] | None = None
+    tool_policy: dict[str, Any] | None = None
+
+
+def _parse_event_ts(event: dict[str, Any]) -> datetime | None:
+    ts = event.get("timestamp_utc")
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _parse_query_ts(value: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid timestamp: {value}") from exc
+
+
+# Events written before the Agentmetry rename carry the legacy first-party name.
+# Normalize on read so an existing trail keeps rendering instead of silently
+# vanishing behind the source filter.
+_LEGACY_SOURCE_APPS = frozenset({"blackbox"})
+
+
+def _normalize_source_app(name: str) -> str:
+    return "agentmetry" if name in _LEGACY_SOURCE_APPS else name
+
+
+def _event_source_app(event: dict[str, Any]) -> str:
+    source = event.get("source")
+    if isinstance(source, dict) and source.get("app"):
+        return _normalize_source_app(str(source["app"]).lower())
+    agent = event.get("agent")
+    if isinstance(agent, dict) and agent.get("name"):
+        name = _normalize_source_app(str(agent["name"]).lower())
+        if name != "agentmetry":
+            return name
+    return "agentmetry"
+
+
+@router.post("/ingest", dependencies=[Depends(require_api_key)])
+async def audit_ingest(body: ExternalIngestBody):
+    """Accept canonical adapter events from Cursor, Claude, MCP proxy, etc."""
+    if not settings.audit_ingest_enabled:
+        raise HTTPException(status_code=503, detail="External audit ingest is disabled")
+    if not settings.audit_export_enabled:
+        raise HTTPException(status_code=503, detail="Audit export is disabled")
+
+    payload = body.model_dump(exclude_none=True)
+    try:
+        canonical = await ingest_external_event(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "status": "accepted",
+        "event_id": canonical.get("event_id"),
+        "correlation_id": canonical.get("correlation_id"),
+        "action": canonical.get("action"),
+        "source": canonical.get("source"),
+    }
+
+
+@router.get("/tail", dependencies=[Depends(require_api_key)])
+async def audit_tail(
+    limit: int = Query(50, ge=1, le=500),
+    scope: Literal["runs", "all"] = Query(
+        "runs",
+        description="runs = session/tool/approval only; all = include driver config_change",
+    ),
+    session_id: str | None = Query(
+        None,
+        description="When set, Agentmetry events filter to session; external apps always shown",
+    ),
+    sources: str | None = Query(
+        None,
+        description="Comma-separated source apps: agentmetry,cursor,claude,antigravity,mcp_proxy",
+    ),
+    since_minutes: int | None = Query(
+        None,
+        ge=1,
+        le=10080,
+        description="Only events within the last N minutes",
+    ),
+    before_utc: str | None = Query(
+        None,
+        description="Return events strictly before this ISO timestamp (page older)",
+    ),
+    after_utc: str | None = Query(
+        None,
+        description="Return events strictly after this ISO timestamp (page newer)",
+    ),
+    focus: Literal["denied", "dlp", "policy", "detection"] | None = Query(
+        None,
+        description=(
+            "Server-side slice matching Analytics dogfood counts: "
+            "denied | dlp | policy | detection"
+        ),
+    ),
+):
+    """Return canonical audit events from the local JSONL forwarder."""
+    from agentmetry.core.audit.trail_db import get_trail_db
+    path = Path(settings.audit_export_path)
+    if not settings.audit_export_enabled:
+        return {"events": [], "path": str(path), "enabled": False, "pagination": {"has_older": False, "has_newer": False, "count": 0}}
+
+    source_set: set[str] | None = None
+    if sources:
+        source_set = {s.strip().lower() for s in sources.split(",") if s.strip()}
+
+    try:
+        events, pagination = get_trail_db().tail(
+            limit=limit,
+            scope=scope,
+            sources=source_set,
+            session_id=session_id,
+            since_minutes=since_minutes,
+            before_utc=before_utc,
+            after_utc=after_utc,
+            focus=focus,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"events": events, "path": str(path), "enabled": True, "pagination": pagination}
+
+
+@router.get("/session/{correlation_id}", dependencies=[Depends(require_api_key)])
+async def audit_session(
+    correlation_id: str,
+    limit: int = Query(2000, ge=1, le=10000),
+):
+    """Return every event for one correlation_id across the whole trail.
+
+    The dashboard's in-panel search only sees the loaded window, so viewing a
+    full session — especially an older one — needs a server-side lookup that
+    scans the entire JSONL rather than the last N lines.
+    """
+    from agentmetry.core.audit.trail_db import get_trail_db
+    if not settings.audit_export_enabled:
+        return {"events": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
+    try:
+        events = get_trail_db().session(correlation_id, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "events": events,
+        "correlation_id": correlation_id,
+        "enabled": True,
+        "count": len(events),
+    }
+
+
+@router.get("/detections/{correlation_id}", dependencies=[Depends(require_api_key)])
+async def audit_detections(correlation_id: str):
+    """Run correlated behavioral rules over one session and return detections.
+
+    A detection is a named, ordered pattern of events (e.g. credential access
+    then network egress) — the signal per-event MITRE tags can't express on
+    their own. Scans the whole trail for the session, then correlates.
+    """
+    from agentmetry.core.audit.detection import run_detections
+    from agentmetry.core.audit.trail_db import get_trail_db
+
+    if not settings.audit_export_enabled:
+        return {"detections": [], "correlation_id": correlation_id, "enabled": False, "count": 0}
+    try:
+        events = get_trail_db().events_for_detection(correlation_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    detections = run_detections(events)
+    dispositions = get_disposition_store().for_correlation(correlation_id)
+    for detection in detections:
+        detection.disposition = dispositions.get(detection.rule_id)
+    return {
+        "detections": [d.as_dict() for d in detections],
+        "correlation_id": correlation_id,
+        "enabled": True,
+        "count": len(detections),
+        "untriaged": sum(1 for d in detections if d.disposition is None),
+    }
+
+
+class DispositionBody(BaseModel):
+    """A triage decision. `note` is operator prose, never captured content."""
+
+    correlation_id: str = ""
+    rule_id: str
+    status: str
+    assignee: str = ""
+    note: str = ""
+    decided_by: str = ""
+    severity: str = ""
+
+
+@router.post("/detections/disposition", dependencies=[Depends(require_api_key)])
+async def audit_set_disposition(body: DispositionBody):
+    """Record what a human decided about a detection.
+
+    The decision is appended to the trail as a `detection_disposition` event
+    before the index is updated, so it lands on the same hash chain as the
+    finding it answers. Superseding a disposition keeps the previous one in
+    `history`: "false positive" later becoming "confirmed" is precisely the
+    transition an auditor needs to see.
+    """
+    from agentmetry.core.audit.detection.disposition import DispositionError, apply_disposition
+
+    try:
+        current = await apply_disposition(
+            correlation_id=body.correlation_id,
+            rule_id=body.rule_id,
+            status=body.status,
+            assignee=body.assignee,
+            note=body.note,
+            decided_by=body.decided_by,
+            severity=body.severity,
+        )
+    except DispositionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"disposition": current}
+
+
+@router.get("/detections/dispositions/all", dependencies=[Depends(require_api_key)])
+async def audit_list_dispositions():
+    """Every triage decision in force, plus the status breakdown."""
+    store = get_disposition_store()
+    return {
+        "dispositions": store.all(),
+        "counts": store.counts(),
+        "statuses": list(STATUSES),
+    }
+
+
+@router.get("/dogfood", dependencies=[Depends(require_api_key)])
+async def audit_dogfood():
+    """Progress against the four-week beta gate.
+
+    Exposed so the dashboard can show it. A gate you have to remember to run a
+    command for is one you stop running, which is how this one went weeks
+    without being started in the first place.
+    """
+    from agentmetry.core.audit.dogfood import assess
+
+    try:
+        return assess().as_dict()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/export/evidence", dependencies=[Depends(require_api_key)])
+async def audit_export_evidence():
+    """Generate and download a tamper-evident evidence pack (SHA-256 integrity manifest)."""
+    from agentmetry.core.audit.evidence_pack import build_evidence_pack, default_export_path, write_evidence_pack
+    from datetime import datetime, timezone
+
+    # Dates, not datetimes: `default_export_path` embeds them in the filename,
+    # and a datetime's isoformat carries colons, which Windows rejects.
+    to_date = datetime.now(timezone.utc).date()
+    from_date = to_date - timedelta(days=30)  # Export last 30 days
+
+    pack = build_evidence_pack(from_date, to_date)
+    out_path = default_export_path(from_date, to_date)
+    write_evidence_pack(pack, out_path)
+
+    return FileResponse(
+        path=out_path,
+        media_type="application/json",
+        filename=out_path.name,
+    )
+
+
+@router.get("/status", dependencies=[Depends(require_api_key)])
+async def audit_status():
+    """Freshness + per-source counts so the dashboard can show 'last event N min ago'.
+
+    Powers the freshness badge and `selftest` — makes silent hook failure visible
+    instead of the operator falsely believing they are being audited.
+    """
+    from agentmetry.core.audit.spool import spool_depth, spool_oldest_age_seconds
+    from agentmetry.core.audit.trail_db import get_trail_db
+    path = Path(settings.audit_export_path)
+    if not settings.audit_export_enabled:
+        return {"enabled": False, "last_event_utc": None, "recent": 0, "by_source": {}, "path": str(path)}
+
+    status_data = get_trail_db().status()
+    # Pending spool depth belongs in the same payload as freshness. A feed that
+    # looks quiet because nothing happened and a feed that looks quiet because
+    # capture is backing up are indistinguishable without it, and that
+    # ambiguity is how a multi-day gap goes unnoticed.
+    return {
+        "enabled": True,
+        "last_event_utc": status_data["last_event_utc"],
+        "recent": status_data["recent"],
+        "by_source": status_data["by_source"],
+        "path": str(path),
+        "spool_pending": spool_depth(),
+        "spool_oldest_age_seconds": spool_oldest_age_seconds(),
+    }
+
+
+@router.get("/stats", dependencies=[Depends(require_api_key)])
+async def audit_stats(days: int = Query(7, ge=1, le=90)):
+    """Weekly dogfood metrics — same data as `agentmetry stats --days N`."""
+    from agentmetry.core.audit.trail_db import get_trail_db
+
+    if not settings.audit_export_enabled:
+        return {"enabled": False, "window_days": days}
+
+    return {"enabled": True, **get_trail_db().stats(window_days=days)}

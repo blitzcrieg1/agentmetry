@@ -6,7 +6,7 @@ from pathlib import Path
 
 import json
 
-from core.audit.hook_bootstrap import (
+from agentmetry.core.audit.hook_bootstrap import (
     bootstrap_tier_b_hooks,
     cursor_hooks_payload,
     install_claude_global_hooks,
@@ -33,7 +33,7 @@ def test_install_cursor_global_hooks(tmp_path: Path, monkeypatch):
     ingest.write_text("# stub", encoding="utf-8")
 
     home = tmp_path / "home"
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_cursor_global_hooks(
         repo_root=repo,
@@ -50,7 +50,7 @@ def test_install_cursor_global_hooks(tmp_path: Path, monkeypatch):
 def test_bootstrap_skips_when_ingest_missing(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: tmp_path / "home")
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: tmp_path / "home")
     result = bootstrap_tier_b_hooks(repo_root=repo)
     assert result["cursor"] is None
     assert result["claude"] is None
@@ -99,7 +99,7 @@ def test_install_claude_global_hooks_merges_existing_file(tmp_path: Path, monkey
     (home / ".claude" / "settings.json").write_text(
         json.dumps({"theme": "dark"}), encoding="utf-8"
     )
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_claude_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path == home / ".claude" / "settings.json"
@@ -112,7 +112,7 @@ def test_install_claude_global_hooks_merges_existing_file(tmp_path: Path, monkey
 def test_install_claude_creates_file_when_absent(tmp_path: Path, monkeypatch):
     repo = _repo_with_ingest(tmp_path)
     home = tmp_path / "home"
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_claude_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path.is_file()
@@ -126,7 +126,7 @@ def test_install_claude_skips_unparseable_settings(tmp_path: Path, monkeypatch):
     (home / ".claude").mkdir(parents=True)
     bad = home / ".claude" / "settings.json"
     bad.write_text("{ not valid json", encoding="utf-8")
-    monkeypatch.setattr("core.audit.hook_bootstrap.Path.home", lambda: home)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
 
     path = install_claude_global_hooks(repo_root=repo, python="/usr/bin/python3")
     assert path is None

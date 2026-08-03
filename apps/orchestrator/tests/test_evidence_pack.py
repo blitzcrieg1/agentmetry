@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from core.audit.evidence_pack import (
+from agentmetry.core.audit.evidence_pack import (
     build_evidence_pack,
     date_range_to_timestamps,
     verify_evidence_pack,
@@ -240,11 +240,11 @@ def _detection_event(rule_id="credential-exfil", correlation_id="sess-1", **extr
 
 @pytest.fixture
 def isolated_dispositions(tmp_path, monkeypatch):
-    from core.audit.detection.disposition import (
+    from agentmetry.core.audit.detection.disposition import (
         get_disposition_store,
         reset_disposition_store,
     )
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "detection_disposition_db_path", tmp_path / "d.db")
     reset_disposition_store()
@@ -300,7 +300,7 @@ def test_a_decision_made_outside_the_window_still_counts(dates, isolated_disposi
 
 
 def test_decisions_in_the_window_are_listed(dates, isolated_dispositions):
-    from core.audit.detection.disposition import build_disposition_event
+    from agentmetry.core.audit.detection.disposition import build_disposition_event
 
     from_date, to_date = dates
     decision = build_disposition_event(

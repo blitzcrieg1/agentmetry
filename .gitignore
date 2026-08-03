@@ -61,11 +61,24 @@ apps/dashboard/scratch/
 *.tsbuildinfo
 
 # Local-only scratch directories (never part of the published repo):
-#   agentmetry/     a stale duplicate clone of this same repo
 #   apps/landing/   an unused Vite scaffold (88M of node_modules)
 # Ignored so a stray `git add -A` cannot commit them.
-/agentmetry/
 /apps/landing/
+
+# A stale duplicate clone of this repo used to sit at /agentmetry/, and the rule
+# blocking it was `/agentmetry/`. That rule had to go when the Python package was
+# renamed to `agentmetry`.
+#
+# Git anchors a leading slash to the repository root, so `/agentmetry/` never
+# matched apps/orchestrator/agentmetry/ and `git ls-files` listed all 72 files
+# happily. Hatchling anchors it to the *project* root instead, which is
+# apps/orchestrator, so it excluded the entire package and built a wheel
+# containing nothing but dist-info. A published package that installs no code is
+# the worst possible first release, and nothing in the build said a word.
+#
+# Only a nested clone has a .git directory, and our package never will, so this
+# blocks the thing that was actually the problem without any anchoring ambiguity.
+/agentmetry/.git/
 
 # Local dev launch config (absolute machine paths)
 .claude/launch.json

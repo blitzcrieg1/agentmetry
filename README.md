@@ -541,7 +541,7 @@ privacy configuration, so the rules have only hook-side trait labels to work
 with. Neither was catchable by a unit test that hand-builds events.
 
 Corpus and expectations live in
-[`apps/orchestrator/tests/fixtures/detection_corpus/`](apps/orchestrator/tests/fixtures/detection_corpus/).
+[`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 Adding a case is a JSONL session plus a few lines of YAML, and CI fails on any
 missed rule or any false positive.
 

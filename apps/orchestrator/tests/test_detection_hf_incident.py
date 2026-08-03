@@ -8,7 +8,7 @@ read → git push, and staged downloads from public hosts → execution.
 
 from __future__ import annotations
 
-from core.audit.detection.rules import (
+from agentmetry.core.audit.detection.rules import (
     rule_credential_read_then_cloud_api,
     rule_dotfile_read_then_git_push,
     rule_remote_staging_then_execute,

@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from api.ws_bridge import ws_event_bridge
-from core.bus.audit_exporter import audit_exporter
-from core.bus.bridges import outbox_persister
-from core.bus.bus import EventBus
-from core.bus.events import LLM_TOKEN, RUN_COMPLETED, RUN_STARTED, Event
-from core.bus.outbox import EventOutbox
+from agentmetry.api.ws_bridge import ws_event_bridge
+from agentmetry.core.bus.audit_exporter import audit_exporter
+from agentmetry.core.bus.bridges import outbox_persister
+from agentmetry.core.bus.bus import EventBus
+from agentmetry.core.bus.events import LLM_TOKEN, RUN_COMPLETED, RUN_STARTED, Event
+from agentmetry.core.bus.outbox import EventOutbox
 
 
 def test_topic_filtering_and_exclusion():
@@ -63,7 +63,7 @@ def test_outbox_roundtrip(tmp_path: Path):
 
 
 async def test_audit_exporter_writes_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
     monkeypatch.setattr(settings, "audit_sink", "file")
@@ -81,7 +81,7 @@ async def test_audit_exporter_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     export_path = tmp_path / "audit-forward.jsonl"
     lines = export_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     assert unwrap_trail_record(json.loads(lines[0]))["action"]["type"] == "session_start"
 

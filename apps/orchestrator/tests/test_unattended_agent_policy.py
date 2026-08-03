@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from core.audit.dlp import scan as dlp_scan
-from core.audit.dlp.scanner import reset_rules
-from core.audit.tool_policy import evaluate as tool_policy_eval
+from agentmetry.core.audit.dlp import scan as dlp_scan
+from agentmetry.core.audit.dlp.scanner import reset_rules
+from agentmetry.core.audit.tool_policy import evaluate as tool_policy_eval
 
 
 @pytest.fixture(autouse=True)

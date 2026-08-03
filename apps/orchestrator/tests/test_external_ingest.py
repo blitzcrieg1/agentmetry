@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from core.audit.external import build_external_canonical
-from core.audit.ingest import (
+from agentmetry.core.audit.external import build_external_canonical
+from agentmetry.core.audit.ingest import (
     ingest_external_event,
     infer_approval_payloads,
     reset_ingest_sink_cache,
     reset_pending_approvals,
 )
-from core.config import settings
+from agentmetry.core.config import settings
 
 
 def test_build_external_canonical_cursor_tool():
@@ -71,7 +71,7 @@ def ingest_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
@@ -82,7 +82,7 @@ def ingest_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "api_key", "")
     reset_ingest_sink_cache()
 
-    from api.main import app
+    from agentmetry.api.main import app
 
     yield TestClient(app), jsonl
     reset_ingest_sink_cache()
@@ -94,7 +94,7 @@ async def test_ingest_service_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
@@ -114,7 +114,7 @@ async def test_ingest_service_writes_jsonl(tmp_path: Path, monkeypatch: pytest.M
     assert canonical["source"]["app"] == "antigravity"
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     parsed = unwrap_trail_record(json.loads(lines[0]))
     assert parsed["agent"]["name"] == "antigravity"
@@ -135,7 +135,7 @@ def test_ingest_api(ingest_client):
     assert resp.json()["status"] == "accepted"
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     assert unwrap_trail_record(json.loads(lines[0]))["source"]["app"] == "cursor"
 
@@ -147,7 +147,7 @@ def test_tail_filters_by_source(ingest_client):
         build_external_canonical({"source_app": "claude", "event_type": "session_start", "correlation_id": "2"}),
     ]
     jsonl.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     get_trail_db().insert_batch(events)
 
@@ -297,7 +297,7 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(settings, "audit_export_path", jsonl)
     monkeypatch.setattr(settings, "audit_export_enabled", True)
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
-    from core.audit.trail_db import get_trail_db, reset_trail_db
+    from agentmetry.core.audit.trail_db import get_trail_db, reset_trail_db
     reset_trail_db()
     try:
         get_trail_db().insert_batch(events)
@@ -321,7 +321,7 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
 
     lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 3  # request + tool_called + inferred approval_response
-    from core.audit.trail_chain import unwrap_trail_record
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
     types = [unwrap_trail_record(json.loads(ln))["action"]["type"] for ln in lines]
     assert types == ["approval_request", "tool_called", "approval_response"]

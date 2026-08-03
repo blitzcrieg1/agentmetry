@@ -8,7 +8,7 @@ same kind of promise as an install command nobody runs.
 
 from __future__ import annotations
 
-from core.audit import dogfood
+from agentmetry.core.audit import dogfood
 
 
 def test_fingerprint_is_stable_across_calls():
@@ -19,13 +19,13 @@ def test_fingerprint_moves_when_a_rule_source_changes(tmp_path, monkeypatch):
     """Whole-file hashing is blunt on purpose: it cannot miss a real change."""
     before = dogfood.ruleset_fingerprint()
 
-    real_root = dogfood._orchestrator_root()
+    real_root = dogfood._package_root()
     fake_root = tmp_path / "orch"
     for rel in dogfood._RULESET_SOURCES:
         dst = fake_root / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes((real_root / rel).read_bytes())
-    monkeypatch.setattr(dogfood, "_orchestrator_root", lambda: fake_root)
+    monkeypatch.setattr(dogfood, "_package_root", lambda: fake_root)
 
     assert dogfood.ruleset_fingerprint() == before, "copying the sources changed nothing"
 

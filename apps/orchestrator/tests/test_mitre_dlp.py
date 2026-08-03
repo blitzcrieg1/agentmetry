@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.audit.mitre import get_mitre_mapping
-from core.audit.dlp.scanner import _luhn_ok
+from agentmetry.core.audit.mitre import get_mitre_mapping
+from agentmetry.core.audit.dlp.scanner import _luhn_ok
 
 
 # --- MITRE -------------------------------------------------------------------

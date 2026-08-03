@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.audit.detection.engine import run_detections
-from core.audit.detection.yaml_config import clear_manifest_cache, threshold
+from agentmetry.core.audit.detection.engine import run_detections
+from agentmetry.core.audit.detection.yaml_config import clear_manifest_cache, threshold
 
 
 def _ev(**kwargs) -> dict:

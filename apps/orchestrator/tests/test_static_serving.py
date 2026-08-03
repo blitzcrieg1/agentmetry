@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.main import mount_dashboard
+from agentmetry.api.main import mount_dashboard
 
 
 def _fake_export(tmp_path: Path) -> Path:

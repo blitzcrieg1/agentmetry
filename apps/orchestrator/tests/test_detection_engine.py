@@ -5,7 +5,7 @@ All events are synthetic — never real secrets in fixtures (gitleaks runs in CI
 
 from __future__ import annotations
 
-from core.audit.detection import run_detections
+from agentmetry.core.audit.detection import run_detections
 
 
 def _event(
@@ -348,7 +348,7 @@ def test_a_timestamp_tie_preserves_arrival_order():
     Windows-only failure where credential-read-then-cloud-api fired or did not
     depending on which UUID won.
     """
-    from core.audit.detection.engine import _sorted
+    from agentmetry.core.audit.detection.engine import _sorted
 
     ts = "2026-07-25T10:00:00+00:00"
     arrival = [
@@ -360,7 +360,7 @@ def test_a_timestamp_tie_preserves_arrival_order():
 
 def test_seq_still_wins_over_arrival_order():
     """An explicit sequence number is better evidence than list position."""
-    from core.audit.detection.engine import _sorted
+    from agentmetry.core.audit.detection.engine import _sorted
 
     ts = "2026-07-25T10:00:00+00:00"
     events = [
@@ -371,7 +371,7 @@ def test_seq_still_wins_over_arrival_order():
 
 
 def test_timestamps_still_beat_arrival_order():
-    from core.audit.detection.engine import _sorted
+    from agentmetry.core.audit.detection.engine import _sorted
 
     events = [
         {"event_id": "a", "timestamp_utc": "2026-07-25T10:00:05+00:00", "marker": "later"},
@@ -382,7 +382,7 @@ def test_timestamps_still_beat_arrival_order():
 
 def test_a_tied_credential_sequence_still_fires():
     """The exact Windows failure, reproduced without needing Windows."""
-    from core.audit.detection import run_detections
+    from agentmetry.core.audit.detection import run_detections
 
     ts = "2026-07-25T10:00:00+00:00"
     cred = {

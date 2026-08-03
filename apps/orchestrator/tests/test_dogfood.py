@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from core.audit.dogfood import (
+from agentmetry.core.audit.dogfood import (
     MIN_ACTIVE_DAYS,
     assess,
     read_marker,
@@ -57,7 +57,7 @@ def _busy_week(start: date, days: int = 5, corr_prefix="s"):
 
 @pytest.fixture(autouse=True)
 def _clean_marker(tmp_path, monkeypatch):
-    from core.config import settings
+    from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "trail.jsonl")
@@ -129,7 +129,7 @@ def test_an_untriaged_critical_makes_the_week_red():
 
 def test_a_triaged_critical_leaves_the_week_green():
     start_clock(START)
-    from core.audit.detection.disposition import get_disposition_store
+    from agentmetry.core.audit.detection.disposition import get_disposition_store
 
     get_disposition_store().record(
         correlation_id="s1", rule_id="credential-exfil",
@@ -201,7 +201,7 @@ def test_an_incomplete_week_does_not_break_the_run():
 
 def test_a_broken_chain_fails_every_week(monkeypatch):
     start_clock(START)
-    import core.audit.dogfood as dogfood
+    import agentmetry.core.audit.dogfood as dogfood
 
     def _broken(report):
         report.chain_ok = False

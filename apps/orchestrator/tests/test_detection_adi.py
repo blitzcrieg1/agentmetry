@@ -15,7 +15,7 @@ fires on it is worse than no rule.
 
 from __future__ import annotations
 
-from core.audit.detection.rules import (
+from agentmetry.core.audit.detection.rules import (
     rule_encoded_command_download,
     rule_pr_merged_without_review,
     rule_untrusted_input_then_risky_action,
@@ -263,7 +263,7 @@ def test_writing_a_merge_command_into_a_file_is_not_merging(monkeypatch):
     security docs, and corpus cases. A security tool that punishes you for
     writing about security gets uninstalled.
     """
-    from core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.detection.traits import classify_command
 
     for cmd in (
         'echo "gh pr merge 42 --squash" > fixture.txt',
@@ -278,7 +278,7 @@ def test_writing_a_merge_command_into_a_file_is_not_merging(monkeypatch):
 def test_a_real_merge_still_sets_the_trait():
     """The half that matters more. A guard that swallowed real merges would pass
     every false-positive test and leave the rule useless."""
-    from core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.detection.traits import classify_command
 
     for cmd in (
         "gh pr merge 42 --squash",
@@ -291,7 +291,7 @@ def test_a_real_merge_still_sets_the_trait():
 
 def test_masking_preserves_offsets():
     """Callers may still want to know where in the original a match sat."""
-    from core.audit.detection.traits import mask_literals
+    from agentmetry.core.audit.detection.traits import mask_literals
 
     cmd = 'echo "gh pr merge 42" > f'
     masked = mask_literals(cmd)
