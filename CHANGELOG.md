@@ -9,6 +9,28 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-03
+
+### Changed
+- **Everything moved under one top-level `agentmetry` package, and the
+  distribution is now `agentmetry` rather than `agentmetry-orchestrator`.**
+  `pip install` previously would have written `core`, `api` and `cli` into
+  site-packages: three of the most generic importable names in Python, colliding
+  with whatever else claims them. Imports change from `core.audit...` to
+  `agentmetry.core.audit...`. Breaking, and the reason this is a minor bump
+  rather than a patch.
+
+  The version moves with it. Tag `v0.3.0` points at the old flat layout, so
+  publishing 0.3.0 to PyPI would have made one version number mean two different
+  trees, and evidence packs record the producing version. `meta.producer` now
+  reads `agentmetry/0.4.0`.
+
+  The detection corpus moved inside the package. `agentmetry benchmark` is the
+  command the README tells a stranger to run to check the false-positive claim,
+  and it failed from a clean install because the corpus lived under `tests/`,
+  which no wheel ships.
+
+
 ### Added
 - **The dogfood gate now notices when the rules changed underneath it.**
   `dogfood --start` records a fingerprint of everything that decides whether a

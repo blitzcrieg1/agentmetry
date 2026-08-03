@@ -440,7 +440,7 @@ def build_evidence_pack(
             # An auditor reading this pack in 2028 needs to know which build
             # produced it: rules, redaction, and mappings all move between
             # versions. Provenance, not decoration.
-            "producer": f"agentmetry-orchestrator/{__version__}",
+            "producer": f"agentmetry/{__version__}",
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "date_from": from_date.isoformat(),
             "date_to": to_date.isoformat(),

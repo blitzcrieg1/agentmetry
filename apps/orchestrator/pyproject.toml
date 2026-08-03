@@ -1,5 +1,5 @@
 [project]
-name = "agentmetry-orchestrator"
+name = "agentmetry"
 dynamic = ["version"]
 description = "Local-first flight recorder for AI coding agents: hash-chained audit trail, MITRE-mapped sequence detection, DLP"
 readme = "README.md"

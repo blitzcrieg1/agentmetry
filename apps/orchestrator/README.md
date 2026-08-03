@@ -11,7 +11,7 @@ Everything runs locally. There are no cloud calls and no telemetry. Forwarding t
 Elastic ECS, Splunk HEC or a webhook exists and is off unless you configure it.
 
 ```bash
-pip install agentmetry-orchestrator
+pip install agentmetry
 agentmetry doctor
 ```
 

@@ -44,7 +44,7 @@ def test_evidence_pack_records_the_producing_version():
     from agentmetry.core.audit.evidence_pack import build_evidence_pack
 
     pack = build_evidence_pack(date(2000, 1, 1), date(2000, 1, 2))
-    assert pack["meta"]["producer"] == f"agentmetry-orchestrator/{__version__}"
+    assert pack["meta"]["producer"] == f"agentmetry/{__version__}"
 
 
 def test_changelog_documents_the_current_version():
