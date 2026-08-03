@@ -80,8 +80,6 @@ Agentmetry is the open-source **endpoint flight recorder** for AI agents. It run
 
 **Observability-first by design.** Every tool call, denial, and approval lands in a JSONL trail you own, with correlated sequence alerts when individually-innocent calls add up to an attack. That is the layer EDR never had: the agent's session, not just the host process. Prevention is opt-in; the default is detect and record. What that does *not* cover is set out in [Coverage & Limitations](#coverage--limitations).
 
-> an immutable, operator-owned audit trail for governed AI agents, capturing tool execution at the IDE lifecycle boundary and the MCP wire, not in a vendor cloud
-
 We do that by:
 
 - **Intercepting** agent tool calls through IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and an MCP stdio audit proxy
@@ -231,7 +229,7 @@ When an agent runs a tool, Agentmetry automatically:
 1. **Intercepts** the lifecycle hook or MCP `tools/call` before arguments leave the hook process
 2. **Hashes** tool arguments (SHA-256) and scrubs inline secrets in command strings
 3. **Enriches** each event with MITRE tactic/technique mappings and session correlation
-4. **Stores** canonical JSONL locally (`audit-forward.jsonl`) — the system of record for the hook path; each new line is hash-chained for tamper detection
+4. **Stores** canonical JSONL locally (`audit-forward.jsonl`), the system of record for the hook path; each new line is hash-chained for tamper detection
 5. **Detects** multi-step behavioral patterns across the session timeline
 6. **Forwards** to your SIEM sinks and alert webhook (optional, best-effort)
 
@@ -299,14 +297,14 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  subgraph TierB["Tier B — IDE Hooks"]
+  subgraph TierB["Tier B: IDE Hooks"]
     CL["Claude Code"]
     C["Cursor"]
     AG["Antigravity"]
     CX["Codex"]
   end
 
-  subgraph TierA["Tier A — MCP Proxy"]
+  subgraph TierA["Tier A: MCP Proxy"]
     MCP["Any MCP Client"]
     WRAP["Audit Proxy wraps server command"]
   end
@@ -374,7 +372,7 @@ minutes instead of finding out in month two.
 
 | Tier | Setup | Agentmetry coverage |
 |------|-------|---------------------|
-| **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture** — every `tools/call` + error responses, arg hashes, session correlation |
+| **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture**: every `tools/call` + error responses, arg hashes, session correlation |
 | **B** | IDE hooks (Claude, Cursor, Codex, Antigravity) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
 | **C** | Unmanaged ChatGPT, Cursor with hooks off | **Not visible.** CASB / secure-web-gateway territory |
 
@@ -424,10 +422,10 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | 🔍 **Behavioral Detection** | Correlated sequence rules: credential exfil, guardrail bypass, download cradles, agent data injection, supply-chain merges |
 | 🛡️ **Local DLP** | Regex scanner detects AWS keys, GitHub tokens, Slack tokens, and PII at the hook boundary (`block` mode optional) |
 | 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
-| 🔐 **Argument hashing** | SHA-256 of tool args by default — plaintext never crosses the wire from hooks |
+| 🔐 **Argument hashing** | SHA-256 of tool args by default; plaintext never crosses the wire from hooks |
 | 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, generic webhook, alert webhook; Loki/LogQL via Alloy file tail |
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
-| 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity — global hook install scripts |
+| 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity, via global hook install scripts |
 
 ### Integrations
 
@@ -565,7 +563,7 @@ flowchart LR
 | `AGENTMETRY_DLP_PII` | `1` | Enable PII rules (SSN, etc.) |
 | `AGENTMETRY_DLP_RULES_PATH` | `policies/dlp/manifest.yaml` | Custom rule manifest |
 
-Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python — drop entries into the manifest.
+Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python: drop entries into the manifest.
 
 ### Tool allow/deny policy
 
@@ -587,9 +585,9 @@ The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activit
 | View | Features |
 | ---- | -------- |
 | **Event stream** | Real-time audit tail, detections strip, event histogram, color-coded source badges (Claude, Cursor, Codex, Antigravity), outcome filters, split-pane inspector, CSV/JSONL export |
-| **Detections** | Triage panel for correlated findings — severity, rule ID, session drill-down; open a row to jump to the event stream |
+| **Detections** | Triage panel for correlated findings: severity, rule ID, session drill-down; open a row to jump to the event stream |
 | **Analytics** | Outcome distribution, MITRE tactic chart, session ID search, weekly dogfood stats strip (same data as `agentmetry stats --days 7`) |
-| **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons — reorder or hide via the Columns settings panel |
+| **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons; reorder or hide via the Columns settings panel |
 | **Process Tree** | Horizontal React Flow timeline of events within a selected session |
 
 Dark mode supported with theme toggle. Logo and panels adapt automatically.
@@ -602,7 +600,7 @@ For agents captured via IDE hooks (the common case), the canonical JSONL trail i
 
 | Sink | Env |
 |------|-----|
-| **File (default)** | `AGENTMETRY_AUDIT_SINK=file` — hash-chained JSONL (`agentmetry verify --trail`) |
+| **File (default)** | `AGENTMETRY_AUDIT_SINK=file`: hash-chained JSONL (`agentmetry verify --trail`) |
 | **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
@@ -677,7 +675,7 @@ Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM ada
 | Sigma pack | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
 | Roadmap | [ROADMAP.md](ROADMAP.md) |
 
-Run tests before opening a PR — see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs require a signed [CLA](CLA.md)** (v1.0).
+Run tests before opening a PR; see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs require a signed [CLA](CLA.md)** (v1.0).
 
 ---
 
@@ -685,11 +683,11 @@ Run tests before opening a PR — see [CONTRIBUTING.md](CONTRIBUTING.md). **All 
 
 Agentmetry is designed for security-sensitive environments:
 
-- **Local-first** — audit data stays on your machine unless you configure forwarders
-- **Argument hashing by default** — plaintext tool args never leave the hook process
-- **Optional API key** — protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
-- **Hook enforcement (opt-in)** — DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
-- **Tamper-evident exports** — evidence packs include SHA-256 integrity hashes
+- **Local-first**: audit data stays on your machine unless you configure forwarders
+- **Argument hashing by default**: plaintext tool args never leave the hook process
+- **Optional API key**: protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
+- **Hook enforcement (opt-in)**: DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
+- **Tamper-evident exports**: evidence packs include SHA-256 integrity hashes
 
 Report vulnerabilities via GitHub [private vulnerability reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new) (Security → Report a vulnerability). Do not open a public issue for security findings. See [SECURITY.md](SECURITY.md).
 
@@ -699,7 +697,7 @@ Compliance docs → [docs/compliance/](docs/compliance/)
 
 ## License
 
-Apache-2.0 — Copyright 2026 blitzcrieg1. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0, Copyright 2026 blitzcrieg1. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 Contributors sign the [Individual CLA (v1.0)](CLA.md); companies use [CCLA.md](CCLA.md).
 Trademark policy: [TRADEMARK.md](TRADEMARK.md). Commercial intent (non-binding):
@@ -709,4 +707,4 @@ Trademark policy: [TRADEMARK.md](TRADEMARK.md). Commercial intent (non-binding):
 
 ## Maintainer
 
-Built and maintained by Ioannis L. — connect on [LinkedIn](https://www.linkedin.com/in/ioannis-l-074439194/).
+Built and maintained by Ioannis L. Connect on [LinkedIn](https://www.linkedin.com/in/ioannis-l-074439194/).
