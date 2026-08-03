@@ -11,7 +11,7 @@ These are small, self-contained, and testable. The best way in:
 | Area | Where |
 |------|-------|
 | A new **detection rule** | `apps/orchestrator/core/audit/detection/rules.py`: a pure function over a session's events, plus tests in `tests/test_detection_engine.py` |
-| A new **DLP pattern** | `policies/dlp/manifest.yaml`: regex only, no Python; add a fires/doesn't-fire test |
+| A new **DLP pattern** | `agentmetry/policies/dlp/manifest.yaml`: regex only, no Python; add a fires/doesn't-fire test |
 | A **SIEM adapter** | `apps/orchestrator/core/audit/sinks.py` |
 | A **hook adapter** for a new IDE | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
 | A **Sigma rule** | [docs/integrations/sigma/](docs/integrations/sigma/) |

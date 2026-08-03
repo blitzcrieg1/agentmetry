@@ -25,6 +25,14 @@ separately (currently `1.1.0`) and changes additively.
   trees, and evidence packs record the producing version. `meta.producer` now
   reads `agentmetry/0.4.0`.
 
+  The policy manifests moved inside the package too, for the same reason and
+  with a sharper edge: without them DLP, tool policy and the YAML detection
+  rules are all inert, so `pip install` produced a `doctor` opening with three
+  FAILs and secret scanning silently off. They now live at
+  `agentmetry/policies/`. `python -m build` builds the wheel from the sdist, and
+  a force-include reaching outside the project directory does not survive that
+  trip, so config the package needs to run had to live with the package.
+
   The detection corpus moved inside the package. `agentmetry benchmark` is the
   command the README tells a stranger to run to check the false-positive claim,
   and it failed from a clean install because the corpus lived under `tests/`,
@@ -356,7 +364,7 @@ separately (currently `1.1.0`) and changes additively.
 ## [0.2.1] - 2026-07-20
 
 ### Added
-- **YAML detection manifest** (`policies/detection/manifest.yaml`) — tunable burst
+- **YAML detection manifest** (`agentmetry/policies/detection/manifest.yaml`) — tunable burst
   thresholds and analyst-authored session count rules (no Python PR).
 - **Hook-side detection traits** (`tool.traits`) — command classification at the hook
   before hashing so sequence rules work with default privacy config (no `tool.command`

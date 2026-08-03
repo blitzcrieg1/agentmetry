@@ -6,7 +6,7 @@ import pytest
 from agentmetry.core.audit.dlp import scanner as dlp_scanner
 from agentmetry.core.audit.dlp.scanner import scan
 
-_MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "dlp" / "manifest.yaml"
+_MANIFEST = Path(__file__).resolve().parents[1] / "agentmetry" / "policies" / "dlp" / "manifest.yaml"
 
 
 @pytest.fixture(autouse=True)

@@ -1,4 +1,4 @@
-"""Load detection thresholds and YAML count rules from policies/detection/manifest.yaml."""
+"""Load detection thresholds and YAML count rules from agentmetry/policies/detection/manifest.yaml."""
 
 from __future__ import annotations
 

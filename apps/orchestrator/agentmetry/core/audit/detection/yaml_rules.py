@@ -1,4 +1,4 @@
-"""YAML-defined session count rules (policies/detection/manifest.yaml)."""
+"""YAML-defined session count rules (agentmetry/policies/detection/manifest.yaml)."""
 
 from __future__ import annotations
 

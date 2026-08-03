@@ -27,7 +27,7 @@ enterprise = "agentmetry_enterprise.register:register"
 | **Capture** | IDE hooks (Cursor, Claude Code, Codex, Antigravity), MCP audit proxy, external ingest adapters |
 | **Schema** | Canonical event format v1.1.0, MITRE ATT&CK per-tool tagging |
 | **Detection core** | Sequence-rule executor, live detection engine, community rule pack |
-| **Native YAML rules** | `policies/detection/manifest.yaml` spec — thresholds, session count rules, hot-reload |
+| **Native YAML rules** | `agentmetry/policies/detection/manifest.yaml` spec — thresholds, session count rules, hot-reload |
 | **DLP & tool policy** | Regex DLP manifest, tool allow/deny YAML, hook-boundary enforcement |
 | **Storage** | SQLite index, JSONL hash chain, evidence export |
 | **Forwarders** | File, webhook, Splunk HEC, Elastic ECS, Loki — API key / token auth over HTTPS |

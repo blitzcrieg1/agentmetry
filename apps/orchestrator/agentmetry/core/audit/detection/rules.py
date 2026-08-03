@@ -193,7 +193,7 @@ def _to_tz(ts: str, tz: Any) -> datetime | None:
 
 # --- rules -------------------------------------------------------------------
 
-# Thresholds are tunable via policies/detection/manifest.yaml (reload on restart).
+# Thresholds are tunable via agentmetry/policies/detection/manifest.yaml (reload on restart).
 
 # Exact tool methods that destroy data. Normalized via _norm_tool, so
 # `delete_file`, `deleteFile` and `Delete` all land here, while

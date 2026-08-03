@@ -9,7 +9,7 @@ CVE-2025-59536 / CVE-2026-21852: agent execution config living inside the repo
 (.claude/settings.json, .mcp.json, hooks) is attacker-controlled in an untrusted
 project and grants code execution or redirects API traffic.
 
-These tests run against the real policies/tool/manifest.yaml rather than a temp
+These tests run against the real agentmetry/policies/tool/manifest.yaml rather than a temp
 fixture, because the point is that the *shipped* rules work.
 
 Regression guarded here: tool_policy._extract_command previously read only

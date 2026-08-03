@@ -66,7 +66,7 @@ that nothing happened outside the monitored boundary.*
 | Step | Action | Agentmetry hook |
 |------|--------|-----------------|
 | 1 | Maintain a risk register | [incident-response-template.md](./incident-response-template.md) |
-| 2 | Tool allow/deny at hook boundary | `policies/tool/manifest.yaml` |
+| 2 | Tool allow/deny at hook boundary | `agentmetry/policies/tool/manifest.yaml` |
 | 3 | Sequence detections for agentic abuse | `core/audit/detection/rules.py` |
 | 4 | Review weekly stats | `agentmetry stats --days 7` |
 

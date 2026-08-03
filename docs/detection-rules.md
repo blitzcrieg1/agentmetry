@@ -14,7 +14,7 @@ verify a detection claim you are not allowed to read.
 One consequence is worth being deliberate about. Publishing the **default
 thresholds** means someone who has read this page knows where the line is and
 can sit just under it. That is why thresholds live in
-[`policies/detection/manifest.yaml`](../policies/detection/manifest.yaml) rather
+[`agentmetry/policies/detection/manifest.yaml`](../apps/orchestrator/agentmetry/policies/detection/manifest.yaml) rather
 than in code: a real deployment should tune them to its own traffic rather than
 run the shipped defaults. Do that during the first two weeks, against your own
 noise.

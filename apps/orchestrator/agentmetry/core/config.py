@@ -4,6 +4,22 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ORCHESTRATOR_ROOT = Path(__file__).resolve().parents[2]
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _policy(*parts: str) -> Path:
+    """A policy manifest shipped inside the package.
+
+    These are default configuration, not test data: without them DLP, tool
+    policy and the YAML detection rules are all inert, and a `pip install` used
+    to leave `doctor` opening with three FAILs and secret scanning silently off.
+
+    They live in the package rather than at the repo root because `python -m
+    build` builds the wheel from the sdist, and a force-include reaching outside
+    the project directory does not survive that trip. Config the package needs
+    to run belongs with the package.
+    """
+    return _PACKAGE_ROOT.joinpath("policies", *parts)
 
 
 class Settings(BaseSettings):
@@ -107,7 +123,7 @@ class Settings(BaseSettings):
         default="log",
         validation_alias=AliasChoices("AGENTMETRY_DLP_MODE"),
     )
-    dlp_rules_path: Path = _ORCHESTRATOR_ROOT.parent.parent / "policies" / "dlp" / "manifest.yaml"
+    dlp_rules_path: Path = _policy("dlp", "manifest.yaml")
     dlp_pii: bool = True
 
     # Tool allow/deny policy — enforced at the hook boundary (like DLP block mode).
@@ -116,7 +132,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_TOOL_POLICY_MODE"),
     )
     tool_policy_path: Path = (
-        _ORCHESTRATOR_ROOT.parent.parent / "policies" / "tool" / "manifest.yaml"
+        _policy("tool", "manifest.yaml")
     )
 
     # Post-ingest policy checks (core/audit/policy.py). Off by default: the
@@ -143,7 +159,7 @@ class Settings(BaseSettings):
     )
 
     detection_rules_path: Path = (
-        _ORCHESTRATOR_ROOT.parent.parent / "policies" / "detection" / "manifest.yaml"
+        _policy("detection", "manifest.yaml")
     )
 
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).

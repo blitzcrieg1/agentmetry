@@ -61,7 +61,7 @@ item matters to you.
   ([docs/readme-media.md](docs/readme-media.md)).
 
 - **Phase 0 complete**: README SIEM-first + Advanced runtime doc; dogfood issue template.
-- **Tool allow/deny policy YAML**: `policies/tool/manifest.yaml`; hook `log`/`block` via
+- **Tool allow/deny policy YAML**: `agentmetry/policies/tool/manifest.yaml`; hook `log`/`block` via
   `AGENTMETRY_TOOL_POLICY_MODE` (runs before DLP at the hook boundary).
 
 ---
@@ -70,7 +70,7 @@ item matters to you.
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
-| P0 | ~~**Tool allow/deny policy YAML**~~ | `policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
+| P0 | ~~**Tool allow/deny policy YAML**~~ | `agentmetry/policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
 | P1 | ~~**Dogfood metrics in CLI/dashboard**~~ | `agentmetry stats --days 7` + Analytics tab | ✓ Weekly events/detections/denials |
 | P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
 | P1 | **More detection rules** | `core/audit/detection/rules.py` | ~~Dotfile read → remote push~~ ✓ (`dotfile-read-then-git-push`). Remaining: consecutive writes outside project root; rapid-fire denials; package-install tampering |
@@ -82,7 +82,7 @@ item matters to you.
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
 | P1 | **OTLP export** | `core/audit/` sinks | Forwards to Jaeger / OTel collector |
-| P1 | ~~**YAML custom rules**~~ (thresholds + count rules) | `policies/detection/manifest.yaml` | ✓ Analysts tune bursts / add count rules without Python |
+| P1 | ~~**YAML custom rules**~~ (thresholds + count rules) | `agentmetry/policies/detection/manifest.yaml` | ✓ Analysts tune bursts / add count rules without Python |
 | P1 | **YAML sequence rules + Sigma import** | loader + docs | Sequence correlation in YAML; Sigma import for point alerts |
 | P1 | **Detection benchmark fixtures** | `tests/fixtures/` or `bench/` | CI runs rules against synthetic attack JSONL |
 | P2 | **More IDE hosts** | `scripts/` hooks | Windsurf, VS Code Copilot |

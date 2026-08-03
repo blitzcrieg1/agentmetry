@@ -108,7 +108,7 @@ index=agentmetry | stats latest(_time) as last by host_id
 ## Rolling it out
 
 1. **Pick one machine and run it for two weeks** before touching anyone else's.
-   You will tune thresholds in `policies/detection/manifest.yaml`, and you would
+   You will tune thresholds in `agentmetry/policies/detection/manifest.yaml`, and you would
    rather do that against your own noise than the team's.
 2. **Set `AGENTMETRY_FLEET_ID`, `AGENTMETRY_OPERATOR_ID`, and a recognizable `host_id` per machine.** Everything
    downstream depends on these being meaningful.

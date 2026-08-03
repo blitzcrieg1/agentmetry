@@ -453,8 +453,14 @@ def run_doctor(
     orch = orchestrator_root()
 
     # --- SIEM flight recorder ------------------------------------------------
+    # A source checkout has a pyproject next to the package; an installed one
+    # does not, and never will. Failing on its absence told every pip user their
+    # working install was broken as the first line of the first command they
+    # run, which is a poor way to meet someone.
     if (orch / "pyproject.toml").is_file():
         report.ok("orchestrator", f"Orchestrator root {orch}")
+    elif (Path(__file__).resolve().parents[2] / "__init__.py").is_file():
+        report.ok("orchestrator", f"Installed package at {Path(__file__).resolve().parents[2]}")
     else:
         report.fail("orchestrator", f"Expected orchestrator at {orch}")
 

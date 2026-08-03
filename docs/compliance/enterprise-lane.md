@@ -12,7 +12,7 @@ sequence detections, customer-owned SIEM forwarders. This document names what
 | Sequence detections + DLP + tool policy at hook boundary | Shipped |
 | Local dashboard + JSONL hash chain | Shipped |
 | Forward to Splunk / Elastic / Loki / webhook | Shipped |
-| YAML detection thresholds + count rules | Shipped (`policies/detection/manifest.yaml`) |
+| YAML detection thresholds + count rules | Shipped (`agentmetry/policies/detection/manifest.yaml`) |
 | Sigma export pack | Shipped |
 
 ## Honest limits (say these in sales docs)

@@ -96,9 +96,34 @@ We do that by:
 
 Agentmetry runs fully locally. The audit trail never leaves your machine unless you explicitly forward it.
 
-### Try it locally (30 seconds)
+### Install (30 seconds)
 
-No server, no API key, no config. Clone and run:
+```bash
+pip install agentmetry
+agentmetry doctor
+```
+
+No server, no API key, no config. The DLP rules, tool policy and detection
+manifests ship inside the package, so `doctor` should come back clean.
+
+### Check the detection claims before you trust them
+
+The corpus ships in the package too, so this works from a fresh install with no
+clone:
+
+```bash
+agentmetry benchmark
+```
+
+It replays recorded sessions through the real rule engine and exits non-zero on
+any missed rule or any false positive. The benign half is the number that
+matters, and what it covers and does not cover is set out in
+[Behavioral Detection Engine](#behavioral-detection-engine).
+
+### See it catch something (needs the repo)
+
+The demo scripts and the dashboard are not part of the package, so this half
+needs a clone:
 
 ```bash
 git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
@@ -436,7 +461,7 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
 | **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (4 rules) | STIX/TAXII export |
-| **Policy engines** | Regex DLP manifest (`policies/dlp/`) · tool allow/deny YAML (`policies/tool/`) | OPA / Rego policy-as-code |
+| **Policy engines** | Regex DLP manifest (`agentmetry/policies/dlp/`) · tool allow/deny YAML (`agentmetry/policies/tool/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
 Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or the [roadmap](ROADMAP.md).
@@ -551,7 +576,7 @@ Agentmetry ships a local regex DLP engine that scans tool arguments **before** t
 
 ```mermaid
 flowchart LR
-  HOOK["Pre-tool hook"] --> SCAN["DLP Scanner<br/>policies/dlp/manifest.yaml"]
+  HOOK["Pre-tool hook"] --> SCAN["DLP Scanner<br/>agentmetry/policies/dlp/manifest.yaml"]
   SCAN -->|match + block| DENY["tool_denied<br/>reason: dlp:rule_id"]
   SCAN -->|pass| EXEC["Tool executes + audit log"]
   SCAN -->|match + log| WARN["Audit + allow<br/>(observe mode)"]
@@ -561,7 +586,7 @@ flowchart LR
 | --- | ------- | ----------- |
 | `AGENTMETRY_DLP_MODE` | `log` | `log` · `block` · `disable` |
 | `AGENTMETRY_DLP_PII` | `1` | Enable PII rules (SSN, etc.) |
-| `AGENTMETRY_DLP_RULES_PATH` | `policies/dlp/manifest.yaml` | Custom rule manifest |
+| `AGENTMETRY_DLP_RULES_PATH` | `agentmetry/policies/dlp/manifest.yaml` | Custom rule manifest |
 
 Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python: drop entries into the manifest.
 
@@ -572,7 +597,7 @@ Structural tool policy runs **before** DLP at the hook boundary. Deny rules matc
 | Env | Default | Description |
 | --- | ------- | ----------- |
 | `AGENTMETRY_TOOL_POLICY_MODE` | `log` | `log` · `block` · `disable` |
-| `AGENTMETRY_TOOL_POLICY_PATH` | `policies/tool/manifest.yaml` | Custom allow/deny manifest |
+| `AGENTMETRY_TOOL_POLICY_PATH` | `agentmetry/policies/tool/manifest.yaml` | Custom allow/deny manifest |
 
 In `block` mode, a matching deny rule returns `permission: deny` to the IDE hook (same path as DLP block).
 
@@ -671,7 +696,7 @@ Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM ada
 | Framework adapters | [adapters/crewai/](adapters/crewai/) |
 | Event schema | [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md) |
 | Detection rules | `apps/orchestrator/core/audit/detection/rules.py` |
-| DLP rules | `policies/dlp/manifest.yaml` |
+| DLP rules | `agentmetry/policies/dlp/manifest.yaml` |
 | Sigma pack | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
 | Roadmap | [ROADMAP.md](ROADMAP.md) |
 

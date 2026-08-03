@@ -72,6 +72,7 @@ path = "agentmetry/core/version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["agentmetry"]
 
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

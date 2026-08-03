@@ -1,7 +1,7 @@
 """Local policy checks for agent tool calls.
 
 **This is not OPA.** It is a small built-in ruleset. Real OPA/Rego evaluation is
-on the roadmap; `policies/opa/agent_rules.rego` is a draft for that work and is
+on the roadmap; `agentmetry/policies/opa/agent_rules.rego` is a draft for that work and is
 NOT evaluated by this module.
 
 Two design rules, both learned the hard way:
