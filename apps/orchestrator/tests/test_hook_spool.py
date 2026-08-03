@@ -31,6 +31,17 @@ sys.path.insert(0, str(_REPO / "scripts"))
 import agentmetry_ingest as ingest  # noqa: E402
 
 
+def _ago(**delta) -> str:
+    """An ISO timestamp relative to now.
+
+    Spool behaviour is age-dependent, so any literal date in this file is a
+    time bomb: it passes on the day it is written and goes red weeks later when
+    the payload drifts past MAX_AGE_SECONDS, for a reason that has nothing to do
+    with what the test is checking.
+    """
+    return (datetime.now(timezone.utc) - timedelta(**delta)).isoformat()
+
+
 def _spool_line(payload, *, spooled_at=None):
     return json.dumps({
         "spooled_at": spooled_at or datetime.now(timezone.utc).isoformat(),
@@ -141,7 +152,12 @@ def test_replay_keeps_when_the_tool_call_happened(tmp_path):
     minutes" rule on unrelated events, and misstated when things happened in a
     record whose entire purpose is to say when things happened.
     """
-    captured = "2026-07-27T14:13:12.480361+00:00"
+    # Relative to now, never a literal date. The first version of this test
+    # hardcoded a timestamp that was five days old when written, and it went red
+    # on its own seven days later when the payload aged past MAX_AGE_SECONDS and
+    # was correctly quarantined. A test that fails for a reason unrelated to what
+    # it checks is worse than no test: it teaches you to ignore a red suite.
+    captured = _ago(days=1)
     spool = tmp_path / "hook-spool.jsonl"
     spool.write_text(_spool_line(_payload("old"), spooled_at=captured) + "\n", encoding="utf-8")
 
@@ -153,15 +169,16 @@ def test_replay_does_not_overwrite_a_timestamp_the_hook_sent(tmp_path):
     """`spooled_at` is when we gave up posting, which is a hair later than the
     call itself. If the hook told us, believe the hook."""
     spool = tmp_path / "hook-spool.jsonl"
+    precise = _ago(days=1, seconds=7)
     payload = _payload("precise")
-    payload["timestamp_utc"] = "2026-07-27T14:13:12.000000+00:00"
+    payload["timestamp_utc"] = precise
     spool.write_text(
-        _spool_line(payload, spooled_at="2026-07-27T14:13:19.999999+00:00") + "\n",
+        _spool_line(payload, spooled_at=_ago(days=1)) + "\n",
         encoding="utf-8",
     )
 
     payloads, _ = read_spool(spool)
-    assert payloads[0]["timestamp_utc"] == "2026-07-27T14:13:12.000000+00:00"
+    assert payloads[0]["timestamp_utc"] == precise
 
 
 @pytest.mark.asyncio

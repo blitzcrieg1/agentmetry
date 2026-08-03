@@ -518,10 +518,10 @@ It replays a corpus of recorded sessions through the real rule engine and prints
 what fired:
 
 ```
-  cases            17 (12 attack, 5 benign)
+  cases            20 (14 attack, 6 benign)
   rules covered    9
-  expected firings 12
-  detected         12
+  expected firings 14
+  detected         14
   missed           0
   false positives  0
 ```
@@ -645,6 +645,11 @@ visibility into agents Agentmetry does not orchestrate.
 |---------|--------------|
 | `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
+| `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
+| `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
+| `agentmetry logs -n 50 -f` | Tail the orchestrator log |
+| `agentmetry backup` / `restore` | Zip the vault and data stores; restore one (server stopped) |
+| `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
 | `agentmetry replay <correlation_id>` | ASCII audit timeline for one session (audit trail) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |

@@ -664,8 +664,11 @@ def main(argv: list[str] | None = None) -> int:
     backup.add_argument("--out", default=None)
     restore = sub.add_parser("restore", help="restore a backup (server must be stopped)")
     restore.add_argument("backup_zip")
-    sub.add_parser("install", help="register at-logon start (Task Scheduler)")
-    sub.add_parser("uninstall", help="remove the scheduled task")
+    sub.add_parser(
+        "install",
+        help="keep the recorder running: at-logon start plus restart on failure",
+    )
+    sub.add_parser("uninstall", help="remove the autostart registration")
     export = sub.add_parser("export", help="export audit artifacts")
     export.add_argument(
         "--evidence", action="store_true",
