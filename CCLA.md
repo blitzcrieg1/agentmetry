@@ -8,7 +8,7 @@
 
 This agreement is for **companies** whose employees contribute to Agentmetry.
 The company grants **blitzcrieg1** (the Project Owner) the same rights described
-in the Individual CLA — including the right to use contributions in the open-source
+in the Individual CLA, including the right to use contributions in the open-source
 project and to **relicense them** under other terms (including commercial licenses).
 
 ---

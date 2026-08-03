@@ -1,7 +1,7 @@
 # Roadmap
 
 Agentmetry is in **public alpha**, moving toward **beta** as a **local-first mini-SIEM
-for AI coding agents**. Nothing here is a promise with a date — it is direction,
+for AI coding agents**. Nothing here is a promise with a date. It is direction,
 grounded in operator dogfood (July 2026).
 
 **Primary persona:** security engineer / DevSecOps who needs tamper-evident agent
@@ -20,14 +20,14 @@ item matters to you.
 
 ## Shipped
 
-- **Capture** — IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and
+- **Capture**: IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and
   an MCP stdio audit proxy, normalized to canonical schema v1.1.0.
-- **MITRE ATT&CK** — per-tool tactic/technique tagging, including credential-access
+- **MITRE ATT&CK**: per-tool tactic/technique tagging, including credential-access
   (T1552) upgrades when a read touches a key or secret file.
-- **Local DLP** — regex engine (AWS keys, GitHub PATs, Slack tokens, bearer
+- **Local DLP**: regex engine (AWS keys, GitHub PATs, Slack tokens, bearer
   headers, private keys, US SSN) with a Luhn validator, `log`/`block` modes, and
   scrubbing before storage at the hook boundary.
-- **Correlated detection** — sequence-rule engine: `credential-exfil`,
+- **Correlated detection**: sequence-rule engine: `credential-exfil`,
   `approval-denied-then-executed`, `encoded-command-download`,
   `pr-merged-without-review`, `untrusted-input-then-risky-action`,
   `credential-read-then-cloud-api`, `dotfile-read-then-git-push`,
@@ -36,37 +36,37 @@ item matters to you.
   `discovery-then-collect`, and opt-in `off-hours-activity`. Includes Agent Data
   Injection chains ([arXiv:2607.05120](https://arxiv.org/abs/2607.05120)).
   Detections stream to sinks as first-class events.
-- **SIEM forwarding** — file, webhook, Elastic ECS, Splunk HEC, Loki/LogQL, Sigma
+- **SIEM forwarding**: file, webhook, Elastic ECS, Splunk HEC, Loki/LogQL, Sigma
   pack, alert webhook.
-- **Dashboard Phase 1** — nano-inspired hunt layout: icon rail, detections strip,
+- **Dashboard Phase 1**: nano-inspired hunt layout: icon rail, detections strip,
   event histogram, split-pane inspector, light/dark mode, CSV/JSONL export, feed
   status in header (`apps/dashboard/`).
-- **Evidence** — export packs with SHA-256 integrity hash; `agentmetry verify`
+- **Evidence**: export packs with SHA-256 integrity hash; `agentmetry verify`
   for evidence JSON.
-- **JSONL hash chain** — file sink writes tamper-evident chained envelopes;
+- **JSONL hash chain**: file sink writes tamper-evident chained envelopes;
   `agentmetry verify --trail <audit-forward.jsonl>` validates the chain (legacy
   unchained prefix lines are reported separately).
-- **Ops CLI** — `agentmetry doctor`, `agentmetry stats`, `agentmetry export`.
-- **Compliance trust-kit** — [`docs/compliance/`](docs/compliance/) (AI Act
+- **Ops CLI**: `agentmetry doctor`, `agentmetry stats`, `agentmetry export`.
+- **Compliance trust-kit**: [`docs/compliance/`](docs/compliance/) (AI Act
   checklist, ISO mapping, data residency statement).
-- **Legal** — Apache 2.0 + CLA workflow (July 2026).
-- **Durable live detection state** — SQLite checkpoint for emitted rules and
+- **Legal**: Apache 2.0 + CLA workflow (July 2026).
+- **Durable live detection state**: SQLite checkpoint for emitted rules and
   session event windows (`core/audit/detection/live_store.py`); survives
   orchestrator restart without re-firing detections.
-- **Windows one-flow install** — `scripts/install.ps1` (venv, dashboard deps,
+- **Windows one-flow install**: `scripts/install.ps1` (venv, dashboard deps,
   IDE hooks, doctor).
-- **Visual truth** — README, agentmetry.ai, and `docs/assets/agentmetry.mp4` match Phase 1
+- **Visual truth**: README, agentmetry.ai, and `docs/assets/agentmetry.mp4` match Phase 1
   dashboard and live demo output. The README hero plays inline on GitHub via a
   `user-attachments` URL; refreshing it is a manual upload
   ([docs/readme-media.md](docs/readme-media.md)).
 
-- **Phase 0 complete** — README SIEM-first + Advanced runtime doc; dogfood issue template.
-- **Tool allow/deny policy YAML** — `policies/tool/manifest.yaml`; hook `log`/`block` via
+- **Phase 0 complete**: README SIEM-first + Advanced runtime doc; dogfood issue template.
+- **Tool allow/deny policy YAML**: `policies/tool/manifest.yaml`; hook `log`/`block` via
   `AGENTMETRY_TOOL_POLICY_MODE` (runs before DLP at the hook boundary).
 
 ---
 
-## Phase 1 — Trust & demo (weeks 3–6)
+## Phase 1: Trust & demo (weeks 3–6)
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
@@ -77,7 +77,7 @@ item matters to you.
 
 ---
 
-## Phase 2 — Community & SIEM depth (weeks 7–10)
+## Phase 2: Community & SIEM depth (weeks 7–10)
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
@@ -90,7 +90,7 @@ item matters to you.
 
 ---
 
-## Phase 3 — Optional enterprise lane (weeks 11–12)
+## Phase 3: Optional enterprise lane (weeks 11–12)
 
 | Priority | Item | Where | Done when |
 |----------|------|-------|-----------|
@@ -102,11 +102,11 @@ item matters to you.
 
 ## Exploring (no dates)
 
-- **Policy-as-code** — OPA / Rego alongside YAML tool policy.
-- **MCP transport** — SSE / streamable-HTTP audit proxy in addition to stdio.
-- **Threat-intel interop** — STIX/TAXII export of detections.
-- **More sinks** — Datadog, New Relic.
-- **Repo split** — only if GitHub positioning stays confused after README trim (not a default action).
+- **Policy-as-code**: OPA / Rego alongside YAML tool policy.
+- **MCP transport**: SSE / streamable-HTTP audit proxy in addition to stdio.
+- **Threat-intel interop**: STIX/TAXII export of detections.
+- **More sinks**: Datadog, New Relic.
+- **Repo split**: only if GitHub positioning stays confused after README trim (not a default action).
 
 ---
 
@@ -114,7 +114,7 @@ item matters to you.
 
 Declare **beta** only when all are true:
 
-1. **4 consecutive green dogfood weeks** — no orchestrator crashes; detection
+1. **4 consecutive green dogfood weeks**: no orchestrator crashes; detection
    checkpoint survives restarts ([checklist](docs/agentmetry-dogfood-checklist.md)).
 2. **`agentmetry doctor` green** on three distinct Windows 11 setups.
 3. **`agentmetry verify --trail`** demonstrated in README.
@@ -141,7 +141,7 @@ the local-first wedge.
 ## How to help
 
 Best contributions: **detection rules**, **DLP patterns**, **SIEM adapters**,
-**YAML rules** (once loader lands) — each small, testable, self-contained.
+**YAML rules** (once loader lands): each small, testable, self-contained.
 
 See [Contributing](CONTRIBUTING.md) and
 [good first issues](https://github.com/blitzcrieg1/agentmetry/issues).

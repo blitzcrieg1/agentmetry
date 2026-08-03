@@ -14,7 +14,7 @@ You also grant the Project Owner **additional rights beyond Apache 2.0**, includ
 the right to **relicense your contribution** under other terms (including commercial
 or proprietary licenses) without asking you again.
 
-If you contribute on behalf of an employer, your employer must approve — see
+If you contribute on behalf of an employer, your employer must approve; see
 [CCLA.md](CCLA.md) for companies.
 
 ---

@@ -1,6 +1,6 @@
 # Security Policy
 
-Agentmetry is security tooling, so we take reports seriously — including reports
+Agentmetry is security tooling, so we take reports seriously, including reports
 about Agentmetry itself.
 
 ## Status: Alpha
@@ -25,7 +25,7 @@ a bounty.
 
 In scope:
 
-- Bypasses of the audit trail — anything that lets an agent's tool call execute
+- Bypasses of the audit trail: anything that lets an agent's tool call execute
   without producing a canonical event.
 - Secret leakage through the trail: values that should have been redacted or
   hashed but are written in plaintext to the JSONL, a SIEM sink, or the dashboard.
