@@ -164,3 +164,156 @@ def test_doctor_is_quiet_when_autostart_is_configured(monkeypatch):
     _check_autostart(report)
     entry = [f for f in report.findings if f.code == "autostart"][0]
     assert entry.severity == "ok"
+
+
+# ----------------------------------------------------------------------
+# Registered is not the same claim as working
+# ----------------------------------------------------------------------
+
+
+def test_the_module_autostart_launches_actually_exists():
+    """The bug this section exists for, in one assertion.
+
+    A refactor moved every module under a top-level `agentmetry` package.
+    `launch_command()` was updated; the already-registered scheduled task was
+    not, so it kept running `-m cli serve`, exited 1 every sixty seconds for a
+    day, and `status()` reported `configured=True` throughout. Sixty events
+    spooled behind it.
+
+    Asserting the literal string `agentmetry.cli` would not have caught it, so
+    this resolves the module the same way the interpreter will.
+    """
+    import importlib.util
+
+    _executable, args, _workdir = autostart.launch_command()
+    module = args[args.index("-m") + 1]
+    assert importlib.util.find_spec(module) is not None, (
+        f"autostart would launch `-m {module}`, which is not importable"
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Last Result:  0", 0),
+        ("Last Result: 1", 1),
+        ("Last Result:  267011", 267011),
+        ("Last Result:  0x41303", 0x41303),
+        ("Last Result:  -1", -1),
+        ("Task Name: x\nLast Result:  2\nStatus: Ready", 2),
+        ("Status: Ready", None),
+        ("Last Result:  (not a number)", None),
+    ],
+)
+def test_parse_last_result(text, expected):
+    assert autostart._parse_last_result(text) == expected
+
+
+def _fake_schtasks(monkeypatch, verbose_stdout: str) -> None:
+    """Stub both the existence query and the verbose one."""
+    monkeypatch.setattr(autostart.shutil, "which", lambda _n: "schtasks")
+
+    class _Result:
+        def __init__(self, stdout=""):
+            self.returncode = 0
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(argv, **_kwargs):
+        return _Result(verbose_stdout if "/V" in argv else "")
+
+    monkeypatch.setattr(autostart.subprocess, "run", fake_run)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="schtasks probe is Windows-only")
+def test_status_reports_a_registered_task_that_keeps_failing(monkeypatch):
+    _fake_schtasks(monkeypatch, "Status: Ready\nLast Result:  1")
+    state = autostart.status()
+    assert state.configured is True, "the task is registered; that part was never false"
+    assert state.healthy is False
+    assert state.last_result == 1
+    assert "agentmetry install" in state.detail, "say how to fix it, not just that it broke"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="schtasks probe is Windows-only")
+def test_a_running_recorder_is_healthy_whatever_the_last_result_says(monkeypatch):
+    """The regression that nearly shipped inside the fix for the original bug.
+
+    Last Result records the last *launch attempt*, not the health of a task
+    that stays up. Every repeating trigger that fires while the recorder is
+    alive is refused by MultipleInstancesPolicy=IgnoreNew and logged as a
+    non-zero code, so a working recorder shows one almost all the time. The
+    first draft of this check read that as a fault, which would have meant
+    doctor failing permanently on a correct install. An alarm that is always on
+    gets muted, and a muted alarm cannot warn about anything.
+
+    -2147020576 (0x800710E0) is the code observed on a real machine while the
+    recorder was up and serving on 127.0.0.1:8000.
+    """
+    _fake_schtasks(monkeypatch, "Status: Running\nLast Result:  -2147020576")
+    state = autostart.status()
+    assert state.healthy is True
+
+
+@pytest.mark.skipif(os.name != "nt", reason="schtasks probe is Windows-only")
+def test_a_task_that_has_never_run_is_not_a_failure(monkeypatch):
+    """0x41303 is Task Scheduler for "no run history yet", which is the normal
+    state between registering and the first trigger."""
+    _fake_schtasks(monkeypatch, "Status: Ready\nLast Result:  267011")
+    state = autostart.status()
+    assert state.healthy is True
+
+
+@pytest.mark.skipif(os.name != "nt", reason="schtasks probe is Windows-only")
+def test_a_disabled_task_will_not_restart_anything(monkeypatch):
+    """Registered, zero last result, and completely inert."""
+    _fake_schtasks(
+        monkeypatch,
+        "Status: Ready\nLast Result:  0\nScheduled Task State: Disabled",
+    )
+    state = autostart.status()
+    assert state.configured is True
+    assert state.healthy is False
+    assert "disabled" in state.detail.lower()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="schtasks probe is Windows-only")
+def test_unreadable_run_history_is_unknown_rather_than_broken(monkeypatch):
+    """Localized Windows will not print "Last Result". Reporting a fault we
+    cannot see would teach the operator to ignore the field."""
+    _fake_schtasks(monkeypatch, "Letzte Ausführung: 1")
+    state = autostart.status()
+    assert state.configured is True
+    assert state.healthy is None
+
+
+def test_doctor_fails_a_registration_that_does_not_work(monkeypatch):
+    """Nobody chooses this state, and from the outside it looks identical to a
+    working one. That makes it a failure rather than a warning."""
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_autostart
+
+    monkeypatch.setattr(
+        autostart,
+        "status",
+        lambda: autostart.AutostartStatus(
+            True, "schtasks", "registered, but its last run exited 1", healthy=False, last_result=1
+        ),
+    )
+    report = DoctorReport()
+    _check_autostart(report)
+    entry = [f for f in report.findings if f.code == "autostart"][0]
+    assert entry.severity == "fail"
+
+
+def test_doctor_still_passes_when_health_is_unknown(monkeypatch):
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_autostart
+
+    monkeypatch.setattr(
+        autostart,
+        "status",
+        lambda: autostart.AutostartStatus(True, "schtasks", "registered", healthy=None),
+    )
+    report = DoctorReport()
+    _check_autostart(report)
+    entry = [f for f in report.findings if f.code == "autostart"][0]
+    assert entry.severity == "ok"

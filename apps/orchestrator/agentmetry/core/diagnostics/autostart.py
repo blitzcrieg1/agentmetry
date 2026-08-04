@@ -56,9 +56,23 @@ KEEPALIVE_EPOCH = "2020-01-01T00:00:00"
 
 @dataclass(frozen=True)
 class AutostartStatus:
+    """Whether autostart is registered, and separately, whether it works.
+
+    These are two different questions and conflating them cost real data. The
+    registration survived a package rename that broke the command it launches,
+    so the task ran every minute, exited 1 every minute, and `configured=True`
+    reported success the whole time. Hooks spooled behind it.
+
+    `healthy` is deliberately tri-state. `None` means the platform could not
+    tell us, which is not the same as failing, and reporting an unknown as a
+    fault would train an operator to ignore the field.
+    """
+
     configured: bool
     backend: str
     detail: str
+    healthy: bool | None = None
+    last_result: int | None = None
 
 
 def _orchestrator_dir() -> Path:
@@ -244,35 +258,154 @@ def status() -> AutostartStatus:
     if os.name == "nt":
         return _windows_status()
     if sys.platform == "darwin":
-        path = launchd_plist_path()
-        return AutostartStatus(
-            configured=path.is_file(),
-            backend="launchd",
-            detail=str(path) if path.is_file() else f"no launch agent at {path}",
-        )
-    path = systemd_unit_path()
-    return AutostartStatus(
-        configured=path.is_file(),
-        backend="systemd (user)",
-        detail=str(path) if path.is_file() else f"no unit at {path}",
-    )
+        return _launchd_status()
+    return _systemd_status()
+
+
+def _run(argv: list[str], timeout: int = 20) -> subprocess.CompletedProcess[str] | None:
+    """Best-effort probe. A probe that raises is a probe that makes `doctor` worse."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _parse_field(verbose_query: str, label: str) -> str | None:
+    """Pull one labelled field out of `schtasks /V /FO LIST` output.
+
+    Parsed rather than requested as CSV because the column names are localized
+    on non-English Windows and the CSV header would be too; this at least fails
+    to `None` (unknown) rather than to a wrong answer.
+    """
+    for line in verbose_query.splitlines():
+        name, sep, value = line.partition(":")
+        if sep and name.strip().lower() == label:
+            return value.strip()
+    return None
+
+
+def _parse_last_result(verbose_query: str) -> int | None:
+    text = _parse_field(verbose_query, "last result")
+    if text is None:
+        return None
+    try:
+        return int(text, 16) if text.lower().startswith("0x") else int(text)
+    except ValueError:
+        return None
+
+
+#: Last-run codes that do not mean the recorder failed.
+#:
+#: 0x41303 is "has never run", the normal state between registering and the
+#: first trigger. 0x41301 is "currently running". 0x800710E0 is Task Scheduler
+#: declining to start a second instance because one is already alive, which is
+#: `MultipleInstancesPolicy=IgnoreNew` doing its job.
+_BENIGN_LAST_RESULTS = frozenset({0, 0x41303, 0x41301, -2147020576})
 
 
 def _windows_status() -> AutostartStatus:
     if shutil.which("schtasks") is None:
         return AutostartStatus(False, "schtasks", "schtasks is not on PATH")
-    try:
-        result = subprocess.run(
-            ["schtasks", "/Query", "/TN", TASK_NAME],
-            capture_output=True,
-            text=True,
-            timeout=20,
+    result = _run(["schtasks", "/Query", "/TN", TASK_NAME])
+    if result is None:
+        return AutostartStatus(False, "schtasks", "could not query Task Scheduler")
+    if result.returncode != 0:
+        return AutostartStatus(False, "schtasks", f"no scheduled task named '{TASK_NAME}'")
+
+    registered = f"scheduled task '{TASK_NAME}' is registered"
+    verbose = _run(["schtasks", "/Query", "/TN", TASK_NAME, "/V", "/FO", "LIST"])
+    if verbose is None or verbose.returncode != 0:
+        return AutostartStatus(True, "schtasks", registered)
+
+    last = _parse_last_result(verbose.stdout)
+    state = (_parse_field(verbose.stdout, "scheduled task state") or "").lower()
+    running = (_parse_field(verbose.stdout, "status") or "").lower() == "running"
+
+    if state == "disabled":
+        return AutostartStatus(
+            True,
+            "schtasks",
+            f"{registered} but disabled, so nothing will restart the recorder. "
+            "Re-enable it in Task Scheduler, or run `agentmetry install`.",
+            healthy=False,
+            last_result=last,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return AutostartStatus(False, "schtasks", f"could not query Task Scheduler: {exc}")
-    if result.returncode == 0:
-        return AutostartStatus(True, "schtasks", f"scheduled task '{TASK_NAME}' is registered")
-    return AutostartStatus(False, "schtasks", f"no scheduled task named '{TASK_NAME}'")
+
+    # Status beats Last Result, because Last Result is not a health signal for a
+    # task that stays up. It records the last *launch attempt*, and every
+    # repeating trigger that fires while the recorder is alive is refused by
+    # IgnoreNew and recorded as a non-zero code. Reading that as a fault would
+    # mean a correctly working recorder reports broken almost all the time,
+    # which is a worse failure than the silence this check replaced: an alarm
+    # that is always on gets muted, and then it cannot warn about anything.
+    if running:
+        return AutostartStatus(True, "schtasks", registered, healthy=True, last_result=last)
+
+    if last is None:
+        return AutostartStatus(True, "schtasks", registered)
+    if last in _BENIGN_LAST_RESULTS:
+        return AutostartStatus(True, "schtasks", registered, healthy=True, last_result=last)
+    return AutostartStatus(
+        True,
+        "schtasks",
+        f"{registered}, but it is not running and its last run exited {last}. "
+        "It is registered and failing, so nothing is recording. "
+        "`agentmetry install` re-registers it with the current launch command.",
+        healthy=False,
+        last_result=last,
+    )
+
+
+def _systemd_status() -> AutostartStatus:
+    path = systemd_unit_path()
+    if not path.is_file():
+        return AutostartStatus(False, "systemd (user)", f"no unit at {path}")
+    if shutil.which("systemctl") is None:
+        return AutostartStatus(True, "systemd (user)", str(path))
+    result = _run(["systemctl", "--user", "is-active", f"{SERVICE_NAME}.service"])
+    if result is None:
+        return AutostartStatus(True, "systemd (user)", str(path))
+    state = result.stdout.strip() or "unknown"
+    if state == "active":
+        return AutostartStatus(True, "systemd (user)", str(path), healthy=True)
+    if state in ("activating", "reloading", "unknown"):
+        return AutostartStatus(True, "systemd (user)", f"{path} ({state})")
+    return AutostartStatus(
+        True,
+        "systemd (user)",
+        f"{path} is installed but the unit is {state}, so nothing is recording. "
+        "`systemctl --user status agentmetry` has the reason.",
+        healthy=False,
+    )
+
+
+def _launchd_status() -> AutostartStatus:
+    path = launchd_plist_path()
+    if not path.is_file():
+        return AutostartStatus(False, "launchd", f"no launch agent at {path}")
+    if shutil.which("launchctl") is None:
+        return AutostartStatus(True, "launchd", str(path))
+    result = _run(["launchctl", "list", LAUNCH_LABEL])
+    if result is None or result.returncode != 0:
+        return AutostartStatus(True, "launchd", str(path))
+    # `launchctl list <label>` prints a plist-ish dict; LastExitStatus is the
+    # field that distinguishes "loaded" from "loaded and working".
+    last: int | None = None
+    for line in result.stdout.splitlines():
+        if '"LastExitStatus"' in line:
+            digits = "".join(c for c in line.split("=")[-1] if c.isdigit() or c == "-")
+            last = int(digits) if digits.strip("-") else None
+            break
+    if last is None or last == 0:
+        return AutostartStatus(True, "launchd", str(path), healthy=last == 0, last_result=last)
+    return AutostartStatus(
+        True,
+        "launchd",
+        f"{path} is loaded but last exited {last}, so nothing is recording. "
+        "`agentmetry install` re-registers it with the current launch command.",
+        healthy=False,
+        last_result=last,
+    )
 
 
 # ----------------------------------------------------------------------

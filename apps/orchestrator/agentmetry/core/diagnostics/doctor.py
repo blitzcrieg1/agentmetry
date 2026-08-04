@@ -221,10 +221,19 @@ def _check_autostart(report: DoctorReport) -> None:
 
     A warning rather than a failure: running the recorder by hand is a
     legitimate choice, and doctor should not fail an operator for making it.
+
+    A registration that exists but does not work is a different matter, and it
+    does fail. Nobody chose that, it looks identical to working from the
+    outside, and it is the state this check was in for a day: the task launched
+    a module path a package rename had removed, exited 1 every minute, and
+    doctor called it OK because something was registered.
     """
     from agentmetry.core.diagnostics import autostart
 
     state = autostart.status()
+    if state.configured and state.healthy is False:
+        report.fail("autostart", f"Autostart is broken ({state.backend}): {state.detail}")
+        return
     if state.configured:
         report.ok("autostart", f"Starts automatically ({state.backend}): {state.detail}")
         return

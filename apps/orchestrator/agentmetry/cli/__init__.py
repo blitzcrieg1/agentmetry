@@ -375,9 +375,17 @@ def cmd_install(args: argparse.Namespace) -> int:
     from agentmetry.core.diagnostics import autostart
 
     current = autostart.status()
-    if current.configured:
+    # "Already configured" is the right answer only for a registration that
+    # works. A broken one used to get the same reply, which sent the operator
+    # to the command they had just run: doctor said run install, install said
+    # already installed, and the recorder stayed down. Re-registering is how a
+    # stale launch command gets repaired, so a failing task is exactly when
+    # this must not short-circuit.
+    if current.configured and current.healthy is not False:
         print(f"Already configured via {current.backend}: {current.detail}")
         return 0
+    if current.configured:
+        print(f"Re-registering a failing autostart ({current.backend}): {current.detail}")
 
     ok, message = autostart.install()
     print(message)
