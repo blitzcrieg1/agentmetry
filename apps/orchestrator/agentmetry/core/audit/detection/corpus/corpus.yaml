@@ -83,7 +83,56 @@ cases:
       the rules have only hook-side trait labels to work with. Most sequence
       rules were once dead on real traffic for exactly this reason.
 
+  # The three cases below cover evasions found by auditing the engine rather
+  # than by a detection firing. Each one walked past the rules for months
+  # because the corpus only ever contained the shapes somebody thought to write
+  # down, which is the honest limitation of a hand-written corpus and the reason
+  # to go looking on purpose.
+
+  - name: credential read from the environment, then egress
+    session: attack_env_credential_exfil.jsonl
+    expect: [credential-exfil]
+    note: >
+      Same chain as the canonical case, with the secret taken from an
+      environment variable instead of a file. Credential recognition described
+      only paths, so `echo "$AWS_SECRET_ACCESS_KEY"` was generic Execution and
+      this whole session was invisible. Environment variables are how every
+      container and CI runner built this decade holds credentials, which made
+      this the modal exfil channel rather than an exotic one.
+
+  - name: credential read then egress via a language runtime
+    session: attack_interpreter_egress.jsonl
+    expect: [credential-exfil]
+    note: >
+      The network-client list was curl, wget, nc, scp and friends, so
+      `python3 -c "urllib.request.urlopen(...)"` earned no TA0011 and the
+      sequence could not close. In a hardened container curl is often absent and
+      a Python runtime never is.
+
+  - name: download cradle via process substitution
+    session: attack_proc_substitution_cradle.jsonl
+    expect: [encoded-command-download]
+    note: >
+      `bash <(curl -fsSL ...)` fetches and executes in one step and contains no
+      pipe, so every cradle check that looked for `|` missed it. Does NOT trip
+      remote-staging-then-execute: that rule wants the two-step variant, a fetch
+      and then a separate execution, and this is a one-liner. The distinction is
+      deliberate and this case pins it.
+
   # --- benign sessions: these are the false-positive measurement -------------
+
+  - name: writing about credentials is not reading them
+    session: benign_writing_about_credentials.jsonl
+    expect: []
+    benign: true
+    note: >
+      The counterweight to the three cases above, and the harder half. A commit
+      message naming `.env` and AWS_SECRET_ACCESS_KEY, an attack string echoed
+      into documentation, a fixture written to disk. Every one of these is a
+      shape the widened credential and cradle patterns could plausibly fire on,
+      and anyone writing detection content or security docs types them all day.
+      A tool that punishes you for writing about security gets uninstalled, so
+      widening the patterns without this case would have been a bad trade.
 
   - name: ordinary development session
     session: benign_ordinary_development.jsonl
