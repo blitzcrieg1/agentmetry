@@ -30,4 +30,4 @@ if defined _IP (
 
 echo Starting Agentmetry on all interfaces :8000 ...
 cd /d "%~dp0..\apps\orchestrator"
-.venv\Scripts\uvicorn api.main:app --host 0.0.0.0 --port 8000
+.venv\Scripts\uvicorn agentmetry.api.main:app --host 0.0.0.0 --port 8000

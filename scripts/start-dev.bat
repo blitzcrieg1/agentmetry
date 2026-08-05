@@ -4,7 +4,7 @@ rem Optional services (Qdrant/Postgres/Ollama): scripts\start-services.bat
 
 echo Starting orchestrator...
 cd /d "%~dp0..\apps\orchestrator"
-start "Agentmetry orchestrator" cmd /k ".venv\Scripts\activate && uvicorn api.main:app --reload --port 8000"
+start "Agentmetry orchestrator" cmd /k ".venv\Scripts\activate && uvicorn agentmetry.api.main:app --reload --port 8000"
 
 echo Starting dashboard...
 cd /d "%~dp0..\apps\dashboard"

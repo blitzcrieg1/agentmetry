@@ -39,7 +39,7 @@ set AGENTMETRY_ALLOW_MOCK=1
 set AGENTMETRY_STARTUP_VAULT_INDEX=0
 
 cd apps\orchestrator
-start "Agentmetry screenshot demo" cmd /k ".venv\Scripts\activate && uvicorn api.main:app --port 8000 --log-level warning"
+start "Agentmetry screenshot demo" cmd /k ".venv\Scripts\activate && uvicorn agentmetry.api.main:app --port 8000 --log-level warning"
 
 echo.
 echo Ready. In another terminal:

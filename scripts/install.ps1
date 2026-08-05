@@ -121,7 +121,7 @@ if (-not $SkipHooks) {
 
 if (-not $NoDoctor) {
     Write-Step "Running agentmetry doctor"
-    & $VenvPython -m cli doctor --fix
+    & $VenvPython -m agentmetry.cli doctor --fix
 }
 
 Write-Host ""

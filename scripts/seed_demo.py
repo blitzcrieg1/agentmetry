@@ -254,7 +254,7 @@ def main() -> int:
         print(f"    [{det['severity']:8}] {det['rule_id']}  ({det['correlation_id']})")
     print(f"\nServe it:  scripts\\screenshot_demo.bat")
     print(f"  (or AGENTMETRY_AUDIT_EXPORT_PATH={out} AGENTMETRY_AUDIT_DB_PATH={demo_db} "
-          f"python -m uvicorn api.main:app --port 8000)")
+          f"python -m uvicorn agentmetry.api.main:app --port 8000)")
     return 0
 
 
