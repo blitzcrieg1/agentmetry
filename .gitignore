@@ -85,5 +85,14 @@ apps/dashboard/scratch/
 
 # Internal review prompts and audit reports. These name pilot pricing, kill
 # gates, and the private repo contents; they belong in agentmetry-notes.
+#
+# The "review" patterns were already here and still let `audit-prompt.md` and
+# `audit-2026-08.md` through, because the rule matched the word we happened to
+# use last time rather than the kind of document. An audit of a security tool
+# is the worst thing to publish by accident: it is an evasion writeup with the
+# author's name on it.
 docs/*review*prompt*.md
 docs/*-review-*.md
+docs/*audit*prompt*.md
+docs/audit-*.md
+docs/*-audit-*.md
