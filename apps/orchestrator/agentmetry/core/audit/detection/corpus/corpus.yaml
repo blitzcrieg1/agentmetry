@@ -109,6 +109,15 @@ cases:
       sequence could not close. In a hardened container curl is often absent and
       a Python runtime never is.
 
+  - name: whole SSH directory copied, then sent
+    session: attack_ssh_directory_exfil.jsonl
+    expect: [credential-exfil]
+    note: >
+      The private-key pattern required a separator after `.ssh`, so a named key
+      matched and the directory holding every key did not. `cp -r ~/.ssh /tmp/k`
+      produced no traits at all, which made the broadest version of the theft
+      the one that got through.
+
   - name: download cradle via process substitution
     session: attack_proc_substitution_cradle.jsonl
     expect: [encoded-command-download]
