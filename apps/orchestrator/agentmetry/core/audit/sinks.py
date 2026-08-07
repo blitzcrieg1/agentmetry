@@ -36,17 +36,41 @@ class FileAuditSink(AuditSink):
 
 
 class WebhookAuditSink(AuditSink):
-    def __init__(self, url: str, *, timeout_seconds: float = 5.0) -> None:
+    """POST each event to a URL, as the canonical record or a CloudEvent.
+
+    `format="cloudevents"` wraps the same record in a CloudEvents v1.0 structured
+    envelope, which is what brokers speak: Knative, EventBridge, Event Grid,
+    Dapr and the Kafka bindings all consume it. The canonical event still travels
+    whole inside `data`, so nothing is lost by choosing it.
+
+    Default stays `canonical`. Changing the shape of what an existing webhook
+    receives because a new option appeared would break every consumer already
+    wired up, and silently.
+    """
+
+    def __init__(
+        self, url: str, *, timeout_seconds: float = 5.0, format: str = "canonical"
+    ) -> None:
         self._url = url
         self._timeout = timeout_seconds
+        self._cloudevents = (format or "").strip().lower() in ("cloudevents", "cloudevent", "ce")
 
     async def emit(self, canonical: dict[str, Any]) -> None:
+        payload = canonical
+        # `application/cloudevents+json` is what marks structured mode; a
+        # consumer distinguishes it from a bare JSON body by content type alone.
+        content_type = "application/json"
+        if self._cloudevents:
+            from agentmetry.core.audit.adapters.cloudevents import canonical_to_cloudevent
+
+            payload = canonical_to_cloudevent(canonical)
+            content_type = "application/cloudevents+json; charset=utf-8"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
                     self._url,
-                    json=canonical,
-                    headers={"Content-Type": "application/json", "User-Agent": "Agentmetry/1.0"},
+                    json=payload,
+                    headers={"Content-Type": content_type, "User-Agent": "Agentmetry/1.0"},
                 )
                 response.raise_for_status()
         except Exception:
@@ -156,6 +180,7 @@ def build_audit_sinks(
     file_path: Path,
     webhook_url: str,
     webhook_timeout_seconds: float,
+    webhook_format: str = "canonical",
     elastic_url: str,
     elastic_index: str,
     elastic_api_key: str,
@@ -172,7 +197,13 @@ def build_audit_sinks(
         sinks.append(FileAuditSink(file_path))
 
     if "webhook" in modes and webhook_url.strip():
-        sinks.append(WebhookAuditSink(webhook_url.strip(), timeout_seconds=webhook_timeout_seconds))
+        sinks.append(
+            WebhookAuditSink(
+                webhook_url.strip(),
+                timeout_seconds=webhook_timeout_seconds,
+                format=webhook_format,
+            )
+        )
 
     if "elastic" in modes and elastic_url.strip() and elastic_api_key.strip():
         sinks.append(

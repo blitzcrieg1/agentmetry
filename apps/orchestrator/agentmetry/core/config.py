@@ -80,6 +80,14 @@ class Settings(BaseSettings):
         ),
     )
     audit_webhook_timeout_seconds: float = 5.0
+    # `canonical` (default) or `cloudevents`. CloudEvents v1.0 structured mode
+    # is what brokers consume; the canonical record still travels whole inside
+    # `data`. Default unchanged so an existing webhook keeps receiving the shape
+    # it was wired up for.
+    audit_webhook_format: str = Field(
+        default="canonical",
+        validation_alias=AliasChoices("AGENTMETRY_AUDIT_WEBHOOK_FORMAT"),
+    )
     audit_elastic_url: str = Field(
         default="",
         validation_alias=AliasChoices(

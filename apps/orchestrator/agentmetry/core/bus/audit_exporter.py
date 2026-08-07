@@ -57,6 +57,7 @@ async def audit_exporter(
         file_path=settings.audit_export_path,
         webhook_url=settings.audit_webhook_url,
         webhook_timeout_seconds=settings.audit_webhook_timeout_seconds,
+        webhook_format=settings.audit_webhook_format,
         elastic_url=settings.audit_elastic_url,
         elastic_index=settings.audit_elastic_index,
         elastic_api_key=settings.audit_elastic_api_key,
