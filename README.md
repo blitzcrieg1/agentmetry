@@ -541,10 +541,10 @@ It replays a corpus of recorded sessions through the real rule engine and prints
 what fired:
 
 ```
-  cases            38 (22 attack, 16 benign)
+  cases            46 (24 attack, 22 benign)
   rules covered    13
-  expected firings 22
-  detected         22
+  expected firings 24
+  detected         24
   missed           0
   false positives  0
 ```

