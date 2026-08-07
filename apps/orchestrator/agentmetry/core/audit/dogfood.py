@@ -74,6 +74,29 @@ def _package_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _normalized(raw: bytes) -> bytes:
+    """Line endings are not ruleset changes.
+
+    The fingerprint hashed raw bytes, which on Windows means it was hashing
+    `core.autocrlf` as much as the rules. A `git revert`, a branch switch, or a
+    fresh clone rewrites these files with CRLF while git stores LF, and the
+    fingerprint moves with no rule having changed. Observed exactly that: after a
+    revert, `git diff` reported zero changes to all four sources and the
+    fingerprint had still moved, because traits.py had gained 648 carriage
+    returns, engine.py 78, mitre.py 244.
+
+    That failure is worse than a missed change, because it invalidates a
+    four-week gate for a reason nobody can act on, and the natural response is to
+    stop believing the check. Whole-file hashing is still deliberately blunt: it
+    flags a comment-only edit, and it cannot miss a real one. A carriage return
+    is not an edit.
+
+    Normalising cannot hide a semantic change, because any real change alters
+    bytes other than the line terminators.
+    """
+    return raw.replace(b"\r\n", b"\n")
+
+
 def ruleset_fingerprint() -> str:
     """A hash of everything that decides whether a detection fires, and how hard.
 
@@ -96,7 +119,7 @@ def ruleset_fingerprint() -> str:
         path = root / rel
         digest.update(rel.encode("utf-8"))
         try:
-            digest.update(path.read_bytes())
+            digest.update(_normalized(path.read_bytes()))
         except OSError:
             digest.update(b"<unreadable>")
 
@@ -107,7 +130,9 @@ def ruleset_fingerprint() -> str:
 
         manifest = Path(settings.detection_rules_path)
         digest.update(b"detection-manifest")
-        digest.update(manifest.read_bytes() if manifest.is_file() else b"<absent>")
+        digest.update(
+            _normalized(manifest.read_bytes()) if manifest.is_file() else b"<absent>"
+        )
     except Exception:
         digest.update(b"<manifest-unavailable>")
 

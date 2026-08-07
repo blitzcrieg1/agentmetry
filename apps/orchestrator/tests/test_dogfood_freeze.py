@@ -81,3 +81,51 @@ def test_render_names_the_fix_when_the_ruleset_drifted():
     out = dogfood.render(report)
     assert "RULESET CHANGED" in out
     assert "--start --restart" in out, "say what to do, not just what is wrong"
+
+
+def test_line_endings_are_not_a_ruleset_change(tmp_path, monkeypatch):
+    """The fingerprint hashed raw bytes, so on Windows it hashed `core.autocrlf`
+    as much as the rules.
+
+    A `git revert`, a branch switch or a fresh clone rewrites the sources with
+    CRLF while git stores LF, and the fingerprint moved with no rule having
+    changed. Observed exactly that: `git diff` reported zero changes to all four
+    sources while traits.py had gained 648 carriage returns, engine.py 78 and
+    mitre.py 244, and a four-week gate was invalidated for a reason nobody could
+    act on. The natural response to that is to stop believing the check, which
+    costs more than the check is worth.
+    """
+    from agentmetry.core.audit import dogfood
+
+    root = tmp_path / "pkg"
+    for rel in dogfood._RULESET_SOURCES:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"rule = 1\nother = 2\n")
+    monkeypatch.setattr(dogfood, "_package_root", lambda: root)
+
+    with_lf = dogfood.ruleset_fingerprint()
+
+    for rel in dogfood._RULESET_SOURCES:
+        path = root / rel
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    with_crlf = dogfood.ruleset_fingerprint()
+
+    assert with_lf == with_crlf, "a carriage return is not a rule change"
+
+
+def test_a_real_edit_still_moves_the_fingerprint(tmp_path, monkeypatch):
+    """Normalising line endings must not blunt the check it exists for."""
+    from agentmetry.core.audit import dogfood
+
+    root = tmp_path / "pkg"
+    for rel in dogfood._RULESET_SOURCES:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"threshold = 5\n")
+    monkeypatch.setattr(dogfood, "_package_root", lambda: root)
+
+    before = dogfood.ruleset_fingerprint()
+    changed = root / dogfood._RULESET_SOURCES[0]
+    changed.write_bytes(b"threshold = 6\n")
+    assert dogfood.ruleset_fingerprint() != before
