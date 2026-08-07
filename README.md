@@ -678,7 +678,9 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
-| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain (tamper detection on file sink) |
+| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, and print the Merkle root |
+| `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
+| `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
 | `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
 | `agentmetry benchmark` | Replay the recorded detection corpus and score the rules |
 

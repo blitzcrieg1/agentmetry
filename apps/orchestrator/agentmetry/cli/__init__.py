@@ -510,6 +510,86 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prove(args: argparse.Namespace) -> int:
+    """Produce or check a Merkle inclusion proof for one trail record.
+
+    The point of the separate command is disclosure. Handing an auditor the
+    trail to prove one tool call happened also hands them every other tool call,
+    which is why "just send the log" is not an answer anyone likes giving. A
+    proof is the one record plus about log2(n) sibling hashes.
+    """
+    import json
+
+    from agentmetry.core.audit.trail_merkle import (
+        InclusionProof,
+        build_proof,
+        merkle_root,
+        record_root,
+        verify_proof,
+    )
+
+    path = Path(args.path)
+
+    if args.check:
+        proof_path = Path(args.check)
+        if not proof_path.is_file():
+            print(f"No such proof file: {proof_path}")
+            return 1
+        try:
+            proof = InclusionProof.from_dict(json.loads(proof_path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            print(f"Not a readable proof: {exc}")
+            return 1
+        expected = args.root
+        if not expected and path.is_file():
+            # At the proof's tree size, not the current one. The trail is
+            # append-only and live, so today's root is not the root the proof
+            # was issued against and comparing them fails for no useful reason.
+            try:
+                expected, _ = merkle_root(path, tree_size=proof.tree_size)
+            except ValueError as exc:
+                print(f"FAILED — {exc}")
+                return 1
+        ok, message = verify_proof(proof, expected_root=expected)
+        print(("OK — " if ok else "FAILED — ") + message)
+        if ok and not args.root:
+            print(
+                "  Supply --root with a value you recorded elsewhere to make this "
+                "a real check; a trail can always vouch for itself."
+            )
+        return 0 if ok else 1
+
+    if not path.is_file():
+        print(f"No such file: {path}")
+        return 1
+    if args.record_root:
+        result = record_root(path)
+        print(f"Recorded merkle root {result['root']}")
+        print(f"  tree size: {result['tree_size']}")
+        print(f"  sidecar: {result['sidecar']}")
+        return 0
+    if args.seq is None:
+        print("Give --seq N to prove a record, --record-root to store the root, "
+              "or --check PROOF to verify one.")
+        return 1
+
+    try:
+        proof = build_proof(path, args.seq)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    payload = json.dumps(proof.to_dict(), indent=2)
+    if args.out:
+        Path(args.out).write_text(payload + "\n", encoding="utf-8")
+        print(f"Wrote proof for seq {proof.seq} to {args.out}")
+        print(f"  root: {proof.root_sha256}")
+        print(f"  path length: {len(proof.path)} of tree size {proof.tree_size}")
+    else:
+        print(payload)
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     import json
 
@@ -534,6 +614,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 # (a git commit, a note) — comparing it later is the only
                 # defense against someone deleting the newest lines.
                 print(f"  head: seq {result.head_seq}, sha256 {result.head_sha256}")
+
+            from agentmetry.core.audit.trail_merkle import merkle_root
+
+            root, size = merkle_root(path)
+            if size:
+                # The head proves the file is intact end to end. The root is
+                # what lets a single event be proved later without handing over
+                # the file, so it is the more useful of the two to publish.
+                print(f"  merkle root: {root}")
+                print(f"  tree size: {size} (rfc6962-sha256)")
             return 0
         print(f"FAILED — {result.message}")
         if result.first_bad_line:
@@ -693,6 +783,22 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
     export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
     export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
+    prove = sub.add_parser(
+        "prove",
+        help="Merkle inclusion proof for one trail record (prove an event without the file)",
+    )
+    prove.add_argument("path", help="JSONL trail file")
+    prove.add_argument("--seq", type=int, default=None, help="record sequence number to prove")
+    prove.add_argument("-o", "--out", default=None, help="write the proof JSON here")
+    prove.add_argument("--check", metavar="PROOF", default=None, help="verify a proof file")
+    prove.add_argument(
+        "--root", default=None,
+        help="with --check: the root you recorded elsewhere. Without it a trail vouches for itself.",
+    )
+    prove.add_argument(
+        "--record-root", dest="record_root", action="store_true",
+        help="recompute the root and store it in the chain sidecar",
+    )
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -745,6 +851,7 @@ def main(argv: list[str] | None = None) -> int:
         "uninstall": cmd_uninstall,
         "export": cmd_export,
         "verify": cmd_verify,
+        "prove": cmd_prove,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,
         "dogfood": cmd_dogfood,
