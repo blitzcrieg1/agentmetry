@@ -15,14 +15,29 @@ tool whose whole pitch is that it runs locally without them.
 
 ## What their file actually looks like
 
-Worth writing down, because the published schema and the file disagree in two
-places that matter:
+Their docs describe two different objects and it is easy to read one for the
+other. `AuditEntry` is the in-memory record and carries `entry_hash`;
+`SignedAuditEntry` is what `FileAuditSink` writes, and it carries
+`content_hash`, `previous_hash` and `signature` instead. There is no
+`entry_hash` on disk.
 
-- The docs describe an `entry_hash` field. There is no such field on disk. The
-  integrity fields are `content_hash`, `previous_hash` and `signature`.
-- `entry_id` is documented as a UUID and is in fact `audit_<16 hex>`.
+What no document states, and what an external verifier actually needs, had to
+come from reading `SignedAuditEntry._canonical_payload`:
 
-Both were found by generating a real file rather than reading the reference.
+- The content hash covers exactly fourteen fields, serialised with
+  `sort_keys=True` and `default=str`. `sandbox_id`, `environment` and
+  `compute_driver` are deliberately excluded so they can be added without
+  invalidating existing chains, and including them breaks every hash.
+- `previous_hash` links to the previous entry's **`content_hash`** -- not its
+  signature, which is the plausible wrong guess.
+- `signature` is HMAC-SHA256 over the **hex string** of the content hash, not
+  over its raw bytes.
+
+Also minor: `entry_id` is documented as a UUID and is in fact
+`audit_<first 16 hex of a uuid4>`, so it will not parse as one.
+
+All of this was established by generating a real file and reproducing its
+hashes, not by reading the reference.
 
 ## Custody
 

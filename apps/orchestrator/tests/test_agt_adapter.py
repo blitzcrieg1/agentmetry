@@ -6,10 +6,12 @@ and `AGT.verify_integrity()` returned True on them before they were copied here.
 That matters: an adapter tested only against its own idea of the format is
 testing that the author was consistent, not that the format is right.
 
-Generating them found two places where their published schema and their output
-disagree. The docs describe an `entry_hash` field, which does not exist on disk
-(`content_hash`, `previous_hash` and `signature` do), and `entry_id` is
-documented as a UUID and is actually `audit_<16 hex>`.
+Generating them is also how the verification algorithm was established. Their
+docs describe the fields but not how the content hash is computed, and the
+three details an external verifier needs -- the exact hashed field set, that
+`previous_hash` chains to `content_hash` rather than to the signature, and that
+the HMAC covers the hex string rather than the raw digest -- came from reading
+`SignedAuditEntry._canonical_payload` and confirming against real output.
 """
 
 from __future__ import annotations
@@ -219,9 +221,10 @@ def test_non_agt_json_lines_are_ignored(tmp_path):
 
 
 @pytest.mark.parametrize("field_name", ["content_hash", "previous_hash", "signature"])
-def test_the_fixture_carries_the_fields_the_docs_omit(field_name):
-    """Guards the discrepancy that generating a real file exposed: the published
-    schema names `entry_hash`, which does not exist on disk."""
+def test_the_on_disk_format_is_signed_entry_not_audit_entry(field_name):
+    """`AuditEntry` carries `entry_hash`; `SignedAuditEntry` is what reaches
+    disk and carries these three instead. Reading one schema for the other is
+    the easy mistake, so pin which one the adapter is written against."""
     row = read_agt_file(EXFIL)[0]
     assert field_name in row
     assert "entry_hash" not in row
