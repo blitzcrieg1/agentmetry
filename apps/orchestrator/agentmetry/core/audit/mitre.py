@@ -121,12 +121,14 @@ _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
 # information and no test corpus. A disagreement between them was not merely
 # possible, it was undetectable.
 from agentmetry.core.audit.detection.traits import (  # noqa: E402
+    CREDENTIAL_CLI,
     CREDENTIAL_ENV,
     CREDENTIAL_ENV_DUMP,
     CREDENTIAL_PATH,
     ENV_FILE,
     INTERPRETER_NETWORK,
     PRIVATE_KEY_PATH,
+    interpreter_network_text,
     mask_literals,
 )
 
@@ -217,18 +219,21 @@ def get_mitre_mapping(
             or ENV_FILE.search(literal)
             or CREDENTIAL_ENV.search(text)
             or CREDENTIAL_ENV_DUMP.search(written)
+            or CREDENTIAL_CLI.search(written)
         ):
             return _CREDENTIAL_ACCESS
         # A shell that reaches the network is C2, whatever the tool is called.
         # An interpreter counts: `python -c "urllib.request.urlopen(...)"` is a
         # network client, and in a container it is often the only one installed.
-        # INTERPRETER_NETWORK reads `literal`, not `written`: the payload of
-        # `python -c "urllib.request.urlopen(...)"` is double-quoted and is the
-        # program being run, so blanking it would hide the very thing being
-        # matched. Single quotes and heredocs are still masked, which is what
-        # keeps `echo 'python -c "urlopen"'` from firing.
+        # Which view INTERPRETER_NETWORK reads depends on whether an inline-eval
+        # flag appears unmasked, because that is what makes a quoted body a
+        # program rather than a string. `interpreter_network_text` decides, and
+        # is shared with classify_command so the two cannot drift.
         if _reaches_remote_host(text) and (
-            _NETWORK_CLIENT.search(written) or INTERPRETER_NETWORK.search(literal)
+            _NETWORK_CLIENT.search(written)
+            or INTERPRETER_NETWORK.search(
+                interpreter_network_text(text, literal, written)
+            )
         ):
             return _C2
 
