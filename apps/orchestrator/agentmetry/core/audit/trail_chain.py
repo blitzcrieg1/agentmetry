@@ -131,8 +131,38 @@ def chain_sidecar_path(trail_path: Path) -> Path:
     return trail_path.with_name(trail_path.name + ".chain")
 
 
+def _tagged_fallback(value: Any) -> dict[str, str]:
+    """Serialise a non-JSON value without letting it collapse into another one.
+
+    This used to be `default=str`, which is the obvious choice and quietly
+    breaks the one property the canonical form exists to provide. `str()` is not
+    injective across types, so a value and its own string form produced byte
+    identical output and therefore the same record hash:
+
+        {"ts": datetime(2026, 8, 8, tzinfo=utc)}   ->  {"ts":"2026-08-08 00:00:00+00:00"}
+        {"ts": "2026-08-08 00:00:00+00:00"}        ->  {"ts":"2026-08-08 00:00:00+00:00"}
+
+    Same for Decimal("1.0") against "1.0", and a set against its repr. Two
+    logically different events, one hash. In a function whose entire job is to
+    distinguish records, that is the wrong failure.
+
+    Nothing currently reaches it: all 5,610 lines of the live trail serialise
+    with no fallback at all, because events arrive as JSON or are built from
+    JSON types. It is a trap rather than a bug, and it is the kind that springs
+    the day somebody adds a `datetime` to an event.
+
+    Tagging rather than raising keeps the recorder fail-open. An event that
+    cannot be serialised is still recorded, just unambiguously, which matters
+    more here than strictness: refusing to record is the one outcome an audit
+    trail cannot justify.
+    """
+    return {"__type__": type(value).__name__, "__value__": str(value)}
+
+
 def canonical_event_json(event: dict[str, Any]) -> str:
-    return json.dumps(event, separators=(",", ":"), sort_keys=True, default=str)
+    return json.dumps(
+        event, separators=(",", ":"), sort_keys=True, default=_tagged_fallback
+    )
 
 
 def compute_record_sha256(prev_sha256: str, event: dict[str, Any]) -> str:

