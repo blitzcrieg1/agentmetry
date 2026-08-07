@@ -16,6 +16,7 @@ Agentmetry sees the sequence, tags it with MITRE ATT&CK, and fires one CRITICAL 
 Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</p>
 
 <p align="center">
+  <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform: Windows | Linux">
@@ -450,6 +451,8 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | 🔐 **Argument hashing** | SHA-256 of tool args by default; plaintext never crosses the wire from hooks |
 | 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, generic webhook, alert webhook; Loki/LogQL via Alloy file tail |
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
+| 🧾 **Inclusion proofs** | RFC 6962 Merkle proof for a single event (`agentmetry prove`): prove one tool call without disclosing the trail |
+| 🔌 **Reads other recorders** | Ingests [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) audit files, verifying their chain first (`agentmetry import-agt`) |
 | 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity, via global hook install scripts |
 
 ### Integrations
@@ -457,9 +460,9 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | Category | Supported today | Roadmap |
 | -------- | --------------- | ------- |
 | **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi · Qoder · CodeBuddy](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot |
-| **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) | LangChain · AutoGen |
+| **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) · Microsoft AGT audit files (Semantic Kernel, AutoGen, LangGraph via AGT) | LangChain · AutoGen native |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
-| **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · generic webhook | Datadog · New Relic |
+| **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · CloudEvents v1.0 (Knative, EventBridge, Event Grid, Dapr, Kafka) · generic webhook | Datadog · New Relic |
 | **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (4 rules) | STIX/TAXII export |
 | **Policy engines** | Regex DLP manifest (`agentmetry/policies/dlp/`) · tool allow/deny YAML (`agentmetry/policies/tool/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
