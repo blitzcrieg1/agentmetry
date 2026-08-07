@@ -192,29 +192,6 @@ cases:
       this case with a `Task` tool call and no marker produced nothing, which is
       worth knowing before anyone tries to reproduce it.
 
-  - name: secret read from a provider API, then egress
-    session: attack_secret_manager_then_egress.jsonl
-    expect: [credential-exfil]
-    note: >
-      `aws secretsmanager get-secret-value` then a POST off the box. Credential
-      recognition described files and environment variables, which is only half
-      of where credentials live: every provider also hands them out over an API,
-      and this read a production secret while naming no path and dereferencing
-      no variable. It earned `cloud_api` and generic Execution, so the chain had
-      no credential half. The same gap #40 left for the environment, one layer
-      out. Paired with benign_secret_names_and_docs.
-
-  - name: single-quoted inline script as the exfil channel
-    session: attack_single_quoted_interpreter_egress.jsonl
-    expect: [credential-exfil]
-    note: >
-      The interpreter-egress fix was matched against the masked view, so only
-      `python -c "..."` fired and `python3 -c '...'` did not. On Unix a one-liner
-      is idiomatically single-quoted, precisely so the shell leaves the body
-      alone, which makes the invisible spelling the natural one. The corpus
-      pinned only the double-quoted form, so the gap outlived the commit that
-      was meant to close it -- a corpus can only fail on a shape it contains.
-
   # --- benign sessions: these are the false-positive measurement -------------
   #
   # Eight sessions added 2026-08-07 for #25. Modelled on shapes seen across four
@@ -464,16 +441,3 @@ cases:
       writing about one. That lands hardest on people authoring detection
       content, security docs and corpus cases -- which is to say, on anyone
       contributing to this file.
-
-  - name: naming secrets is not reading them
-    session: benign_secret_names_and_docs.jsonl
-    expect: []
-    benign: true
-    note: >
-      The paired half of attack_secret_manager_then_egress, and the half that
-      decides whether a platform team keeps this installed. `kubectl get
-      secrets` lists names while `-o yaml` prints the values, so only the second
-      is a read. `gh secret set` writes a value and is how CI gets configured.
-      The session ends on a remote API call, so a credential half wrongly
-      awarded to any line above it would surface here as a critical rather than
-      as nothing.

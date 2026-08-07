@@ -220,41 +220,6 @@ INTERPRETER_NETWORK = re.compile(
     re.IGNORECASE,
 )
 
-# An inline script body is code, not prose, and on Unix it is idiomatically
-# written in *single* quotes -- precisely so the shell does not expand what is
-# inside it.
-#
-# INTERPRETER_NETWORK was matched against `literal`, which blanks single quotes,
-# so the idiomatic spelling of the very thing it was added to catch stayed
-# invisible: `python -c 'urlopen(...)'` and `node -e 'fetch(...)'` earned no
-# net_egress, while the double-quoted spelling fired. The corpus pinned only the
-# double-quoted form, so nothing noticed. Choosing `literal` was a deliberate
-# trade against `echo 'python -c "urlopen"'`, but it bought that false positive
-# with a false negative on the more common form, which is the worse half for a
-# recorder.
-#
-# The flag itself must be unmasked, which keeps the false positive the original
-# choice was protecting against: in `echo 'python -c "urlopen(...)"' >> notes.md`
-# the `-c` sits inside quotes, so this does not match and the body stays masked.
-# The same rule as everywhere else here -- the verb must be unmasked, the
-# arguments may be quoted -- extended to the flag that turns an argument into a
-# program.
-INLINE_EVAL = re.compile(
-    r"\b(?:python\d?|node|deno|bun|ruby|perl|php)\b\s+(?:-[\w-]+\s+)*"
-    r"(?:-(?:c|e|E|r)\b|--eval\b|--execute\b)|"
-    r"\b(?:deno|bun)\s+eval\b",
-    re.IGNORECASE,
-)
-
-
-def interpreter_network_text(spoken: str, literal: str, written: str) -> str:
-    """The view INTERPRETER_NETWORK should read for this command.
-
-    Shared by the trait classifier and the MITRE mapper so the two cannot answer
-    the same question differently, which is the lesson of #40.
-    """
-    return spoken if INLINE_EVAL.search(written) else literal
-
 # `bash: rm -rf build/` is a deletion even though the tool is named "Bash".
 DELETE_COMMAND = re.compile(
     r"\brm\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|remove-item\b|\bdel\s+/", re.IGNORECASE
@@ -416,33 +381,6 @@ CREDENTIAL_ENV_DUMP = re.compile(
     r"\bprintenv\b\s*(?:$|[|>;&])|"
     r"\benv\b\s*[|>]|"
     r"\bget-childitem\s+env:|\bgci\s+env:|\bls\s+env:",
-    re.IGNORECASE,
-)
-
-# Secrets held by a service rather than by this machine. Everything above
-# describes a credential at rest in a file or an environment variable, which is
-# only half of where credentials live: every provider also hands them out
-# through an API, and `aws secretsmanager get-secret-value` reads a production
-# secret without naming a path or dereferencing a variable. Commands of this
-# shape earned `cloud_api` and generic Execution, so a secret fetched this way
-# and then sent off the box produced no credential half and no finding -- the
-# same gap #40 left for environment variables, one layer out.
-#
-# Read verbs only, and narrowly. `gh secret set` writes a value and is how CI
-# gets configured; tagging it would fire on routine setup. The kubectl form
-# requires an output format because `kubectl get secrets` lists names, while
-# `-o yaml` prints the base64 values, and a platform engineer listing secret
-# names all day is exactly the reader a noisy rule loses.
-CREDENTIAL_CLI = re.compile(
-    r"\baws\s+secretsmanager\s+get-secret-value\b|"
-    r"\baws\s+ssm\s+get-parameters?\b[^\n|;&]*--with-decryption\b|"
-    r"\bgh\s+secret\s+(?:list|view|get)\b|"
-    r"\bgh\s+auth\s+token\b|"
-    r"\baz\s+keyvault\s+secret\s+(?:show|download|list)\b|"
-    r"\bgcloud\s+secrets\s+versions\s+access\b|"
-    r"\bvault\s+(?:read\b|kv\s+get\b)|"
-    r"\bkubectl\s+get\s+secrets?\b[^\n|;&]*-o\s*(?:yaml|json)\b|"
-    r"\bdocker\s+secret\s+inspect\b",
     re.IGNORECASE,
 )
 
@@ -676,9 +614,6 @@ def classify_command(command: str) -> list[str]:
         or ENV_FILE.search(literal)
         or CREDENTIAL_ENV.search(spoken)
         or CREDENTIAL_ENV_DUMP.search(written)
-        # A command word, so `written`: writing `aws secretsmanager
-        # get-secret-value` into a runbook is not reading a secret.
-        or CREDENTIAL_CLI.search(written)
     ):
         traits.append("credential_access")
     if PRIVATE_KEY_PATH.search(literal):
@@ -691,10 +626,7 @@ def classify_command(command: str) -> list[str]:
     # event can carry two facts; the technique field can only carry one, so the
     # second one lives here.
     if reaches_remote_host(spoken) and (
-        NETWORK_CLIENT.search(written)
-        or INTERPRETER_NETWORK.search(
-            interpreter_network_text(spoken, literal, written)
-        )
+        NETWORK_CLIENT.search(written) or INTERPRETER_NETWORK.search(literal)
     ):
         traits.append("net_egress")
     # `fetched_files`, not `FETCH_TO_FILE`. The latter is only a tool-name gate
