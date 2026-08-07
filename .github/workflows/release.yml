@@ -1,0 +1,139 @@
+name: Release
+
+# Publish to PyPI when a v* tag is pushed.
+#
+# Uses PyPI Trusted Publishing (OIDC), so there is no API token anywhere: not in
+# secrets, not on a laptop, not in a .pypirc. GitHub proves the workflow's
+# identity to PyPI directly, and PyPI decides whether that identity may publish
+# `agentmetry`. Nothing to leak and nothing to scope wrong.
+#
+# One-time setup on pypi.org (Your account -> Publishing -> Add a pending
+# publisher), which works for a project that does not exist yet:
+#
+#   PyPI Project Name:  agentmetry
+#   Owner:              blitzcrieg1
+#   Repository name:    agentmetry
+#   Workflow name:      release.yml
+#   Environment name:   pypi
+#
+# The other reason this exists: artifacts built on a laptop drift from the
+# source they claim to be. `dist/` is gitignored, so nothing warns you, and the
+# version in the filename stays the same either way. A wheel built on 3 August
+# was almost published as 0.4.0 carrying 20 corpus files while the tree had 46
+# and the README said so. Building from a clean checkout of the tag makes that
+# disagreement impossible rather than merely unlikely.
+
+on:
+  push:
+    tags: ["v*"]
+  # Dry run against the current tree without publishing. Use before tagging.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # A tag must not be able to publish a build that does not pass its own
+    # checks. CI covers master; a tag is a different commit and deserves its own
+    # run rather than an assumption that master was green when it was cut.
+    name: verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/orchestrator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check agentmetry tests
+      - name: Run tests
+        run: pytest -q
+      - name: Detection benchmark
+        # Exits non-zero on any missed rule or any false positive. A release
+        # that cannot detect what it claims to detect is the one release worth
+        # blocking automatically.
+        run: python -m agentmetry.cli benchmark
+
+  build:
+    name: build
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        working-directory: apps/orchestrator
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Tag must match the packaged version
+        # `git tag v0.4.1` with version.py still saying 0.4.0 publishes 0.4.0
+        # under a tag that claims otherwise, and PyPI then refuses the real
+        # 0.4.1 later because the file already exists. Fail here instead.
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: apps/orchestrator
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('agentmetry/core/version.py').read_text()).group(1))")
+          echo "tag=$TAG packaged=$PKG"
+          test "$TAG" = "$PKG" || {
+            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $PKG"
+            exit 1
+          }
+
+      - name: Install the built wheel in a clean environment
+        # Building is not evidence that it installs. A wheel that omits the
+        # policy manifests or the corpus passes `twine check` and then opens
+        # with three FAILs on a user's machine, which is how 0.3.0 shipped.
+        working-directory: apps/orchestrator
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --quiet dist/*.whl
+          /tmp/fresh/bin/agentmetry doctor
+          /tmp/fresh/bin/agentmetry benchmark
+
+      - name: Fail if doctor reports anything broken
+        working-directory: apps/orchestrator
+        run: |
+          if /tmp/fresh/bin/agentmetry doctor | grep -q "\[FAIL\]"; then
+            echo "::error::doctor reports FAIL on a clean install of the built wheel"
+            /tmp/fresh/bin/agentmetry doctor | grep "\[FAIL\]"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: apps/orchestrator/dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    # Tags only. `workflow_dispatch` runs everything above as a dry run and
+    # stops here, so the release path can be exercised without spending a
+    # version number.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agentmetry
+    permissions:
+      # Mints the OIDC token PyPI verifies. This is the whole mechanism; without
+      # it the publish step fails with an unhelpful authentication error.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
