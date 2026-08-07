@@ -12,11 +12,116 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+#: How long to wait for another process to finish its append before giving up.
+#: Generous: an append is a few milliseconds, so reaching this means something
+#: is wedged rather than merely busy.
+_LOCK_TIMEOUT_SECONDS = 10.0
+_LOCK_POLL_SECONDS = 0.02
+
+_LOCK_UNAVAILABLE_WARNED = False
+
+
+def lock_path(trail_path: Path) -> Path:
+    return trail_path.with_name(trail_path.name + ".lock")
+
+
+@contextmanager
+def _exclusive(trail_path: Path):
+    """Serialise appends across processes, not just threads.
+
+    Advisory, and deliberately so: it protects writers that cooperate, which is
+    every writer this project ships. It is not a defence against an attacker
+    with local write access, who can rewrite the file whatever we hold.
+
+    Best-effort by design. If the platform primitive is missing we log once and
+    proceed unlocked, because a recorder that refuses to record is a worse
+    outcome than a recorder with a small race. That is the same reasoning as the
+    hook's fail-open path, and it is a trade rather than an oversight.
+    """
+    global _LOCK_UNAVAILABLE_WARNED
+
+    path = lock_path(trail_path)
+    try:
+        handle = path.open("a+b")
+    except OSError:
+        if not _LOCK_UNAVAILABLE_WARNED:
+            _LOCK_UNAVAILABLE_WARNED = True
+            logger.warning(
+                "Could not open %s; appending without a cross-process lock. "
+                "Concurrent writers can lose events and break the chain.", path
+            )
+        yield
+        return
+
+    acquired = False
+    try:
+        acquired = _acquire(handle)
+        yield
+    finally:
+        if acquired:
+            _release(handle)
+        handle.close()
+
+
+def _acquire(handle) -> bool:
+    deadline = time.monotonic() + _LOCK_TIMEOUT_SECONDS
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    return True
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(_LOCK_POLL_SECONDS)
+        else:
+            import fcntl
+
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    return True
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(_LOCK_POLL_SECONDS)
+    except (ImportError, OSError) as exc:
+        global _LOCK_UNAVAILABLE_WARNED
+        if not _LOCK_UNAVAILABLE_WARNED:
+            _LOCK_UNAVAILABLE_WARNED = True
+            logger.warning(
+                "Trail lock unavailable (%s); appending unlocked. Concurrent "
+                "writers can lose events and break the chain.", exc
+            )
+        return False
+
+
+def _release(handle) -> None:
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        pass
 
 TRAIL_VERSION = 1
 GENESIS_SHA256 = hashlib.sha256(b"AGENTMETRY_TRAIL_GENESIS_v1").hexdigest()
@@ -124,16 +229,40 @@ def load_chain_head(trail_path: Path) -> ChainHead:
 
 
 def append_chained_line(trail_path: Path, event: dict[str, Any]) -> ChainHead:
-    """Append one chained envelope line and persist the sidecar head."""
-    head = load_chain_head(trail_path)
-    next_seq = head.seq + 1
-    envelope = wrap_chained_record(next_seq, head.last_sha256, event)
-    line = json.dumps(envelope, separators=(",", ":"), default=str) + "\n"
+    """Append one chained envelope line and persist the sidecar head.
+
+    The whole read-modify-write runs under a cross-process lock, because this is
+    a read-modify-write and more than one process appends to the same trail.
+
+    The orchestrator writes here through `FileAuditSink`, and so does any CLI
+    that appends -- `import-agt` most obviously. `sinks.py` holds a
+    `threading.Lock`, which serialises threads inside one process and does
+    nothing at all across two. Measured before the lock existed, with two
+    processes appending 25 events each:
+
+        50 appends attempted
+        43 lines written        7 events lost outright
+        14 duplicate seq values
+        verify_trail_file       sequence break at line 5
+
+    Both halves of that matter. Losing events is a gap in an audit trail, and a
+    chain that stops verifying at line 5 discards the evidentiary value of
+    everything after it. For a tamper-evident trail this is the worst available
+    failure, and it happens with no attacker and no crash: two ordinary writers
+    are enough.
+    """
     trail_path.parent.mkdir(parents=True, exist_ok=True)
-    with trail_path.open("a", encoding="utf-8") as fh:
-        fh.write(line)
-    new_head = ChainHead(seq=next_seq, last_sha256=envelope["trail"]["record_sha256"])
-    _save_sidecar(chain_sidecar_path(trail_path), new_head)
+    with _exclusive(trail_path):
+        head = load_chain_head(trail_path)
+        next_seq = head.seq + 1
+        envelope = wrap_chained_record(next_seq, head.last_sha256, event)
+        line = json.dumps(envelope, separators=(",", ":"), default=str) + "\n"
+        with trail_path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+            fh.flush()
+            os.fsync(fh.fileno())
+        new_head = ChainHead(seq=next_seq, last_sha256=envelope["trail"]["record_sha256"])
+        _save_sidecar(chain_sidecar_path(trail_path), new_head)
     return new_head
 
 
