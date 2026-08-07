@@ -510,6 +510,71 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_agt(args: argparse.Namespace) -> int:
+    """Ingest a Microsoft Agent Governance Toolkit audit file into the trail.
+
+    AGT decides allow or deny per call; this says what a session of those calls
+    adds up to. In testing it read three calls AGT had individually allowed and
+    raised one critical `credential-exfil` across them.
+    """
+    import os
+
+    from agentmetry.core.audit.adapters.agt import agt_file_to_canonical
+    from agentmetry.core.audit.trail_chain import append_chained_line
+    from agentmetry.core.config import settings
+
+    path = Path(args.path)
+    if not path.is_file():
+        print(f"No such file: {path}")
+        return 1
+
+    key: bytes | None = None
+    raw_key = args.key or os.environ.get("AGENTMETRY_AGT_HMAC_KEY", "")
+    if raw_key:
+        key = raw_key.encode()
+
+    result, events = agt_file_to_canonical(
+        path,
+        secret_key=key,
+        host_id=args.host_id or settings.operator_id or "",
+        fleet_id=settings.fleet_id or "",
+    )
+
+    if not result.ok:
+        # Nothing is imported. Writing an unverified record into a hash-chained
+        # trail would have the chain vouch for a claim nobody checked.
+        print(f"FAILED — {result.message}")
+        print("  Nothing imported. The trail does not launder unverified records.")
+        return 1
+
+    print(f"OK — {result.message}")
+    if key is None:
+        print(
+            "  No HMAC key supplied, so signatures were not checked. Hashes and "
+            "chain linkage were, which catches editing and reordering. Pass --key "
+            "or set AGENTMETRY_AGT_HMAC_KEY to check forgery too."
+        )
+
+    if args.dry_run:
+        print(f"  Dry run: {len(events)} event(s) would be appended.")
+        from agentmetry.core.audit.detection.engine import run_detections
+
+        detections = run_detections(events)
+        for detection in detections:
+            print(f"  [{detection.severity}] {detection.rule_id}: {detection.title}")
+        if not detections:
+            print("  No detections would fire on this session.")
+        return 0
+
+    trail = Path(settings.audit_export_path)
+    for event in events:
+        append_chained_line(trail, event)
+    print(f"  Appended {len(events)} event(s) to {trail}")
+    print("  Marked source.tier=external, app=agt: Agentmetry read this record "
+          "rather than observing the calls.")
+    return 0
+
+
 def cmd_prove(args: argparse.Namespace) -> int:
     """Produce or check a Merkle inclusion proof for one trail record.
 
@@ -783,6 +848,21 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
     export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
     export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
+    import_agt = sub.add_parser(
+        "import-agt",
+        help="ingest a Microsoft Agent Governance Toolkit audit file into the trail",
+    )
+    import_agt.add_argument("path", help="AGT FileAuditSink JSONL")
+    import_agt.add_argument(
+        "--key", default=None,
+        help="HMAC secret key, to verify signatures as well as hashes "
+             "(or AGENTMETRY_AGT_HMAC_KEY)",
+    )
+    import_agt.add_argument("--host-id", dest="host_id", default="", help="host to attribute events to")
+    import_agt.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="verify and show what would fire, without writing to the trail",
+    )
     prove = sub.add_parser(
         "prove",
         help="Merkle inclusion proof for one trail record (prove an event without the file)",
@@ -852,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
         "export": cmd_export,
         "verify": cmd_verify,
         "prove": cmd_prove,
+        "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,
         "dogfood": cmd_dogfood,

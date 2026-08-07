@@ -682,6 +682,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, and print the Merkle root |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
+| `agentmetry import-agt <agt.jsonl> [--key K] [--dry-run]` | Ingest a Microsoft Agent Governance Toolkit audit file: verify its hash chain, then run sequence detection over it |
 | `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
 | `agentmetry benchmark` | Replay the recorded detection corpus and score the rules |
 
