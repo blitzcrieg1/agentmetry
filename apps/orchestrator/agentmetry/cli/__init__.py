@@ -719,9 +719,13 @@ def cmd_anchor(args: argparse.Namespace) -> int:
     print(f"Anchored {checkpoint.tree_size} record(s) at root {checkpoint.root_sha256}")
     print(f"  checkpoint: {receipt.ref} in {anchors}")
     print(f"  statement: {checkpoint.statement()}")
+    # Phrased as a condition, not an assertion. With --anchors the log may
+    # already be in a working copy of a protected remote, and telling an
+    # operator who has done the work that they have not is how a correct
+    # warning teaches people to ignore warnings.
     print(
-        "  This log is on the audited host. Copy it somewhere this machine "
-        "cannot write, or the commitment can be rewritten with the trail."
+        "  Until a copy of this log lives where this machine cannot write it, "
+        "the commitment can be rewritten along with the trail."
     )
     return 0
 
@@ -768,7 +772,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
             # sees the sentence never learns the guarantee has a ceiling.
             from agentmetry.core.audit.trail_anchor import coverage_lines, verify_anchors
 
-            coverage = verify_anchors(path)
+            # --anchors is how this check becomes worth running. Against the
+            # anchor log sitting next to the trail, an attacker who rewrote one
+            # rewrote the other. Pointed at a copy they could not reach, the
+            # same comparison is the only thing here they cannot forge.
+            coverage = verify_anchors(
+                path, Path(args.anchors) if getattr(args, "anchors", None) else None,
+                local_only=not getattr(args, "anchors", None),
+            )
             for line in coverage_lines(coverage):
                 print(line)
             if not coverage.ok:
@@ -1000,6 +1011,13 @@ def main(argv: list[str] | None = None) -> int:
         "--trail",
         action="store_true",
         help="verify the hash chain on an audit JSONL file and report anchor coverage",
+    )
+    verify.add_argument(
+        "--anchors",
+        default=None,
+        help="with --trail: check against this anchor log instead of the one beside "
+             "the trail. Point it at an off-host copy; a local one can be rewritten "
+             "by whoever rewrote the trail.",
     )
     doctor = sub.add_parser(
         "doctor", help="SIEM preflight (manifests, trail chain, health, hooks)"

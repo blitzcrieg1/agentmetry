@@ -702,6 +702,11 @@ visibility into agents Agentmetry does not orchestrate.
 
 `scripts\agentmetry.bat` remains as a legacy alias.
 
+Agentmetry's own trail is anchored publicly at
+[blitzcrieg1/agentmetry-anchors](https://github.com/blitzcrieg1/agentmetry-anchors),
+on a branch where force-push and deletion are blocked, by
+`scripts\publish_anchor.ps1` every four hours. The roots are there to be checked.
+
 ---
 
 ## Contributing

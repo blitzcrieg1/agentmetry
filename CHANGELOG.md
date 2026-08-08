@@ -29,6 +29,21 @@ separately (currently `1.1.0`) and changes additively.
   Choosing an anchor means choosing whom you trust to hold history, and picking
   one on the operator's behalf would be making that decision for them.
 
+- `verify --trail --anchors <path>` checks against an anchor log somewhere other
+  than beside the trail, and `scripts/publish_anchor.ps1` runs the whole loop
+  (checkpoint, commit, push, verify against the published copy) on a schedule.
+
+  Without `--anchors` the check compares the trail to a log an attacker who
+  rewrote one had every opportunity to rewrite as well, which establishes that a
+  file agrees with itself.
+
+  Agentmetry's own trail is now anchored at
+  [agentmetry-anchors](https://github.com/blitzcrieg1/agentmetry-anchors) with
+  force-push and deletion blocked. Note that GitHub offers branch protection
+  free on public repositories and behind a paid plan on private ones, so an
+  unprotected private anchor repo is the failure mode to avoid: the workstation
+  in this threat model holds the credential that can rewrite it.
+
 ### Changed
 
 - `verify --trail` now reports **anchored and unanchored ranges separately**. A

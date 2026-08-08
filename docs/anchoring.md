@@ -58,14 +58,32 @@ Pick one. All three defend against the same thing (a host that rewrites its own 
 The cheapest option that works, and the one to start with.
 
 ```bash
-agentmetry anchor data/audit-forward.jsonl
-cp data/audit-forward.jsonl.anchors.jsonl audit-anchors/
-cd audit-anchors && git add . && git commit -m "anchor: tree_size 5400" && git push
+agentmetry anchor data/agentmetry-trail.jsonl \
+  --anchors ../agentmetry-anchors/home-lab/agentmetry-trail.anchors.jsonl
+cd ../agentmetry-anchors
+git add . && git commit -m "anchor: tree_size 5938" && git push
 ```
 
-The forge holds commit timestamps and history the developer machine cannot rewrite without detection. If the workstation is later compromised, the pushed commits still say what the root was.
+The forge holds commit history the workstation cannot rewrite. If that machine is later compromised, the pushed commits still say what the root was.
 
-Caveat worth knowing: a force-push rewrites branch history. Use a protected branch, or a repo the workstation has append-only access to.
+**Protect the branch, or you have not anchored anything.** The threat model here is a compromised developer machine, and that machine holds the credentials that can push to the repository. Without protection an attacker force-pushes the inconvenient history away and the anchor was decorative:
+
+```bash
+gh api -X PUT repos/OWNER/REPO/branches/main/protection --input - <<'JSON'
+{"required_status_checks":null,"enforce_admins":true,
+ "required_pull_request_reviews":null,"restrictions":null,
+ "allow_force_pushes":false,"allow_deletions":false}
+JSON
+```
+
+`enforce_admins` is the field that matters. Without it the repository owner is exempt, and the attacker holding the workstation's token *is* the owner.
+
+Two constraints worth knowing before you pick a repository:
+
+- On GitHub, branch protection is **free on public repositories and requires a paid plan on private ones**. An anchor log contains roots, counts and timestamps, never event content, so publishing it is usually the right trade. But it is a disclosure decision, so make it deliberately.
+- Verify the protection by trying to defeat it. A force-push should come back `remote rejected ... cannot force-push to this branch`.
+
+On Windows, [`scripts/publish_anchor.ps1`](../scripts/publish_anchor.ps1) does the whole loop (checkpoint, commit, push, verify against the pushed copy) and exits quietly when no new records have arrived. Register it on a schedule so the unanchored window stays small.
 
 ### 2. An RFC 3161 timestamp authority
 
@@ -95,8 +113,11 @@ A note on Sigstore specifically: Rekor v1 is in maintenance mode and Rekor v2 (t
 ## Checking coverage
 
 ```bash
-agentmetry verify --trail data/audit-forward.jsonl
+agentmetry verify --trail data/agentmetry-trail.jsonl \
+  --anchors ../agentmetry-anchors/home-lab/agentmetry-trail.anchors.jsonl
 ```
+
+**`--anchors` is what makes this check worth running.** Against the anchor log sitting next to the trail, whoever rewrote one rewrote the other, and the comparison proves only that a file agrees with itself. Pointed at a copy on a protected remote, the same comparison is the one thing an attacker on this host could not forge.
 
 ```
 OK — 5691 chained line(s) verified
