@@ -9,6 +9,42 @@ separately (currently `1.1.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **External anchoring for the trail** (`agentmetry anchor`), closing the gap
+  [#34](https://github.com/blitzcrieg1/agentmetry/issues/34) named. The hash
+  chain and the Merkle root are both computed on the audited machine from the
+  audited file, so an attacker with write access to the data directory can edit
+  an event, recompute every hash after it, rewrite the sidecar head, and hand
+  over a trail that verifies cleanly. That is the ceiling of what a
+  self-contained file can prove about itself.
+
+  A checkpoint commits `(tree_size, root_sha256)` to somewhere the host does not
+  control; any later edit below that size stops matching. The trail never
+  leaves, because a Merkle root over hashes discloses nothing about the events.
+
+  `AnchorSink` is a one-method protocol. This repo ships `FileAnchorSink` (a
+  local append-only log) and documents attaching a git remote, an RFC 3161
+  timestamp authority, or WORM storage in [anchoring](docs/anchoring.md).
+  Choosing an anchor means choosing whom you trust to hold history, and picking
+  one on the operator's behalf would be making that decision for them.
+
+### Changed
+
+- `verify --trail` now reports **anchored and unanchored ranges separately**. A
+  checkpoint covers the records that existed when it was published; calling the
+  whole trail anchored because one checkpoint exists would overstate it. An
+  unanchored tail is not a failure, it is the normal state of a running
+  recorder, and scoring it red would make the check cry wolf until somebody
+  turned it off. When a checkpoint does not match, a rewritten range and a
+  truncated one are reported as the different incidents they are.
+
+- Bare uses of **"tamper-evident"** replaced with the precise claim:
+  hash-chained and verifiable, with optional external anchoring for threat
+  models that include the host itself. The phrase promised a compliance reader
+  more than the file could deliver, and the reader least able to check was the
+  one most likely to rely on it.
+
 ## [0.4.0] - 2026-08-07
 
 **The first release you can actually `pip install`.** Every earlier version

@@ -655,6 +655,77 @@ def cmd_prove(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_anchor(args: argparse.Namespace) -> int:
+    """Publish, list, or check the checkpoints that commit the trail externally.
+
+    The chain and the Merkle root are both computed on the audited machine from
+    the audited file, so an attacker who can rewrite one can rewrite all of them.
+    A checkpoint is the escape: publish `(tree_size, root)` off-host and any later
+    edit below that size stops matching. This command produces the commitment;
+    where it goes is the operator's trust decision, not ours.
+    """
+    import json
+
+    from agentmetry.core.audit.trail_anchor import (
+        FileAnchorSink,
+        anchor_path,
+        build_checkpoint,
+        coverage_lines,
+        read_checkpoints,
+        verify_anchors,
+    )
+
+    path = Path(args.path)
+    if not path.is_file():
+        print(f"No such file: {path}")
+        return 1
+    anchors = Path(args.anchors) if args.anchors else anchor_path(path)
+
+    if args.show:
+        checkpoints = read_checkpoints(anchors)
+        if not checkpoints:
+            print(f"No checkpoints in {anchors}")
+            return 0
+        print(f"{len(checkpoints)} checkpoint(s) in {anchors}")
+        for cp in checkpoints:
+            print(f"  {cp.timestamp}  size {cp.tree_size:>7}  root {cp.root_sha256[:16]}…")
+        return 0
+
+    if args.verify:
+        coverage = verify_anchors(path, anchors)
+        for line in coverage_lines(coverage):
+            print(line.strip())
+        return 0 if coverage.ok else 1
+
+    try:
+        checkpoint = build_checkpoint(path, host_id=args.host_id or "")
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    # --print emits without recording. The point is to hand the statement to a
+    # sink we do not implement (a timestamp authority, a git commit, a log)
+    # without also implying it was anchored here.
+    if args.print_only:
+        print(checkpoint.statement() if not args.json else json.dumps(checkpoint.to_dict(), indent=2))
+        return 0
+
+    try:
+        receipt = FileAnchorSink(anchors).publish(checkpoint)
+    except (ValueError, OSError) as exc:
+        print(f"FAILED — {exc}")
+        return 1
+
+    print(f"Anchored {checkpoint.tree_size} record(s) at root {checkpoint.root_sha256}")
+    print(f"  checkpoint: {receipt.ref} in {anchors}")
+    print(f"  statement: {checkpoint.statement()}")
+    print(
+        "  This log is on the audited host. Copy it somewhere this machine "
+        "cannot write, or the commitment can be rewritten with the trail."
+    )
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     import json
 
@@ -689,6 +760,27 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 # the file, so it is the more useful of the two to publish.
                 print(f"  merkle root: {root}")
                 print(f"  tree size: {size} (rfc6962-sha256)")
+
+            # Everything above was computed from the file being checked, which is
+            # the file an attacker with host access would have rewritten. Anchor
+            # coverage is the only part of this output that can contradict it, so
+            # it prints even when there are no anchors — an operator who never
+            # sees the sentence never learns the guarantee has a ceiling.
+            from agentmetry.core.audit.trail_anchor import coverage_lines, verify_anchors
+
+            coverage = verify_anchors(path)
+            for line in coverage_lines(coverage):
+                print(line)
+            if not coverage.ok:
+                # The chain printed OK several lines ago and it was telling the
+                # truth: the file is internally consistent, because whoever
+                # rewrote it made it so. Leaving that as the last word would let
+                # a skimmer take the wrong verdict away, so restate it.
+                print(
+                    "FAILED — the chain is internally consistent but contradicts a "
+                    "published anchor. The file was rewritten."
+                )
+                return 1
             return 0
         print(f"FAILED — {result.message}")
         if result.first_bad_line:
@@ -879,6 +971,26 @@ def main(argv: list[str] | None = None) -> int:
         "--record-root", dest="record_root", action="store_true",
         help="recompute the root and store it in the chain sidecar",
     )
+    anchor = sub.add_parser(
+        "anchor",
+        help="publish a checkpoint committing the trail somewhere the host cannot rewrite",
+    )
+    anchor.add_argument("path", help="JSONL trail file")
+    anchor.add_argument(
+        "--anchors", default=None,
+        help="anchor log to append to (default: <trail>.anchors.jsonl)",
+    )
+    anchor.add_argument(
+        "--print", dest="print_only", action="store_true",
+        help="print the checkpoint statement without recording it, to hand to an external sink",
+    )
+    anchor.add_argument("--json", action="store_true", help="with --print: emit JSON, not one line")
+    anchor.add_argument("--show", action="store_true", help="list recorded checkpoints")
+    anchor.add_argument(
+        "--verify", action="store_true",
+        help="recompute each checkpoint's root from the trail and compare",
+    )
+    anchor.add_argument("--host-id", dest="host_id", default="", help="identity to stamp on the checkpoint")
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -887,7 +999,7 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument(
         "--trail",
         action="store_true",
-        help="verify tamper-evident hash chain on an audit JSONL file",
+        help="verify the hash chain on an audit JSONL file and report anchor coverage",
     )
     doctor = sub.add_parser(
         "doctor", help="SIEM preflight (manifests, trail chain, health, hooks)"
@@ -932,6 +1044,7 @@ def main(argv: list[str] | None = None) -> int:
         "export": cmd_export,
         "verify": cmd_verify,
         "prove": cmd_prove,
+        "anchor": cmd_anchor,
         "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,

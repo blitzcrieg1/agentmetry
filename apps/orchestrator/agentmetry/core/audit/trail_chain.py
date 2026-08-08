@@ -1,10 +1,17 @@
-"""Hash-chained JSONL audit trail records (tamper-evident file sink).
+"""Hash-chained JSONL audit trail records (verifiable file sink).
 
 Each file line is an envelope:
 
     {"trail": {"v": 1, "seq": N, "prev_sha256": "...", "record_sha256": "..."}, "event": {...}}
 
 Legacy lines (plain canonical events) remain readable; verify reports them separately.
+
+Scope. This detects corruption, truncation, and in-place edits. It does not
+detect an attacker with write access to the data directory, who can edit an event,
+recompute every hash after it, rewrite the sidecar, and produce a file that
+verifies. Every input to `verify_trail_file` lives inside that blast radius. That
+is the ceiling of what a self-contained file can prove about itself, not a defect
+here, and `trail_anchor.py` is where the ceiling is raised.
 """
 
 from __future__ import annotations

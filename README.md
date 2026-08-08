@@ -423,11 +423,21 @@ typical month that is the large majority of gates.
 requires isolating trusted from untrusted data inside the agent, which a
 recorder cannot do. Agentmetry detects the consequence, as a sequence.
 
-**Tamper evidence has a boundary.** The hash chain covers JSONL lines written
-after chaining was enabled, and it protects the JSONL, not the SQLite index the
-dashboard reads. It proves in-place edits and reordering; it cannot prove the
-file was not truncated. Record the chain head somewhere the audited machine
-cannot write.
+**Tamper evidence has a boundary.** The trail is hash-chained and verifiable,
+with optional external anchoring for threat models that include the host itself.
+The chain covers JSONL lines written after chaining was enabled, and it protects
+the JSONL, not the SQLite index the dashboard reads.
+
+Read on its own, the chain catches corruption, truncation and in-place edits. It
+does not catch an attacker with write access to the data directory: they can edit
+an event, recompute every hash after it, rewrite the sidecar head, and produce a
+file that verifies cleanly. Every input to that check sits on the machine under
+their control, which is the ceiling of what any self-contained file can prove.
+
+For that threat model, publish a Merkle root somewhere they cannot rewrite:
+`agentmetry anchor <trail>`, then copy the checkpoint to a git remote, an RFC
+3161 timestamp authority, or your own WORM storage. `verify --trail` then reports
+anchored and unanchored ranges separately. See [anchoring](docs/anchoring.md).
 
 **Detection state is per-process.** Checkpoints survive a restart but are not
 shared across orchestrator instances. The trail stays authoritative and every
@@ -682,7 +692,8 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
-| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, and print the Merkle root |
+| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
+| `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
 | `agentmetry import-agt <agt.jsonl> [--key K] [--dry-run]` | Ingest a Microsoft Agent Governance Toolkit audit file: verify its hash chain, then run sequence detection over it |
