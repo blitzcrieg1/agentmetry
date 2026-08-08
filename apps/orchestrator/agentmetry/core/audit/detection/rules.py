@@ -99,6 +99,19 @@ def _tool_qualified(event: dict[str, Any]) -> str:
 
 
 def _command(event: dict[str, Any]) -> str:
+    """The command exactly as issued, quotes and heredoc bodies intact.
+
+    Correct for *arguments*: URLs, IP addresses, file paths, and comparing two
+    commands for equality. Those are routinely quoted and masking them would
+    delete the thing being extracted.
+
+    Wrong for anything matching a *command word* -- a verb, a flag, an operator.
+    Use `_command_words` there. This distinction has now been got wrong twice.
+    The second time, `_CLOUD_API` read raw text and a commit message describing
+    `az keyvault` support paged critical, so if you are adding a pattern here,
+    ask whether it matches something the shell would execute or something it
+    would pass along.
+    """
     tool = event.get("tool")
     return str(tool.get("command") or "") if isinstance(tool, dict) else ""
 
@@ -654,7 +667,7 @@ def _is_delete(event: dict[str, Any]) -> bool:
     method = _norm_tool(_tool_qualified(event).rsplit(".", 1)[-1])
     if method in _DELETE_METHODS:
         return True
-    if _DELETE_COMMAND.search(_command(event)):
+    if _DELETE_COMMAND.search(_command_words(event)):
         return True
     return _has_trait(event, "delete_cmd")
 
@@ -767,7 +780,7 @@ def _is_untrusted_input(event: dict[str, Any]) -> bool:
     """Did this event pull content an outsider could have authored?"""
     if _method(event) in _UNTRUSTED_INPUT_METHODS:
         return True
-    if _UNTRUSTED_INPUT_COMMAND.search(_command(event)):
+    if _UNTRUSTED_INPUT_COMMAND.search(_command_words(event)):
         return True
     return _has_trait(event, "untrusted_input")
 
@@ -901,7 +914,10 @@ def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[De
     for event in events[cred_idx + 1:]:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
             continue
-        if not (_CLOUD_API.search(_command(event)) or _has_trait(event, "cloud_api")):
+        # Masked: `kubectl`, `aws`, `az keyvault` are command words. Read from
+        # the raw text, this rule paged critical on a git commit message that
+        # merely *described* those CLIs, six hours after an unrelated .env read.
+        if not (_CLOUD_API.search(_command_words(event)) or _has_trait(event, "cloud_api")):
             continue
         cred = events[cred_idx]
         return [
@@ -939,7 +955,7 @@ def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detect
     for event in events[cred_idx + 1:]:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
             continue
-        if not (_GIT_EXFIL.search(_command(event)) or _has_trait(event, "git_exfil")):
+        if not (_GIT_EXFIL.search(_command_words(event)) or _has_trait(event, "git_exfil")):
             continue
         cred = events[cred_idx]
         return [

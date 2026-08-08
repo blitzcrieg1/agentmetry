@@ -55,6 +55,28 @@ separately (currently `1.1.0`) and changes additively.
   unprotected private anchor repo is the failure mode to avoid: the workstation
   in this threat model holds the credential that can rewrite it.
 
+### Fixed
+
+- **Four detection rules matched command words against raw command text**, so a
+  commit message that merely *described* a dangerous command could fire on it.
+  Found by triaging a real critical finding rather than by a test: a legitimate
+  `.env` read, then six hours later a commit message documenting `az keyvault`
+  and `aws secretsmanager` support, produced `credential-read-then-cloud-api`.
+  The commit event carried no `cloud_api` trait; the rule bypassed the
+  classifier and grepped the text.
+
+  `_CLOUD_API`, `_GIT_EXFIL`, `_DELETE_COMMAND` and `_UNTRUSTED_INPUT_COMMAND`
+  now read `_command_words()` (quoted content and heredoc bodies blanked) like
+  every other command-word pattern. Raw text is still correct for URLs, IPs,
+  file paths and command equality, and `_command()` now says which is which.
+
+  This is the second time the same distinction was got wrong; `_command_words`
+  was written for the first. A tool whose own commit messages page its owner is
+  a tool whose alerts get muted, so the regression is pinned three ways: unit
+  tests per rule, a corpus case replayed from the real session, and one test
+  asserting the property against the patterns directly so a fifth call site
+  cannot reintroduce it quietly.
+
 ### Changed
 
 - `verify --trail` now reports **anchored and unanchored ranges separately**. A

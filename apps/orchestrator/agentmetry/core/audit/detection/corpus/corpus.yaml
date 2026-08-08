@@ -278,6 +278,19 @@ cases:
       Distinct from benign_loopback_pipe_to_interpreter, which pipes and therefore
       does fire at low; here the two steps are separate and nothing should fire at all.
 
+  - name: commit message naming cloud CLIs after reading .env
+    session: benign_commit_message_names_cloud_clis.jsonl
+    expect: []
+    benign: true
+    note: >
+      Taken from a real critical finding on 2026-08-07, not invented. A grep that
+      touches apps/orchestrator/.env is genuine credential access; six hours later
+      a commit message describing az keyvault and aws secretsmanager support
+      matched _CLOUD_API because the rule read tool.command raw instead of the
+      masked view. The commit event carries no cloud_api trait, so this case fails
+      the moment a rule stops asking the classifier and starts grepping the text
+      a developer merely wrote down.
+
   - name: cleaning build artifacts
     session: benign_build_artifact_cleanup.jsonl
     expect: []
