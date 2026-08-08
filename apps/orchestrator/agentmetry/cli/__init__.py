@@ -772,16 +772,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
             # sees the sentence never learns the guarantee has a ceiling.
             from agentmetry.core.audit.trail_anchor import coverage_lines, verify_anchors
 
-            # --anchors is how this check becomes worth running. Against the
-            # anchor log sitting next to the trail, an attacker who rewrote one
-            # rewrote the other. Pointed at a copy they could not reach, the
-            # same comparison is the only thing here they cannot forge.
-            coverage = verify_anchors(
-                path, Path(args.anchors) if getattr(args, "anchors", None) else None,
-                local_only=not getattr(args, "anchors", None),
-            )
+            # Which log this checks is what decides whether the check means
+            # anything. Beside the trail, an attacker who rewrote one rewrote
+            # the other. On a protected remote, the same comparison is the only
+            # thing here they could not forge.
+            from agentmetry.core.audit.trail_anchor import resolve_anchor_log
+
+            anchor_log, source = resolve_anchor_log(path, getattr(args, "anchors", None))
+            coverage = verify_anchors(path, anchor_log, local_only=(source == "default"))
             for line in coverage_lines(coverage):
                 print(line)
+            if source == "config" and not anchor_log.is_file():
+                print(f"    AGENTMETRY_ANCHOR_LOG points at {anchor_log}, which does not exist")
             if not coverage.ok:
                 # The chain printed OK several lines ago and it was telling the
                 # truth: the file is internally consistent, because whoever

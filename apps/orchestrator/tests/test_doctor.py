@@ -151,3 +151,82 @@ def test_doctor_output_is_ascii_safe():
     source = Path("agentmetry/core/diagnostics/doctor.py").resolve()
     offenders = sorted({c for c in source.read_text(encoding="utf-8") if ord(c) > 127})
     assert not offenders, f"doctor.py contains non-ASCII: {offenders}"
+
+
+# ----------------------------------------------------------------------
+# Anchor coverage
+# ----------------------------------------------------------------------
+
+
+def _anchor_report(trail: Path):
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_anchors
+
+    report = DoctorReport()
+    _check_anchors(report, trail)
+    return report
+
+
+def _trail_with(tmp_path: Path, n: int) -> Path:
+    from agentmetry.core.audit import trail_chain
+
+    path = tmp_path / "t.jsonl"
+    for i in range(n):
+        trail_chain.append_chained_line(path, {"tool": "read_file", "n": i})
+    return path
+
+
+def test_unanchored_trail_says_nothing_at_all(tmp_path: Path, monkeypatch):
+    """Silence is the feature.
+
+    Every fresh install is unanchored and the chain still does real work, so a
+    daily warning would nag about a legitimate choice. Nags are what teach an
+    operator to stop reading doctor output, and this report only works if it is
+    read.
+    """
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", "")
+    assert _anchor_report(_trail_with(tmp_path, 4)).findings == []
+
+
+def test_anchored_trail_reports_its_coverage(tmp_path: Path, monkeypatch):
+    from agentmetry.core.audit import trail_anchor
+
+    trail = _trail_with(tmp_path, 4)
+    log = tmp_path / "elsewhere" / "a.jsonl"
+    trail_anchor.FileAnchorSink(log).publish(trail_anchor.build_checkpoint(trail))
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", str(log))
+
+    findings = _anchor_report(trail).findings
+    assert [f.severity for f in findings] == ["ok"]
+    assert "anchored through record 4" in findings[0].message
+
+
+def test_a_configured_anchor_log_that_is_missing_warns(tmp_path: Path, monkeypatch):
+    """An intention that stopped working is not a choice.
+
+    The operator believes they are covered. Staying quiet here would be the
+    one silence that costs something.
+    """
+    monkeypatch.setattr(
+        "agentmetry.core.config.settings.anchor_log_path", str(tmp_path / "gone.jsonl")
+    )
+    findings = _anchor_report(_trail_with(tmp_path, 4)).findings
+    assert [f.severity for f in findings] == ["warn"]
+    assert "does not exist" in findings[0].message
+
+
+def test_a_contradicted_anchor_is_a_hard_failure(tmp_path: Path, monkeypatch):
+    import json
+
+    from agentmetry.core.audit import trail_anchor
+
+    trail = _trail_with(tmp_path, 4)
+    log = tmp_path / "a.jsonl"
+    forged = trail_anchor.build_checkpoint(trail)
+    log.write_text(
+        json.dumps({**forged.to_dict(), "root_sha256": "0" * 64}) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", str(log))
+
+    report = _anchor_report(trail)
+    assert [f.severity for f in report.findings] == ["fail"]
+    assert report.exit_code == 1

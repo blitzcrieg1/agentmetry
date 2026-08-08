@@ -30,8 +30,19 @@ separately (currently `1.1.0`) and changes additively.
   one on the operator's behalf would be making that decision for them.
 
 - `verify --trail --anchors <path>` checks against an anchor log somewhere other
-  than beside the trail, and `scripts/publish_anchor.ps1` runs the whole loop
-  (checkpoint, commit, push, verify against the published copy) on a schedule.
+  than beside the trail, `AGENTMETRY_ANCHOR_LOG` sets that path once so neither
+  `verify` nor `doctor` needs the flag, and `scripts/publish_anchor.ps1` runs the
+  whole loop (checkpoint, commit, push, verify against the published copy) on a
+  schedule. An operator who has to remember a flag to get the real check is an
+  operator who will end up running the fake one.
+
+  `doctor` reports coverage, fails hard when the trail contradicts a published
+  anchor, and stays **silent** when no anchor log is configured. An unanchored
+  trail is a legitimate configuration and the chain still does real work; a
+  daily warning about it would be a nag about a choice, and nags are what teach
+  an operator to stop reading the report. A *configured* log that has gone
+  missing does warn, because that is an intention that stopped working rather
+  than a decision.
 
   Without `--anchors` the check compares the trail to a log an attacker who
   rewrote one had every opportunity to rewrite as well, which establishes that a

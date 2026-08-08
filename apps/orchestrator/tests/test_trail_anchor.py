@@ -186,6 +186,48 @@ def test_checkpoint_for_a_different_trail_is_not_counted(tmp_path):
 
 
 # ----------------------------------------------------------------------
+# Resolving which log to check
+# ----------------------------------------------------------------------
+
+
+def test_explicit_path_beats_configuration(tmp_path, monkeypatch):
+    trail = _write_trail(tmp_path / "t.jsonl", n=3)
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", str(tmp_path / "cfg.jsonl"))
+    resolved, source = a.resolve_anchor_log(trail, tmp_path / "flag.jsonl")
+    assert (resolved.name, source) == ("flag.jsonl", "flag")
+
+
+def test_configuration_beats_the_sibling_default(tmp_path, monkeypatch):
+    trail = _write_trail(tmp_path / "t.jsonl", n=3)
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", str(tmp_path / "cfg.jsonl"))
+    resolved, source = a.resolve_anchor_log(trail)
+    assert (resolved.name, source) == ("cfg.jsonl", "config")
+
+
+def test_default_is_the_sibling(tmp_path, monkeypatch):
+    trail = _write_trail(tmp_path / "t.jsonl", n=3)
+    monkeypatch.setattr("agentmetry.core.config.settings.anchor_log_path", "")
+    resolved, source = a.resolve_anchor_log(trail)
+    assert (resolved, source) == (a.anchor_path(trail), "default")
+
+
+def test_verify_anchors_never_consults_configuration(tmp_path, monkeypatch):
+    """The tamper check must not depend on ambient state.
+
+    If `verify_anchors` resolved config itself, a test and a production run
+    could read different files while the call site looked identical, and the
+    function deciding whether an audit trail was forged is the last place that
+    should be true.
+    """
+    trail = _write_trail(tmp_path / "t.jsonl", n=3)
+    a.FileAnchorSink(a.anchor_path(trail)).publish(a.build_checkpoint(trail))
+    monkeypatch.setattr(
+        "agentmetry.core.config.settings.anchor_log_path", str(tmp_path / "nonexistent.jsonl")
+    )
+    assert a.verify_anchors(trail).anchored_through == 3
+
+
+# ----------------------------------------------------------------------
 # Shape
 # ----------------------------------------------------------------------
 

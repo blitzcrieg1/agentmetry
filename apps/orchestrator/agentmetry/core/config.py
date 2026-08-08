@@ -65,6 +65,18 @@ class Settings(BaseSettings):
     detection_disposition_db_path: Path = (
         _ORCHESTRATOR_ROOT / "data" / "detection_disposition.db"
     )
+    # Where the trail's anchor log lives, when it is not the sibling default.
+    # Anchoring is only worth anything if the log sits somewhere this host
+    # cannot rewrite, which in practice means a working copy of a protected
+    # remote rather than a path beside the trail. Setting this is how `verify`
+    # and `doctor` find that copy without being handed `--anchors` every time,
+    # and an operator who has to pass a flag to get the real check is an
+    # operator who will end up running the fake one.
+    anchor_log_path: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_ANCHOR_LOG"),
+    )
+
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"
 

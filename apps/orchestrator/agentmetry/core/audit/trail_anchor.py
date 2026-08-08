@@ -70,6 +70,37 @@ def anchor_path(trail_path: Path) -> Path:
     return trail_path.with_name(trail_path.name + ".anchors.jsonl")
 
 
+def resolve_anchor_log(
+    trail_path: Path, explicit: str | Path | None = None
+) -> tuple[Path, str]:
+    """Which anchor log to use, and where that choice came from.
+
+    Precedence: an explicit `--anchors`, then `AGENTMETRY_ANCHOR_LOG`, then the
+    sibling default. The source is returned because the caller needs it to say
+    anything honest: only for the sibling default do we *know* the log sits
+    beside the trail and is therefore rewritable by whoever rewrote it. A
+    configured path might be a working copy of a protected remote or might be a
+    second file on the same disk, and this process cannot tell which, so it
+    should not claim either.
+
+    Deliberately not folded into `verify_anchors`. That function decides whether
+    an audit trail was tampered with, and giving it a hidden dependency on
+    ambient configuration means a test and a production run can check different
+    files while reading identically.
+    """
+    if explicit:
+        return Path(explicit), "flag"
+    try:
+        from agentmetry.core.config import settings
+
+        configured = str(getattr(settings, "anchor_log_path", "") or "").strip()
+        if configured:
+            return Path(configured), "config"
+    except Exception:
+        pass
+    return anchor_path(Path(trail_path)), "default"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 

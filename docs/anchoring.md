@@ -117,7 +117,17 @@ agentmetry verify --trail data/agentmetry-trail.jsonl \
   --anchors ../agentmetry-anchors/home-lab/agentmetry-trail.anchors.jsonl
 ```
 
-**`--anchors` is what makes this check worth running.** Against the anchor log sitting next to the trail, whoever rewrote one rewrote the other, and the comparison proves only that a file agrees with itself. Pointed at a copy on a protected remote, the same comparison is the one thing an attacker on this host could not forge.
+**Which log this checks is what decides whether the check means anything.** Against the anchor log sitting next to the trail, whoever rewrote one rewrote the other, and the comparison proves only that a file agrees with itself. Pointed at a copy on a protected remote, the same comparison is the one thing an attacker on this host could not forge.
+
+Set it once instead of passing the flag every time:
+
+```ini
+AGENTMETRY_ANCHOR_LOG=../agentmetry-anchors/home-lab/agentmetry-trail.anchors.jsonl
+```
+
+`verify --trail` and `agentmetry doctor` both use it, with an explicit `--anchors` taking precedence. An operator who has to remember a flag to get the real check is an operator who will end up running the fake one.
+
+`doctor` reports coverage as an `[OK]` line, fails hard if the trail contradicts a published anchor, and **stays silent when there is no anchor log at all**. An unanchored trail is a legitimate configuration and the chain still does real work, so warning about it daily would nag about a choice rather than report a problem. The exception is a configured log that has gone missing: that is not a choice, it is an intention that stopped working, and it warns.
 
 ```
 OK — 5691 chained line(s) verified

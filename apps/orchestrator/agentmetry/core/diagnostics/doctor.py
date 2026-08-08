@@ -160,6 +160,59 @@ def _check_trail(report: DoctorReport) -> None:
         report.ok("trail", f"Trail chain verified: {result.message}")
     else:
         report.fail("trail", f"Trail chain BROKEN: {result.message}")
+        return
+
+    _check_anchors(report, trail)
+
+
+def _check_anchors(report: DoctorReport, trail: Path) -> None:
+    """Report anchor coverage, and stay quiet when there is none.
+
+    Silence is the deliberate part. An unanchored trail is a legitimate
+    configuration -- it is what every fresh install has, and the chain still
+    does real work -- so a daily WARN saying so would be a nag about a choice
+    rather than a report of a problem, and nags are what teach an operator to
+    stop reading this output.
+
+    The one case that does warrant a warning is a configured anchor log that is
+    not there. That is not a choice, it is an intention that stopped working,
+    and the operator believes they are covered when they are not.
+    """
+    from agentmetry.core.audit.trail_anchor import resolve_anchor_log, verify_anchors
+
+    anchor_log, source = resolve_anchor_log(trail)
+
+    if source == "config" and not anchor_log.is_file():
+        report.warn(
+            "anchor",
+            f"AGENTMETRY_ANCHOR_LOG points at {anchor_log}, which does not exist. "
+            "The trail is chain-verified but not anchored.",
+        )
+        return
+
+    try:
+        coverage = verify_anchors(trail, anchor_log, local_only=(source == "default"))
+    except Exception as exc:  # a bad anchor log must not sink the whole report
+        report.warn("anchor", f"Could not read anchor log {anchor_log}: {exc}")
+        return
+
+    if not coverage.checkpoints:
+        return
+
+    if not coverage.ok:
+        report.fail(
+            "anchor",
+            "Trail contradicts a published anchor: "
+            + "; ".join(f.message for f in coverage.failures),
+        )
+        return
+
+    detail = f"Trail anchored through record {coverage.anchored_through}"
+    if coverage.unanchored:
+        detail += f" ({coverage.unanchored} newer chain-verified only)"
+    if source == "default":
+        detail += "; anchor log sits beside the trail, so copy it off this host"
+    report.ok("anchor", detail)
 
 
 def _check_triage(report: DoctorReport) -> None:
