@@ -145,6 +145,8 @@ def test_absent_extensions_are_omitted_not_null():
         ("detection_disposition", "ai.agentmetry.detection.dispositioned"),
         ("approval_request", "ai.agentmetry.approval.requested"),
         ("session_start", "ai.agentmetry.session.started"),
+        ("heartbeat", "ai.agentmetry.heartbeat"),
+        ("mcp_schema", "ai.agentmetry.mcp.schema"),
     ],
 )
 def test_known_types_map_to_reverse_dns(action_type, expected):

@@ -97,7 +97,7 @@ def udm_event_type(canonical: dict[str, Any]) -> str:
     """
     action_type = str((canonical.get("action") or {}).get("type") or "")
 
-    if action_type == "heartbeat":
+    if action_type in ("heartbeat", "mcp_schema"):
         return "STATUS_UPDATE"
     if action_type in ("session_start", "session_end"):
         return "USER_RESOURCE_ACCESS"

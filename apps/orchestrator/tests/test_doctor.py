@@ -240,9 +240,11 @@ def test_a_contradicted_anchor_is_a_hard_failure(tmp_path: Path, monkeypatch):
 def _mcp_report(tmp_path, monkeypatch, document):
     import json as _json
 
+    from agentmetry.core.config import settings
     from agentmetry.core.diagnostics.doctor import DoctorReport, _check_mcp
 
     monkeypatch.setattr("os.path.expanduser", lambda p: str(tmp_path))
+    monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
     cfg = tmp_path / ".cursor" / "mcp.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(_json.dumps(document), encoding="utf-8")
@@ -253,9 +255,11 @@ def _mcp_report(tmp_path, monkeypatch, document):
 
 def test_no_mcp_servers_reports_nothing(tmp_path, monkeypatch):
     """The common case. A machine with no MCP servers has nothing to say."""
+    from agentmetry.core.config import settings
     from agentmetry.core.diagnostics.doctor import DoctorReport, _check_mcp
 
     monkeypatch.setattr("os.path.expanduser", lambda p: str(tmp_path))
+    monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
     report = DoctorReport()
     _check_mcp(report)
     assert report.findings == []

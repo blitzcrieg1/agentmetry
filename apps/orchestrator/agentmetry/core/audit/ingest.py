@@ -175,10 +175,108 @@ def _get_sink():
             _sink = MultiAuditSink([_sink, alert_sink])
 
     return _sink
+
+
+def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str]:
+    tool = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
+    server = str(tool.get("server") or payload.get("server") or "")
+    fingerprint = str(payload.get("schema_fingerprint") or "")
+    try:
+        tool_count = int(payload.get("schema_tool_count") or 0)
+    except (TypeError, ValueError):
+        tool_count = 0
+    source = str(payload.get("adapter") or "mcp_proxy")
+    return server, fingerprint, tool_count, source
+
+
+def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, Any]:
+    """Attestation that a `tools/list` was observed. Names and descriptions stay off it."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from agentmetry.core.audit.canonical import SCHEMA_VERSION
+    from agentmetry.core.audit.identity import identity_fields
+    from agentmetry.core.diagnostics.mcp_schema import server_id
+
+    server, fingerprint, tool_count, _source = _schema_payload_fields(payload)
+    outcome = "changed" if status == "changed" else "success"
+    reason = (
+        "MCP tool schema changed; config may be unchanged (rug-pull candidate)"
+        if status == "changed"
+        else "MCP tool schema observed"
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "event_id": str(uuid.uuid4()),
+        "session_id": str(payload.get("session_id") or ""),
+        "correlation_id": str(payload.get("correlation_id") or payload.get("thread_id") or ""),
+        "timestamp_utc": str(payload.get("timestamp_utc") or datetime.now(timezone.utc).isoformat()),
+        **identity_fields(),
+        "source_topic": "agentmetry/mcp_schema",
+        "source": {
+            "tier": "external",
+            "app": str(payload.get("source_app") or "mcp_proxy"),
+            "adapter": str(payload.get("adapter") or "mcp_audit_proxy"),
+        },
+        "initiator": {"actor_type": "system", "trigger": "scheduled", "operator_id": ""},
+        "actor": {"type": "system", "id": "agentmetry", "role": "recorder"},
+        "action": {"type": "mcp_schema", "outcome": outcome, "reason": reason},
+        "agent": {"name": "agentmetry", "skill_id": ""},
+        "mcp_schema": {
+            "server_id": server_id(server) if server else "",
+            "fingerprint": fingerprint,
+            "tool_count": tool_count,
+            "status": status,
+        },
+    }
+
+
+async def _ingest_observed_schema(payload: dict[str, Any]) -> dict[str, Any]:
+    """Record a `tools/list` fingerprint. Emit a trail event only when it moves.
+
+    Unchanged reconnects would otherwise flood the trail every session start.
+    The heartbeat still carries the current digest either way. Sequence
+    detection is skipped: this is configuration attestation, not a tool call.
+
+    The store is advanced last, and that ordering is the whole point. Writing
+    the new fingerprint first means a failed trail insert leaves it on disk,
+    the next observation of the poisoned server reads `same`, and the rug pull
+    is never recorded anywhere. Retrying does not help either, because the
+    replayed payload takes that same `same` branch, so the spool that rescues
+    every other event class is specifically defeated for this one. Committing
+    afterwards can instead duplicate an event when two observers race, which
+    is a finding an analyst sees twice rather than one they never see.
+    """
+    from agentmetry.core.audit.trail_db import get_trail_db
+    from agentmetry.core.diagnostics.mcp_schema import (
+        classify_observation,
+        record_observation,
+    )
+
+    server, fingerprint, tool_count, source = _schema_payload_fields(payload)
+    status = classify_observation(server, fingerprint)
+    canonical = build_schema_canonical(payload, status)
+    if status == "same":
+        # Only the timestamp moves, and nothing alerts on it, so there is
+        # nothing to make durable first.
+        record_observation(server, fingerprint, tool_count, source=source)
+        return canonical
+    get_trail_db().insert(canonical)
+    sink = _get_sink()
+    if sink is None:
+        raise RuntimeError("No audit sinks configured")
+    await sink.emit(canonical)
+    record_observation(server, fingerprint, tool_count, source=source)
+    return canonical
+
+
 async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate adapter payload, build canonical event, forward to configured sinks."""
     if not settings.audit_ingest_enabled:
         raise ValueError("External audit ingest is disabled")
+
+    if str(payload.get("event_type") or "") == "mcp_schema":
+        return await _ingest_observed_schema(payload)
 
     canonical = build_external_canonical(payload)
 

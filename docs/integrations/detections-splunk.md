@@ -117,11 +117,41 @@ Note the time bound on **both** halves. An unbounded correlation lets a single h
 
 ---
 
-## What S4 to S6 do and do not prove
+## S7 — MCP tool schema changed (rug pull)
+
+**Logic:** A `tools/list` fingerprint moved. The configured command in `mcp.json` often did not.
+
+This is not a sequence-engine detection. The recorder hashes observed schemas (via `mcp_audit_proxy`) and emits `action.type=mcp_schema` only when the hash is new or different. Reconnects to an unchanged server are silent. Until a server has been listed through the proxy, `heartbeat.mcp_schema_digest` is empty; that is a gap, not a healthy default.
+
+```spl
+index=main sourcetype=agentmetry:json action_type=mcp_schema action_outcome=changed
+| spath output=server_id   path=mcp_schema.server_id
+| spath output=fingerprint path=mcp_schema.fingerprint
+| spath output=tool_count  path=mcp_schema.tool_count
+| table _time host server_id tool_count fingerprint
+```
+
+Same signal off the heartbeat, which still arrives if the schema event was dropped:
+
+```spl
+index=main sourcetype=agentmetry:json action_type=heartbeat
+| spath output=cfg    path=heartbeat.mcp_config_digest
+| spath output=schema path=heartbeat.mcp_schema_digest
+| where schema != ""
+| streamstats current=f last(schema) as prev_schema last(cfg) as prev_cfg by host
+| where isnotnull(prev_schema) AND prev_schema != "" AND schema != prev_schema AND cfg == prev_cfg
+| table _time host prev_schema schema cfg
+```
+
+**Alert:** Unscheduled until the fleet has a baseline. A vendor adding a tool looks identical to a poisoned description; treat the hit as an investigation.
+
+---
+
+## What S4 to S7 do and do not prove
 
 They do not prevent a developer removing a hook. Nothing in user space does, and a vendor claiming otherwise is either shipping a kernel driver or overstating.
 
-What they change is that removal stops being quiet. S4 catches the recorder running while impaired, S5 catches it not running, S6 catches an agent running with nothing behind it. Someone with local admin can stop all three; they cannot stop all three *silently*.
+What they change is that removal stops being quiet. S4 catches the recorder running while impaired, S5 catches it not running, S6 catches an agent running with nothing behind it. S7 catches an MCP server that started telling the model something different. Someone with local admin can stop all of them; they cannot stop all of them *silently*.
 
 ---
 

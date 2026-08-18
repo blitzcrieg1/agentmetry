@@ -132,6 +132,12 @@ def test_a_heartbeat_is_a_status_update():
     assert udm_event_type(_event(action={"type": "heartbeat", "outcome": "success"})) == "STATUS_UPDATE"
 
 
+def test_an_mcp_schema_observation_is_a_status_update():
+    """It is configuration attestation, the same family as a heartbeat, not a
+    process launch and not an alert."""
+    assert udm_event_type(_event(action={"type": "mcp_schema", "outcome": "changed"})) == "STATUS_UPDATE"
+
+
 def test_an_unknown_action_type_still_maps():
     """A new canonical action must not become an unroutable event."""
     assert udm_event_type(_event(action={"type": "something_new"})) == "USER_RESOURCE_ACCESS"

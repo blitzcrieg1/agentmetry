@@ -51,6 +51,8 @@ _TYPE_MAP = {
     "session_start": f"{_TYPE_PREFIX}.session.started",
     "session_end": f"{_TYPE_PREFIX}.session.ended",
     "config_change": f"{_TYPE_PREFIX}.config.changed",
+    "heartbeat": f"{_TYPE_PREFIX}.heartbeat",
+    "mcp_schema": f"{_TYPE_PREFIX}.mcp.schema",
 }
 
 

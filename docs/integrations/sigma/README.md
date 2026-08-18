@@ -11,6 +11,7 @@ Portable [Sigma](https://sigmahq.io/) rules for Agentmetry canonical events, por
 | Critical detection left untriaged | `agentmetry_critical_detection_untriaged.yml` | medium | Nobody answered a CRITICAL finding. Health metric for the deployment, not the agent. Needs a backend anti-join; tested SPL, ES\|QL and LogQL are in the rule file |
 | Recorder degraded | `agentmetry_recorder_degraded.yml` | medium | Recorder alive and attesting that capture is impaired: an IDE hook removed, or events buffering instead of reaching the trail. The state a liveness check cannot see |
 | Recorder silent | `agentmetry_recorder_silent.yml` | informational | The heartbeat itself. Not a finding alone; the correlation notes in the file carry the absence check, including a machine that never enrolled |
+| MCP tool schema changed | `agentmetry_mcp_schema_changed.yml` | medium | `tools/list` fingerprint moved. Rug pull / tool poisoning. Config digest may be unchanged; that conjunction is in the rule file |
 
 ## Field mapping — read before deploying
 

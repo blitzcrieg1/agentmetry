@@ -43,6 +43,8 @@ fields:
   - heartbeat.interval_seconds
   - heartbeat.trail_head_seq
   - heartbeat.mcp_config_digest
+  - heartbeat.mcp_schema_digest
+  - heartbeat.mcp_schema_servers
 falsepositives:
   - A laptop that is simply switched off. Scope the alert to hosts expected
     online, or accept the noise; a decommissioned machine looks identical to a

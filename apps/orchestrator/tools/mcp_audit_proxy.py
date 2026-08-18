@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stdio MCP proxy — logs tools/call to Agentmetry ingest, forwards to child MCP server.
+"""Stdio MCP proxy — logs tools/call and fingerprints tools/list, forwards to child.
 
 Usage:
   python mcp_audit_proxy.py --server vault_fs -- \\
@@ -11,10 +11,12 @@ Set AGENTMETRY_SOURCE_APP=mcp_proxy (default).
 Correlation: all calls in one proxy process share a per-process session id
 (override with AGENTMETRY_CORRELATION_ID) — NOT the JSON-RPC request id, which
 collides across sessions. The JSON-RPC id is used only to match a response to
-its request so a server error becomes a tool_failed event.
+its request so a server error becomes a tool_failed event, and so a
+paginated tools/list can be assembled before it is hashed.
 
 Redaction: tool arguments are hashed in-process (input_hash); plaintext args
-never cross the wire to the orchestrator.
+never cross the wire to the orchestrator. Tool descriptions are hashed the
+same way: the schema fingerprint is a digest, not the text the model saw.
 """
 
 from __future__ import annotations
@@ -31,10 +33,16 @@ from typing import Any
 # Repo scripts on path for ingest client
 _ORCH_ROOT = Path(__file__).resolve().parents[1]
 _REPO_ROOT = _ORCH_ROOT.parents[1]
+if str(_ORCH_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ORCH_ROOT))
 if str(_REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 from agentmetry_ingest import hash_arguments, post_ingest  # noqa: E402
+from agentmetry.core.diagnostics.mcp_schema import (  # noqa: E402
+    ToolsListBuffer,
+    fingerprint_tools,
+)
 
 # Per-process session id — ties every tool call in this MCP connection together.
 _SESSION_ID = uuid.uuid4().hex
@@ -52,6 +60,21 @@ def _qualified(server_name: str, tool_name: str) -> str:
     if tool_name and "." not in tool_name:
         return f"{server_name}.{tool_name}"
     return tool_name
+
+
+def build_schema_payload(
+    server_name: str, tools: list[Any], correlation_id: str
+) -> dict[str, Any]:
+    """Hash-only ingest of a completed `tools/list`. Descriptions stay here."""
+    return {
+        "source_app": _source_app(),
+        "adapter": "mcp_audit_proxy",
+        "event_type": "mcp_schema",
+        "correlation_id": correlation_id,
+        "schema_fingerprint": fingerprint_tools(tools),
+        "schema_tool_count": len(tools),
+        "tool": {"server": server_name},
+    }
 
 
 def build_call_payload(
@@ -114,13 +137,18 @@ async def _relay_stdin(
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
+        rid = msg.get("id")
+        method = msg.get("method")
+        if method == "tools/list" and rid is not None:
+            pending[str(rid)] = {"kind": "list", "server": server_name}
+            continue
         payload = build_call_payload(msg, server_name, correlation)
         if payload is None:
             continue
         # Remember this request id so an error response can be matched to it.
-        rid = msg.get("id")
         if rid is not None:
             pending[str(rid)] = {
+                "kind": "call",
                 "qualified": payload["tool"]["qualified"],
                 "server": server_name,
             }
@@ -128,7 +156,10 @@ async def _relay_stdin(
 
 
 async def _relay_stdout(
-    reader: asyncio.StreamReader, pending: dict[str, dict[str, str]]
+    reader: asyncio.StreamReader,
+    pending: dict[str, dict[str, str]],
+    server_name: str,
+    list_buf: ToolsListBuffer,
 ) -> None:
     correlation = _correlation_id()
     while True:
@@ -148,6 +179,19 @@ async def _relay_stdout(
         ctx = pending.pop(str(rid), None)
         if ctx is None:
             continue
+        if ctx.get("kind") == "list":
+            if msg.get("error"):
+                # Drop the pages already accumulated. Keeping them would let a
+                # retried listing append onto a stale prefix and hash to a
+                # fingerprint no server ever served, reported as a rug pull.
+                list_buf.reset()
+                continue
+            done = list_buf.add_page(msg.get("result"))
+            if done is not None:
+                post_ingest(
+                    build_schema_payload(server_name, done, correlation), quiet=True
+                )
+            continue
         err_payload = build_error_payload(msg, ctx, correlation)
         if err_payload is not None:
             post_ingest(err_payload, quiet=True)
@@ -163,8 +207,11 @@ async def run_proxy(command: list[str], server_name: str) -> int:
     assert proc.stdin and proc.stdout and proc.stderr
 
     pending: dict[str, dict[str, str]] = {}
+    list_buf = ToolsListBuffer()
     stdin_task = asyncio.create_task(_relay_stdin(proc.stdin, server_name, pending))
-    stdout_task = asyncio.create_task(_relay_stdout(proc.stdout, pending))
+    stdout_task = asyncio.create_task(
+        _relay_stdout(proc.stdout, pending, server_name, list_buf)
+    )
 
     async def _stderr() -> None:
         while True:

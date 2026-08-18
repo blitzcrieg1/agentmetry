@@ -53,6 +53,7 @@ AGENTMETRY_CHRONICLE_BEARER_TOKEN=ya29....
 | `tool_denied` | `USER_RESOURCE_ACCESS` | `security_result.action = BLOCK` |
 | `detection` | `USER_RESOURCE_ACCESS` | `security_result` with `alert_state: ALERTING` |
 | `heartbeat` | `STATUS_UPDATE` | The native type for endpoint status reporting |
+| `mcp_schema` | `STATUS_UPDATE` | Observed `tools/list` fingerprint; `changed` is a rug-pull candidate, not an alert_state |
 | `session_start` / `session_end` | `USER_RESOURCE_ACCESS` | |
 
 **A file read is not mapped to `FILE_READ`, deliberately.** Agentmetry observes an agent's *intent* to read a file at the tool boundary. It is not the kernel's record that a read occurred. Claiming the stronger type would make the two indistinguishable in a UDM search whose entire purpose is telling classes of evidence apart, and it would put agent telemetry in the same bucket as your EDR's file events. Those are different claims and your SOC should be able to separate them.

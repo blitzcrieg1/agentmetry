@@ -28,12 +28,20 @@ would hide.
 ## Why it carries configuration and not just a timestamp
 
 The heartbeat is an attestation of what the recorder is wired to: which hooks are
-installed, the MCP configuration digest, how deep the spool is, where the trail
-head sits. Each is a fact a SIEM can alert on changing, and none of them discloses
-what the developer is working on. The MCP digest in particular commits to the
-whole configured server surface without naming a single server, so a fleet can
-detect "somebody added an MCP server on that laptop" without shipping anybody's
-tool inventory to the SOC.
+installed, the MCP configuration digest, the MCP schema digest, how deep the
+spool is, where the trail head sits. Each is a fact a SIEM can alert on changing,
+and none of them discloses what the developer is working on.
+
+There are two MCP digests because they catch different lies. `mcp_config_digest`
+commits to the configured command line, so a fleet can detect "somebody added an
+MCP server on that laptop" without shipping anybody's tool inventory to the SOC.
+`mcp_schema_digest` commits to the `tools/list` the model was actually handed.
+A rug pull (Invariant Labs, `postmark-mcp`) leaves the config file identical and
+changes the description. The SIEM rule is then: schema digest moved, config
+digest did not. Schema change does not degrade the beat; hook removal does.
+A digest that flipped because a legitimate tool was added looks the same, and
+that is a fact the operator investigates rather than a finding the recorder
+pretends to adjudicate.
 
 ## What this is not
 
@@ -132,6 +140,24 @@ def _mcp_digest() -> str:
         return ""
 
 
+def _mcp_schema_facts() -> tuple[str, int]:
+    """Commits to observed `tools/list` results, not to the config file.
+
+    Empty when nothing has been listed yet. That is the honest state, not a
+    healthy default: we refuse to spawn servers from the beat, so we can only
+    hash what a client already asked for.
+    """
+    try:
+        from agentmetry.core.diagnostics.mcp_schema import load_store
+
+        store = load_store()
+        if not store.servers:
+            return "", 0
+        return store.digest()[:16], len(store.servers)
+    except Exception:
+        return "", 0
+
+
 def trail_root() -> tuple[str, int]:
     """The RFC 6962 Merkle root over the trail as it stands, and its tree size.
 
@@ -169,6 +195,7 @@ def attestation(root: tuple[str, int] | None = None) -> dict[str, Any]:
     is less useful than one with it and considerably more useful than none.
     """
     merkle, tree_size = root if root is not None else ("", 0)
+    schema_digest, schema_servers = _mcp_schema_facts()
     return {
         "hooks": _hook_status(),
         "spool_depth": _spool_depth(),
@@ -176,6 +203,8 @@ def attestation(root: tuple[str, int] | None = None) -> dict[str, Any]:
         "trail_merkle_root": merkle,
         "trail_tree_size": tree_size,
         "mcp_config_digest": _mcp_digest(),
+        "mcp_schema_digest": schema_digest,
+        "mcp_schema_servers": schema_servers,
         "interval_seconds": interval_seconds(),
     }
 

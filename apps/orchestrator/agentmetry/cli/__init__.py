@@ -669,6 +669,10 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     inv = collect(_Path(args.project).resolve() if args.project else _Path.cwd())
     for line in summary_lines(inv):
         print(line)
+    from agentmetry.core.diagnostics.mcp_schema import schema_summary_lines
+
+    for line in schema_summary_lines():
+        print(line)
 
     if args.digest:
         # Safe to publish beside a trail anchor: it commits to the configured

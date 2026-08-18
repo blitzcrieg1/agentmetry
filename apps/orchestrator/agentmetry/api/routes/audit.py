@@ -51,7 +51,7 @@ class ExternalIngestBody(BaseModel):
     )
     event_type: str = Field(
         ...,
-        description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response",
+        description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response | mcp_schema",
     )
     correlation_id: str = ""
     session_id: str = ""
@@ -71,6 +71,10 @@ class ExternalIngestBody(BaseModel):
     # pydantic drops it and a `log`-mode match is silently lost.
     dlp: dict[str, Any] | None = None
     tool_policy: dict[str, Any] | None = None
+    # Compact `tools/list` fingerprint from mcp_audit_proxy. Hash only: the
+    # description never leaves the proxy process.
+    schema_fingerprint: str = ""
+    schema_tool_count: int = 0
 
 
 def _parse_event_ts(event: dict[str, Any]) -> datetime | None:

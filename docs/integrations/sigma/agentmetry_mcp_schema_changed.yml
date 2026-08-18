@@ -1,0 +1,79 @@
+# Agentmetry Sigma rule - MCP tool schema changed
+# Rug pull / tool poisoning: the model was handed a different tools/list
+# while mcp.json stayed the same. See ./README.md for per-backend mapping.
+---
+title: Agentmetry - MCP Tool Schema Changed
+id: 3e9c1a70-6b2d-4f81-9c4e-8a7f2d1b0e55
+status: experimental
+description: >
+  An MCP server returned a different tools/list fingerprint than the last
+  time this host listed it. That is the rug-pull shape: the configured
+  command in mcp.json did not have to change, and often did not. Invariant
+  Labs named this tool poisoning; postmark-mcp shipped it (fifteen clean
+  versions, then a different schema).
+
+  This rule selects the trail event the recorder emits when the fingerprint
+  moves. It is not a detection-engine finding and does not restart the
+  ruleset fingerprint. Pair it with heartbeat.mcp_schema_digest versus
+  heartbeat.mcp_config_digest (correlation below) if the schema event itself
+  was dropped: the beat still carries both digests, and the conjunction
+  "schema moved, config did not" is the same signal.
+
+  First observation of a server is action.outcome=success, not changed, so
+  wrapping a new proxy does not fire this rule. Adding a legitimate tool
+  to an already-observed server does fire it. That is an investigation, not
+  a conviction; the recorder will not pretend to tell those apart.
+references:
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/detections-splunk.md
+  - https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
+author: Agentmetry
+date: 2026-08-18
+logsource:
+  product: agentmetry
+  service: governed-host
+detection:
+  selection:
+    action.type: mcp_schema
+    action.outcome: changed
+  condition: selection
+fields:
+  - host_id
+  - fleet_id
+  - mcp_schema.server_id
+  - mcp_schema.fingerprint
+  - mcp_schema.tool_count
+falsepositives:
+  - A vendor adding a tool to a pinned MCP server. The schema digest should
+    move; confirm against the changelog before treating it as hostile.
+  - Re-wrapping the same server under a new --server name, which looks like
+    a new observation plus a vanished one rather than a change.
+level: medium
+tags:
+  - attack.initial_access
+  - attack.t1195.002   # Supply Chain Compromise: Compromise Software Supply Chain
+  - attack.defense_evasion
+---
+# ---------------------------------------------------------------------------
+# Correlation: schema digest moved, config digest did not (heartbeat)
+# ---------------------------------------------------------------------------
+#
+# Use this when you want the signal off the beat rather than off the
+# mcp_schema event. Empty prev_schema is the first observation; exclude it.
+#
+# Splunk:
+#
+#   index=main sourcetype=agentmetry:json action_type=heartbeat
+#   | spath output=cfg    path=heartbeat.mcp_config_digest
+#   | spath output=schema path=heartbeat.mcp_schema_digest
+#   | where schema != ""
+#   | streamstats current=f last(schema) as prev_schema last(cfg) as prev_cfg by host
+#   | where isnotnull(prev_schema) AND prev_schema != "" AND schema != prev_schema AND cfg == prev_cfg
+#   | table _time host prev_schema schema cfg
+#
+# Elastic ES|QL cannot look at the previous row as cleanly; prefer the
+# mcp_schema event selection above on Elastic.
+#
+# Loki LogQL:
+#
+#   {job="agentmetry"} | json | action_type="mcp_schema" | action_outcome="changed"
+#

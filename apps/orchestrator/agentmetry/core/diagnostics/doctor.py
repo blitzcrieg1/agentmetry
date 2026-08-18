@@ -258,6 +258,19 @@ def _check_mcp(report: DoctorReport) -> None:
             f"(config digest {inv.digest()[:16]})",
         )
 
+    try:
+        from agentmetry.core.diagnostics.mcp_schema import load_store
+
+        store = load_store()
+    except Exception:
+        return
+    if store.servers:
+        report.ok(
+            "mcp_schema",
+            f"{len(store.servers)} MCP server schema(s) observed "
+            f"(digest {store.digest()[:16]})",
+        )
+
 
 def _check_triage(report: DoctorReport) -> None:
     """Surface the triage backlog without making the operator open the UI.
