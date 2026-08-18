@@ -126,7 +126,8 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
     monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
     facts = hb.build_heartbeat_event("t")["heartbeat"]
     assert set(facts) == {
-        "hooks", "spool_depth", "trail_head_seq", "mcp_config_digest", "interval_seconds",
+        "hooks", "spool_depth", "trail_head_seq", "trail_merkle_root",
+        "trail_tree_size", "mcp_config_digest", "interval_seconds",
     }
     assert isinstance(facts["mcp_config_digest"], str)
 
@@ -170,3 +171,35 @@ def test_a_disabled_heartbeat_returns_instead_of_looping(monkeypatch):
 
     monkeypatch.setenv("AGENTMETRY_HEARTBEAT_SECONDS", "0")
     asyncio.run(asyncio.wait_for(hb.heartbeat_forever(), timeout=2))
+
+
+# ----------------------------------------------------------------------
+# The Merkle root, which is what makes the SIEM copy verifiable
+# ----------------------------------------------------------------------
+
+
+def test_the_root_reaches_the_beat_when_supplied(home, monkeypatch):
+    """Without this the customer's index holds events and nothing to check them
+    against. The adapters forward the canonical event, not the chain envelope."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    facts = hb.build_heartbeat_event("t", root=("a" * 64, 4200))["heartbeat"]
+    assert facts["trail_merkle_root"] == "a" * 64
+    assert facts["trail_tree_size"] == 4200
+
+
+def test_a_missing_root_degrades_gracefully_rather_than_failing(home, monkeypatch):
+    """A heartbeat without a root is less useful than one with it, and far more
+    useful than no heartbeat because hashing threw."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    facts = hb.build_heartbeat_event("t")["heartbeat"]
+    assert facts["trail_merkle_root"] == ""
+    assert facts["trail_tree_size"] == 0
+
+
+def test_trail_root_never_raises(monkeypatch):
+    """It runs inside the beat loop; an unreadable trail must not stop attestation."""
+    monkeypatch.setattr(
+        "agentmetry.core.audit.trail_merkle.merkle_root",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("gone")),
+    )
+    assert hb.trail_root() == ("", 0)
