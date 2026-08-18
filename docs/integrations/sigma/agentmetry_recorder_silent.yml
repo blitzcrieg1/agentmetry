@@ -1,0 +1,119 @@
+# Agentmetry Sigma rule — Recorder went silent
+# The absence of a heartbeat, which is the half Sigma cannot express.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+#
+# Sigma selects events. "No event arrived" is not a selection, so this rule
+# carries the left half (the heartbeat itself) and the correlation notes below
+# give tested SPL, ES|QL and LogQL for the absence check. Same shape as
+# agentmetry_critical_detection_untriaged.yml.
+---
+title: Agentmetry - Recorder Heartbeat
+id: 7c4e0b83-15da-4f92-a6b1-9d3e27c8045f
+status: experimental
+description: >
+  The periodic attestation the orchestrator emits whether or not anybody is
+  coding. On its own this is not a finding; it is the presence signal whose
+  absence the correlation below alerts on.
+
+  Why a heartbeat exists at all: a hook lives in a file the developer owns and
+  can be deleted, and no user-space recorder prevents that. What a recorder can
+  do is make the bypass loud. Without a heartbeat, "this machine sent no events
+  today" is ambiguous between a removed hook and a developer who spent the day
+  in meetings, and an alert that cannot separate those is an alert nobody keeps.
+  With one, silence means the recorder is not running.
+
+  Pair with agentmetry_recorder_degraded.yml. That rule catches the recorder
+  running while capture is impaired; this one catches the recorder not running
+  at all. Neither prevents tampering. Together they mean tampering is not quiet.
+references:
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/detections-splunk.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/agentmetry-event-schema.md
+author: Agentmetry
+date: 2026-08-18
+logsource:
+  product: agentmetry
+  service: governed-host
+detection:
+  selection:
+    action.type: heartbeat        # verified 2026-08-18 against a live beat
+  condition: selection
+fields:
+  - host_id
+  - fleet_id
+  - heartbeat.interval_seconds
+  - heartbeat.trail_head_seq
+  - heartbeat.mcp_config_digest
+falsepositives:
+  - A laptop that is simply switched off. Scope the alert to hosts expected
+    online, or accept the noise; a decommissioned machine looks identical to a
+    silenced one and only your asset inventory knows the difference.
+  - A deliberate AGENTMETRY_HEARTBEAT_SECONDS=0, which disables attestation
+level: informational
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001   # Impair Defenses: Disable or Modify Tools
+---
+# ---------------------------------------------------------------------------
+# Correlation: no heartbeat within three intervals (default beat is 300s, so 15m)
+# ---------------------------------------------------------------------------
+#
+# Three intervals rather than one. A single missed beat is a restart, a laptop
+# lid, or a slow drain; alerting on it trains the SOC to close this rule.
+#
+# Splunk. Note there is no `join` here on purpose: join is capped by the
+# subsearch limit (50k rows by default) and truncates silently on a real fleet,
+# which turns a tamper alert into one that quietly stops firing. `stats` over an
+# appended inventory has no such ceiling.
+#
+#   index=main sourcetype=agentmetry:json action_type=heartbeat earliest=-24h
+#   | stats latest(_time) as last_beat by host
+#   | append
+#       [ | inputlookup agentmetry_expected_hosts.csv
+#         | eval last_beat=0
+#         | fields host last_beat ]
+#   | stats max(last_beat) as last_beat by host
+#   | eval gap_minutes = if(last_beat=0, -1, round((now() - last_beat) / 60, 1))
+#   | eval state = case(last_beat=0, "never enrolled", gap_minutes > 15, "silent", 1=1, "ok")
+#   | where state != "ok"
+#   | convert ctime(last_beat)
+#   | sort - gap_minutes
+#
+# The `append` of the inventory lookup is what catches a machine that never
+# enrolled. Without it the search can only report hosts that beat at least once,
+# so a laptop where the recorder was never installed is invisible to the very
+# rule meant to find unmonitored machines.
+#
+# Elastic ES|QL:
+#
+#   FROM logs-agentmetry-*
+#   | WHERE event.action == "heartbeat"
+#   | STATS last_beat = MAX(@timestamp) BY host.name
+#   | EVAL gap_minutes = DATE_DIFF("minutes", last_beat, NOW())
+#   | WHERE gap_minutes > 15
+#   | SORT gap_minutes DESC
+#
+# Loki LogQL (absence expressed as a zero count over the window):
+#
+#   sum by (host_id) (
+#     count_over_time({job="agentmetry"} | json | action_type="heartbeat" [15m])
+#   ) == 0
+#
+# ---------------------------------------------------------------------------
+# Correlation: an AI coding agent ran with no recorder behind it
+# ---------------------------------------------------------------------------
+#
+# The strongest of the three, because it needs no assumption about whether a
+# machine should be online: EDR saw the IDE execute, so the machine was
+# demonstrably in use. Requires EDR process telemetry in the same SIEM.
+#
+#   (index=edr process_name IN ("claude.exe","cursor.exe") earliest=-1h)
+#     OR (index=main sourcetype=agentmetry:json action_type=heartbeat earliest=-1h)
+#   | eval src = if(sourcetype=="agentmetry:json", "beat", "ide")
+#   | stats count(eval(src=="ide")) as ide_runs, count(eval(src=="beat")) as beats by host
+#   | where ide_runs > 0 AND beats = 0
+#   | eval finding="AI coding agent executed with no recorder heartbeat"
+#
+# Again `stats` over a union rather than `join`, and note the time bound on both
+# halves. An unbounded correlation lets one heartbeat from six months ago
+# suppress the alert forever, which is the failure mode where the rule looks
+# healthy and detects nothing.

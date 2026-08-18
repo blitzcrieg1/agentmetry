@@ -45,6 +45,86 @@ index=main sourcetype=agentmetry:json action_type=config_change
 
 ---
 
+## S4 — Recorder degraded (hook removed while the orchestrator runs)
+
+**Logic:** The recorder is alive and attesting that capture is impaired.
+
+This is the state a liveness check cannot see: the process is up, the port answers, the dashboard is green, and the agents on that machine are no longer recorded. Deleting `.cursor/hooks.json` produces exactly this.
+
+```spl
+index=main sourcetype=agentmetry:json action_type=heartbeat action_outcome=degraded
+| spath output=reason      path=action.reason
+| spath output=cursor_hook path=heartbeat.hooks.cursor
+| spath output=claude_hook path=heartbeat.hooks.claude
+| spath output=spool       path=heartbeat.spool_depth
+| stats latest(_time) as last_beat latest(reason) as reason
+        latest(cursor_hook) as cursor latest(claude_hook) as claude
+        latest(spool) as spool_depth by host
+| convert ctime(last_beat)
+```
+
+Only `action_type`, `action_outcome`, `correlation_id` and `actor_id` are promoted to indexed fields by the HEC adapter, so everything else needs `spath`.
+
+**Alert:** Scheduled hourly. Expect noise from fresh installs before hooks deploy; the finding is sustained degradation on a host that was previously healthy.
+
+---
+
+## S5 — Recorder silent (no heartbeat)
+
+**Logic:** No attestation within three intervals. The default beat is 300s, so 15 minutes.
+
+Three intervals rather than one: a single missed beat is a restart, a closed laptop, or a slow drain, and alerting on it teaches the SOC to close this rule.
+
+```spl
+index=main sourcetype=agentmetry:json action_type=heartbeat earliest=-24h
+| stats latest(_time) as last_beat by host
+| append
+    [ | inputlookup agentmetry_expected_hosts.csv
+      | eval last_beat=0
+      | fields host last_beat ]
+| stats max(last_beat) as last_beat by host
+| eval gap_minutes = if(last_beat=0, -1, round((now() - last_beat) / 60, 1))
+| eval state = case(last_beat=0, "never enrolled", gap_minutes > 15, "silent", 1=1, "ok")
+| where state != "ok"
+| convert ctime(last_beat)
+| sort - gap_minutes
+```
+
+**No `join` on purpose.** `join` is capped by the subsearch limit (50k rows by default) and truncates silently on a real fleet, which turns a tamper alert into one that quietly stops firing. `stats` over an appended inventory has no such ceiling.
+
+The `append` of the inventory lookup is what catches a machine that never enrolled. Without it the search can only report hosts that beat at least once, so a laptop where the recorder was never installed is invisible to the rule meant to find unmonitored machines.
+
+---
+
+## S6 — AI coding agent ran with no recorder behind it
+
+**Logic:** EDR saw the IDE execute; no heartbeat arrived from that host in the same window.
+
+The strongest of the three, because it needs no assumption about whether a machine should be online. EDR proves the machine was in use.
+
+```spl
+(index=edr process_name IN ("claude.exe","cursor.exe") earliest=-1h)
+  OR (index=main sourcetype=agentmetry:json action_type=heartbeat earliest=-1h)
+| eval src = if(sourcetype=="agentmetry:json", "beat", "ide")
+| stats count(eval(src=="ide")) as ide_runs, count(eval(src=="beat")) as beats by host
+| where ide_runs > 0 AND beats = 0
+| eval finding="AI coding agent executed with no recorder heartbeat"
+```
+
+Note the time bound on **both** halves. An unbounded correlation lets a single heartbeat from six months ago suppress the alert forever, which is the failure mode where the rule looks healthy and detects nothing.
+
+**Requires:** EDR process telemetry in the same SIEM.
+
+---
+
+## What S4 to S6 do and do not prove
+
+They do not prevent a developer removing a hook. Nothing in user space does, and a vendor claiming otherwise is either shipping a kernel driver or overstating.
+
+What they change is that removal stops being quiet. S4 catches the recorder running while impaired, S5 catches it not running, S6 catches an agent running with nothing behind it. Someone with local admin can stop all three; they cannot stop all three *silently*.
+
+---
+
 ## Saved search export
 
 Export as **Settings → Searches, reports, and alerts → New alert** for email or webhook notification.

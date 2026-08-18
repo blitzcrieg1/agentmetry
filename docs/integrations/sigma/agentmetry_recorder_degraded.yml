@@ -1,0 +1,84 @@
+# Agentmetry Sigma rule — Recorder attesting, but degraded
+# The recorder is alive and telling you it is no longer fully recording.
+# Field paths reference canonical schema (raw JSONL). See ./README.md for per-backend mapping.
+#
+# This is the half of hook-tamper detection that Sigma expresses natively: a
+# present event with a bad outcome. The other half (no event at all) cannot be
+# written as a selection and lives in agentmetry_recorder_silent.yml.
+---
+title: Agentmetry - Recorder Degraded
+id: 3d9a41c7-6e28-4b15-9c07-52f8ab1d7e60
+status: experimental
+description: >
+  The orchestrator is running and attesting on its interval, and the attestation
+  says capture is impaired: an IDE hook is missing, or events are buffering in
+  the spool instead of reaching the trail.
+
+  This is the state a liveness check cannot see. The process is up, the port
+  answers, a health dashboard is green, and the agents on that machine are no
+  longer being recorded. A developer who deletes .cursor/hooks.json produces
+  exactly this, and so does an orchestrator whose ingest path broke while the
+  process stayed alive.
+
+  Severity is medium rather than high because the common cause is benign: a
+  fresh install before hooks are deployed, or a machine mid-upgrade. Sustained
+  degradation on a machine that was previously healthy is the finding.
+references:
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/detections-splunk.md
+  - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/agentmetry-event-schema.md
+author: Agentmetry
+date: 2026-08-18
+logsource:
+  product: agentmetry
+  service: governed-host
+detection:
+  selection:
+    action.type: heartbeat        # verified 2026-08-18 against a live beat
+    action.outcome: degraded      # verified 2026-08-18 against a live beat
+  condition: selection
+fields:
+  - host_id
+  - fleet_id
+  - action.reason
+  - heartbeat.hooks.cursor
+  - heartbeat.hooks.claude
+  - heartbeat.spool_depth
+falsepositives:
+  - A fresh install attesting before the IDE hooks have been deployed
+  - A machine mid-upgrade, or an IDE uninstalled on purpose
+  - A transient spool backlog while the orchestrator catches up after a restart
+level: medium
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001   # Impair Defenses: Disable or Modify Tools
+---
+# Backend queries. `action.reason` and the heartbeat.* paths are nested inside the
+# forwarded event; Splunk HEC promotes only action_type / action_outcome /
+# correlation_id / actor_id to indexed fields, so the rest needs spath.
+#
+# Splunk (tested field names against adapters/splunk.py, 2026-08-18):
+#
+#   index=main sourcetype=agentmetry:json action_type=heartbeat action_outcome=degraded
+#   | spath output=reason      path=action.reason
+#   | spath output=cursor_hook path=heartbeat.hooks.cursor
+#   | spath output=claude_hook path=heartbeat.hooks.claude
+#   | spath output=spool       path=heartbeat.spool_depth
+#   | stats latest(_time) as last_beat latest(reason) as reason
+#           latest(cursor_hook) as cursor latest(claude_hook) as claude
+#           latest(spool) as spool_depth by host
+#   | convert ctime(last_beat)
+#   | sort host
+#
+# Elastic ES|QL:
+#
+#   FROM logs-agentmetry-*
+#   | WHERE event.action == "heartbeat" AND event.outcome == "degraded"
+#   | STATS last_beat = MAX(@timestamp) BY host.name
+#   | SORT last_beat DESC
+#
+# Loki LogQL (Alloy flattens to action_type / action_outcome labels):
+#
+#   sum by (host_id) (
+#     count_over_time({job="agentmetry"} | json
+#       | action_type="heartbeat" | action_outcome="degraded" [10m])
+#   ) > 0
