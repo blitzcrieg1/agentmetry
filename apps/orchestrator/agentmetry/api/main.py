@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
     # time — so every hook that fires during the drain is refused and spooled,
     # which makes the next drain larger. The recorder has to be reachable first
     # and catch up second.
+    from agentmetry.core.audit.heartbeat import heartbeat_forever
     from agentmetry.core.audit.spool import drain_forever, drain_spool
 
     async def _boot_drain() -> None:
@@ -108,6 +109,10 @@ async def lifespan(app: FastAPI):
         # backlog growing unnoticed whenever ingest is unreachable while the
         # process itself stays up.
         asyncio.create_task(drain_forever(), name="spool-drain"),
+        # Attest on an interval so a machine that goes quiet is distinguishable
+        # from a machine whose hooks were removed. Absence only means something
+        # if presence was being asserted.
+        asyncio.create_task(heartbeat_forever(), name="heartbeat"),
     ]
 
     # Drivers mount in the background: a slow npx download must not delay boot.
