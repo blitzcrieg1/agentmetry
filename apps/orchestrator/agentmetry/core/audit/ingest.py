@@ -153,6 +153,11 @@ def _get_sink():
         splunk_index=settings.audit_splunk_index,
         splunk_sourcetype=settings.audit_splunk_sourcetype,
         splunk_verify_tls=settings.audit_splunk_verify_tls,
+        chronicle_endpoint=settings.audit_chronicle_endpoint,
+        chronicle_customer_id=settings.audit_chronicle_customer_id,
+        chronicle_service_account=settings.audit_chronicle_service_account,
+        chronicle_bearer_token=settings.audit_chronicle_bearer_token,
+        chronicle_verify_tls=settings.audit_chronicle_verify_tls,
     )
     from agentmetry.core.audit.alerts import AlertWebhookSink
     from agentmetry.core.audit.sinks import MultiAuditSink

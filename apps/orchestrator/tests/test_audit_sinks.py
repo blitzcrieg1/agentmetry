@@ -172,7 +172,9 @@ def test_parse_sink_modes():
     assert parse_sink_modes("file") == {"file"}
     assert parse_sink_modes("both") == {"file", "webhook"}
     assert parse_sink_modes("file,elastic,splunk") == {"file", "elastic", "splunk"}
-    assert parse_sink_modes("all") == {"file", "webhook", "elastic", "splunk"}
+    # "all" means all of them. A sink added to the product and not to this set
+    # is one an operator who wrote `all` silently does not get.
+    assert parse_sink_modes("all") == {"file", "webhook", "elastic", "splunk", "chronicle"}
 
 
 def test_build_audit_sinks_elastic_and_splunk(tmp_path: Path):
@@ -211,3 +213,41 @@ def test_build_audit_sinks_none_when_empty(tmp_path: Path):
         splunk_sourcetype="agentmetry:json",
         splunk_verify_tls=True,
     ) is None
+
+
+def test_chronicle_sink_is_built_when_configured(tmp_path: Path):
+    from agentmetry.core.audit.sinks import ChronicleUdmSink, MultiAuditSink
+
+    sink = build_audit_sinks(
+        modes={"file", "chronicle"},
+        file_path=tmp_path / "a.jsonl",
+        webhook_url="",
+        webhook_timeout_seconds=3.0,
+        elastic_url="", elastic_index="i", elastic_api_key="", elastic_verify_tls=True,
+        splunk_hec_url="", splunk_hec_token="", splunk_index="main",
+        splunk_sourcetype="agentmetry:json", splunk_verify_tls=True,
+        chronicle_endpoint="https://example.invalid/v2/udmevents:batchCreate",
+        chronicle_customer_id="cust-1",
+        chronicle_bearer_token="tok",
+    )
+    assert isinstance(sink, MultiAuditSink)
+    assert any(isinstance(s, ChronicleUdmSink) for s in sink._sinks)
+
+
+def test_chronicle_sink_is_skipped_without_credentials(tmp_path: Path):
+    """An endpoint with no way to authenticate is a misconfiguration, not a sink.
+    Building it would mean every event logs an auth failure forever."""
+    from agentmetry.core.audit.sinks import ChronicleUdmSink, MultiAuditSink
+
+    sink = build_audit_sinks(
+        modes={"file", "chronicle"},
+        file_path=tmp_path / "a.jsonl",
+        webhook_url="",
+        webhook_timeout_seconds=3.0,
+        elastic_url="", elastic_index="i", elastic_api_key="", elastic_verify_tls=True,
+        splunk_hec_url="", splunk_hec_token="", splunk_index="main",
+        splunk_sourcetype="agentmetry:json", splunk_verify_tls=True,
+        chronicle_endpoint="https://example.invalid/v2/udmevents:batchCreate",
+    )
+    sinks = sink._sinks if isinstance(sink, MultiAuditSink) else [sink]
+    assert not any(isinstance(s, ChronicleUdmSink) for s in sinks)

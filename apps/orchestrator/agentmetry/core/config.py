@@ -131,6 +131,24 @@ class Settings(BaseSettings):
     audit_splunk_index: str = "main"
     audit_splunk_sourcetype: str = "agentmetry:json"
     audit_splunk_verify_tls: bool = True
+
+    # Google SecOps (Chronicle). Posts UDM directly to `udmevents`, so no CBN
+    # parser has to be maintained in the customer's tenant. A service account
+    # refreshes; a bearer token expires within the hour and says so at startup.
+    audit_chronicle_endpoint: str = Field(
+        default="https://malachiteingestion-pa.googleapis.com/v2/udmevents:batchCreate",
+        validation_alias=AliasChoices("AGENTMETRY_CHRONICLE_ENDPOINT"),
+    )
+    audit_chronicle_customer_id: str = Field(
+        default="", validation_alias=AliasChoices("AGENTMETRY_CHRONICLE_CUSTOMER_ID")
+    )
+    audit_chronicle_service_account: str = Field(
+        default="", validation_alias=AliasChoices("AGENTMETRY_CHRONICLE_SERVICE_ACCOUNT")
+    )
+    audit_chronicle_bearer_token: str = Field(
+        default="", validation_alias=AliasChoices("AGENTMETRY_CHRONICLE_BEARER_TOKEN")
+    )
+    audit_chronicle_verify_tls: bool = True
     audit_alert_webhook_url: str = Field(
         default="",
         validation_alias=AliasChoices(

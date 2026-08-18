@@ -13,7 +13,7 @@
 Agentmetry sees the sequence, tags it with MITRE ATT&CK, and fires one CRITICAL alert.</strong></p>
 
 <p>Records every tool call, denial, and approval from Claude Code, Cursor, Codex and Antigravity into a JSONL trail you own.<br/>
-Runs on your machine. Forward to Loki, Elastic, or Splunk only if you want to.</p>
+Runs on your machine. Forward to Loki, Elastic, Splunk, or Google SecOps only if you want to.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
@@ -352,7 +352,7 @@ flowchart LR
 | **Tool policy** | `core/audit/tool_policy/` | Allow/deny by tool name (glob) and optional shell regex; runs before DLP |
 | **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); `log` or `block` before execution |
 | **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
-| **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC |
+| **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC, Google SecOps UDM |
 | **Replay** | `core/audit/replay.py` | ASCII timeline from the governed-runtime outbox (`events.db`); hook users use the dashboard or JSONL |
 
 ### The canonical event
@@ -643,6 +643,7 @@ For agents captured via IDE hooks (the common case), the canonical JSONL trail i
 | **CloudEvents** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`: CloudEvents v1.0 structured envelopes (`application/cloudevents+json`) for Knative, EventBridge, Event Grid, Dapr or Kafka. The canonical event still travels whole in `data` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
+| **Google SecOps (Chronicle)** | `AGENTMETRY_AUDIT_SINK=chronicle` + `AGENTMETRY_CHRONICLE_CUSTOMER_ID` + a service account. Posts UDM directly to `udmevents`, so there is no CBN parser to maintain in your tenant ([setup](docs/integrations/google-secops.md)) |
 | **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
 
 
