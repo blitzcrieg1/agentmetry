@@ -694,6 +694,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
 | `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
+| `agentmetry mcp [--digest]` | List the MCP servers the agents on this machine are wired to, and flag entries that resolve code at launch |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
 | `agentmetry import-agt <agt.jsonl> [--key K] [--dry-run]` | Ingest a Microsoft Agent Governance Toolkit audit file: verify its hash chain, then run sequence detection over it |

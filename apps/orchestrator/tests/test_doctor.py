@@ -230,3 +230,55 @@ def test_a_contradicted_anchor_is_a_hard_failure(tmp_path: Path, monkeypatch):
     report = _anchor_report(trail)
     assert [f.severity for f in report.findings] == ["fail"]
     assert report.exit_code == 1
+
+
+# ----------------------------------------------------------------------
+# MCP inventory
+# ----------------------------------------------------------------------
+
+
+def _mcp_report(tmp_path, monkeypatch, document):
+    import json as _json
+
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_mcp
+
+    monkeypatch.setattr("os.path.expanduser", lambda p: str(tmp_path))
+    cfg = tmp_path / ".cursor" / "mcp.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(_json.dumps(document), encoding="utf-8")
+    report = DoctorReport()
+    _check_mcp(report)
+    return report
+
+
+def test_no_mcp_servers_reports_nothing(tmp_path, monkeypatch):
+    """The common case. A machine with no MCP servers has nothing to say."""
+    from agentmetry.core.diagnostics.doctor import DoctorReport, _check_mcp
+
+    monkeypatch.setattr("os.path.expanduser", lambda p: str(tmp_path))
+    report = DoctorReport()
+    _check_mcp(report)
+    assert report.findings == []
+
+
+def test_pinned_servers_report_ok(tmp_path, monkeypatch):
+    report = _mcp_report(
+        tmp_path, monkeypatch,
+        {"mcpServers": {"a": {"command": "npx", "args": ["-y", "a@1.0.0"]}}},
+    )
+    assert [f.severity for f in report.findings] == ["ok"]
+    assert "all pinned" in report.findings[0].message
+
+
+def test_an_unpinned_server_warns_and_never_fails(tmp_path, monkeypatch):
+    """A risk posture is not a broken install.
+
+    Failing the exit code over somebody else's packaging decision would make
+    doctor unusable as the health check an MDM rollout wires into.
+    """
+    report = _mcp_report(
+        tmp_path, monkeypatch,
+        {"mcpServers": {"a": {"command": "npx", "args": ["-y", "sentry-mcp"]}}},
+    )
+    assert [f.severity for f in report.findings] == ["warn"]
+    assert report.exit_code == 0

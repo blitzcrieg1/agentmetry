@@ -215,6 +215,50 @@ def _check_anchors(report: DoctorReport, trail: Path) -> None:
     report.ok("anchor", detail)
 
 
+def _check_mcp(report: DoctorReport) -> None:
+    """What the agents on this machine are wired to.
+
+    Agentmetry records what an agent did. This records what it was allowed to
+    reach, which is the question a security reviewer asks first and the one the
+    trail alone cannot answer.
+
+    Never a FAIL. An unpinned MCP server is a risk posture, not a broken install,
+    and failing the exit code over somebody else's packaging decision would make
+    `doctor` unusable as a health check on the machines that most need it.
+    """
+    from agentmetry.core.diagnostics.mcp_inventory import collect
+
+    try:
+        inv = collect(Path.cwd())
+    except Exception as exc:  # a config reader must not sink the report
+        report.warn("mcp", f"Could not read MCP configuration: {exc}")
+        return
+
+    for path, exc in inv.unreadable:
+        report.warn("mcp", f"Unreadable MCP config {Path(path).name}: {exc[:80]}")
+
+    if not inv.servers:
+        # Silence rather than an OK line. A machine with no MCP servers is the
+        # common case and has nothing to report.
+        return
+
+    flagged = inv.flagged
+    if flagged:
+        report.warn(
+            "mcp",
+            f"{len(flagged)} of {len(inv.servers)} MCP server(s) resolve code at launch: "
+            + "; ".join(f"{s.agent}/{s.name}" for s in flagged[:4])
+            + (" ..." if len(flagged) > 4 else "")
+            + ". Run `agentmetry mcp` for detail.",
+        )
+    else:
+        report.ok(
+            "mcp",
+            f"{len(inv.servers)} MCP server(s) configured, all pinned "
+            f"(config digest {inv.digest()[:16]})",
+        )
+
+
 def _check_triage(report: DoctorReport) -> None:
     """Surface the triage backlog without making the operator open the UI.
 
@@ -556,6 +600,7 @@ def run_doctor(
     _check_autostart(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
+    _check_mcp(report)
     _check_extensions(report)
 
     # --- Optional governed runtime (demo vault) ------------------------------

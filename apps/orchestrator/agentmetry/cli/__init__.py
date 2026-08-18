@@ -655,6 +655,31 @@ def cmd_prove(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """List the MCP servers the agents on this machine are wired to.
+
+    The trail answers what an agent did. This answers what it was allowed to
+    reach, which is the question asked first in every security review and the one
+    a behavioural record cannot reconstruct after the fact.
+    """
+    from pathlib import Path as _Path
+
+    from agentmetry.core.diagnostics.mcp_inventory import collect, summary_lines
+
+    inv = collect(_Path(args.project).resolve() if args.project else _Path.cwd())
+    for line in summary_lines(inv):
+        print(line)
+
+    if args.digest:
+        # Safe to publish beside a trail anchor: it commits to the configured
+        # surface without naming a single server.
+        print(inv.digest())
+    # Findings describe a risk posture, not a broken install, so they are
+    # reported rather than turned into a non-zero exit that would break a
+    # health check somebody wired into MDM.
+    return 0
+
+
 def cmd_anchor(args: argparse.Namespace) -> int:
     """Publish, list, or check the checkpoints that commit the trail externally.
 
@@ -1004,6 +1029,14 @@ def main(argv: list[str] | None = None) -> int:
         help="recompute each checkpoint's root from the trail and compare",
     )
     anchor.add_argument("--host-id", dest="host_id", default="", help="identity to stamp on the checkpoint")
+    mcp = sub.add_parser(
+        "mcp", help="list MCP servers configured for the agents on this machine"
+    )
+    mcp.add_argument("--project", default=None, help="project root to include (default: cwd)")
+    mcp.add_argument(
+        "--digest", action="store_true",
+        help="also print the config digest, which names no server and is safe to publish",
+    )
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -1065,6 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
         "verify": cmd_verify,
         "prove": cmd_prove,
         "anchor": cmd_anchor,
+        "mcp": cmd_mcp,
         "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,
