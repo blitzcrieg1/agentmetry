@@ -88,6 +88,11 @@ agentmetry replay thread-abc
 
 Detections: [detections-splunk.md](./detections-splunk.md)
 
+Only `action_type`, `action_outcome`, `correlation_id` and `actor_id` are
+promoted to indexed fields by the HEC adapter. Nested facts (hook status,
+Merkle root, rule id) need `spath` unless you install the Enterprise Splunk
+TA (`TA-agentmetry`), which is a private add-on, not a Splunkbase listing.
+
 ---
 
 ## Combined sinks
