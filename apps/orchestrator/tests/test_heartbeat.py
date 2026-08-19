@@ -45,7 +45,13 @@ def test_a_healthy_recorder_attests_success(home, monkeypatch):
     monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
     event = hb.build_heartbeat_event("2026-08-18T12:00:00+00:00")
     assert event["action"]["outcome"] == "success"
-    assert event["heartbeat"]["hooks"] == {"cursor": True, "claude": True}
+    # Every supported surface is reported, not the two we happen to bootstrap.
+    # Asserting an exact two-key dict here is what let Codex go unattested while
+    # the beat said success: see tests/test_hook_coverage.py.
+    hooks = event["heartbeat"]["hooks"]
+    assert hooks["cursor"] is True and hooks["claude"] is True
+    assert {"codex", "antigravity", "qwen", "kimi"} <= set(hooks)
+    assert event["heartbeat"]["hooks_uncovered"] == []
 
 
 def test_a_removed_hook_degrades_the_next_beat(home, monkeypatch):
@@ -128,10 +134,15 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
     monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
     facts = hb.build_heartbeat_event("t")["heartbeat"]
     assert set(facts) == {
-        "hooks", "spool_depth", "trail_head_seq", "trail_merkle_root",
+        "hooks", "hook_coverage", "hooks_uncovered", "hooks_unverified",
+        "hook_profile", "spool_depth", "trail_head_seq", "trail_merkle_root",
         "trail_tree_size", "mcp_config_digest", "mcp_schema_digest",
         "mcp_schema_servers", "interval_seconds",
     }
+    # The coverage fields name agents, never paths. A beat that carried
+    # `C:/Users/jane/.cursor` would be disclosing who is running what and where.
+    assert all(isinstance(v, str) and "/" not in v and "\\" not in v
+               for v in facts["hook_coverage"].values())
     assert isinstance(facts["mcp_config_digest"], str)
     assert isinstance(facts["mcp_schema_digest"], str)
     assert facts["mcp_schema_servers"] == 0

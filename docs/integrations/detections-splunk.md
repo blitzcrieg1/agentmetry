@@ -54,18 +54,27 @@ This is the state a liveness check cannot see: the process is up, the port answe
 ```spl
 index=main sourcetype=agentmetry:json action_type=heartbeat action_outcome=degraded
 | spath output=reason      path=action.reason
-| spath output=cursor_hook path=heartbeat.hooks.cursor
-| spath output=claude_hook path=heartbeat.hooks.claude
+| spath output=uncovered   path=heartbeat.hooks_uncovered
+| spath output=unverified  path=heartbeat.hooks_unverified
+| spath output=profile     path=heartbeat.hook_profile
 | spath output=spool       path=heartbeat.spool_depth
 | stats latest(_time) as last_beat latest(reason) as reason
-        latest(cursor_hook) as cursor latest(claude_hook) as claude
-        latest(spool) as spool_depth by host
+        latest(uncovered) as agents_not_recorded latest(unverified) as unmeasured
+        latest(profile) as hook_profile latest(spool) as spool_depth by host
 | convert ctime(last_beat)
 ```
 
 Only `action_type`, `action_outcome`, `correlation_id` and `actor_id` are promoted to indexed fields by the HEC adapter, so everything else needs `spath`.
 
-**Alert:** Scheduled hourly. Expect noise from fresh installs before hooks deploy; the finding is sustained degradation on a host that was previously healthy.
+Triage from `agents_not_recorded`, not from `heartbeat.hooks.*`. A bool per agent cannot separate a hook that was removed from an IDE that was never installed, and treating those the same is how a rule becomes background noise: a developer who does not use Claude Code used to degrade every beat they ever sent. `hooks_uncovered` lists only agents that are installed on that machine and are not being recorded.
+
+Two other values worth a saved search of their own:
+
+`hook_profile = service` means the recorder is reading a service account's profile rather than a developer's. Hook configuration lives per user, so from there the recorder can see nothing about anybody's coverage. This is the shape a per-machine MSI rollout takes when the hooks were never deployed into user profiles, and it is worth alerting on separately because the fleet looks installed.
+
+`unmeasured` lists agents that are present and that no file check can answer for. Codex has no installer and no confirmed configuration path; Antigravity is captured through a transcript watcher rather than a hook file. Neither counts as coverage and neither raises this alert, so a host that only ever reports these is running agents nobody is attesting to.
+
+**Alert:** Scheduled hourly. The finding is sustained degradation on a host that was previously healthy.
 
 ---
 

@@ -81,27 +81,24 @@ def interval_seconds() -> int:
     return value if value > 0 else 0
 
 
-def _hook_status() -> dict[str, bool]:
-    """Which IDE hooks are installed right now, read from disk every beat.
+def _hook_facts() -> dict[str, Any]:
+    """Coverage for every agent surface, read from disk every beat.
 
-    Deliberately re-read rather than cached from boot. A hook removed at 11am
-    must show up in the 11:05 heartbeat; a value captured at startup would keep
-    asserting the configuration the machine had when it last rebooted, which is
-    the exact lie this feature exists to prevent.
+    This used to check two paths while six installers and nine ingest mappings
+    existed, so a machine running Codex or Qwen unrecorded still beat green. The
+    registry now lives in core/diagnostics/hook_coverage.py and doctor reads the
+    same one, because two copies of this list is how it drifted the first time.
     """
-    targets = {
-        "cursor": Path.home() / ".cursor" / "hooks.json",
-        "claude": Path.home() / ".claude" / "settings.json",
+    from agentmetry.core.diagnostics import hook_coverage
+
+    states = hook_coverage.coverage()
+    return {
+        "hooks": hook_coverage.hook_flags(states),
+        "hook_coverage": states,
+        "hooks_uncovered": hook_coverage.uncovered(states),
+        "hooks_unverified": hook_coverage.unverified(states),
+        "hook_profile": "service" if hook_coverage.is_service_profile() else "user",
     }
-    status: dict[str, bool] = {}
-    for name, path in targets.items():
-        try:
-            status[name] = path.is_file() and "agentmetry_ingest" in path.read_text(
-                encoding="utf-8", errors="replace"
-            )
-        except OSError:
-            status[name] = False
-    return status
 
 
 def _spool_depth() -> int:
@@ -197,7 +194,7 @@ def attestation(root: tuple[str, int] | None = None) -> dict[str, Any]:
     merkle, tree_size = root if root is not None else ("", 0)
     schema_digest, schema_servers = _mcp_schema_facts()
     return {
-        "hooks": _hook_status(),
+        **_hook_facts(),
         "spool_depth": _spool_depth(),
         "trail_head_seq": _trail_head(),
         "trail_merkle_root": merkle,
@@ -218,15 +215,30 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
     has to learn a vocabulary to write is a detection they do not write.
     """
     facts = attestation(root)
-    hooks = facts["hooks"]
-    degraded = not all(hooks.values()) or facts["spool_depth"] > 0
-    missing = sorted(name for name, ok in hooks.items() if not ok)
+    uncovered = facts["hooks_uncovered"]
+    service_profile = facts["hook_profile"] == "service"
+    # `degraded` is a definite claim that capture is impaired, so only definite
+    # facts set it. An agent that is not installed here is not a missing hook,
+    # and the old `not all(hooks.values())` made every machine without Claude
+    # Code degrade forever, which is how a fleet learns to ignore the signal.
+    # A service profile does set it: from there no developer's configuration is
+    # visible at all, so a confident green would be the worst of the answers.
+    degraded = bool(uncovered) or facts["spool_depth"] > 0 or service_profile
 
     reason = "recorder attesting"
-    if missing:
-        reason = f"recorder attesting; hooks NOT installed for: {', '.join(missing)}"
+    if service_profile:
+        reason = (
+            "recorder attesting from a service profile; no developer hook "
+            "configuration is visible from here, so coverage is unknown"
+        )
+    elif uncovered:
+        reason = f"recorder attesting; agents present but NOT recorded: {', '.join(uncovered)}"
     elif facts["spool_depth"] > 0:
         reason = f"recorder attesting; {facts['spool_depth']} event(s) buffered in the spool"
+    if facts["hooks_unverified"] and not service_profile:
+        # Never coverage, never silent. Codex went missing from the attestation
+        # for exactly as long as nothing said its name.
+        reason += f" (unverifiable: {', '.join(facts['hooks_unverified'])})"
 
     return {
         "schema_version": "1.1.0",

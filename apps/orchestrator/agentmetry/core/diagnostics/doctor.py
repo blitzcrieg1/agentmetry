@@ -120,28 +120,51 @@ def _check_exposure(report: DoctorReport) -> None:
 
 
 def _check_hooks_installed(report: DoctorReport) -> None:
-    """Detect global hook installs. Absence is a warn: capture is opt-in per IDE."""
-    targets = {
-        "cursor": Path.home() / ".cursor" / "hooks.json",
-        "claude": Path.home() / ".claude" / "settings.json",
-    }
-    installed: list[str] = []
-    missing: list[str] = []
-    for name, path in targets.items():
-        try:
-            if path.is_file() and "agentmetry_ingest" in path.read_text(encoding="utf-8"):
-                installed.append(name)
-            else:
-                missing.append(name)
-        except OSError:
-            missing.append(name)
-    if installed:
-        report.ok("hooks", f"Hooks installed: {', '.join(installed)}")
-    if missing:
+    """Report coverage per agent surface, from the same registry the beat uses.
+
+    This checked two paths and warned about the one the operator had chosen not
+    to install, which trained everyone to ignore the line. It now separates an
+    agent that is here and unrecorded (the finding) from one that was never
+    installed (nothing to say) and one nothing can check (say so).
+    """
+    from agentmetry.core.diagnostics import hook_coverage
+
+    if hook_coverage.is_service_profile():
+        report.fail(
+            "hooks",
+            f"Running under a service profile ({Path.home()}). Hook configuration "
+            "lives in each developer's profile, so nothing here can see whether "
+            "any agent is recorded, and a per-machine install will attest "
+            "coverage it does not have.",
+        )
+        return
+
+    states = hook_coverage.coverage()
+    covered = sorted(n for n, st in states.items() if st == hook_coverage.COVERED)
+    uncovered = hook_coverage.uncovered(states)
+    unverified = hook_coverage.unverified(states)
+
+    if covered:
+        report.ok("hooks", f"Recording: {', '.join(covered)}")
+    if uncovered:
         report.warn(
             "hooks",
-            f"No hooks detected for: {', '.join(missing)} "
-            "(installed at orchestrator boot, or run scripts/install_*_hooks.ps1)",
+            f"Installed on this machine but NOT recorded: {', '.join(uncovered)} "
+            "(run the matching scripts/install_*_hooks.ps1)",
+        )
+    if unverified:
+        report.warn(
+            "hooks",
+            f"Present but unverifiable: {', '.join(unverified)}. "
+            "Codex has no installer and no confirmed config path; Antigravity is "
+            "captured by the transcript watcher, which no file check can confirm. "
+            "Treat these as unmeasured rather than covered.",
+        )
+    if not covered and not uncovered and not unverified:
+        report.warn(
+            "hooks",
+            "No supported agent found on this machine, so nothing is being "
+            "recorded through hooks.",
         )
 
 

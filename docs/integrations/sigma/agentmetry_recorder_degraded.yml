@@ -40,13 +40,27 @@ fields:
   - host_id
   - fleet_id
   - action.reason
+  # The agents installed on that machine that are NOT being recorded. This is
+  # the field to triage from: hooks.* below cannot tell a removed hook from an
+  # IDE the developer never installed, and hooks_uncovered can.
+  - heartbeat.hooks_uncovered
+  # `service` means the recorder is reading a service account's profile, so it
+  # can see no developer's hook configuration at all. On a per-machine MSI
+  # rollout this is the difference between real coverage and attested coverage.
+  - heartbeat.hook_profile
+  # Agents present that no file check can answer for (Codex has no installer
+  # and no confirmed config path; Antigravity is captured by the transcript
+  # watcher). Unmeasured, not covered. These do not raise this rule.
+  - heartbeat.hooks_unverified
   - heartbeat.hooks.cursor
   - heartbeat.hooks.claude
   - heartbeat.spool_depth
 falsepositives:
-  - A fresh install attesting before the IDE hooks have been deployed
-  - A machine mid-upgrade, or an IDE uninstalled on purpose
+  - A machine mid-upgrade, or an IDE genuinely being uninstalled
   - A transient spool backlog while the orchestrator catches up after a restart
+  # Deliberately no longer listed: an IDE the developer never installed. That
+  # used to degrade every beat forever, which taught operators to close this
+  # rule unread. An agent that is absent is now absent, not missing.
 level: medium
 tags:
   - attack.defense_evasion
