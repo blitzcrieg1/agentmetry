@@ -428,6 +428,17 @@ with optional external anchoring for threat models that include the host itself.
 The chain covers JSONL lines written after chaining was enabled, and it protects
 the JSONL, not the SQLite index the dashboard reads.
 
+**Tamper-evident is not attributable.** Ingest authenticates with one shared key,
+so any host holding it can post events claiming any `host_id`, any `fleet_id`, and
+any user identity. The chain proves ordering and non-modification of what was
+written; it does not prove who wrote it. For one developer recording their own
+machine that is a fair trade and the default. Across a fleet it means the trail
+records claims rather than facts, and a claim is not evidence. Per-host
+cryptographic identity is not in the open-source core and is not planned for it;
+it is being built into Agentmetry Enterprise, where fleets and key management are
+the problem being solved. Nothing here is removed or degraded either way, and the
+shared-key path stays the single-machine default.
+
 Read on its own, the chain catches corruption, truncation and in-place edits. It
 does not catch an attacker with write access to the data directory: they can edit
 an event, recompute every hash after it, rewrite the sidecar head, and produce a
