@@ -99,27 +99,45 @@ def test_env_overrides_are_honoured(home, monkeypatch, tmp_path):
 # ----------------------------------------------------------------------
 
 
-def test_codex_present_is_unknown_and_never_covered(home):
-    """The gap that prompted this file.
+def test_codex_installed_without_hooks_is_uncovered(home):
+    """The gap that prompted this file, and the correction that followed it.
 
-    Codex is mapped end to end at ingest and named in the README as supported,
-    and has no installer and no confirmed config path. Reporting it covered
-    would be a lie; reporting it absent while its directory sits on disk would
-    be a quieter one.
+    Codex was first recorded as uncheckable because it has no PowerShell
+    installer. It has a documented path all the same:
+    adapters/codex/hooks.agentmetry.json merges into ~/.codex/hooks.json. A
+    missing installer is not a missing config path, and calling this `unknown`
+    would have hidden a real `uncovered`, which is the finding.
     """
     _install(home, ".cursor", "hooks.json")
-    _install(home, ".codex", None)
+    _install(home, ".codex", None)  # Codex present, no hooks.json
     states = hook_coverage.coverage()
-    assert states["codex"] == hook_coverage.UNKNOWN
-    assert hook_coverage.hook_flags(states)["codex"] is False
-    assert hook_coverage.unverified(states) == ["codex"]
-    # An unknown is not an incident either: it must not claim capture is impaired.
-    assert hook_coverage.uncovered(states) == []
+    assert states["codex"] == hook_coverage.UNCOVERED
+    assert hook_coverage.uncovered(states) == ["codex"]
+    assert hook_coverage.unverified(states) == []
 
 
-def test_an_unverifiable_agent_that_is_not_here_is_absent(home):
-    assert hook_coverage.coverage()["codex"] == hook_coverage.ABSENT
-    assert hook_coverage.unverified() == []
+def test_codex_with_the_shipped_adapter_merged_is_covered(home):
+    _install(home, ".codex", "hooks.json")
+    assert hook_coverage.coverage()["codex"] == hook_coverage.COVERED
+
+
+def test_antigravity_is_found_in_either_of_its_two_locations(home):
+    """Antigravity 2.0 usually runs from ~/.gemini/antigravity/scratch rather
+    than the repo, so its installer writes both. Checking only one would report
+    a recorded agent as unrecorded. Its command is a .cmd wrapper, not the
+    ingest script, so the default marker alone would also miss it."""
+    d = home / ".gemini" / "antigravity" / "scratch" / ".agents"
+    d.mkdir(parents=True)
+    (d / "hooks.json").write_text(
+        json.dumps({"hooks": [{"command": "agentmetry_antigravity_hook.cmd"}]}),
+        encoding="utf-8",
+    )
+    assert hook_coverage.coverage()["antigravity"] == hook_coverage.COVERED
+
+
+def test_an_agent_directory_with_no_hook_file_at_all_is_uncovered(home):
+    _install(home, ".gemini", None)
+    assert hook_coverage.coverage()["antigravity"] == hook_coverage.UNCOVERED
 
 
 # ----------------------------------------------------------------------
@@ -183,13 +201,14 @@ def test_a_removed_hook_degrades_and_names_the_agent(home):
     assert "qoder" in event["action"]["reason"]
 
 
-def test_an_unverifiable_agent_is_named_without_degrading(home):
-    """Silence is how Codex stayed missing from the attestation. It has to appear
-    in the reason a responder reads, without claiming capture is impaired."""
+def test_codex_present_and_unhooked_degrades_and_is_named(home):
+    """Silence is how Codex stayed missing from the attestation for months. An
+    installed agent that nothing is recording is the incident, and it has to
+    reach the reason a responder actually reads."""
     _install(home, ".cursor", "hooks.json")
     _install(home, ".codex", None)
     event = heartbeat.build_heartbeat_event("2026-08-19T10:00:00+00:00")
-    assert event["action"]["outcome"] == "success"
+    assert event["action"]["outcome"] == "degraded"
     assert "codex" in event["action"]["reason"]
 
 

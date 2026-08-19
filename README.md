@@ -463,7 +463,7 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
 | 🧾 **Inclusion proofs** | RFC 6962 Merkle proof for a single event (`agentmetry prove`): prove one tool call without disclosing the trail |
 | 🔌 **Reads other recorders** | Ingests [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) audit files, verifying their chain first (`agentmetry import-agt`) |
-| 👥 **Multi-IDE support** | Claude Code, Cursor, Codex, Antigravity, via global hook install scripts |
+| 👥 **Multi-IDE support** | Claude Code, Cursor and Antigravity install globally with one script (`scripts/install_*_hooks.ps1`); Claude and Cursor also self-install on orchestrator boot. Codex has no installer yet: merge the shipped `adapters/codex/hooks.agentmetry.json` into `~/.codex/hooks.json` and approve it at the Codex `/hooks` trust prompt ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
 
 ### Integrations
 

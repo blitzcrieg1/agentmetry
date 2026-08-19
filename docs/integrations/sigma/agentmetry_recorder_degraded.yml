@@ -48,9 +48,9 @@ fields:
   # can see no developer's hook configuration at all. On a per-machine MSI
   # rollout this is the difference between real coverage and attested coverage.
   - heartbeat.hook_profile
-  # Agents present that no file check can answer for (Codex has no installer
-  # and no confirmed config path; Antigravity is captured by the transcript
-  # watcher). Unmeasured, not covered. These do not raise this rule.
+  # Agents whose coverage could not be determined at all, as opposed to
+  # determined and found missing. Unmeasured, not covered, and not a cause of
+  # this rule on its own.
   - heartbeat.hooks_unverified
   - heartbeat.hooks.cursor
   - heartbeat.hooks.claude

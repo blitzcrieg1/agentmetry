@@ -149,15 +149,15 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     if uncovered:
         report.warn(
             "hooks",
-            f"Installed on this machine but NOT recorded: {', '.join(uncovered)} "
-            "(run the matching scripts/install_*_hooks.ps1)",
+            f"Installed on this machine but NOT recorded: {', '.join(uncovered)}. "
+            "Most agents install with scripts/install_<agent>_hooks.ps1; Codex has "
+            "no installer yet and is set up by hand, per "
+            "docs/agentmetry-external-ingest.md.",
         )
     if unverified:
         report.warn(
             "hooks",
-            f"Present but unverifiable: {', '.join(unverified)}. "
-            "Codex has no installer and no confirmed config path; Antigravity is "
-            "captured by the transcript watcher, which no file check can confirm. "
+            f"Coverage could not be determined for: {', '.join(unverified)}. "
             "Treat these as unmeasured rather than covered.",
         )
     if not covered and not uncovered and not unverified:

@@ -72,7 +72,7 @@ Two other values worth a saved search of their own:
 
 `hook_profile = service` means the recorder is reading a service account's profile rather than a developer's. Hook configuration lives per user, so from there the recorder can see nothing about anybody's coverage. This is the shape a per-machine MSI rollout takes when the hooks were never deployed into user profiles, and it is worth alerting on separately because the fleet looks installed.
 
-`unmeasured` lists agents that are present and that no file check can answer for. Codex has no installer and no confirmed configuration path; Antigravity is captured through a transcript watcher rather than a hook file. Neither counts as coverage and neither raises this alert, so a host that only ever reports these is running agents nobody is attesting to.
+`unmeasured` lists agents whose coverage could not be determined, as distinct from determined and found missing. "We could not look" and "we looked and found nothing" are different claims, and collapsing them is how a fleet dashboard turns green over a blind spot. Nothing here counts as coverage, and nothing here raises this alert on its own.
 
 **Alert:** Scheduled hourly. The finding is sustained degradation on a host that was previously healthy.
 

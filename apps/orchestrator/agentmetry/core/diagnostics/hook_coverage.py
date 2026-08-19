@@ -20,11 +20,22 @@ a degraded beat has no tamper signal left.
     absent     the agent is not on this machine
     unknown    we cannot check, and will not pretend otherwise
 
-`unknown` is not a soft `covered`. Codex is mapped end to end at ingest and has
-no installer and no confirmed config path, so asserting either answer would be
-invention. Antigravity is captured by a transcript watcher rather than a hook
-file, so a file check cannot speak to it at all. Both are reported, both are
-queryable, and neither counts as coverage.
+`unknown` is not a soft `covered`. It is reserved for the case where the answer
+is not merely negative but unobtainable, which today means the service profile
+below.
+
+Getting the surfaces right took two passes, and the first pass is worth naming.
+Codex and Antigravity were initially recorded as uncheckable on the grounds that
+neither has a PowerShell installer. That was a conclusion drawn from searching
+`hook_bootstrap` and `scripts/` alone. Both are in fact documented and checkable:
+`adapters/codex/hooks.agentmetry.json` merges into `~/.codex/hooks.json`, and
+`install_antigravity_hooks.ps1` writes `~/.gemini/config/hooks.json`. Missing
+installer is not the same fact as missing support, and reporting `unknown` for a
+surface that can be checked hides a real `uncovered`, which is the finding.
+
+One caveat a file check genuinely cannot cover: Codex uses a hash-based trust
+prompt and skips untrusted hooks silently. A `covered` Codex is configured, not
+proven to be firing.
 
 ## The service-profile trap
 
@@ -42,13 +53,15 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-#: Present in any config we wrote, JSON or TOML: the hook command invokes the
-#: ingest script by path. Checking for our marker rather than for the file means
-#: an IDE config the user owns and we merged into is judged on our half of it.
-_MARKER = "agentmetry_ingest"
-
-#: Pre-rename installs still on disk.
-_MARKER_LEGACY = "agentaudit_ingest"
+#: What our hook command looks like in a config we merged into. Checking for the
+#: marker rather than for the file means an IDE config the user owns is judged on
+#: our half of it. `agentaudit_ingest` is the pre-rename name, still on disk for
+#: anyone who installed before 0.4.0.
+#:
+#: Matched case-sensitively and in lower case on purpose: `AGENTMETRY_API_KEY` in
+#: an `env` block is not a hook, and an installed-looking config that captures
+#: nothing is the exact failure this module exists to catch.
+_DEFAULT_MARKERS = ("agentmetry_ingest", "agentaudit_ingest")
 
 COVERED = "covered"
 UNCOVERED = "uncovered"
@@ -64,10 +77,12 @@ class Surface:
     #: Directory whose existence means the agent has run on this machine.
     home_env: str
     home_rel: str
-    #: Config file we merge our hook into, relative to that directory.
-    config: str
-    #: Set when no file check can answer, carrying the reason an operator needs.
-    unverifiable: str = ""
+    #: Config files we merge our hook into, relative to that directory. More than
+    #: one because Antigravity loads from whichever of its locations applies, and
+    #: a machine hooked in only the scratch profile is still recorded.
+    configs: tuple[str, ...]
+    #: Overridden where our command is not the ingest script itself.
+    markers: tuple[str, ...] = _DEFAULT_MARKERS
 
     def directory(self) -> Path:
         override = os.environ.get(self.home_env, "").strip() if self.home_env else ""
@@ -80,31 +95,29 @@ class Surface:
 #: Adding an installer without adding a row here is the drift this module exists
 #: to stop, and test_hook_coverage.py fails when the two disagree.
 SURFACES: tuple[Surface, ...] = (
-    Surface("cursor", "", ".cursor", "hooks.json"),
-    Surface("claude", "", ".claude", "settings.json"),
-    Surface("qwen", "QWEN_HOME", ".qwen", "settings.json"),
-    Surface("qoder", "", ".qoder", "settings.json"),
-    Surface("codebuddy", "", ".codebuddy", "settings.json"),
-    Surface("kimi", "KIMI_CODE_HOME", ".kimi-code", "config.toml"),
-    Surface(
-        "codex",
-        "",
-        ".codex",
-        "config.toml",
-        unverifiable=(
-            "mapped at ingest but has no installer and no confirmed config path; "
-            "coverage cannot be asserted from disk"
-        ),
-    ),
+    Surface("cursor", "", ".cursor", ("hooks.json",)),
+    Surface("claude", "", ".claude", ("settings.json",)),
+    Surface("qwen", "QWEN_HOME", ".qwen", ("settings.json",)),
+    Surface("qoder", "", ".qoder", ("settings.json",)),
+    Surface("codebuddy", "", ".codebuddy", ("settings.json",)),
+    Surface("kimi", "KIMI_CODE_HOME", ".kimi-code", ("config.toml",)),
+    # Codex has no PowerShell installer, which is not the same as having no
+    # supported path: `adapters/codex/hooks.agentmetry.json` merges into
+    # ~/.codex/hooks.json and docs/agentmetry-external-ingest.md documents it.
+    # Coverage here is a file check like any other. What it cannot see is
+    # Codex's hash-based trust prompt, which skips untrusted hooks silently, so
+    # a covered Codex is configured rather than proven to be firing.
+    Surface("codex", "", ".codex", ("hooks.json",)),
+    # Antigravity 2.0 usually runs from ~/.gemini/antigravity/scratch rather
+    # than the repo, so scripts/install_antigravity_hooks.ps1 writes both. Either
+    # one means the agent is recorded. Its command is a .cmd wrapper, not the
+    # ingest script, hence the marker override.
     Surface(
         "antigravity",
         "",
-        ".antigravity",
-        "",
-        unverifiable=(
-            "captured by the transcript watcher rather than a hook file; "
-            "a file check cannot speak to it"
-        ),
+        ".gemini",
+        ("config/hooks.json", "antigravity/scratch/.agents/hooks.json"),
+        markers=("agentmetry_antigravity_hook", *_DEFAULT_MARKERS),
     ),
 )
 
@@ -121,14 +134,14 @@ def is_service_profile(home: Path | None = None) -> bool:
     return "/config/systemprofile" in text or "/windows/serviceprofiles/" in text
 
 
-def _has_marker(path: Path) -> bool:
+def _has_marker(path: Path, markers: tuple[str, ...]) -> bool:
     try:
         if not path.is_file():
             return False
         body = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return _MARKER in body or _MARKER_LEGACY in body
+    return any(marker in body for marker in markers)
 
 
 def coverage() -> dict[str, str]:
@@ -149,17 +162,14 @@ def coverage() -> dict[str, str]:
             present = surface.directory().is_dir()
         except OSError:
             present = False
-        if surface.unverifiable:
-            # An agent we cannot check is unknown when it is here and absent
-            # when it is not. Absent is a fact a directory check can support.
-            result[surface.name] = UNKNOWN if present else ABSENT
-            continue
         if not present:
             result[surface.name] = ABSENT
             continue
-        result[surface.name] = (
-            COVERED if _has_marker(surface.directory() / surface.config) else UNCOVERED
+        hooked = any(
+            _has_marker(surface.directory() / rel, surface.markers)
+            for rel in surface.configs
         )
+        result[surface.name] = COVERED if hooked else UNCOVERED
     return result
 
 
@@ -184,11 +194,12 @@ def uncovered(states: dict[str, str] | None = None) -> list[str]:
 
 
 def unverified(states: dict[str, str] | None = None) -> list[str]:
-    """Agents present that no file check can answer for.
+    """Agents whose state could not be determined at all.
 
-    Neither coverage nor an incident. Surfacing them is the point: silence here
-    is how Codex stayed missing from the attestation while being named in the
-    README as a supported IDE.
+    Neither coverage nor an incident, and today only produced by the service
+    profile. Kept as a distinct field because "we could not look" and "we looked
+    and found nothing" are different claims, and collapsing them is how a fleet
+    dashboard turns green over a blind spot.
     """
     states = states if states is not None else coverage()
     return sorted(n for n, s in states.items() if s == UNKNOWN)
