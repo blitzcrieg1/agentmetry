@@ -246,3 +246,38 @@ def test_every_installer_has_a_surface():
     }
     known = {s.name for s in hook_coverage.SURFACES}
     assert installers <= known, f"installer with no coverage surface: {installers - known}"
+
+
+# ----------------------------------------------------------------------
+# The exit-code contract a deployment tool depends on
+# ----------------------------------------------------------------------
+
+
+def test_hooks_status_exit_codes_are_the_deployment_contract(home, monkeypatch, capsys):
+    """Intune Remediations key on the exit code, not on the words.
+
+    A detection script that parsed `doctor` output would work until somebody
+    reworded a line, and a fleet coverage check that breaks silently on a
+    wording change is worse than no check at all. So the codes are pinned here:
+    0 compliant, 1 remediable, 2 undeterminable.
+    """
+    from agentmetry.cli import _hooks_status
+
+    _install(home, ".cursor", "hooks.json")
+    assert _hooks_status() == 0
+
+    _install(home, ".codex", None)  # present, unhooked
+    assert _hooks_status() == 1
+
+    from pathlib import Path as _P
+
+    monkeypatch.setattr(
+        hook_coverage.Path,
+        "home",
+        staticmethod(lambda: _P(r"C:\Windows\System32\config\systemprofile")),
+    )
+    # Undeterminable is its own code, never folded into either of the others.
+    # Reporting a service profile as compliant would be the lie this whole
+    # subsystem exists to prevent; reporting it as remediable would loop a
+    # remediation forever against something installing hooks cannot fix.
+    assert _hooks_status() == 2

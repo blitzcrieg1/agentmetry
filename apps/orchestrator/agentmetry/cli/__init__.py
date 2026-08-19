@@ -402,6 +402,47 @@ def cmd_install(args: argparse.Namespace) -> int:
 _HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codebuddy")
 
 
+def _hooks_status() -> int:
+    """Coverage as an exit code, for a deployment tool rather than a person.
+
+    Intune Remediations, and every scheduled-check mechanism like it, want a
+    detection script whose exit code is the answer. Parsing `doctor` output
+    would work until somebody reworded a line, and a coverage check that breaks
+    silently on a wording change is worse than no check.
+
+    The contract:
+      0  every agent present here is recorded, or none is installed
+      1  at least one agent is present and not recorded, and installing helps
+      2  coverage cannot be determined, and installing would not help
+
+    2 is separate from 1 on purpose. A service profile sees no developer's
+    configuration at all, so remediation there would run forever and fix
+    nothing. Reporting it as compliant would be the lie this whole subsystem
+    exists to prevent, so it is neither.
+    """
+    from agentmetry.core.diagnostics import hook_coverage
+
+    if hook_coverage.is_service_profile():
+        print(
+            "UNDETERMINABLE: running under a service profile. Hook configuration "
+            "lives in each developer's profile and none is visible from here. "
+            "Run this in the user's context.",
+            file=sys.stderr,
+        )
+        return 2
+
+    states = hook_coverage.coverage()
+    for line in hook_coverage.summary_lines(states):
+        print(line.strip())
+
+    uncovered = hook_coverage.uncovered(states)
+    if uncovered:
+        print(f"NEEDS REMEDIATION: {', '.join(uncovered)}")
+        return 1
+    print("COMPLIANT")
+    return 0
+
+
 def cmd_hooks(args: argparse.Namespace) -> int:
     """Install hook configs, defaulting to the agents actually on this machine.
 
@@ -412,6 +453,9 @@ def cmd_hooks(args: argparse.Namespace) -> int:
     """
     from agentmetry.core.audit import hook_bootstrap
     from agentmetry.core.diagnostics import hook_coverage
+
+    if args.action == "status":
+        return _hooks_status()
 
     if hook_bootstrap.hook_target() == "none":
         print(
@@ -1036,7 +1080,12 @@ def main(argv: list[str] | None = None) -> int:
         help="install IDE hook configs for the agents on this machine",
     )
     hooks.add_argument(
-        "action", choices=("install",), help="install hook configs into each agent's config"
+        "action",
+        choices=("install", "status"),
+        help=(
+            "install writes hook configs; status reports coverage and exits "
+            "0 compliant, 1 needs remediation, 2 undeterminable"
+        ),
     )
     hooks.add_argument(
         "--agent",
