@@ -1,0 +1,1560 @@
+"""Agentmetry Tier B ingest client: the hook side of capture.
+
+POST adapter events to the local orchestrator ingest API.
+
+## Why this lives in the package
+
+It used to live only at `scripts/agentmetry_ingest.py`, which meant capture
+existed only where the git repository existed. The MSI ships a frozen binary
+and no repo, so an enterprise install had a recorder running and no possible
+way for a hook to reach it: the command an installer would write pointed at a
+file that was not on the machine, and the frozen launcher exposed nothing to
+call instead. Fleet deployment was blocked on this module's location, not on
+anything it does.
+
+The old path still works. `scripts/agentmetry_ingest.py` is now a shim that
+re-exports this module, so every hook already installed on a developer machine
+keeps running untouched. Nothing about the wire format changed.
+
+Environment:
+  AGENTMETRY_URL            default http://127.0.0.1:8000
+  AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | mcp_proxy
+  AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.request
+from urllib.error import URLError
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+# Absolute package imports rather than the old repo-relative
+# `apps.orchestrator.agentmetry...` path. That form resolved only because the
+# script inserted its own repo root into sys.path, which is exactly the
+# assumption that kept capture tied to a checkout.
+try:
+    from agentmetry.core.audit.dlp import scan as dlp_scan
+    from agentmetry.core.audit.tool_policy import evaluate as tool_policy_eval
+except ImportError:
+    dlp_scan = None
+    tool_policy_eval = None
+
+# Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
+# trait/MITRE tagging, which only needs the stdlib.
+try:
+    from agentmetry.core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.mitre import get_mitre_mapping
+except ImportError:
+    classify_command = None
+    get_mitre_mapping = None
+
+REDACT_KEYS = frozenset({
+    "token", "api_key", "apikey", "password", "secret", "authorization",
+    "anthropic_api_key", "openai_api_key",
+})
+
+COMMAND_MAX_LEN = 4096
+
+CURSOR_BEFORE = frozenset({
+    "beforeShellExecution", "beforeMCPExecution", "preToolUse", "beforeReadFile",
+})
+CURSOR_AFTER = frozenset({
+    "postToolUse", "afterMCPExecution", "afterShellExecution", "afterFileEdit",
+})
+CURSOR_BLOCKING = frozenset({
+    "beforeShellExecution", "beforeMCPExecution", "preToolUse", "subagentStart",
+})
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _base_url() -> str:
+    return (
+        os.environ.get("AGENTMETRY_URL")
+        or os.environ.get("AGENTMETRY_AUDIT_INGEST_URL")
+        or "http://127.0.0.1:8000"
+    ).rstrip("/")
+
+
+def _api_key() -> str:
+    return (
+        os.environ.get("AGENTMETRY_API_KEY", "").strip()
+        or os.environ.get("BLACKBOX_API_KEY", "").strip()  # pre-rename fallback
+    )
+
+
+def _source_app() -> str:
+    return os.environ.get("AGENTMETRY_SOURCE_APP", "cursor").lower()
+
+
+def _pick(d: dict[str, Any], *keys: str, default: Any = "") -> Any:
+    for key in keys:
+        if key in d and d[key] is not None:
+            return d[key]
+    return default
+
+
+def _json_object_snippets(text: str) -> list[str]:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return [text[start : end + 1]]
+    return []
+
+
+def _stdin_decode_candidates(raw: bytes) -> list[tuple[str, str]]:
+    """Return (text, encoding_label) attempts for hook stdin bytes."""
+    if not raw.strip():
+        return []
+
+    blobs: list[tuple[bytes, str]] = [(raw, "utf-8")]
+    if raw.startswith(b"\xff\xfe"):
+        blobs.append((raw[2:], "utf-16-le-bom"))
+    elif raw.startswith(b"\xfe\xff"):
+        blobs.append((raw[2:], "utf-16-be-bom"))
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        blobs.append((raw[3:], "utf-8-bom"))
+    elif len(raw) >= 4 and raw[1:2] == b"\x00" and raw[3:4] == b"\x00":
+        blobs.append((raw, "utf-16-le"))
+
+    candidates: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for blob, preferred in blobs:
+        encodings: list[str] = []
+        if preferred.endswith("-bom"):
+            encodings.append(preferred.replace("-bom", ""))
+        elif preferred == "utf-16-le":
+            encodings.append("utf-16-le")
+        encodings.extend(["utf-8", "utf-16-le", "utf-16", "cp1252", "latin-1"])
+        for enc in encodings:
+            try:
+                text = blob.decode(enc).strip("\ufeff").strip("\x00")
+            except UnicodeDecodeError:
+                continue
+            key = text[:120]
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((text, enc))
+    return candidates
+
+
+def read_hook_stdin() -> tuple[dict[str, Any], bool]:
+    """Read hook JSON from stdin; tolerate Windows UTF-16 / BOM / wrapper corruption."""
+    raw = sys.stdin.buffer.read()
+    if not raw.strip():
+        return {}, False
+
+    for text, enc in _stdin_decode_candidates(raw):
+        snippets = [text, *_json_object_snippets(text)]
+        seen_snippets: set[str] = set()
+        for snippet in snippets:
+            if snippet in seen_snippets:
+                continue
+            seen_snippets.add(snippet)
+            try:
+                parsed = json.loads(snippet)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            extracted = snippet != text
+            non_utf8 = enc not in ("utf-8", "utf-8-bom")
+            if non_utf8:
+                parsed["_stdin_encoding"] = enc
+            return parsed, extracted or non_utf8
+
+    return {"_raw_hex": raw.hex()[:2000], "_raw_len": len(raw)}, True
+
+
+#: Resolved once at import. `Path.resolve()` touches the filesystem, and this
+#: path cannot change while the process lives, so recomputing it per lookup was
+#: two thirds of the hook's remaining config overhead: 800 resolve() calls
+#: measured across 200 tool calls, for a value that is constant.
+_ORCH_ROOT = Path(__file__).resolve().parents[2]
+
+_REPO_ENV_PATH = _ORCH_ROOT / ".env"
+
+
+def _repo_env_path() -> Path:
+    return _REPO_ENV_PATH
+
+
+def _data_dir() -> Path:
+    """Where the spool and hook debug log live.
+
+    Three sources, most specific first. The hook runs in the IDE's process, not
+    the orchestrator's, so it cannot read the orchestrator's settings object and
+    has to agree with it some other way.
+
+    `AGENTMETRY_AUDIT_EXPORT_PATH` wins because the orchestrator derives the
+    spool from that path's parent. The hook used to hardcode the checkout's
+    data directory instead, so repointing the trail left the hook writing to a
+    spool nothing would ever drain. That mismatch is now impossible to create.
+
+    `AGENTMETRY_INSTALL_ROOT` is what the MSI sets machine-wide, so a hook
+    spawned by an IDE inherits it without anyone wiring up the service's
+    environment.
+
+    Neither set means a git checkout, which is the developer case.
+
+    Read on each call rather than cached: the cost is an os.environ lookup, and
+    a value frozen at import would ignore a test or an operator repointing the
+    trail mid-session.
+    """
+    trail = os.environ.get("AGENTMETRY_AUDIT_EXPORT_PATH", "").strip()
+    if trail:
+        return Path(trail).expanduser().parent
+    root = os.environ.get("AGENTMETRY_INSTALL_ROOT", "").strip()
+    if root:
+        return Path(root).expanduser() / "data"
+    return _ORCH_ROOT / "data"
+
+
+#: How long a hook will wait for the orchestrator before giving up on the POST.
+#:
+#: This blocks the IDE's tool call, so it is a latency budget rather than a
+#: reliability one. It was 10 seconds, against a loopback service that answers
+#: in single-digit milliseconds; the only thing that ever consumed those ten
+#: seconds was an orchestrator that had wedged, and it consumed them on every
+#: tool call.
+#:
+#: Short is safe here specifically because a timeout spools. The event is not
+#: dropped, it is deferred to the boot drain and replayed. That property is what
+#: makes this a free win rather than a trade.
+_INGEST_TIMEOUT_SECONDS = float(os.environ.get("AGENTMETRY_INGEST_TIMEOUT", "2.0"))
+
+#: Parsed `.env`, keyed by (path, mtime, size) so an edit is picked up on the
+#: next call without re-reading the file on every lookup.
+_ENV_CACHE: dict[str, str] = {}
+_ENV_STAMP: tuple[str, float, int] | None = None
+
+
+def _load_repo_env() -> dict[str, str]:
+    """Parse the repo `.env` once per change, not once per lookup.
+
+    This runs inside the IDE's tool-call path. Each config question used to
+    re-read and re-parse the whole file: four full parses per tool call,
+    measured at 2.4 ms of pure waste that grows with the file. Nothing here is
+    hot enough to matter alone, and everything here happens on every single
+    thing the agent does.
+
+    Invalidated on mtime and size rather than cached forever, so editing `.env`
+    still takes effect without restarting the IDE.
+    """
+    global _ENV_STAMP, _ENV_CACHE
+
+    path = _repo_env_path()
+    try:
+        stat = path.stat()
+    except OSError:
+        _ENV_STAMP, _ENV_CACHE = None, {}
+        return _ENV_CACHE
+
+    stamp = (str(path), stat.st_mtime, stat.st_size)
+    if stamp == _ENV_STAMP:
+        return _ENV_CACHE
+
+    parsed: dict[str, str] = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            parsed[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        return _ENV_CACHE
+
+    _ENV_STAMP, _ENV_CACHE = stamp, parsed
+    return parsed
+
+
+def _read_repo_env(key: str) -> str:
+    return _load_repo_env().get(key, "")
+
+
+def _log_commands_enabled() -> bool:
+    for raw in (
+        os.environ.get("AGENTMETRY_LOG_COMMANDS", ""),
+        _read_repo_env("AGENTMETRY_LOG_COMMANDS"),
+        _read_repo_env("AGENTMETRY_AUDIT_LOG_COMMANDS"),
+    ):
+        if raw.strip().lower() in ("1", "true", "yes", "on"):
+            return True
+    return False
+
+
+def _log_full_args_enabled() -> bool:
+    for raw in (
+        os.environ.get("AGENTMETRY_LOG_FULL_ARGS", ""),
+        _read_repo_env("AGENTMETRY_LOG_FULL_ARGS"),
+        _read_repo_env("AGENTMETRY_AUDIT_LOG_FULL_ARGS"),
+    ):
+        if raw.strip().lower() in ("1", "true", "yes", "on"):
+            return True
+    return False
+
+
+def extract_command(args: Any, qualified: str = "") -> str | None:
+    """Pull shell command text from tool args (Bash, run_command, shell.run, etc.)."""
+    if isinstance(args, dict):
+        for key in ("command", "cmd", "script", "CommandLine"):
+            val = args.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+        
+        for key in ("path", "filepath", "file_path", "AbsolutePath", "TargetFile", "target_path"):
+            val = args.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+    q = (qualified or "").lower()
+    if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
+        if isinstance(args, dict):
+            val = args.get("value")
+            if val is not None and str(val).strip():
+                return str(val).strip()[:COMMAND_MAX_LEN]
+    return None
+
+
+def redact_arguments(args: Any) -> dict[str, Any]:
+    if isinstance(args, dict):
+        return {
+            k: "<redacted>" if str(k).lower() in REDACT_KEYS else v
+            for k, v in args.items()
+        }
+    if args is None:
+        return {}
+    return {"value": args}
+
+
+# Inline mirror of core/audit/redaction.py — the standalone hook cannot import
+# from apps/orchestrator/core. KEEP THESE PATTERNS IN SYNC (see test).
+_SECRET_PATTERNS = [
+    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+"), r"\1<redacted>"),
+    (re.compile(r"(?i)(authorization:\s*)\S+"), r"\1<redacted>"),
+    (re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@"), r"\1<redacted>@"),
+    (re.compile(r"(?i)(-{1,2}(?:password|token|secret|api[-_]?key|pwd)[=\s]+)\S+"), r"\1<redacted>"),
+    (
+        re.compile(
+            r"(?i)\b(password|passwd|pwd|token|secret|api[-_]?key|apikey|access[-_]?key)\s*[=:]\s*[^\s;&|\"']+"
+        ),
+        r"\1=<redacted>",
+    ),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<redacted-aws-key>"),
+    (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), "<redacted-key>"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "<redacted-gh-token>"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
+]
+
+
+def scrub_command(text: Any) -> Any:
+    """Mask inline secrets in a command string before it is stored/sent."""
+    if not isinstance(text, str) or not text:
+        return text
+    out = text
+    for pattern, repl in _SECRET_PATTERNS:
+        out = pattern.sub(repl, out)
+    return out
+
+
+def scrub_arg_values(args: Any) -> Any:
+    if not isinstance(args, dict):
+        return args
+    return {k: (scrub_command(v) if isinstance(v, str) else v) for k, v in args.items()}
+
+
+def hash_arguments(args: Any) -> str:
+    clean = redact_arguments(args if isinstance(args, dict) else {"value": args})
+    blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Replace tool.arguments with a client-side input_hash.
+
+    Args are hashed *inside the hook process* so redacted-plaintext arguments
+    never cross the wire to the orchestrator. The stored event keeps only the
+    64-hex digest unless AGENTMETRY_LOG_COMMANDS / AGENTMETRY_AUDIT_LOG_COMMANDS
+    is set — then shell ``command`` text is kept alongside the hash.
+    """
+    if not payload:
+        return payload
+    tool = payload.get("tool")
+    if isinstance(tool, dict) and "arguments" in tool:
+        args = tool.pop("arguments")
+        qualified = str(tool.get("qualified") or "")
+        if not tool.get("input_hash"):
+            tool["input_hash"] = hash_arguments(args)
+
+        cmd = extract_command(args, qualified)
+
+        # Detection features, computed while the plaintext is still visible.
+        # Only category labels and ATT&CK ids leave this process — never the
+        # command text. Without these, the default hashed-only config left
+        # every command-based sequence rule (credential-exfil, the HF chains,
+        # download cradles) blind on real traffic: the demo injected `command`,
+        # production events had nothing to match.
+        if classify_command and cmd:
+            traits = classify_command(cmd)
+            if traits:
+                tool["traits"] = traits
+        if get_mitre_mapping and not tool.get("mitre"):
+            evidence = cmd or (args if isinstance(args, dict) else None)
+            mitre = get_mitre_mapping(qualified, evidence)
+            if mitre:
+                tool["mitre"] = mitre
+
+        if _log_full_args_enabled():
+            tool["arguments"] = scrub_arg_values(
+                redact_arguments(args if isinstance(args, dict) else {"value": args})
+            )
+
+        if (_log_full_args_enabled() or _log_commands_enabled()) and cmd:
+            tool["command"] = scrub_command(cmd)
+    return payload
+
+
+def _after_outcome(data: dict[str, Any]) -> tuple[str, str, str]:
+    """Derive (event_type, outcome, reason) for a post/after tool hook.
+
+    Do not assume success — a tool that ran and failed must not be logged as
+    successful. Reads whatever exit/error signal the platform provides.
+    """
+    exit_code = data.get("exit_code", data.get("exitCode"))
+    err = _pick(data, "error", "stderr", "is_error", "isError", default=None)
+    success_flag = data.get("success", data.get("ok"))
+    failed = (
+        (isinstance(exit_code, int) and exit_code != 0)
+        or (success_flag is False)
+        or (isinstance(err, str) and err.strip() != "")
+        or (err is True)
+    )
+    if failed:
+        reason = f"exit:{exit_code}" if isinstance(exit_code, int) else "tool_failed"
+        return "tool_failed", "error", reason
+    return "tool_called", "success", ""
+
+
+def _spool_path() -> Path:
+    return _data_dir() / "hook-spool.jsonl"
+
+
+# A spooled hook payload older than this is dropped rather than replayed. A
+# week-old tool call arriving in today's session would corrupt correlation
+# windows, and an unbounded spool is its own failure mode.
+_SPOOL_MAX_AGE_SECONDS = 7 * 24 * 3600
+_SPOOL_MAX_BYTES = 32 * 1024 * 1024
+
+
+def spool_payload(payload: dict[str, Any]) -> bool:
+    """Persist a payload the orchestrator could not accept, for replay at boot.
+
+    The hook must never block or crash the IDE, so every failure here is
+    swallowed. But failing silently into /dev/null was the old behaviour and it
+    punched holes in the trail on every orchestrator restart, update, and
+    IDE-launch race — in a product whose entire claim is a complete record.
+    """
+    try:
+        path = _spool_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_file() and path.stat().st_size > _SPOOL_MAX_BYTES:
+            return False
+        line = json.dumps(
+            {"spooled_at": _utc_now(), "payload": payload}, separators=(",", ":")
+        )
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
+    # Stamp when the tool call happened, here, at capture. The orchestrator falls
+    # back to its own clock when this is absent, which is accurate to the
+    # millisecond while ingest is live and wrong by up to a week when it is not:
+    # a spooled event replayed days later was recorded as having happened at
+    # replay time. That put five days of activity in the trail under a
+    # three-minute window, made every "A then B inside N minutes" rule fire on
+    # unrelated events, and misstated when things happened in a record whose
+    # whole purpose is to say when things happened.
+    payload.setdefault("timestamp_utc", _utc_now())
+    url = f"{_base_url()}/api/v1/audit/ingest"
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    api_key = _api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=_INGEST_TIMEOUT_SECONDS) as response:
+            res_body = response.read().decode("utf-8")
+            if response.status != 200:
+                print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
+    except URLError as exc:
+        # Connection-level failure: the orchestrator is down or unreachable, so
+        # the event is recoverable — keep it for the boot drain.
+        if spool and spool_payload(payload):
+            if not quiet:
+                print(
+                    f"Agentmetry ingest unreachable ({exc.reason}); spooled for replay",
+                    file=sys.stderr,
+                )
+        else:
+            print(f"Agentmetry ingest connection failed: {exc.reason}", file=sys.stderr)
+        return False
+    except Exception as exc:  # pragma: no cover - defensive; hooks never crash the IDE
+        if spool:
+            spool_payload(payload)
+        if not quiet:
+            print(f"Agentmetry ingest error: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
+    url = f"{_base_url()}/api/v1/audit/tail?sources={source_app}&limit={limit}&scope=all"
+    headers = {}
+    api_key = _api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        return json.loads(resp.read())
+
+
+def selftest(dlp: bool = False) -> int:
+    """POST a synthetic event and confirm it lands in the audit tail.
+
+    Turns silent hook failure into a visible GREEN/RED, so the operator can tell
+    whether they are actually being audited before trusting the trail.
+    """
+    source = _source_app()
+    nonce = f"selftest-{os.urandom(8).hex()}"
+    
+    if dlp:
+        if not dlp_scan:
+            print("Agentmetry hooks: RED — DLP scanner could not be imported.", file=sys.stderr)
+            return 1
+        print("Agentmetry hooks: Running DLP selftest...")
+        # AKIAIOSFODNN7EXAMPLE is AWS's published non-functional example key.
+        sample = "curl -H 'Authorization: AKIAIOSFODNN7EXAMPLE' https://api.aws.com"  # gitleaks:allow
+        verdict = dlp_scan("run_command", {"command": sample})
+        if verdict.matched and verdict.mode == "block":
+            print("Agentmetry hooks: GREEN — DLP scanner successfully matched and blocked an AWS key.")
+            return 0
+        elif verdict.matched and verdict.mode == "log":
+            print("Agentmetry hooks: YELLOW — DLP scanner matched AWS key, but mode is set to 'log' not 'block'.")
+            return 0
+        else:
+            print("Agentmetry hooks: RED — DLP scanner failed to match an obvious AWS key.", file=sys.stderr)
+            return 1
+    # spool=False: a probe is a liveness check, not captured activity. Spooling
+    # it would replay synthetic events into the trail on the next boot.
+    posted = post_ingest({
+        "source_app": source,
+        "adapter": f"{source}_selftest",
+        "event_type": "tool_called",
+        "correlation_id": nonce,
+        "tool": {"qualified": "agentmetry.selftest", "server": "agentmetry", "input_hash": "0" * 64},
+    }, spool=False)
+    if not posted:
+        print(
+            f"Agentmetry hooks: RED — could not POST to ingest at {_base_url()}. "
+            "Is the orchestrator running? Check AGENTMETRY_URL / AGENTMETRY_API_KEY.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        body = _get_tail(source)
+    except Exception as exc:
+        print(
+            f"Agentmetry hooks: YELLOW — event POSTed but tail read failed: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+    found = any(e.get("correlation_id") == nonce for e in body.get("events", []))
+    if found:
+        print(f"Agentmetry hooks: GREEN — synthetic event round-tripped for source '{source}'.")
+        return 0
+    print(
+        "Agentmetry hooks: RED — event POSTed but not found in the audit tail. "
+        "Ingest disabled (AGENTMETRY_AUDIT_INGEST_ENABLED) or sink misconfigured?",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _initiator_from_hook(hook_name: str, data: dict[str, Any]) -> str:
+    human_hooks = {
+        "beforeSubmitPrompt", "UserPromptSubmit", "sessionStart", "SessionStart",
+    }
+    if hook_name in human_hooks:
+        return "human"
+    if _pick(data, "permission", "permissionDecision", default="") == "ask":
+        return "human"
+    return "agent"
+
+
+def _cursor_tool_context(hook_name: str, data: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    tool_name = str(_pick(data, "tool_name", "toolName", "tool", "name", default="unknown"))
+    mcp_server = str(_pick(data, "mcp_server", "mcpServer", "server", default=""))
+    args = _pick(data, "tool_input", "toolInput", "arguments", "input", default=None)
+    if args is None and "command" in data:
+        args = {"command": data["command"]}
+    clean = redact_arguments(args)
+
+    if hook_name in ("afterShellExecution", "beforeShellExecution"):
+        return "shell.run", "shell", clean
+    if hook_name in ("afterMCPExecution", "beforeMCPExecution") and mcp_server:
+        qualified = tool_name if "." in tool_name else f"{mcp_server}.{tool_name}"
+        return qualified, mcp_server, clean
+    if tool_name.startswith("mcp__"):
+        return tool_name, mcp_server or "mcp", clean
+    return f"cursor.{tool_name}", "cursor", clean
+
+
+def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    hook_name = str(_pick(data, "hook_event_name", "hookEventName", default=hook_name))
+    correlation = str(_pick(
+        data, "conversation_id", "conversationId", "generation_id", "generationId",
+        "session_id", "sessionId", default="",
+    ))
+    session_id = str(_pick(data, "session_id", "sessionId", "conversation_id", "conversationId", default=""))
+    initiator = _initiator_from_hook(hook_name, data)
+
+    if hook_name == "sessionStart":
+        return {
+            "source_app": "cursor",
+            "adapter": "cursor_hook",
+            "event_type": "session_start",
+            "correlation_id": correlation or session_id,
+            "session_id": session_id,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    if hook_name in ("sessionEnd", "stop"):
+        return {
+            "source_app": "cursor",
+            "adapter": "cursor_hook",
+            "event_type": "session_end",
+            "correlation_id": correlation or session_id,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        }
+
+    if hook_name in CURSOR_BEFORE:
+        qualified, server, clean = _cursor_tool_context(hook_name, data)
+        decision = str(_pick(data, "permission", default="ask"))
+        outcome = "pending" if decision == "ask" else ("denied" if decision == "deny" else "success")
+        return {
+            "source_app": "cursor",
+            "adapter": "cursor_hook",
+            "event_type": "approval_request" if decision in ("ask", "deny") else "tool_called",
+            "outcome": outcome,
+            "reason": f"decision:{decision};hook:{hook_name}",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    if hook_name in CURSOR_AFTER:
+        qualified, server, clean = _cursor_tool_context(hook_name, data)
+        event_type, outcome, reason = _after_outcome(data)
+        return {
+            "source_app": "cursor",
+            "adapter": "cursor_hook",
+            "event_type": event_type,
+            "outcome": outcome,
+            "reason": reason,
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    if hook_name == "postToolUseFailure":
+        tool_name = str(_pick(data, "tool_name", "tool", default="unknown"))
+        return {
+            "source_app": "cursor",
+            "adapter": "cursor_hook",
+            "event_type": "tool_failed",
+            "outcome": "error",
+            "reason": str(_pick(data, "error", "message", default="tool_failed")),
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "tool_qualified": f"cursor.{tool_name}",
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        }
+
+    return None
+
+
+def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", default=""))
+    session_id = correlation
+    initiator = _initiator_from_hook(hook_name, data)
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tin = _pick(data, "tool_input", default={})
+    clean = redact_arguments(tin)
+
+    if hook_name in ("SessionStart",):
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "session_start",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    # Interrupt fires in place of Stop when the human aborts a turn (Kimi/Claude
+    # family, v0.14+). It is a real end of the turn, so it resolves the session
+    # the same way Stop does — dropping it left the session looking like it was
+    # still running, which is exactly what the event was added to prevent.
+    if hook_name in ("Stop", "Interrupt"):
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "reason": "interrupted" if hook_name == "Interrupt" else "",
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        }
+
+    # A SubagentStop is NOT a parent session_end. Mapping it to one made ingest
+    # flush every pending approval on the parent correlation as inferred-denied
+    # the moment a subagent finished mid-session — a lie about what the human
+    # decided. Record it as a lifecycle marker on the parent correlation so the
+    # subagent's work stays correlated, but never as a session boundary.
+    if hook_name == "SubagentStop":
+        return _subagent_stop_payload("claude", "claude_hook", "claude", data)
+
+    if hook_name in ("PreToolUse", "Notification"):
+        decision = str(_pick(data, "permissionDecision", default="ask"))
+        outcome = "pending" if decision == "ask" else ("denied" if decision == "deny" else "success")
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "approval_request",
+            "outcome": outcome,
+            "reason": f"decision:{decision};hook:{hook_name}",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
+        }
+
+    if hook_name == "PostToolUse":
+        event_type, outcome, reason = _after_outcome(data)
+        # Claude Code spawns subagents through the Task tool — it emits no
+        # SubagentStart, so without this the swarm rule was blind on the most
+        # widely used agent CLI in the fleet. Tag a successful Task as a subagent
+        # start so subagent-swarm-burst can count it (the rule keys on the reason
+        # marker, so the tool name stays honest).
+        if tool_name == "Task" and outcome == "success":
+            subagent_type = str(
+                _pick(tin, "subagent_type", "agent_type", default="subagent")
+                if isinstance(tin, dict) else "subagent"
+            )
+            reason = f"subagent_start:{subagent_type}"
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": event_type,
+            "outcome": outcome,
+            "reason": reason,
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
+        }
+
+    if hook_name == "UserPromptSubmit":
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "session_start",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "reason": "user_prompt",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    return None
+
+
+def _codex_tool_context(tool_name: str, tool_input: Any) -> tuple[str, str, dict[str, Any]]:
+    clean = redact_arguments(tool_input if isinstance(tool_input, dict) else {"value": tool_input})
+    name = str(tool_name or "unknown")
+    if name == "Bash":
+        return "shell.run", "shell", clean
+    if name == "apply_patch":
+        return "codex.apply_patch", "codex", clean
+    if name.startswith("mcp__"):
+        parts = name.split("__")
+        if len(parts) >= 3:
+            server, tool = parts[1], parts[2]
+            qualified = tool if "." in tool else f"{server}.{tool}"
+            return qualified, server, clean
+        return name, "mcp", clean
+    return f"codex.{name}", "codex", clean
+
+
+def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    """OpenAI Codex CLI hooks — schema aligned with Claude Code (session_id, tool_name, tool_input)."""
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", "turn_id", default=""))
+    session_id = str(_pick(data, "session_id", default=correlation))
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tool_input = _pick(data, "tool_input", default={})
+    model_id = str(_pick(data, "model", default=""))
+    permission_mode = str(_pick(data, "permission_mode", default=""))
+    initiator = _initiator_from_hook(hook_name, data)
+
+    base: dict[str, Any] = {
+        "correlation_id": correlation,
+        "session_id": session_id,
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+    }
+    if model_id:
+        base["model"] = {"id": model_id, "provider": "openai"}
+
+    if hook_name == "SessionStart":
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_start",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "reason": str(_pick(data, "source", default="startup")),
+        }
+
+    if hook_name in ("Stop", "SubagentStop"):
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_end",
+        }
+
+    if hook_name == "UserPromptSubmit":
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "session_start",
+            "reason": "user_prompt",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    qualified, server, clean = _codex_tool_context(tool_name, tool_input)
+
+    if hook_name in ("PreToolUse", "PermissionRequest"):
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": "approval_request",
+            "outcome": "pending",
+            "reason": f"hook:{hook_name};permission_mode:{permission_mode or 'default'}",
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    if hook_name == "PostToolUse":
+        event_type, outcome, reason = _after_outcome(data)
+        if data.get("tool_response") is not None and outcome == "success":
+            reason = reason or "tool_completed"
+        return {
+            **base,
+            "source_app": "codex",
+            "adapter": "codex_hook",
+            "event_type": event_type,
+            "outcome": outcome,
+            "reason": reason,
+            "tool": {"qualified": qualified, "server": server, "arguments": clean},
+        }
+
+    return None
+
+
+def _antigravity_tool_from_data(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Parse Antigravity 2.0 (toolCall) and legacy (toolName/toolInput) stdin."""
+    tool_call = data.get("toolCall")
+    if isinstance(tool_call, dict):
+        name = str(tool_call.get("name") or "unknown")
+        raw_args = tool_call.get("args") if isinstance(tool_call.get("args"), dict) else {}
+        args = dict(raw_args)
+        if "CommandLine" in args and "command" not in args:
+            args["command"] = args["CommandLine"]
+        if "Cwd" in args and "cwd" not in args:
+            args["cwd"] = args["Cwd"]
+        return name, args
+    name = str(_pick(data, "tool_name", "toolName", default="unknown"))
+    raw = _pick(data, "tool_input", "toolInput", default={})
+    return name, raw if isinstance(raw, dict) else {}
+
+
+def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    hook_name = str(data.get("hook_event_name") or data.get("event") or hook_name)
+    correlation = str(_pick(data, "conversationId", "conversation_id", default=""))
+    session_id = correlation
+    tool_name, raw_args = _antigravity_tool_from_data(data)
+    clean = redact_arguments(raw_args)
+    is_hitl = tool_name in ("ask_permission", "ask_question")
+    has_tool = tool_name != "unknown" or isinstance(data.get("toolCall"), dict)
+
+    if hook_name in ("PreInvocation", "sessionStart"):
+        return {
+            "source_app": "antigravity",
+            "adapter": "antigravity_hook",
+            "event_type": "session_start",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+
+    if hook_name == "Stop":
+        return {
+            "source_app": "antigravity",
+            "adapter": "antigravity_hook",
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+        }
+
+    if hook_name == "PreToolUse" and has_tool:
+        event_type = "approval_request" if is_hitl else "tool_called"
+        return {
+            "source_app": "antigravity",
+            "adapter": "antigravity_hook",
+            "event_type": event_type,
+            "outcome": "pending" if is_hitl else "success",
+            "reason": f"hook:{hook_name};hitl:{is_hitl}",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+            "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
+        }
+
+    if hook_name in ("PostToolUse", "PostInvocation"):
+        event_type, outcome, reason = _after_outcome(data)
+        step = data.get("stepIdx")
+        if has_tool:
+            return {
+                "source_app": "antigravity",
+                "adapter": "antigravity_hook",
+                "event_type": event_type,
+                "outcome": outcome,
+                "reason": reason,
+                "correlation_id": correlation,
+                "session_id": session_id,
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+                "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
+            }
+        if hook_name == "PostToolUse" and correlation:
+            return {
+                "source_app": "antigravity",
+                "adapter": "antigravity_hook",
+                "event_type": event_type,
+                "outcome": outcome,
+                "reason": f"step:{step};{reason}".strip(";"),
+                "correlation_id": correlation,
+                "session_id": session_id,
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+            }
+
+    return None
+
+
+def _patch_claude_family(
+    payload: dict[str, Any] | None,
+    *,
+    source_app: str,
+    adapter: str,
+    server: str,
+) -> dict[str, Any] | None:
+    if not payload:
+        return None
+    patched = dict(payload)
+    patched["source_app"] = source_app
+    patched["adapter"] = adapter
+    tool = patched.get("tool")
+    if isinstance(tool, dict):
+        tool = dict(tool)
+        tool["server"] = server
+        patched["tool"] = tool
+    return patched
+
+
+def _map_post_tool_use_failure(
+    source_app: str,
+    adapter: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    correlation = str(_pick(data, "session_id", default=""))
+    tool_name = str(_pick(data, "tool_name", default="unknown"))
+    tin = _pick(data, "tool_input", default={})
+    initiator = _initiator_from_hook(hook_name, data)
+    return {
+        "source_app": source_app,
+        "adapter": adapter,
+        "event_type": "tool_failed",
+        "outcome": "error",
+        "reason": str(_pick(data, "error", "message", "reason", default="tool_failed")),
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        "tool": {
+            "qualified": tool_name,
+            "server": source_app,
+            "arguments": redact_arguments(tin),
+        },
+    }
+
+
+def _subagent_stop_payload(
+    source_app: str, adapter: str, server: str, data: dict[str, Any]
+) -> dict[str, Any]:
+    """A subagent finishing — a lifecycle marker, never a session boundary.
+
+    Kept on the PARENT correlation so the subagent's work stays grouped with the
+    session that spawned it, but recorded as a tool_called marker rather than a
+    session_end: a session_end here flushed the parent's pending approvals as
+    inferred-denied. The `subagent_stop:` reason and `.subagent_stop.` name are
+    deliberately distinct from the start markers so the swarm rule does not count
+    a finish as a spawn.
+    """
+    correlation = str(_pick(data, "session_id", default=""))
+    agent_type = str(
+        _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+    )
+    slug = agent_type.lower().replace("_", "").replace("-", "") or "subagent"
+    return {
+        "source_app": source_app,
+        "adapter": adapter,
+        "event_type": "tool_called",
+        "outcome": "success",
+        "reason": f"subagent_stop:{agent_type}",
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        "tool": {
+            "qualified": f"{source_app}.subagent_stop.{slug}",
+            "server": server,
+            "arguments": {},
+        },
+    }
+
+
+def _map_claude_family_hook(
+    source_app: str,
+    adapter: str,
+    server: str,
+    hook_name: str,
+    data: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Qwen Code and Kimi Code share Claude's hook wire protocol (JSON on stdin)."""
+    hook_name = str(data.get("hook_event_name") or hook_name)
+    if hook_name == "PostToolUseFailure":
+        return _map_post_tool_use_failure(source_app, adapter, hook_name, data)
+    if hook_name == "SessionEnd":
+        correlation = str(_pick(data, "session_id", default=""))
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+        }
+    if hook_name == "SubagentStart":
+        correlation = str(_pick(data, "session_id", default=""))
+        agent_type = str(
+            _pick(data, "agent_type", "subagent_type", "agent_name", default="subagent")
+        )
+        slug = agent_type.lower().replace("_", "").replace("-", "") or "subagent"
+        return {
+            "source_app": source_app,
+            "adapter": adapter,
+            "event_type": "tool_called",
+            "outcome": "success",
+            "reason": f"subagent_start:{agent_type}",
+            "correlation_id": correlation,
+            "session_id": correlation,
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+            "tool": {
+                "qualified": f"{source_app}.subagent.{slug}",
+                "server": source_app,
+                "arguments": redact_arguments(_pick(data, "tool_input", default={})),
+            },
+        }
+    if hook_name == "SubagentStop":
+        return _subagent_stop_payload(source_app, adapter, server, data)
+    return _patch_claude_family(
+        map_claude_hook(hook_name, data),
+        source_app=source_app,
+        adapter=adapter,
+        server=server,
+    )
+
+
+def map_qwen_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qwen", "qwen_hook", "qwen", hook_name, data)
+
+
+def map_kimi_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("kimi", "kimi_hook", "kimi", hook_name, data)
+
+
+def map_qoder_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("qoder", "qoder_hook", "qoder", hook_name, data)
+
+
+def map_codebuddy_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return _map_claude_family_hook("codebuddy", "codebuddy_hook", "codebuddy", hook_name, data)
+
+
+def map_kimi_stream_json_line(
+    msg: dict[str, Any], *, session_id: str,
+) -> list[dict[str, Any]]:
+    """Map one Kimi `--output-format stream-json` JSONL line to adapter payloads.
+
+    Kimi print mode emits assistant messages with tool_calls and tool results
+    sequentially. Each tool_call becomes one tool_called event for Tier B ingest.
+    """
+    import uuid
+
+    role = str(msg.get("role") or "")
+    correlation = session_id or f"stream-{uuid.uuid4().hex[:12]}"
+    base = {
+        "source_app": "kimi",
+        "adapter": "kimi_stream_json",
+        "correlation_id": correlation,
+        "session_id": correlation,
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+    }
+
+    if role != "assistant":
+        return []
+
+    tool_calls = msg.get("tool_calls")
+    if not isinstance(tool_calls, list) or not tool_calls:
+        return []
+
+    payloads: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = str(fn.get("name") or "unknown")
+        args_raw = fn.get("arguments") or "{}"
+        if isinstance(args_raw, dict):
+            args = args_raw
+        else:
+            try:
+                args = json.loads(str(args_raw))
+            except json.JSONDecodeError:
+                args = {"raw": str(args_raw)[:512]}
+        if not isinstance(args, dict):
+            args = {"value": args}
+        payloads.append({
+            **base,
+            "event_type": "tool_called",
+            "outcome": "success",
+            "reason": "stream_json:tool_call",
+            "_tool_call_id": str(tc.get("id") or ""),
+            "tool": {
+                "qualified": f"kimi.{name}",
+                "server": "kimi",
+                "arguments": redact_arguments(args),
+            },
+        })
+    return payloads
+
+
+def _stream_json_result(msg: dict[str, Any]) -> tuple[str, bool] | None:
+    """Detect a tool-result line and whether it reports an error.
+
+    Returns (tool_call_id, failed) or None if this is not a result message.
+    """
+    if str(msg.get("role") or "") != "tool":
+        return None
+    tcid = str(msg.get("tool_call_id") or msg.get("id") or "")
+    err = _pick(msg, "is_error", "isError", default=None)
+    failed = err is True or (isinstance(err, str) and err.strip().lower() in ("1", "true", "yes"))
+    error_field = msg.get("error")
+    if error_field is True or (isinstance(error_field, str) and error_field.strip()):
+        failed = True
+    return tcid, failed
+
+
+def stream_json_main(source_app: str = "kimi") -> int:
+    """Ingest Kimi print-mode JSONL from stdin, with faithful outcomes.
+
+    A tool_call is *announced* in an assistant message and its result arrives in
+    a later `role: "tool"` message. The old code posted every announcement as
+    outcome:success immediately, so a call that later failed was recorded as a
+    success — wrong for every outcome-keyed detection rule. It also never closed
+    the session, leaving pending approvals unresolved forever.
+
+    So: buffer announced calls by id, post each with the outcome its result
+    reports, flush any call whose result never arrived at EOF (best-effort
+    success, as before), then emit a session_end so the turn actually closes.
+    Buffering means events land at result-time or EOF rather than immediately;
+    print mode is a bounded batch, so that is acceptable.
+    """
+    import uuid
+
+    if source_app != "kimi":
+        print(f"stream-json ingest not implemented for source '{source_app}'", file=sys.stderr)
+        return 2
+
+    session_id = (
+        os.environ.get("AGENTMETRY_CORRELATION_ID", "").strip()
+        or f"stream-{uuid.uuid4().hex[:12]}"
+    )
+
+    pending: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    anon = 0
+    tool_posts = 0
+
+    def _post(payload: dict[str, Any]) -> bool:
+        payload.pop("_tool_call_id", None)
+        return post_ingest(_hash_tool_args(payload), quiet=True)
+
+    for raw_line in sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(msg, dict):
+            continue
+
+        result = _stream_json_result(msg)
+        if result is not None:
+            tcid, failed = result
+            payload = pending.pop(tcid, None) if tcid else None
+            if payload is None:
+                continue
+            if failed:
+                payload["event_type"] = "tool_failed"
+                payload["outcome"] = "error"
+                payload["reason"] = "stream_json:tool_error"
+            if _post(payload):
+                tool_posts += 1
+            continue
+
+        for payload in map_kimi_stream_json_line(msg, session_id=session_id):
+            tcid = str(payload.pop("_tool_call_id", "") or "")
+            if not tcid:
+                anon += 1
+                tcid = f"anon-{anon}"
+            pending[tcid] = payload
+            order.append(tcid)
+
+    # Calls announced but never resolved (no result line, or an interrupted run):
+    # post them as-is rather than dropping them.
+    for tcid in order:
+        payload = pending.pop(tcid, None)
+        if payload is not None and _post(payload):
+            tool_posts += 1
+
+    if tool_posts == 0:
+        print("stream-json: no tool events posted (empty stdin or no tool_calls)", file=sys.stderr)
+        return 1
+
+    # Close the turn so pending approvals resolve and analytics see an end.
+    _post({
+        "source_app": "kimi",
+        "adapter": "kimi_stream_json",
+        "event_type": "session_end",
+        "correlation_id": session_id,
+        "session_id": session_id,
+        "reason": "stream_json:session_end",
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+    })
+    return 0
+
+
+def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    source = _source_app()
+    if source == "claude":
+        payload = map_claude_hook(hook_name, data)
+    elif source == "qwen":
+        payload = map_qwen_hook(hook_name, data)
+    elif source == "kimi":
+        payload = map_kimi_hook(hook_name, data)
+    elif source == "qoder":
+        payload = map_qoder_hook(hook_name, data)
+    elif source == "codebuddy":
+        payload = map_codebuddy_hook(hook_name, data)
+    elif source == "codex":
+        payload = map_codex_hook(hook_name, data)
+    elif source == "antigravity":
+        payload = map_antigravity_hook(hook_name, data)
+    elif source == "cursor":
+        payload = map_cursor_hook(hook_name, data)
+    elif "conversationId" in data:  # auto-detect when env unset
+        payload = map_antigravity_hook(hook_name, data)
+    elif _pick(data, "model", default="") and hook_name[:1].isupper():
+        payload = map_codex_hook(hook_name, data)
+    elif hook_name[:1].isupper():
+        payload = map_claude_hook(hook_name, data)
+    else:
+        payload = map_cursor_hook(hook_name, data)
+    # Hash tool args in-process so plaintext never crosses the wire.
+    payload = _hash_tool_args(payload)
+    adapter_override = os.environ.get("AGENTMETRY_ADAPTER", "").strip()
+    if payload and adapter_override:
+        payload["adapter"] = adapter_override
+    return payload
+
+
+def _emit_hook_stdout(hook_name: str) -> None:
+    """Antigravity requires JSON on stdout; Cursor/Codex use permission when enforcing."""
+    source = _source_app()
+    enforce = os.environ.get("AGENTMETRY_ENFORCE", "").strip().lower()
+
+    if source == "antigravity":
+        if hook_name == "PreToolUse":
+            decision = {"allow": "allow", "deny": "deny", "ask": "ask"}.get(enforce, "allow")
+            print(json.dumps({"decision": decision}))
+        elif hook_name in ("PostToolUse", "PostInvocation", "PreInvocation"):
+            print("{}")
+        elif hook_name == "Stop":
+            print(json.dumps({"decision": "stop"}))
+        return
+
+    if enforce in ("allow", "deny", "ask") and (
+        hook_name in CURSOR_BLOCKING
+        or hook_name in ("PreToolUse", "PermissionRequest")
+    ):
+        print(json.dumps({"permission": enforce}))
+
+
+def _hook_debug_path() -> Path:
+    source = _source_app() or "hook"
+    return _data_dir() / f"{source}-hook-debug.log"
+
+
+# Hooks the IDE actually blocks on: it waits for our decision before running the
+# tool. Only here can a `block` verdict become a real deny. `beforeReadFile` is
+# intentionally excluded (see CURSOR_BLOCKING) — it is not a blocking hook.
+_PRE_EXECUTION_HOOKS = CURSOR_BLOCKING | frozenset({"PreToolUse", "PermissionRequest"})
+
+
+def _is_blocking_hook(hook_name: str, data: dict[str, Any]) -> bool:
+    """True only for genuinely pre-execution hooks.
+
+    A `block` on an after-hook (afterShellExecution, PostToolUse, ...) is a false
+    prevention guarantee: the tool already ran, so emitting deny stops nothing.
+    The effective name is resolved the same way the mappers do — from stdin
+    first, then the CLI arg — so it matches what the IDE actually invoked.
+    """
+    effective = str(
+        data.get("hook_event_name")
+        or data.get("hookEventName")
+        or data.get("event")
+        or hook_name
+    )
+    return effective in _PRE_EXECUTION_HOOKS
+
+
+def _emit_block_decision() -> None:
+    """Print the deny decision in the shape the current source app expects."""
+    if _source_app() == "antigravity":
+        print(json.dumps({"decision": "deny"}))
+    else:
+        print(json.dumps({"permission": "deny"}))
+
+
+def hook_main(hook_name: str) -> int:
+    data, decode_error = read_hook_stdin()
+    if decode_error:
+        data["_stdin_decode_error"] = True
+
+    if os.environ.get("AGENTMETRY_HOOK_DEBUG", "").strip().lower() in ("1", "true", "yes"):
+        debug_path = _hook_debug_path()
+        try:
+            with debug_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"{_utc_now()} {hook_name} stdin={json.dumps(data)[:2000]}\n")
+        except OSError:
+            pass
+
+    payload = map_hook(hook_name, data)
+    if payload:
+        if decode_error:
+            payload["reason"] = (payload.get("reason", "") + ";stdin_decode_error").strip(";")
+            
+        if payload.get("event_type") in ("tool_called", "approval_request"):
+            tool_block = payload.get("tool") or {}
+            tool_name = tool_block.get("qualified", "")
+            server = tool_block.get("server", "")
+            # Enforcement (printing deny) is only honest on a pre-execution hook.
+            # On an after-hook the tool has already run, so a block-mode match is
+            # recorded but never turned into a deny — that would be a lie in the
+            # trail and a false prevention guarantee. See core/audit/policy.py.
+            blocking = _is_blocking_hook(hook_name, data)
+
+            if tool_policy_eval:
+                tp_verdict = tool_policy_eval(tool_name, data, server=server)
+                if tp_verdict.matched:
+                    payload["tool_policy"] = {
+                        "rule_id": tp_verdict.match.rule_id if tp_verdict.match else "",
+                        "action": tp_verdict.match.action if tp_verdict.match else "",
+                        "mode": tp_verdict.mode,
+                        "blocked": tp_verdict.blocked,
+                    }
+                    if tp_verdict.blocked and tp_verdict.mode == "block":
+                        rule_id = tp_verdict.match.rule_id if tp_verdict.match else "policy"
+                        if blocking:
+                            payload["outcome"] = "denied"
+                            payload["reason"] = f"tool_policy:{rule_id}"
+                            payload["event_type"] = "tool_called"
+                            post_ingest(payload, quiet=True)
+                            _emit_block_decision()
+                            return 0
+                        # After-hook: keep the real outcome so detection rules
+                        # still see the executed call; note it was not enforced.
+                        payload["reason"] = (
+                            f"{payload.get('reason', '')};tool_policy_block_observed:{rule_id}"
+                        ).strip(";")
+
+            if dlp_scan:
+                dlp_verdict = dlp_scan(tool_name, data)
+            else:
+                dlp_verdict = None
+            if dlp_verdict and dlp_verdict.matched:
+                # Rule metadata only — never the matched value.
+                payload["dlp"] = {
+                    "rule_id": dlp_verdict.match.rule_id,
+                    "mode": dlp_verdict.mode,
+                    "pattern_type": dlp_verdict.match.pattern_type,
+                    "category": dlp_verdict.match.category,
+                    "severity": dlp_verdict.match.severity,
+                    "rule_ids": [m.rule_id for m in (dlp_verdict.matches or [])],
+                }
+                if dlp_verdict.mode == "block":
+                    if blocking:
+                        payload["outcome"] = "denied"
+                        payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
+                        payload["event_type"] = "tool_called"
+                        post_ingest(payload, quiet=True)
+                        _emit_block_decision()
+                        return 0
+                    # After-hook: already executed — record, do not claim a block.
+                    payload["reason"] = (
+                        f"{payload.get('reason', '')};dlp_block_observed:{dlp_verdict.match.rule_id}"
+                    ).strip(";")
+
+        post_ingest(payload, quiet=True)
+
+    # Observe-only: Antigravity still needs {"decision":"allow"} on PreToolUse stdout.
+    _emit_hook_stdout(hook_name)
+
+    return 0
+
+
+def cli_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Agentmetry external ingest client")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    hook_p = sub.add_parser("hook", help="Run as an IDE hook (hook name as arg)")
+    hook_p.add_argument("hook_name")
+
+    send_p = sub.add_parser("send", help="Send a JSON payload file or stdin")
+    send_p.add_argument("--file", "-f", help="JSON file path")
+    send_p.add_argument("--source-app", default=None)
+
+    test_p = sub.add_parser("selftest", help="POST a synthetic event and confirm it lands")
+    test_p.add_argument("--dlp", action="store_true", help="Run DLP scanner test")
+
+    stream_p = sub.add_parser("stream-json", help="Ingest Kimi print-mode JSONL from stdin")
+    stream_p.add_argument("--source-app", default="kimi", choices=("kimi",))
+
+    args = parser.parse_args(argv)
+
+    if args.cmd == "hook":
+        return hook_main(args.hook_name)
+
+    if args.cmd == "selftest":
+        return selftest(dlp=args.dlp)
+
+    if args.cmd == "stream-json":
+        if args.source_app:
+            os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
+        return stream_json_main(args.source_app)
+
+    if args.source_app:
+        os.environ["AGENTMETRY_SOURCE_APP"] = args.source_app
+
+    if args.file:
+        payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    else:
+        payload = json.loads(sys.stdin.read())
+
+    return 0 if post_ingest(payload) else 1
+
+
+#: Every source app the dispatch below accepts as a leading argument.
+SOURCE_APPS = (
+    "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy",
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch one hook invocation and return an exit code.
+
+    Extracted from the old `if __name__` block so three callers share one
+    dispatch rather than three copies: this module run directly, the
+    `scripts/agentmetry_ingest.py` shim that every already-installed hook still
+    points at, and `agentmetry hook`, which is the only one of the three that
+    exists on a machine holding the wheel or the MSI and no checkout.
+
+    Returns rather than calling sys.exit, because a CLI subcommand that killed
+    the interpreter would take the rest of the CLI down with it.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+
+    if args and args[0] in SOURCE_APPS:
+        os.environ["AGENTMETRY_SOURCE_APP"] = args[0]
+        if len(args) >= 3 and args[1] == "hook":
+            return hook_main(args[2])
+        if len(args) >= 3 and args[1] == "stream-json":
+            return stream_json_main(args[0])
+        if len(args) >= 2:
+            return hook_main(args[1])
+    if args and args[0] == "selftest":
+        return selftest(dlp="--dlp" in args)
+    if len(args) >= 2 and args[0] == "hook":
+        return hook_main(args[1])
+    if args and args[0] not in ("hook", "send", "selftest"):
+        return hook_main(args[0])
+    return cli_main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

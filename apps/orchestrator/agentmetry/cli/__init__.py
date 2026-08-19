@@ -395,6 +395,86 @@ def cmd_install(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Agents this CLI can install for. Antigravity is absent on purpose: its hooks
+#: live in ~/.gemini and are written by scripts/install_antigravity_hooks.ps1,
+#: which has no Python equivalent. Listing it here and quietly doing nothing
+#: would be the reporting failure this codebase keeps finding in itself.
+_HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codebuddy")
+
+
+def cmd_hooks(args: argparse.Namespace) -> int:
+    """Install hook configs, defaulting to the agents actually on this machine.
+
+    The default matters more than it looks. This is what a per-user deployment
+    step runs at first logon, where nobody knows in advance which IDEs that
+    developer uses. Installing for all seven would write configs for agents that
+    are not there; installing for two would miss the ones they do use.
+    """
+    from agentmetry.core.audit import hook_bootstrap
+    from agentmetry.core.diagnostics import hook_coverage
+
+    if hook_bootstrap.hook_target() == "none":
+        print(
+            "No way to reach ingest from here: no checkout, no frozen binary, no "
+            "agentmetry-hook script. Installing hook configs now would write "
+            "commands that cannot run.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.agent:
+        wanted = [a for a in args.agent if a in _HOOK_INSTALLERS]
+        unknown = sorted(set(args.agent) - set(wanted))
+        if unknown:
+            print(f"No installer for: {', '.join(unknown)}", file=sys.stderr)
+            return 2
+    elif args.all:
+        wanted = list(_HOOK_INSTALLERS)
+    else:
+        states = hook_coverage.coverage()
+        wanted = [a for a in _HOOK_INSTALLERS if states.get(a) != hook_coverage.ABSENT]
+        if not wanted:
+            print("No supported agent found on this machine; nothing to install.")
+            return 0
+
+    failures = 0
+    for agent in wanted:
+        install = getattr(hook_bootstrap, f"install_{agent}_global_hooks", None)
+        if install is None:
+            print(f"  {agent}: no installer", file=sys.stderr)
+            failures += 1
+            continue
+        try:
+            path = install()
+        except OSError as exc:
+            print(f"  {agent}: FAILED ({exc})", file=sys.stderr)
+            failures += 1
+            continue
+        if path is None:
+            print(f"  {agent}: skipped", file=sys.stderr)
+            failures += 1
+        else:
+            print(f"  {agent}: {path}")
+
+    if "codex" in wanted and not failures:
+        print("")
+        print("codex: open Codex, run /hooks and approve the entries, or it")
+        print("skips them silently and records nothing.")
+    return 1 if failures else 0
+
+
+def cmd_hook(args: argparse.Namespace) -> int:
+    """Forward one hook event. Present here for discoverability and docs.
+
+    Hook configs should name the `agentmetry-hook` console script instead. This
+    path imports the whole CLI module, including httpx, on a code path that runs
+    once per tool call, and a hook has no reason to pay for that.
+    """
+    from agentmetry.hooks.ingest import main as ingest_main
+
+    return ingest_main([args.app, "hook", args.event])
+
+
 def cmd_uninstall(args: argparse.Namespace) -> int:
     from agentmetry.core.diagnostics import autostart
 
@@ -951,6 +1031,32 @@ def main(argv: list[str] | None = None) -> int:
     )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    hooks = sub.add_parser(
+        "hooks",
+        help="install IDE hook configs for the agents on this machine",
+    )
+    hooks.add_argument(
+        "action", choices=("install",), help="install hook configs into each agent's config"
+    )
+    hooks.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        help="install only this agent (repeatable). Default: every supported agent present here",
+    )
+    hooks.add_argument(
+        "--all",
+        action="store_true",
+        help="install for every supported agent, present on this machine or not",
+    )
+
+    hook = sub.add_parser(
+        "hook",
+        help="forward one IDE hook event to ingest (see also the agentmetry-hook script)",
+    )
+    hook.add_argument("app", help="cursor | claude | codex | antigravity | qwen | kimi | qoder | codebuddy")
+    hook.add_argument("event", help="the IDE's event name, e.g. PreToolUse")
+
     sub.add_parser("status", help="orchestrator health and audit export status")
     stats = sub.add_parser("stats", help="audit trail metrics for dogfood (events, detections)")
     stats.add_argument("--days", type=int, default=7)
@@ -1091,6 +1197,8 @@ def main(argv: list[str] | None = None) -> int:
         "start": cmd_start,
         "serve": cmd_serve,
         "stop": cmd_stop,
+        "hooks": cmd_hooks,
+        "hook": cmd_hook,
         "status": cmd_status,
         "stats": cmd_stats,
         "logs": cmd_logs,

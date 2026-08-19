@@ -685,6 +685,8 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
 | `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
+| `agentmetry hooks install` | Write IDE hook configs for every supported agent present on this machine. `--agent X` to pick, `--all` to force. This is what a per-user deployment step runs at first logon, when nobody knows in advance which IDEs that developer uses |
+| `agentmetry hook <app> <event>` | Forward one IDE hook event to ingest. Hook configs should name the `agentmetry-hook` console script instead, which skips the CLI's imports on a path that runs once per tool call |
 | `agentmetry logs -n 50 -f` | Tail the orchestrator log |
 | `agentmetry backup` / `restore` | Zip the vault and data stores; restore one (server stopped) |
 | `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |

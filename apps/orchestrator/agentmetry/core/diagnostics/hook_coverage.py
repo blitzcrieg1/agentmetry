@@ -61,7 +61,23 @@ from pathlib import Path
 #: Matched case-sensitively and in lower case on purpose: `AGENTMETRY_API_KEY` in
 #: an `env` block is not a hook, and an installed-looking config that captures
 #: nothing is the exact failure this module exists to catch.
-_DEFAULT_MARKERS = ("agentmetry_ingest", "agentaudit_ingest")
+def _default_markers() -> tuple[str, ...]:
+    """Read the executable tokens from hook_bootstrap rather than restating them.
+
+    Two lists of "what our hook command looks like" is the same drift that let
+    this module check two agents while six installers existed. The installer
+    writes the command; the installer's module owns the vocabulary.
+    """
+    try:
+        from agentmetry.core.audit.hook_bootstrap import HOOK_COMMAND_TOKENS
+
+        return HOOK_COMMAND_TOKENS
+    except Exception:
+        # Coverage reporting must survive an import problem in the installer.
+        return ("agentmetry_ingest", "agentaudit_ingest")
+
+
+_DEFAULT_MARKERS = _default_markers()
 
 COVERED = "covered"
 UNCOVERED = "uncovered"

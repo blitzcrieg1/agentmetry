@@ -43,11 +43,12 @@ def _ingest_script(repo_root: Path | None = None) -> Path:
 
 
 def cursor_hooks_payload(*, python: str, ingest: Path) -> dict[str, Any]:
-    hook_cmd = f'"{python}" "{ingest}" cursor hook'
     return {
         "version": 1,
         "hooks": {
-            event: [{"command": f"{hook_cmd} {event}"}]
+            event: [
+                {"command": hook_command("cursor", event, python=python, ingest=ingest)}
+            ]
             for event in CURSOR_HOOK_EVENTS
         },
     }
@@ -62,8 +63,12 @@ def install_cursor_global_hooks(
     """Write ~/.cursor/hooks.json so every Cursor workspace is audited."""
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
-    if not ingest.is_file():
-        logger.warning("Cursor hook bootstrap skipped: missing %s", ingest)
+    if hook_target(root) == "none":
+        # No checkout, no frozen binary, no console script: nothing a hook
+        # could invoke. Writing a config here would look like coverage.
+        logger.warning(
+            "Cursor hook bootstrap skipped: no way to reach ingest from %s", root
+        )
         return None
 
     py = python or sys.executable
@@ -112,6 +117,16 @@ FAMILY_HOOK_EVENTS = (
     "Stop",
 )
 
+#: Every executable an Agentmetry hook command can name. `hook_coverage` reads
+#: this same tuple, so a new invocation form cannot be recognised by one and not
+#: the other.
+HOOK_COMMAND_TOKENS = (
+    "agentmetry_ingest",      # repo checkout, and every hook installed to date
+    "agentaudit_ingest",      # pre-0.4.0 rename, still on disk somewhere
+    "agentmetry-hook",        # wheel install console script
+    "agentmetry.exe",         # frozen binary from the MSI
+)
+
 KIMI_HOOKS_BEGIN = "# agentmetry hooks begin"
 KIMI_HOOKS_END = "# agentmetry hooks end"
 
@@ -140,12 +155,69 @@ def merge_claude_hook_env(
     return settings
 
 
+def _console_script() -> Path | None:
+    """The `agentmetry-hook` console script, if this interpreter has one.
+
+    Installed beside the interpreter: Scripts/ on Windows, bin/ elsewhere.
+    """
+    bindir = Path(sys.executable).resolve().parent
+    for name in ("agentmetry-hook.exe", "agentmetry-hook"):
+        candidate = bindir / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def hook_target(repo_root: Path | None = None) -> str:
+    """Which of the three ways to reach ingest exists here: repo, frozen, wheel.
+
+    Order matters, and repo wins deliberately. On a developer machine with an
+    editable install every option resolves, and switching those machines to a
+    different invocation would rewrite working hook configs for no benefit. The
+    other two exist for the case that used to have no answer at all: an MSI or
+    wheel install, where `scripts/agentmetry_ingest.py` is simply not present
+    and every installer bailed out.
+    """
+    if _ingest_script(repo_root).is_file():
+        return "repo"
+    if getattr(sys, "frozen", False):
+        return "frozen"
+    if _console_script() is not None:
+        return "console"
+    return "none"
+
+
+def hook_command(
+    source_app: str,
+    event: str,
+    *,
+    python: str | None = None,
+    ingest: Path | None = None,
+    repo_root: Path | None = None,
+) -> str:
+    """The command an IDE hook config should invoke on this machine.
+
+    Returns a whole command rather than a prefix callers append to. The three
+    forms do not share an argument order, and pretending they did is how a
+    frozen install would end up writing `agentmetry.exe hook cursor hook
+    PreToolUse`.
+    """
+    target = hook_target(repo_root)
+    if target == "frozen":
+        return f'"{Path(sys.executable).resolve()}" hook {source_app} {event}'
+    if target == "console":
+        return f'"{_console_script()}" {source_app} hook {event}'
+    py = python or sys.executable
+    script = ingest if ingest is not None else _ingest_script(repo_root)
+    return f'"{py}" "{script}" {source_app} hook {event}'
+
+
 def _claude_command(event: str, *, python: str, ingest: Path) -> str:
-    return f'"{python}" "{ingest}" claude hook {event}'
+    return hook_command("claude", event, python=python, ingest=ingest)
 
 
 def _family_command(source_app: str, event: str, *, python: str, ingest: Path) -> str:
-    return f'"{python}" "{ingest}" {source_app} hook {event}'
+    return hook_command(source_app, event, python=python, ingest=ingest)
 
 
 def _is_our_hook_group(group: Any, *, source_app: str | None = None) -> bool:
@@ -154,9 +226,14 @@ def _is_our_hook_group(group: Any, *, source_app: str | None = None) -> bool:
         return False
     for inner in group.get("hooks", []) or []:
         cmd = str(inner.get("command", ""))
-        if "agentmetry_ingest.py" in cmd or "agentaudit_ingest.py" in cmd:
-            if source_app is None or f"{source_app} hook" in cmd:
-                return True
+        if not any(token in cmd for token in HOOK_COMMAND_TOKENS):
+            continue
+        # Matched on the app as a bare word rather than on "<app> hook",
+        # because the frozen form is "<exe> hook <app> <event>" and the other
+        # two are "<app> hook <event>". Keying on one order would silently
+        # stop recognising our own groups on an MSI install.
+        if source_app is None or source_app in cmd.split():
+            return True
     return False
 
 
@@ -230,8 +307,12 @@ def install_claude_global_hooks(
     """Merge Agentmetry hooks into ~/.claude/settings.json for every Claude project."""
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
-    if not ingest.is_file():
-        logger.warning("Claude hook bootstrap skipped: missing %s", ingest)
+    if hook_target(root) == "none":
+        # No checkout, no frozen binary, no console script: nothing a hook
+        # could invoke. Writing a config here would look like coverage.
+        logger.warning(
+            "Claude hook bootstrap skipped: no way to reach ingest from %s", root
+        )
         return None
 
     py = python or sys.executable
@@ -311,8 +392,10 @@ def _install_family_settings_hooks(
 ) -> Path | None:
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
-    if not ingest.is_file():
-        logger.warning("%s hook bootstrap skipped: missing %s", source_app, ingest)
+    if hook_target(repo_root) == "none":
+        logger.warning(
+            "%s hook bootstrap skipped: no way to reach ingest", source_app
+        )
         return None
 
     py = python or sys.executable
@@ -409,8 +492,12 @@ def install_codex_global_hooks(
     """
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
-    if not ingest.is_file():
-        logger.warning("Codex hook bootstrap skipped: missing %s", ingest)
+    if hook_target(root) == "none":
+        # No checkout, no frozen binary, no console script: nothing a hook
+        # could invoke. Writing a config here would look like coverage.
+        logger.warning(
+            "Codex hook bootstrap skipped: no way to reach ingest from %s", root
+        )
         return None
 
     py = python or sys.executable
@@ -483,8 +570,12 @@ def install_kimi_global_hooks(
     """Append Agentmetry hooks to ~/.kimi-code/config.toml (TOML [[hooks]] tables)."""
     root = repo_root or _repo_root()
     ingest = _ingest_script(root)
-    if not ingest.is_file():
-        logger.warning("Kimi hook bootstrap skipped: missing %s", ingest)
+    if hook_target(root) == "none":
+        # No checkout, no frozen binary, no console script: nothing a hook
+        # could invoke. Writing a config here would look like coverage.
+        logger.warning(
+            "Kimi hook bootstrap skipped: no way to reach ingest from %s", root
+        )
         return None
 
     py = python or sys.executable

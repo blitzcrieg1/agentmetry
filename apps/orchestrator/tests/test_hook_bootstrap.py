@@ -5,10 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
+import sys as bootstrap_sys
 
 from agentmetry.core.audit.hook_bootstrap import (
     bootstrap_tier_b_hooks,
     cursor_hooks_payload,
+    hook_command,
+    hook_target,
     install_claude_global_hooks,
     install_codex_global_hooks,
     install_cursor_global_hooks,
@@ -212,3 +215,85 @@ def test_codex_is_not_installed_at_orchestrator_boot(tmp_path: Path, monkeypatch
 
     bootstrap_tier_b_hooks(repo_root=repo)
     assert not (home / ".codex").exists()
+
+
+# ----------------------------------------------------------------------
+# Reaching ingest from somewhere that is not a git checkout
+# ----------------------------------------------------------------------
+
+
+def test_a_checkout_still_writes_the_script_command(tmp_path: Path):
+    """Unchanged for every developer machine, deliberately.
+
+    On a checkout with an editable install all three targets resolve. Switching
+    those machines to a different invocation would rewrite hook configs that
+    already work, for no gain.
+    """
+    repo = _repo_with_ingest(tmp_path)
+    assert hook_target(repo) == "repo"
+    cmd = hook_command("cursor", "PreToolUse", python="/usr/bin/python3", repo_root=repo)
+    assert cmd.endswith("cursor hook PreToolUse")
+    assert "agentmetry_ingest.py" in cmd
+
+
+def test_a_frozen_install_names_the_installed_binary(tmp_path: Path, monkeypatch):
+    """The case that made fleet deployment impossible.
+
+    An MSI machine has no checkout, so every installer bailed and the recorder
+    ran with nothing able to reach it.
+    """
+    empty = tmp_path / "no-repo"
+    empty.mkdir()
+    monkeypatch.setattr(bootstrap_sys, "frozen", True, raising=False)
+    monkeypatch.setattr(bootstrap_sys, "executable", "C:/Program Files/Agentmetry/agentmetry.exe")
+    assert hook_target(empty) == "frozen"
+    cmd = hook_command("cursor", "PreToolUse", repo_root=empty)
+    assert "agentmetry.exe" in cmd
+    assert cmd.endswith("hook cursor PreToolUse")
+
+
+def test_no_reachable_ingest_installs_nothing(tmp_path: Path, monkeypatch):
+    """Writing a config whose command cannot run would look exactly like
+    coverage while recording nothing, which is the failure this whole area of
+    the codebase keeps turning up."""
+    empty = tmp_path / "no-repo"
+    empty.mkdir()
+    home = tmp_path / "home"
+    (home / ".cursor").mkdir(parents=True)
+    monkeypatch.setattr(bootstrap_sys, "frozen", False, raising=False)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap._console_script", lambda: None)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
+    assert hook_target(empty) == "none"
+    assert install_cursor_global_hooks(repo_root=empty) is None
+    assert not (home / ".cursor" / "hooks.json").exists()
+
+
+def test_every_invocation_form_is_recognised_as_ours(tmp_path: Path):
+    """Idempotency and coverage both key on recognising our own command.
+
+    A form the marker table does not know means a re-run duplicates our groups
+    and `hook_coverage` reports a hooked agent as uncovered. The frozen form
+    also puts the app name after `hook` rather than before it, so a marker
+    keyed on "<app> hook" would miss it.
+    """
+    from agentmetry.core.audit.hook_bootstrap import _is_our_hook_group
+
+    for cmd in (
+        '"/usr/bin/python3" "/repo/scripts/agentmetry_ingest.py" cursor hook PreToolUse',
+        '"/repo/scripts/agentaudit_ingest.py" cursor hook PreToolUse',
+        '"/usr/bin/agentmetry-hook" cursor hook PreToolUse',
+        '"C:/Program Files/Agentmetry/agentmetry.exe" hook cursor PreToolUse',
+    ):
+        group = {"hooks": [{"type": "command", "command": cmd}]}
+        assert _is_our_hook_group(group), cmd
+        assert _is_our_hook_group(group, source_app="cursor"), cmd
+        assert not _is_our_hook_group(group, source_app="claude"), cmd
+
+
+def test_coverage_shares_the_marker_table():
+    """Two lists of what our command looks like is the drift that let the
+    heartbeat check two agents while six installers existed."""
+    from agentmetry.core.audit.hook_bootstrap import HOOK_COMMAND_TOKENS
+    from agentmetry.core.diagnostics import hook_coverage
+
+    assert hook_coverage._DEFAULT_MARKERS == HOOK_COMMAND_TOKENS

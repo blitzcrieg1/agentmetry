@@ -57,6 +57,15 @@ Changelog = "https://github.com/blitzcrieg1/agentmetry/blob/master/CHANGELOG.md"
 
 [project.scripts]
 agentmetry = "agentmetry.cli:main"
+# Separate console script rather than only `agentmetry hook`, because this one
+# runs on every tool call. The CLI module pulls in httpx, sqlite3 and zipfile at
+# import; the ingest client is stdlib plus the enrichment it actually uses. A
+# hook has no reason to pay for the parts of the CLI it will never call.
+#
+# It also gives an installed machine an absolute path a hook config can name.
+# Before this, capture required a git checkout, so the MSI shipped a recorder
+# that no hook could reach.
+agentmetry-hook = "agentmetry.hooks.ingest:main"
 
 # Third-party enterprise packages register here, e.g.:
 # [project.entry-points."agentmetry.extensions"]
