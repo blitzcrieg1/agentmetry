@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Python = (Get-Command python -ErrorAction Stop).Source
-$Bootstrap = Join-Path $RepoRoot "apps\orchestrator\core\audit\hook_bootstrap.py"
+$Bootstrap = Join-Path $RepoRoot "apps\orchestrator\agentmetry\core\audit\hook_bootstrap.py"
 
 $targets = @(
     @{ Name = "Qwen Code"; Target = "qwen"; Config = "$env:USERPROFILE\.qwen" },
