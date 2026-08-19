@@ -344,6 +344,100 @@ def _install_family_settings_hooks(
     return settings_path
 
 
+# --- OpenAI Codex CLI (global ~/.codex/hooks.json) ------------------------------
+# Codex is the one supported agent that had no installer, so the only path was a
+# hand-merge of adapters/codex/hooks.agentmetry.json. That template also carries
+# a relative `python scripts/...` command, which only works when Codex happens to
+# start in the repo root. This writes absolute paths, like every other installer.
+#
+# Codex groups carry a `matcher`, and unlike Claude the file holds nothing but
+# hooks. It is still user-owned: a developer can add their own groups, so this
+# merges and replaces only what we previously wrote.
+CODEX_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
+    ("SessionStart", "startup|resume|clear"),
+    ("PreToolUse", ".*"),
+    ("PermissionRequest", ".*"),
+    ("PostToolUse", ".*"),
+    ("Stop", ""),
+)
+
+
+def merge_codex_hooks(doc: dict[str, Any], *, python: str, ingest: Path) -> dict[str, Any]:
+    """Merge our groups into a Codex hooks document, non-destructively.
+
+    Idempotent by the same marker every other adapter uses: a re-run drops the
+    groups whose command names `codex hook` and appends fresh ones, so the file
+    does not grow a duplicate set each time somebody runs the installer.
+    """
+    hooks = doc.get("hooks")
+    if not isinstance(hooks, dict):
+        hooks = {}
+        doc["hooks"] = hooks
+
+    for event, matcher in CODEX_HOOK_EVENTS:
+        existing = hooks.get(event)
+        groups = existing if isinstance(existing, list) else []
+        kept = [g for g in groups if not _is_our_hook_group(g, source_app="codex")]
+        group: dict[str, Any] = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": _family_command("codex", event, python=python, ingest=ingest),
+                    "timeout": 10,
+                    "statusMessage": f"Agentmetry {event}",
+                }
+            ]
+        }
+        if matcher:
+            group["matcher"] = matcher
+        kept.append(group)
+        hooks[event] = kept
+
+    return doc
+
+
+def install_codex_global_hooks(
+    *, repo_root: Path | None = None, python: str | None = None
+) -> Path | None:
+    """Merge Agentmetry hooks into ~/.codex/hooks.json for every Codex session.
+
+    Deliberately not called from `bootstrap_tier_b_hooks`. Codex gates hooks
+    behind a hash-based trust prompt and skips untrusted ones silently, so an
+    install the developer did not ask for would sit there looking installed and
+    capturing nothing. Installing it is a decision, and the decision comes with
+    a step only a human can complete.
+    """
+    root = repo_root or _repo_root()
+    ingest = _ingest_script(root)
+    if not ingest.is_file():
+        logger.warning("Codex hook bootstrap skipped: missing %s", ingest)
+        return None
+
+    py = python or sys.executable
+    hooks_dir = Path.home() / ".codex"
+    hooks_path = hooks_dir / "hooks.json"
+
+    doc: dict[str, Any] = {}
+    if hooks_path.is_file():
+        try:
+            loaded = json.loads(hooks_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            # Never clobber a config we cannot parse.
+            logger.warning("Codex hooks.json unreadable (%s); skipping install", exc)
+            return None
+        if not isinstance(loaded, dict):
+            logger.warning("Codex hooks.json is not an object; skipping install")
+            return None
+        doc = loaded
+
+    merge_codex_hooks(doc, python=py, ingest=ingest)
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hooks_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    logger.info("Installed global Codex audit hooks -> %s", hooks_path)
+    return hooks_path
+
+
 def _kimi_config_dir() -> Path:
     home = os.environ.get("KIMI_CODE_HOME", "").strip()
     if home:
@@ -432,9 +526,10 @@ if __name__ == "__main__":
         "kimi": install_kimi_global_hooks,
         "qoder": install_qoder_global_hooks,
         "codebuddy": install_codebuddy_global_hooks,
+        "codex": install_codex_global_hooks,
     }
     fn = installers.get(target, bootstrap_tier_b_hooks)
-    if target in ("qwen", "kimi", "qoder", "codebuddy"):
+    if target in ("qwen", "kimi", "qoder", "codebuddy", "codex"):
         path = fn()
         if path:
             print(f"Installed global {target} hooks -> {path}")

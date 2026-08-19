@@ -150,9 +150,8 @@ def _check_hooks_installed(report: DoctorReport) -> None:
         report.warn(
             "hooks",
             f"Installed on this machine but NOT recorded: {', '.join(uncovered)}. "
-            "Most agents install with scripts/install_<agent>_hooks.ps1; Codex has "
-            "no installer yet and is set up by hand, per "
-            "docs/agentmetry-external-ingest.md.",
+            "Run scripts/install_<agent>_hooks.ps1 for each. Codex additionally "
+            "needs its /hooks trust prompt approved, or it skips them silently.",
         )
     if unverified:
         report.warn(

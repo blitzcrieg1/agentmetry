@@ -119,7 +119,7 @@ Transcript fallback: `<app_data>/brain/<conversationId>/.system_generated/logs/t
 
 ## OpenAI Codex CLI
 
-Project hooks ship in `.codex/hooks.json` (or merge `adapters/codex/hooks.agentmetry.json` into `~/.codex/hooks.json`). Codex uses nested matcher groups — see [OpenAI Codex hooks docs](https://developers.openai.com/codex/hooks).
+Install globally with `scripts/install_codex_hooks.ps1`, which merges into `~/.codex/hooks.json` with absolute paths and preserves any hooks of your own. The template in `adapters/codex/hooks.agentmetry.json` is still there for a manual merge, but note its command is relative and only resolves if Codex starts in the repo root. Codex uses nested matcher groups — see [OpenAI Codex hooks docs](https://developers.openai.com/codex/hooks).
 
 Events wired: `SessionStart`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`.
 

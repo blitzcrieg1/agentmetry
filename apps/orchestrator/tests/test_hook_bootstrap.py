@@ -10,9 +10,11 @@ from agentmetry.core.audit.hook_bootstrap import (
     bootstrap_tier_b_hooks,
     cursor_hooks_payload,
     install_claude_global_hooks,
+    install_codex_global_hooks,
     install_cursor_global_hooks,
     merge_claude_hook_env,
     merge_claude_hooks,
+    merge_codex_hooks,
 )
 
 
@@ -142,3 +144,71 @@ def test_merge_claude_hook_env_from_orchestrator_dotenv(tmp_path: Path):
     merge_claude_hook_env(settings, repo_root=repo)
     assert settings["env"]["AGENTMETRY_TOOL_POLICY_MODE"] == "block"
     assert settings["theme"] == "dark"
+
+
+# ----------------------------------------------------------------------
+# Codex, the surface that had no installer at all
+# ----------------------------------------------------------------------
+
+
+def test_codex_hooks_carry_absolute_paths(tmp_path: Path, monkeypatch):
+    """The shipped adapter template says `python scripts/agentmetry_ingest.py`,
+    which only resolves when Codex happens to start in the repo root. An
+    installer that copied that verbatim would work on the maintainer's machine
+    and nowhere else."""
+    repo = _repo_with_ingest(tmp_path)
+    home = tmp_path / "home"
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
+
+    path = install_codex_global_hooks(repo_root=repo, python="/usr/bin/python3")
+    assert path == home / ".codex" / "hooks.json"
+    cmd = json.loads(path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert str(repo) in cmd and "codex hook PreToolUse" in cmd
+
+
+def test_codex_install_preserves_user_groups_and_is_idempotent(tmp_path: Path):
+    """~/.codex/hooks.json is the developer's file. Re-running the installer must
+    not duplicate our groups, and must not evict theirs."""
+    ingest = tmp_path / "agentmetry_ingest.py"
+    ingest.write_text("# stub", encoding="utf-8")
+    theirs = {"matcher": ".*", "hooks": [{"type": "command", "command": "their-own-linter"}]}
+    doc = {"hooks": {"PreToolUse": [theirs]}}
+
+    merge_codex_hooks(doc, python="/usr/bin/python3", ingest=ingest)
+    merge_codex_hooks(doc, python="/usr/bin/python3", ingest=ingest)
+
+    groups = doc["hooks"]["PreToolUse"]
+    assert theirs in groups
+    ours = [g for g in groups if "agentmetry_ingest" in json.dumps(g)]
+    assert len(ours) == 1
+
+
+def test_codex_stop_has_no_matcher_but_the_rest_do(tmp_path: Path):
+    ingest = tmp_path / "agentmetry_ingest.py"
+    ingest.write_text("# stub", encoding="utf-8")
+    doc = merge_codex_hooks({}, python="/usr/bin/python3", ingest=ingest)
+    assert doc["hooks"]["SessionStart"][0]["matcher"] == "startup|resume|clear"
+    assert "matcher" not in doc["hooks"]["Stop"][0]
+
+
+def test_codex_install_skips_an_unparseable_file(tmp_path: Path, monkeypatch):
+    repo = _repo_with_ingest(tmp_path)
+    home = tmp_path / "home"
+    (home / ".codex").mkdir(parents=True)
+    (home / ".codex" / "hooks.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
+
+    assert install_codex_global_hooks(repo_root=repo, python="/usr/bin/python3") is None
+    assert (home / ".codex" / "hooks.json").read_text(encoding="utf-8") == "{not json"
+
+
+def test_codex_is_not_installed_at_orchestrator_boot(tmp_path: Path, monkeypatch):
+    """Codex trusts hooks by hash and skips untrusted ones silently, so a boot
+    install nobody asked for would look installed and capture nothing. Cursor
+    and Claude self-install; Codex is a decision with a human step attached."""
+    repo = _repo_with_ingest(tmp_path)
+    home = tmp_path / "home"
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
+
+    bootstrap_tier_b_hooks(repo_root=repo)
+    assert not (home / ".codex").exists()
