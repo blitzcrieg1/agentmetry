@@ -1,4 +1,4 @@
-# Agentmetry event schema (v1.1.0)
+# Agentmetry event schema (v1.2.0)
 
 Canonical JSON events for IDE hook capture and MCP audit. The orchestrator writes these to:
 
@@ -78,6 +78,152 @@ Agentmetry's rule vocabulary.
 `initiator.actor_type` is set at `run_skill` from the call site (`manual`, `cron`, `vault_watch`, `ingress`, …) — never from client headers. `approval_response` events keep the run's `initiator` but set `actor.type=user` (the operator who clicked approve/reject).
 
 **Note on DLP**: When an execution is blocked by the local Regex/YARA scanner, `action.outcome` is set to `denied` and `action.reason` is set to `dlp:<rule_id>`. The specific match data is logged in the `dlp` block.
+
+### v1.2 additions (additive)
+
+| Field | When present | Purpose |
+|-------|--------------|---------|
+| `detection.atlas` | `action.type: detection`, and only for rules that describe an AI-specific technique | `{framework, tactic_id, tactic, technique_id, technique, atlas_version}` |
+| `tool.atlas` | `tool_called` where ATLAS says something ATT&CK cannot | Same shape |
+| `mcp_schema.atlas` | `action.type: mcp_schema` with `status: changed` | Same shape |
+
+A 1.1.0 consumer parses a 1.2.0 event and meets one key it does not recognise,
+which its JSON parser already handles. Nothing moved, nothing changed meaning,
+nothing became required. Consumers pinning the exact string rather than a lower
+bound are the only ones that need a change.
+
+## MITRE ATLAS (`atlas`)
+
+ATT&CK describes what the agent did to the host. ATLAS describes what was done
+to or through the agent. Both blocks can appear on one event, describing
+different things about it.
+
+`cursor.Read` on `~/.aws/credentials` is `T1552.001` whether a human, a script
+or an agent did it. An MCP server changing its advertised tool schema between
+calls has no honest ATT&CK id at all. That gap is why this block exists.
+
+```json
+"atlas": {
+  "framework": "MITRE ATLAS",
+  "tactic_id": "AML.TA0005",
+  "tactic": "Execution",
+  "technique_id": "AML.T0051.001",
+  "technique": "LLM Prompt Injection: Indirect",
+  "atlas_version": "2026.07"
+}
+```
+
+`atlas_version` is the ATLAS content release the id was resolved against.
+ATLAS renumbers between releases, so an id in an old trail is not
+re-resolvable without it. Query on `technique_id`; `technique` is a display
+label and its wording can change, exactly as with ATT&CK.
+
+### Where the block appears, and where it does not
+
+The block sits beside the thing it labels: inside `detection`, inside `tool`,
+inside `mcp_schema`. It is never at the top level.
+
+It is **absent on most events**, and that is the design rather than a gap.
+A field carrying the same value everywhere is decoration, not signal. Two
+techniques are deliberately never emitted for that reason:
+
+- `AML.T0053 AI Agent Tool Invocation` is true of every event this product
+  records, by definition.
+- `AML.T0050 Command and Scripting Interpreter` is ATLAS restating `T1059`
+  with no agent-specific claim attached.
+
+Exactly one built-in detection rule is mapped:
+
+| Rule | ATLAS | Why |
+|------|-------|-----|
+| `untrusted-input-then-risky-action` | `AML.T0051.001` LLM Prompt Injection: Indirect | Attacker-authorable content enters the session, then an already-risky action follows. ATLAS describes indirect injection as arriving "via a separate data channel ingested by the LLM". |
+
+Rules such as `credential-exfil` and `destructive-delete-burst` carry no ATLAS
+block. They are real and serious and they are host behaviour, which ATT&CK
+already covers.
+
+### Analyst overrides
+
+A YAML rule in `agentmetry/policies/detection/manifest.yaml` may declare its
+own mapping, which wins over any built-in one:
+
+```yaml
+- id: my-custom-rule
+  atlas:
+    tactic_id: AML.TA0010
+    tactic: Exfiltration
+    technique_id: AML.T0086
+    technique: Exfiltration via AI Agent Tool Invocation
+    atlas_version: "2026.07"   # optional; defaults to the shipped pin
+```
+
+`technique_id` is validated against `^AML\.T\d{4}(\.\d{3})?$` and
+`tactic_id` against `^AML\.TA\d{4}$` when the manifest loads. A malformed id
+raises rather than being dropped: a mapping silently discarded for a typo
+leaves the rule firing while the analyst believes it is tagged.
+
+### Query patterns
+
+Splunk:
+
+```
+index=main sourcetype=agentmetry:json event.detection.atlas.technique_id="AML.T0051.001"
+```
+
+Elastic. Note the vendor path: ATLAS ids never enter ECS `threat.*`, because
+those fields are ATT&CK-typed and an `AML.T****` there would corrupt any
+rollup that groups by technique without filtering on `threat.framework`.
+
+```
+FROM logs-agentmetry
+| WHERE agentmetry.detection.atlas.technique_id IS NOT NULL
+| KEEP @timestamp, host.name, agentmetry.detection.rule_id, agentmetry.detection.atlas.technique_id
+```
+
+Every ATLAS-labelled finding, whatever the technique:
+
+```
+FROM logs-agentmetry
+| WHERE agentmetry.detection.atlas.framework == "MITRE ATLAS"
+```
+
+### Out of scope
+
+Two ATLAS tactics are not covered and are not planned here, because they need
+signals from inside the model that an endpoint sensor at the tool boundary
+does not have:
+
+| Tactic | Why not |
+|--------|---------|
+| `AML.TA0000` AI Model Access | Requires observing queries to and responses from the model itself. Agentmetry records the tool lifecycle, not inference. |
+| `AML.TA0001` AI Attack Staging | Proxy training, adversarial-example crafting and model replication happen off this host, before anything reaches a tool boundary. |
+
+Both were renamed from "ML" to "AI" in current ATLAS, and both are commonly
+cited under the wrong ids: `AML.TA0004` is Initial Access and `AML.TA0012` is
+Privilege Escalation.
+
+The Cloud Security Alliance's *MITRE ATT&CK and ATLAS Agentic Gap Analysis*
+(2026-03-27) argues that ATLAS itself has agentic gaps overlapping the surface
+a tool-boundary sensor sees. That cuts both ways: some agent behaviour this
+product records has no ATLAS technique either, which is why the block is
+absent far more often than it is present.
+
+### Re-resolving the ids
+
+Every id here was resolved **by name** against the canonical source, not from
+memory or from secondary write-ups:
+
+```
+git clone https://github.com/mitre-atlas/atlas-data
+# dist/ATLAS-latest.yaml is a symlink; dist/ATLAS.yaml is a deprecated 5.6.0 snapshot
+cat dist/v6/ATLAS-2026.07.yaml
+```
+
+Pinned release: **2026.07**, format-version **6.0.0**. Resolving by name is
+what catches renumbering. Two examples that a from-memory mapping gets wrong:
+`AML.T0054` is *LLM Jailbreak*, not indirect prompt injection; and
+`AML.T0099` is *AI Agent Tool Data Poisoning*, a different technique from
+*AI Agent Tool Poisoning*, which is `AML.T0110`.
 
 ## Example (`run/tool_called`)
 
