@@ -81,8 +81,69 @@ gap in the mapping. A coverage panel that counts unclassified calls as covered
 is worse than one that shows a smaller number honestly.
 
 `threat.framework` is always `MITRE ATT&CK` on these documents. MITRE ATLAS
-techniques, when they ship, will land under `agentmetry.tool.atlas.*` rather than
-here, so an aggregation over `threat.technique.id` never mixes taxonomies.
+techniques land under `agentmetry.tool.atlas.*` and never here, so an
+aggregation over `threat.technique.id` cannot mix taxonomies.
+
+## MITRE ATLAS (`agentmetry.tool.atlas.*`)
+
+ATT&CK describes what the agent did to the host. ATLAS describes what was done
+to or through the agent, which is the half ATT&CK has no id for. Both blocks can
+be present on one event, describing different things about it.
+
+| field | example |
+| --- | --- |
+| `agentmetry.tool.atlas.framework` | `MITRE ATLAS` |
+| `agentmetry.tool.atlas.tactic_id` | `AML.TA0013` |
+| `agentmetry.tool.atlas.tactic` | `Credential Access` |
+| `agentmetry.tool.atlas.technique_id` | `AML.T0098` |
+| `agentmetry.tool.atlas.technique` | `AI Agent Tool Credential Harvesting` |
+
+The block is absent on most events, deliberately. It appears only where ATLAS
+adds a claim ATT&CK cannot make: that an AI agent's tool was the instrument.
+A shell command is tagged `T1059.004` and carries no ATLAS label, because
+`AML.T0050` is ATLAS restating the same thing with nothing agent-specific
+attached. `AML.T0053 AI Agent Tool Invocation` is true of every event this
+product records and is never emitted for the same reason.
+
+The rug-pull signal carries its own label on the `mcp_schema` event rather than
+on a tool call:
+
+```json
+"mcp_schema": {
+  "status": "changed",
+  "atlas": {
+    "framework": "MITRE ATLAS",
+    "tactic_id": "AML.TA0007",
+    "tactic": "Defense Evasion",
+    "technique_id": "AML.T0109",
+    "technique": "AI Supply Chain Rug Pull"
+  }
+}
+```
+
+Only a schema that moved is the technique. A first sighting (`new`) and a quiet
+reconnect (`same`) carry no label, because tagging either would put a Defense
+Evasion finding on installing a tool.
+
+Ids are from ATLAS content release `2026.07`, format-version `6.0.0`. Note that
+the widely-linked `dist/ATLAS.yaml` in the ATLAS data repository is a deprecated
+`5.6.0` snapshot; these came from `dist/v6/`.
+
+To query ATLAS in Elastic, filter the vendor path directly:
+
+```
+FROM logs-agentmetry
+| WHERE agentmetry.tool.atlas.technique_id == "AML.T0098"
+| KEEP @timestamp, host.name, user.id, agentmetry.tool.qualified
+```
+
+Map those as keywords too if you intend to aggregate on them, for the same
+reason as `threat.*` above:
+
+```json
+"agentmetry.tool.atlas.technique_id": { "type": "keyword" },
+"agentmetry.tool.atlas.tactic_id":    { "type": "keyword" }
+```
 
 ---
 

@@ -51,11 +51,13 @@ except ImportError:
 # Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
 # trait/MITRE tagging, which only needs the stdlib.
 try:
+    from agentmetry.core.audit.atlas import attach_atlas
     from agentmetry.core.audit.detection.traits import classify_command
     from agentmetry.core.audit.mitre import get_mitre_mapping
 except ImportError:
     classify_command = None
     get_mitre_mapping = None
+    attach_atlas = None
 
 REDACT_KEYS = frozenset({
     "token", "api_key", "apikey", "password", "secret", "authorization",
@@ -415,6 +417,11 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
             mitre = get_mitre_mapping(qualified, evidence)
             if mitre:
                 tool["mitre"] = mitre
+        # Same defensive shape as the imports above: the hook runs inside the
+        # agent's interpreter and must degrade to an unenriched but valid event
+        # rather than take the tool call down with it.
+        if attach_atlas:
+            attach_atlas(tool)
 
         if _log_full_args_enabled():
             tool["arguments"] = scrub_arg_values(

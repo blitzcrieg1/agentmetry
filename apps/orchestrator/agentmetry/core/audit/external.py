@@ -167,6 +167,12 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             if mitre:
                 event["tool"]["mitre"] = mitre
 
+        # After both branches, so an adapter that supplied its own ATT&CK block
+        # gets the ATLAS sibling too rather than only the ones we classified.
+        from agentmetry.core.audit.atlas import attach_atlas
+
+        attach_atlas(event["tool"])
+
     gated = payload.get("gated_action")
     if isinstance(gated, dict) and gated.get("tool"):
         event["gated_action"] = {

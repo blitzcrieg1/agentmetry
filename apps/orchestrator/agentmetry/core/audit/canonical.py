@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from agentmetry.core.audit.atlas import attach_atlas
 from agentmetry.core.audit.hashing import arguments_sha256
 from agentmetry.core.audit.identity import identity_fields
 from agentmetry.core.audit.mitre import get_mitre_mapping
@@ -119,6 +120,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
         mitre = get_mitre_mapping(tool_qualified)
         if mitre:
             event["tool"]["mitre"] = mitre
+        attach_atlas(event["tool"])
 
     if topic == RUN_WAITING:
         gated = payload.get("gated_action")

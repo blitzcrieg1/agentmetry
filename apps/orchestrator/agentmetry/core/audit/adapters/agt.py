@@ -220,6 +220,7 @@ def agt_to_canonical(
     adds up to.
     """
     from agentmetry.core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.atlas import attach_atlas
     from agentmetry.core.audit.mitre import get_mitre_mapping
 
     data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
@@ -248,6 +249,7 @@ def agt_to_canonical(
     mapping = get_mitre_mapping(resource or "run", data or command)
     if mapping:
         tool["mitre"] = mapping
+    attach_atlas(tool)
 
     agent_did = str(entry.get("agent_did") or "")
 

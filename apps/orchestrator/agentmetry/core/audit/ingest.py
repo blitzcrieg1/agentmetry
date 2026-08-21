@@ -196,6 +196,7 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
 
     from agentmetry.core.audit.canonical import SCHEMA_VERSION
     from agentmetry.core.audit.identity import identity_fields
+    from agentmetry.core.audit.atlas import RUG_PULL
     from agentmetry.core.diagnostics.mcp_schema import server_id
 
     server, fingerprint, tool_count, _source = _schema_payload_fields(payload)
@@ -227,6 +228,12 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
             "fingerprint": fingerprint,
             "tool_count": tool_count,
             "status": status,
+            # Only a schema that MOVED is the technique. `new` is the first
+            # sight of a server and `same` is a quiet reconnect; tagging either
+            # as a rug pull would put a Defense Evasion label on installing a
+            # tool. ATT&CK has no id for this at all, which is the clearest
+            # case in the product for ATLAS existing alongside it.
+            **({"atlas": dict(RUG_PULL)} if status == "changed" else {}),
         },
     }
 
