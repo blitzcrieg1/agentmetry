@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from agentmetry.core.audit.atlas import atlas_for_rule
 from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 
@@ -107,6 +108,19 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
     """
     source = source_event.get("source")
     agent = source_event.get("agent")
+
+    # The ATLAS block sits inside `detection`, beside the finding it describes,
+    # matching `tool.atlas` and `mcp_schema.atlas`. One placement rule across
+    # the schema: the label lives next to the thing it labels.
+    #
+    # Omitted entirely when the rule has no mapping, rather than emitted as
+    # null. A null would force every consumer to distinguish "no ATLAS meaning"
+    # from "not yet classified", and those are the same thing here.
+    detection_block = detection.as_dict()
+    atlas = atlas_for_rule(detection.rule_id)
+    if atlas is not None:
+        detection_block["atlas"] = atlas
+
     return {
         "schema_version": source_event.get("schema_version", SCHEMA_VERSION),
         "event_id": str(uuid.uuid4()),
@@ -124,5 +138,5 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
             "reason": detection.summary,
         },
         "agent": agent if isinstance(agent, dict) else {"name": "agentmetry"},
-        "detection": detection.as_dict(),
+        "detection": detection_block,
     }

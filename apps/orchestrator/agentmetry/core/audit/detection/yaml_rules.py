@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from agentmetry.core.audit.atlas import (
+    parse_yaml_atlas,
+    register_yaml_atlas,
+    reset_yaml_atlas,
+)
 from .models import Detection
 from .rules import (
     _action,
@@ -54,6 +59,11 @@ def _make_count_rule(spec: dict[str, Any]) -> Callable[[list[dict[str, Any]]], l
     match = spec.get("match") if isinstance(spec.get("match"), dict) else {}
     tactic_ids = [str(t) for t in (spec.get("tactic_ids") or []) if t]
     technique_ids = [str(t) for t in (spec.get("technique_ids") or []) if t]
+    # An analyst mapping their own rule to an ATLAS technique without editing
+    # Python. Validated and registered at build time rather than at fire time,
+    # so a typo surfaces when the manifest loads instead of silently producing
+    # untagged detections in the middle of an incident.
+    register_yaml_atlas(rule_id, parse_yaml_atlas(rule_id, spec.get("atlas")))
 
     def rule(events: list[dict[str, Any]]) -> list[Detection]:
         hits = [e for e in events if _event_matches(e, match)]
@@ -80,4 +90,8 @@ def _make_count_rule(spec: dict[str, Any]) -> Callable[[list[dict[str, Any]]], l
 
 
 def build_yaml_rules() -> list[Callable[[list[dict[str, Any]]], list[Detection]]]:
+    # Cleared first: the overlay is rebuilt from the manifest every time, so a
+    # mapping deleted from YAML actually disappears instead of surviving in
+    # memory until the process restarts.
+    reset_yaml_atlas()
     return [_make_count_rule(spec) for spec in count_rules() if spec.get("id")]
