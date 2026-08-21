@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 
 from .engine import run_detections, run_host_detections
@@ -107,7 +108,7 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
     source = source_event.get("source")
     agent = source_event.get("agent")
     return {
-        "schema_version": source_event.get("schema_version", "1.1.0"),
+        "schema_version": source_event.get("schema_version", SCHEMA_VERSION),
         "event_id": str(uuid.uuid4()),
         "session_id": source_event.get("session_id", ""),
         "correlation_id": detection.correlation_id or source_event.get("correlation_id", ""),

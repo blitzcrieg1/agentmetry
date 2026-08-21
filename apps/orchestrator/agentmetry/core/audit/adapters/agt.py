@@ -221,6 +221,7 @@ def agt_to_canonical(
     """
     from agentmetry.core.audit.detection.traits import classify_command
     from agentmetry.core.audit.atlas import attach_atlas
+    from agentmetry.core.audit.canonical import SCHEMA_VERSION
     from agentmetry.core.audit.mitre import get_mitre_mapping
 
     data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
@@ -254,7 +255,7 @@ def agt_to_canonical(
     agent_did = str(entry.get("agent_did") or "")
 
     return {
-        "schema_version": "1.1.0",
+        "schema_version": SCHEMA_VERSION,
         # AGT's entry_id is `audit_<16 hex>`, not a UUID, so it cannot be used
         # as an event_id directly. Derived deterministically so re-importing the
         # same file does not mint new identities for the same events.
