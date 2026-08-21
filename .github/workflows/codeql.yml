@@ -1,0 +1,64 @@
+name: CodeQL
+
+# Static analysis on the recorder and the dashboard.
+#
+# ruff's `S` rules (bandit) run in CI already and catch the per-line patterns:
+# a bare subprocess, a hardcoded credential, a swallowed exception. They do not
+# do interprocedural analysis, so a tainted value that arrives through three
+# function calls before it reaches a sink is invisible to them and visible to
+# this. The two overlap and neither replaces the other.
+#
+# Not a required status check, deliberately. CodeQL takes minutes rather than
+# seconds and its findings want reading rather than reacting to; blocking every
+# PR on it would teach the maintainer to merge past it. It runs on pushes, on
+# pull requests, and weekly so a newly published query finds old code.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  schedule:
+    # Monday 06:00 UTC, ahead of the Dependabot run, so a week's security
+    # reading arrives together rather than twice.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Writes results to the Security tab. Without this the run succeeds and
+      # publishes nothing, which looks exactly like a clean scan.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-extended adds the lower-severity and higher-noise queries.
+          # Worth it here: the whole point is finding what the line-level linter
+          # cannot, and a security product can afford to read a few more
+          # findings than a CRUD app can.
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

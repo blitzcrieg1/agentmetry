@@ -24,6 +24,11 @@ on:
 #   dashboard
 #   CLAAssistant           <- from cla.yml, not this file
 #
+# Deliberately NOT required: `supply-chain` here, and `analyze` in codeql.yml.
+# Both report on the world rather than on the diff, so a CVE published overnight
+# would block a docs typo through no change of ours. A red X the maintainer
+# reads is worth more than a blocking gate the maintainer learns to bypass.
+#
 # Read them back with:
 #   gh api repos/blitzcrieg1/agentmetry/branches/master/protection/required_status_checks --jq .contexts
 jobs:
@@ -110,6 +115,40 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+
+  supply-chain:
+    # Nothing here inspects the diff. It asks whether anything the recorder
+    # already depends on has since been found vulnerable, which is a question
+    # whose answer changes without anybody touching this repository. That is
+    # also why it runs on a schedule rather than only on push.
+    #
+    # The MSI ships a frozen Python environment, so a CVE in a transitive
+    # dependency reaches a customer machine inside our binary. "We would have
+    # noticed" is not a control, and a tool that inspects other people's supply
+    # chains having no view of its own is the first thing a security buyer asks
+    # about and the worst one to have no answer for.
+    name: supply-chain
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/orchestrator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        run: |
+          # pip audits itself, and a runner's bundled pip is routinely a few
+          # releases behind whatever advisory landed this month. Upgrading first
+          # keeps the finding list about our dependencies rather than about the
+          # installer that fetched them.
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Audit dependencies
+        run: |
+          python -m pip install --upgrade pip-audit
+          pip-audit --progress-spinner off --strict
 
   dashboard:
     runs-on: ubuntu-latest

@@ -7,6 +7,7 @@ Pure stdlib + httpx; never imports the FastAPI app (fast startup, no side effect
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shutil
 import socket
@@ -30,11 +31,13 @@ _TASK_NAME = "Agentmetry Orchestrator"
 # Paths bundled by backup, relative to the repo root.
 _BACKUP_PREFIXES = ("vault/", "apps/orchestrator/data/")
 _BACKUP_EXCLUDE_DIRS = {"logs"}
+logger = logging.getLogger(__name__)
+
 _BACKUP_EXCLUDE_SUFFIXES = {".pid"}
 
 
 def _base_url(port: int, host: str = "127.0.0.1") -> str:
-    display = host if host != "0.0.0.0" else "127.0.0.1"
+    display = host if host != "0.0.0.0" else "127.0.0.1"  # noqa: S104
     return f"http://{display}:{port}"
 
 
@@ -65,8 +68,12 @@ def _fetch_health(port: int) -> dict | None:
         resp = httpx.get(f"{_base_url(port)}/api/v1/health", timeout=10.0)
         if resp.status_code == 200:
             return resp.json()
-    except Exception:
-        pass
+    except Exception as exc:
+        # Not running is the expected answer here and `None` says so. Logged at
+        # debug anyway: a probe that fails for a reason other than "nothing is
+        # listening" (TLS, a proxy, a permission error) otherwise looks identical
+        # to a stopped orchestrator, and that is an hour of somebody's afternoon.
+        logger.debug("health probe on port %s failed: %s", port, exc)
     return None
 
 
@@ -77,7 +84,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     host = getattr(args, "host", "127.0.0.1")
     if _fetch_health(args.port):
         print(f"Already running on {_base_url(args.port, host)}")
-        if host == "0.0.0.0":
+        if host == "0.0.0.0":  # noqa: S104
             _print_lan_hint(args.port)
         return 0
 
@@ -112,7 +119,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     while time.monotonic() < deadline:
         if _fetch_health(args.port):
             print(f"Agentmetry running on {_base_url(args.port, host)} (pid {proc.pid})")
-            if host == "0.0.0.0":
+            if host == "0.0.0.0":  # noqa: S104
                 _print_lan_hint(args.port)
             return 0
         if proc.poll() is not None:
@@ -1055,7 +1062,12 @@ def main(argv: list[str] | None = None) -> int:
     # platform. Same guard as scripts/demo.py.
     try:
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-    except Exception:  # pragma: no cover - depends on the host console
+    except Exception:  # noqa: S110  # pragma: no cover - host console dependent
+        # The one swallow with nowhere to swallow into: this runs before logging
+        # is configured, and the failure means the console cannot render UTF-8,
+        # which is also why a log line about it would not render. The fallback is
+        # the console's own encoding, which is what would have happened without
+        # the call.
         pass
 
     parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")

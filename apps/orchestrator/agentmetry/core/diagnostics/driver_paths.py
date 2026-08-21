@@ -19,10 +19,12 @@ logger = logging.getLogger(__name__)
 _ORCH_ROOT = Path(__file__).resolve().parents[3]
 _REPO_ROOT = _ORCH_ROOT.parents[1]
 
-TOKEN_PYTHON = "{PYTHON}"
-TOKEN_ORCH = "{ORCHESTRATOR_ROOT}"
-TOKEN_REPO = "{REPO_ROOT}"
-TOKEN_VAULT = "{VAULT_PATH}"
+# noqa S105 on all four: these are path-substitution placeholders written into
+# portable driver specs, not credentials. The rule matches the variable name.
+TOKEN_PYTHON = "{PYTHON}"  # noqa: S105
+TOKEN_ORCH = "{ORCHESTRATOR_ROOT}"  # noqa: S105
+TOKEN_REPO = "{REPO_ROOT}"  # noqa: S105
+TOKEN_VAULT = "{VAULT_PATH}"  # noqa: S105
 
 _PORTABLE_TOKENS = (TOKEN_PYTHON, TOKEN_ORCH, TOKEN_REPO, TOKEN_VAULT)
 

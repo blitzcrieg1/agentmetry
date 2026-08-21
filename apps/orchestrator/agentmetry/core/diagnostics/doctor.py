@@ -59,7 +59,7 @@ def _check_health_endpoint(report: DoctorReport) -> None:
 
     url = settings.audit_ingest_url.rstrip("/") + "/api/v1/health"
     try:
-        with urllib.request.urlopen(url, timeout=2) as resp:
+        with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
             if resp.status == 200:
                 report.ok("orchestrator_up", f"Orchestrator responding at {url}")
                 return

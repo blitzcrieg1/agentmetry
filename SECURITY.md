@@ -59,3 +59,37 @@ Out of scope:
 - **Command logging is opt-in** (`AGENTMETRY_AUDIT_LOG_COMMANDS`). When enabled,
   shell command text is stored (after scrubbing). Leave it off if the commands
   themselves are sensitive.
+
+## How Agentmetry checks itself
+
+A tool that inspects other people's supply chains should be able to answer the
+same questions about its own. Every one of these runs in CI on each pull request
+and on master; none of it is a periodic manual pass.
+
+| Concern | Control | Where |
+|---|---|---|
+| Committed secrets | gitleaks over the pushed commit range | `ci.yml` |
+| Insecure code patterns | ruff `S` (bandit) and `B` (bugbear), zero findings | `ci.yml` |
+| Data flow a linter cannot follow | CodeQL `security-extended`, Python and TypeScript | `codeql.yml` |
+| Vulnerable dependencies | `pip-audit --strict` on the full resolved tree | `ci.yml` |
+| Dependency currency | Dependabot, weekly, including GitHub Actions | `dependabot.yml` |
+| Detection accuracy | 50-case benchmark, fails on any miss or false positive | `ci.yml`, `release.yml` |
+| Packaging | wheel installed into a clean environment; `doctor` must report no FAIL | `release.yml` |
+| Publication | PyPI Trusted Publishing (OIDC). No API token exists to leak | `release.yml` |
+
+Two of these are deliberately **not** required status checks: CodeQL and
+`pip-audit`. Both report on the world rather than on the diff, so a CVE
+published overnight would block an unrelated documentation fix. A visible red
+mark the maintainer reads is worth more than a blocking gate the maintainer
+learns to route around.
+
+Where a bandit finding is suppressed, the suppression carries the reasoning
+next to it rather than a bare `noqa`, and the two rules disabled project-wide
+(`S603`, `S607`, both about subprocess invocation) are argued in
+`apps/orchestrator/pyproject.toml`. If you think one of those arguments is
+wrong, that is worth an issue.
+
+What this does **not** include, stated plainly: there is no third-party
+penetration test, no SOC 2, no signed release artifact, and no reproducible
+build. The MSI is unsigned. Those are real gaps, not oversights, and they are
+the honest answer to a security questionnaire that asks.

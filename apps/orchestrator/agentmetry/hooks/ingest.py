@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 from urllib.error import URLError
 from datetime import datetime, timezone
@@ -77,16 +78,45 @@ CURSOR_BLOCKING = frozenset({
 })
 
 
+_DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+# urlopen also speaks file:, ftp: and whatever else is registered. Only these
+# two are a recorder talking to its orchestrator.
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _base_url() -> str:
-    return (
+    """The orchestrator base URL, with the scheme pinned to http or https.
+
+    `urlopen` speaks more than HTTP. A base URL of `file:///...` turns every
+    ingest POST into a local file read whose result is reported back through the
+    hook, and `AGENTMETRY_URL` is an environment variable, which on a developer
+    machine is not a hard thing to set. Reaching that requires code execution as
+    the operator already, so this is not the difference between safe and
+    exploited, but a recorder should not be the component that widens what an
+    attacker who is already there can reach.
+
+    An unusable scheme falls back to the loopback default rather than raising:
+    hooks run inside the IDE's tool path and must never be the reason a tool
+    call fails. The event still lands, on the default endpoint.
+    """
+    configured = (
         os.environ.get("AGENTMETRY_URL")
         or os.environ.get("AGENTMETRY_AUDIT_INGEST_URL")
-        or "http://127.0.0.1:8000"
+        or _DEFAULT_BASE_URL
     ).rstrip("/")
+    scheme = urllib.parse.urlparse(configured).scheme.lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        print(
+            f"Agentmetry: ignoring configured URL with unsupported scheme "
+            f"{scheme!r}; using {_DEFAULT_BASE_URL}",
+            file=sys.stderr,
+        )
+        return _DEFAULT_BASE_URL
+    return configured
 
 
 def _api_key() -> str:
@@ -498,15 +528,17 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = T
     # unrelated events, and misstated when things happened in a record whose
     # whole purpose is to say when things happened.
     payload.setdefault("timestamp_utc", _utc_now())
+    # S310 is suppressed on the Request/urlopen pair below because the scheme
+    # is pinned in `_base_url`, which is the check the rule is asking for.
     url = f"{_base_url()}/api/v1/audit/ingest"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     api_key = _api_key()
     if api_key:
         headers["X-API-Key"] = api_key
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=_INGEST_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(req, timeout=_INGEST_TIMEOUT_SECONDS) as response:  # noqa: S310
             res_body = response.read().decode("utf-8")
             if response.status != 200:
                 print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
@@ -537,8 +569,8 @@ def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
     api_key = _api_key()
     if api_key:
         headers["X-API-Key"] = api_key
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=3) as resp:
+    req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310
+    with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310
         return json.loads(resp.read())
 
 
