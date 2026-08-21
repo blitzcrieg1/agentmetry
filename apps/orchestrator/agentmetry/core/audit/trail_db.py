@@ -232,6 +232,13 @@ class AuditTrailDB:
         if before_utc and after_utc:
             raise ValueError("Use only one of before_utc or after_utc")
 
+        # The three f-string queries below are suppressed for S608. Every element
+        # of `clauses` is a literal built in this function, and the only
+        # interpolation inside one is `placeholders`, which is a run of "?".
+        # `focus` is validated against a closed set and raises on anything
+        # else. Every caller-supplied value reaches sqlite through `params`,
+        # never through the string. Adding a clause that interpolates a value
+        # would make the suppressions wrong, so add it as a "?" instead.
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
         conn = self._get_conn()
@@ -239,7 +246,7 @@ class AuditTrailDB:
         if before_utc:
             sql = f"""SELECT event_json FROM audit_events {where}
                       {"AND" if clauses else "WHERE"} timestamp_utc < ?
-                      ORDER BY timestamp_utc DESC, id DESC LIMIT ?"""
+                      ORDER BY timestamp_utc DESC, id DESC LIMIT ?"""  # noqa: S608
             params.extend([before_utc, limit + 1])
             rows = conn.execute(sql, params).fetchall()
             has_older = len(rows) > limit
@@ -248,7 +255,7 @@ class AuditTrailDB:
         elif after_utc:
             sql = f"""SELECT event_json FROM audit_events {where}
                       {"AND" if clauses else "WHERE"} timestamp_utc > ?
-                      ORDER BY timestamp_utc ASC, id ASC LIMIT ?"""
+                      ORDER BY timestamp_utc ASC, id ASC LIMIT ?"""  # noqa: S608
             params.extend([after_utc, limit + 1])
             rows = conn.execute(sql, params).fetchall()
             has_newer = len(rows) > limit
@@ -257,7 +264,7 @@ class AuditTrailDB:
         else:
             # Latest page: get last N rows
             sql = f"""SELECT event_json FROM audit_events {where}
-                      ORDER BY timestamp_utc DESC, id DESC LIMIT ?"""
+                      ORDER BY timestamp_utc DESC, id DESC LIMIT ?"""  # noqa: S608
             params.append(limit + 1)
             rows = conn.execute(sql, params).fetchall()
             has_older = len(rows) > limit

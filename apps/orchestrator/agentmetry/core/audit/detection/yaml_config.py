@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 _ORCH_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_MANIFEST = _ORCH_ROOT.parent.parent / "policies" / "detection" / "manifest.yaml"
@@ -35,8 +38,11 @@ def _manifest_path() -> Path:
         custom = settings.detection_rules_path
         if custom:
             return Path(custom)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Falling back to the packaged manifest is correct, but doing it in
+        # silence means an operator who configured their own rules runs the
+        # default ones and is never told.
+        logger.debug("could not read detection_rules_path from settings: %s", exc)
     return _DEFAULT_MANIFEST
 
 

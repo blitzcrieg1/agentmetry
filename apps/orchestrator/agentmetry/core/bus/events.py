@@ -20,7 +20,7 @@ ALERT_COST = "run/cost_alert"
 ALERT_DRIFT = "run/drift_alert"
 
 # High-volume, ephemeral — excluded from the outbox.
-LLM_TOKEN = "llm/token"
+LLM_TOKEN = "llm/token"  # noqa: S105  - an event topic name, not a credential
 
 # Vault
 VAULT_FILE_CHANGED = "vault/file_changed"

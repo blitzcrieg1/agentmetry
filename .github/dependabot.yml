@@ -1,0 +1,65 @@
+version: 2
+
+# A tool that inspects other people's supply chains had no view of its own. The
+# MSI ships a frozen Python environment, so a CVE in a transitive dependency
+# reaches a customer machine inside our binary with nothing in the path to catch
+# it, and "we would have noticed" is not a control.
+#
+# Weekly rather than daily on purpose. A solo maintainer who opens Monday to
+# eleven bot PRs stops reading them, and a Dependabot queue nobody reads is
+# worse than none: it looks like coverage.
+
+updates:
+  # --- Python: the recorder itself -----------------------------------------
+  - package-ecosystem: pip
+    directory: /apps/orchestrator
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Athens
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+    groups:
+      # One PR for the routine bumps, so the ones worth reading stand out.
+      # Security updates are deliberately not grouped: Dependabot raises those
+      # separately regardless, and a security fix buried in a nine-package PR
+      # is a security fix that waits for the rest of the PR to be reviewed.
+      patch-and-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # --- Node: the dashboard --------------------------------------------------
+  - package-ecosystem: npm
+    directory: /apps/dashboard
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Athens
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    groups:
+      patch-and-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # --- The workflows themselves --------------------------------------------
+  # A pinned action is a dependency with code execution in a job that holds an
+  # OIDC token good enough to publish to PyPI. This is the highest-value
+  # ecosystem on the list and the easiest one to forget exists.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Athens
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"

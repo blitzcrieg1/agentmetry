@@ -46,6 +46,7 @@ a range and the tail is named as what it is: chain-verified, not anchored.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 from dataclasses import dataclass, field
@@ -54,6 +55,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from agentmetry.core.audit.trail_merkle import merkle_root, read_leaves
+
+logger = logging.getLogger(__name__)
 
 ANCHOR_VERSION = 1
 ANCHOR_ALG = "rfc6962-sha256"
@@ -96,8 +99,13 @@ def resolve_anchor_log(
         configured = str(getattr(settings, "anchor_log_path", "") or "").strip()
         if configured:
             return Path(configured), "config"
-    except Exception:
-        pass
+    except Exception as exc:
+        # This one matters more than it looks. Falling back in silence means
+        # `verify` compares the trail against a log sitting beside it, which an
+        # attacker who rewrote one could rewrite as well. The operator configured
+        # an external anchor precisely to avoid that, and would never learn the
+        # setting was not read.
+        logger.debug("could not read anchor_log_path from settings: %s", exc)
     return anchor_path(Path(trail_path)), "default"
 
 
@@ -118,8 +126,8 @@ def default_host_id() -> str:
         configured = str(getattr(settings, "operator_id", "") or "").strip()
         if configured:
             return configured
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("could not read operator_id from settings: %s", exc)
     return platform.node() or "unknown-host"
 
 

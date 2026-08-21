@@ -308,3 +308,50 @@ def test_hook_main_enforce_opt_in(monkeypatch, capsys):
     ingest.hook_main("beforeShellExecution")
     out = capsys.readouterr().out
     assert '"permission": "allow"' in out
+
+
+# --- base URL scheme pinning -----------------------------------------------
+#
+# `urlopen` speaks more than HTTP. `AGENTMETRY_URL=file:///etc/passwd` would
+# turn every ingest POST into a local file read reported back through the hook.
+# Reaching that needs code execution as the operator already, so it is hardening
+# rather than a patched vulnerability, but the recorder should not be the thing
+# that widens what an attacker already inside can reach.
+
+
+@pytest.mark.parametrize(
+    "configured",
+    ["http://127.0.0.1:9999", "https://collector.internal:8443", "http://host/sub"],
+)
+def test_http_and_https_base_urls_are_kept(monkeypatch, configured):
+    monkeypatch.setenv("AGENTMETRY_URL", configured)
+    assert ingest._base_url() == configured.rstrip("/")
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "file:///etc/passwd",
+        "ftp://example.com/x",
+        "gopher://example.com",
+        "127.0.0.1:8000",  # no scheme at all
+    ],
+)
+def test_unsupported_schemes_fall_back_to_loopback(monkeypatch, capsys, configured):
+    monkeypatch.setenv("AGENTMETRY_URL", configured)
+    assert ingest._base_url() == ingest._DEFAULT_BASE_URL
+    # It must say so. A silent downgrade is the failure mode this project exists
+    # to make impossible: the operator believes they are forwarding somewhere
+    # they are not.
+    assert "unsupported scheme" in capsys.readouterr().err
+
+
+def test_trailing_slash_is_stripped_so_paths_do_not_double(monkeypatch):
+    monkeypatch.setenv("AGENTMETRY_URL", "http://127.0.0.1:8000/")
+    assert ingest._base_url() == "http://127.0.0.1:8000"
+
+
+def test_default_is_loopback_when_nothing_is_configured(monkeypatch):
+    monkeypatch.delenv("AGENTMETRY_URL", raising=False)
+    monkeypatch.delenv("AGENTMETRY_AUDIT_INGEST_URL", raising=False)
+    assert ingest._base_url() == "http://127.0.0.1:8000"

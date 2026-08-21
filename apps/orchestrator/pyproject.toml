@@ -91,7 +91,39 @@ target-version = "py311"
 # stable contract across releases, so an unstated selection makes lint results
 # depend on install date. These are ruff's classic defaults: pyflakes plus the
 # pycodestyle errors worth failing a build over.
-select = ["E4", "E7", "E9", "F"]
+# S is bandit and B is bugbear. A tool that inspects other people's supply
+# chains should run a security linter over its own, and "we did not have one"
+# is a bad answer to the first question a security buyer asks about the SDLC.
+select = ["E4", "E7", "E9", "F", "B", "S"]
+
+# Reviewed once, per rule, rather than sprinkled as inline noqa across forty
+# call sites. Anything not listed here is expected to be fixed, not silenced.
+ignore = [
+  # S603 fires on *every* subprocess call, including the safe form. Passing an
+  # argument list without shell=True is the mitigation, and this project spawns
+  # processes by design: schtasks to register autostart, python to launch the
+  # orchestrator, powershell for the installers. Ruff's own docs say the rule
+  # needs manual review rather than blanket action. It was reviewed: every call
+  # site passes a list built from our own constants and resolved paths.
+  "S603",
+  # S607 wants absolute paths for executables. The partial names here are
+  # Windows system binaries (schtasks, powershell, python) resolved through
+  # PATH, which is the conventional and portable form. Hardcoding
+  # C:\Windows\System32 would break on non-default installs and buy nothing
+  # against an attacker who can already write PATH for this user.
+  "S607",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert. That is the entire point of them, and S101 would fire 1,654
+# times. Everything else stays on in tests, including in production code where
+# a bare assert really is a finding.
+"tests/**" = [
+  "S101",  # assert
+  "S105",  # "token"-shaped fixture names holding no secret
+  "S106",  # same, passed as an argument
+  "S104",  # tests assert on the 0.0.0.0 handling; they do not bind it
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
