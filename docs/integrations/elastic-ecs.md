@@ -58,12 +58,31 @@ PUT _index_template/logs-agentmetry
         "event.outcome": { "type": "keyword" },
         "trace.id": { "type": "keyword" },
         "user.id": { "type": "keyword" },
+        "threat.framework": { "type": "keyword" },
+        "threat.tactic.id": { "type": "keyword" },
+        "threat.tactic.name": { "type": "keyword" },
+        "threat.technique.id": { "type": "keyword" },
+        "threat.technique.name": { "type": "keyword" },
         "agentmetry": { "type": "object", "enabled": true }
       }
     }
   }
 }
 ```
+
+The `threat.*` fields carry the ATT&CK classification and are what your existing
+ATT&CK dashboards, Navigator coverage layers and prebuilt detection content join
+on. Map them as `keyword` explicitly: left to dynamic mapping they become
+`text` with a `.keyword` subfield, and every aggregation has to remember the
+suffix.
+
+They are absent on events Agentmetry did not classify. That is deliberate, not a
+gap in the mapping. A coverage panel that counts unclassified calls as covered
+is worse than one that shows a smaller number honestly.
+
+`threat.framework` is always `MITRE ATT&CK` on these documents. MITRE ATLAS
+techniques, when they ship, will land under `agentmetry.tool.atlas.*` rather than
+here, so an aggregation over `threat.technique.id` never mixes taxonomies.
 
 ---
 
