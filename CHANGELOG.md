@@ -5,11 +5,116 @@ All notable changes to Agentmetry are recorded here. The format follows
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once out of
 alpha. While in **public alpha**, minor versions may carry breaking changes to
 APIs and integration surfaces. The canonical event schema is versioned
-separately (currently `1.1.0`) and changes additively.
+separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-21
+
 ### Added
+
+- **Coverage attestation on a heartbeat.** A hook lives in a file the developer
+  owns: `.cursor/hooks.json` can be deleted, `claude --no-hooks` skips it, the
+  orchestrator can be stopped. No user-space recorder prevents that, and the
+  honest answer to "what stops my developer removing this" is that removal
+  changes what the recorder says about itself.
+
+  "Alert when a machine stops sending events" does not work, because idle and
+  disabled both emit nothing and silence is not evidence. So the recorder
+  attests on an interval whether or not anybody is coding, and carries what it
+  is wired to rather than only a timestamp. The beat covers every agent surface
+  that has an installer, in four states rather than a boolean, because "the hook
+  was removed" and "this agent was never installed here" deserve opposite
+  responses. A fleet that learns the tamper signal is always on has no tamper
+  signal left.
+
+  Each beat also carries `trail_merkle_root` and `trail_tree_size`, so a root
+  lands in the SIEM on an interval, outside the audited machine's blast radius.
+  An edit below that tree size then produces a root that no longer matches a
+  value the machine can no longer reach. Measured at 646ms over 17,480 records,
+  a 0.2% duty cycle at the default 300s beat.
+
+- **`agentmetry mcp`**: an inventory of what the agents on this machine are
+  wired to. Agentmetry recorded what an agent did and could not answer the
+  question a security reviewer asks first, which is what that agent was allowed
+  to reach. `doctor` reports it too.
+
+- **MCP schema fingerprinting**, because the config digest cannot see a rug
+  pull. `mcp_config_digest` hashes the configured command line, which catches
+  "somebody added an MCP server on that laptop" and misses the attack that
+  matters: `postmark-mcp` shipped fifteen clean versions and then changed what
+  `tools/list` returned. The payload lives in the description the model is
+  handed and never appears in `mcp.json`.
+
+  The beat now carries a digest over every observed `tools/list` beside the
+  config digest, so the SIEM rule is a conjunction: schema digest moved, config
+  digest did not. No new detection rule, so the frozen ruleset and the dogfood
+  gate are untouched.
+
+  The recorder does not spawn servers to collect this. `npx -y` on a five minute
+  beat would fetch and run whatever the registry currently serves, which is the
+  attack, performed by the recorder. Until a client has listed tools the digest
+  is empty, which is an honest gap rather than a green dashboard.
+
+- **Google SecOps forwarding as UDM** rather than raw logs. Posting to
+  `unstructuredlogentries` would require a normalization parser in the
+  customer's tenant: a second implementation of this mapping, in another
+  language, versioned separately. When the two drift the failure is silent,
+  because events keep arriving and quietly stop populating the fields the
+  detections key on. This posts UDM directly to `udmevents`, which is also
+  Google's own guidance.
+
+- **The ATT&CK classification now lands in ECS `threat.*`**, the fieldset
+  Elastic's prebuilt content and Navigator coverage layers actually join on. It
+  had only ever been written into the vendor namespace, so a customer's existing
+  ATT&CK dashboards saw nothing. `threat.framework` is always `MITRE ATT&CK`
+  there; ATLAS ids deliberately do not enter that fieldset.
+
+- **MITRE ATLAS labels on the AI-specific subset**, for the half of the threat
+  model ATT&CK has no id for. Tool-level mappings for credential access, egress
+  and destruction; `AML.T0109` on the MCP rug-pull signature; and a
+  detection-level block on `untrusted-input-then-risky-action`
+  (`AML.T0051.001`, indirect prompt injection). Ids are resolved by name against
+  ATLAS 2026.07, format 6.0.0, rather than hardcoded, which caught two mistakes
+  during authoring. Optional YAML override with id validation. Five techniques
+  out of 178, published as five out of 178.
+
+- **`agentmetry hooks status`**: coverage as an exit code, for Intune
+  Remediations and every scheduled check shaped like it. Parsing `doctor` output
+  worked until somebody reworded a line, and a fleet coverage check that breaks
+  silently on a wording change is worse than no check.
+
+      0  every agent present here is recorded, or none is installed
+      1  an agent is present and not recorded, and installing hooks fixes it
+      2  coverage cannot be determined, and installing hooks does not fix it
+
+  2 is deliberately not folded into either neighbour: a service profile sees no
+  developer configuration at all, calling that compliant is the lie this
+  subsystem exists to prevent, and calling it remediable loops forever against
+  something an install cannot fix.
+
+- **A Codex installer**, the one supported agent that never had one. It writes
+  absolute paths like every other installer and merges non-destructively into
+  `~/.codex/hooks.json`. Deliberately not wired into boot: Codex trusts hooks by
+  hash and skips untrusted ones silently, so an install nobody asked for would
+  sit there looking installed and capturing nothing. Installing Codex is a
+  decision with a step only a human can complete, and the script says so.
+
+- **Capture that does not require a git checkout.** An MSI machine ran the
+  recorder, captured nothing, and nothing said so. Ingest lived only at
+  `scripts/agentmetry_ingest.py`; the MSI ships a frozen binary and no repo, so
+  the command a hook config named did not exist on the machine. Every installer
+  checked for that file, did not find it, and declined. Service up, dashboard
+  green, zero tool calls recorded, which is the silent-coverage failure this
+  product exists to detect, shipped inside the product.
+
+  The module moved into the package as `agentmetry.hooks.ingest` so it travels
+  in the wheel and in the frozen binary. `scripts/agentmetry_ingest.py` stays
+  forever and forwards, because hooks already installed on developer machines
+  name it by absolute path and those configs are not ours to rewrite.
+
+- **Detection**: secret-manager CLIs and single-quoted inline scripts are now
+  recognised.
 
 - **External anchoring for the trail** (`agentmetry anchor`), closing the gap
   [#34](https://github.com/blitzcrieg1/agentmetry/issues/34) named. The hash
@@ -57,6 +162,53 @@ separately (currently `1.1.0`) and changes additively.
 
 ### Fixed
 
+- **Seven installers pointed at a path deleted in 0.4.0, and reported success.**
+  Every installer delegating to `hook_bootstrap` invoked a path that stopped
+  existing when the package moved under `agentmetry/`. It went unnoticed because
+  Cursor and Claude self-install at boot, so the two agents anyone would test
+  kept working, while Qwen, Kimi, Qoder and CodeBuddy have no other install path
+  and were simply unreachable.
+
+  The failure shape mattered more than the path. `$ErrorActionPreference =
+  "Stop"` does not trip on a native command's exit code, so python printed
+  "can't open file", returned 2, and the script carried on to announce that
+  hooks were merged. A developer ran the installer, was told they were covered,
+  and had none. Both halves are fixed.
+
+- **Codex and Antigravity were reported as unverifiable, and both were wrong.**
+  A missing PowerShell installer is not the same fact as missing support, and
+  reporting unknown for a surface that can be checked hides a real uncovered
+  machine. On the maintainer's own machine the wrong registry reported
+  Antigravity absent while it was covered, and Codex unknown while it was
+  installed and unrecorded.
+
+- **The heartbeat attested two agent surfaces while six installers shipped.**
+  Both the beat and `doctor` hardcoded `~/.cursor` and `~/.claude`, so a machine
+  running Codex, Qwen, Kimi, Qoder or CodeBuddy unrecorded still beat green. Two
+  copies of the same list, neither compared against anything. The registry now
+  lives in one module both callers read, and a test fails if an installer is
+  added without a row.
+
+- **One finding, one row.** A detection could be emitted twice for the same
+  sequence when an inferred approval event re-ran the engine over a window that
+  had already produced it. Findings are now deduplicated per correlation and
+  rule within a batch.
+
+- **The hook target that gates the install is now the target that writes the
+  command.** The two were derived from different roots, so a check could pass
+  against one path while the command written named another.
+
+- **The trail chain locks across processes**, not only across threads. Two
+  orchestrator processes appending concurrently could interleave and produce a
+  chain that failed its own verification.
+
+- **The canonical form is injective**, so two distinct events cannot produce the
+  same record hash.
+
+- **A carriage return is not a ruleset change.** Line-ending normalisation was
+  moving the ruleset fingerprint on Windows checkouts, which reset the dogfood
+  gate over a whitespace difference.
+
 - **Four detection rules matched command words against raw command text**, so a
   commit message that merely *described* a dangerous command could fire on it.
   Found by triaging a real critical finding rather than by a test: a legitimate
@@ -78,6 +230,13 @@ separately (currently `1.1.0`) and changes additively.
   cannot reintroduce it quietly.
 
 ### Changed
+
+- **Canonical event schema bumped to 1.2.0**, additively. The `atlas` block on
+  detections and the `threat.*` promotion in ECS are both additions; nothing was
+  removed or renamed. `SCHEMA_VERSION` had also existed while four builders
+  emitted the literal string, so the version now has one source of truth.
+
+- The hook path no longer does filesystem work on every tool call.
 
 - `verify --trail` now reports **anchored and unanchored ranges separately**. A
   checkpoint covers the records that existed when it was published; calling the
