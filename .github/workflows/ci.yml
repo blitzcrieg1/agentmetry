@@ -50,7 +50,7 @@ jobs:
           # gitleaks scans the pushed commit range; a shallow clone can't walk it
           # (surfaces as "failed to scan Git repository: stderr is not empty").
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install orchestrator
@@ -72,7 +72,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install orchestrator
@@ -134,7 +134,7 @@ jobs:
         working-directory: apps/orchestrator
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install orchestrator
