@@ -23,7 +23,15 @@ from agentmetry.core.bus.events import (
     TOOL_CALLED,
     TOOL_DENIED,
 )
-SCHEMA_VERSION = "1.1.0"
+#: Canonical event schema version.
+#:
+#: 1.2.0 adds an optional `atlas` block on detection events. Additive only: no
+#: field moved, no field changed meaning, and nothing became required. A 1.1.0
+#: consumer parses a 1.2.0 event and sees a key it does not recognise, which is
+#: the case its JSON parser already handles. Anything that pins an exact string
+#: rather than a lower bound will need updating, which is why this is a minor
+#: bump and not a patch.
+SCHEMA_VERSION = "1.2.0"
 
 _TOPIC_ACTION: dict[str, tuple[str, str]] = {
     RUN_STARTED: ("session_start", "success"),

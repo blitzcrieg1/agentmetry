@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.external import build_external_canonical
 from agentmetry.core.audit.ingest import (
     ingest_external_event,
@@ -29,7 +30,7 @@ def test_build_external_canonical_cursor_tool():
             "arguments": {"command": "pytest -q"},
         },
     })
-    assert out["schema_version"] == "1.1.0"
+    assert out["schema_version"] == SCHEMA_VERSION
     assert out["source"]["app"] == "cursor"
     assert out["source"]["tier"] == "external"
     assert out["agent"]["name"] == "cursor"
