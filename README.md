@@ -84,7 +84,7 @@ Agentmetry is the open-source **endpoint flight recorder** for AI agents. It run
 We do that by:
 
 - **Intercepting** agent tool calls through IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and an MCP stdio audit proxy
-- **Normalizing** every event into a canonical schema v1.1.0 with MITRE ATT&CK enrichment and SHA-256 argument hashing
+- **Normalizing** every event into a canonical schema v1.2.0 with MITRE ATT&CK enrichment, optional MITRE ATLAS labels on the AI-specific subset, and SHA-256 argument hashing
 - **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, download cradles, agent data injection, recon-then-grab)
 - **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
 - **Forwarding** the same JSONL trail to Elastic ECS, Splunk HEC, or a generic webhook (Loki via Alloy tailing the local file), without making the cloud the system of record
@@ -293,7 +293,7 @@ flowchart TB
 
   subgraph Core["Orchestrator :8000"]
     INGEST["POST /api/v1/audit/ingest"]
-    CANON["Canonical Schema v1.1.0<br/>MITRE enrichment"]
+    CANON["Canonical Schema v1.2.0<br/>MITRE enrichment"]
     DETECT["Sequence Detection Engine"]
     TRAILDB[("SQLite trail index<br/>audit.db")]
   end
@@ -361,7 +361,7 @@ Every run emits typed, SIEM-ready JSON. A single `tool_called` line:
 
 ```json
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "correlation_id": "thread-8892",
   "timestamp_utc": "2026-07-12T09:14:22.041+00:00",
   "host_id": "dev-laptop",
@@ -382,6 +382,23 @@ Every run emits typed, SIEM-ready JSON. A single `tool_called` line:
     }
   },
   "model": {"id": "claude-3-5-sonnet", "provider": "anthropic"}
+}
+```
+
+That call carries no ATLAS label, which is the common case. A read of local
+source is a host technique and ATT&CK already describes it. The label appears
+only where ATLAS says something ATT&CK cannot:
+
+```json
+"tool": {
+  "qualified": "cursor.Read",
+  "mitre": { "tactic_id": "TA0006", "technique_id": "T1552.001",
+             "technique": "Credentials In Files" },
+  "atlas": { "framework": "MITRE ATLAS",
+             "tactic_id": "AML.TA0013", "tactic": "Credential Access",
+             "technique_id": "AML.T0098",
+             "technique": "AI Agent Tool Credential Harvesting",
+             "atlas_version": "2026.07" }
 }
 ```
 
@@ -422,6 +439,16 @@ typical month that is the large majority of gates.
 **It does not prevent prompt injection or Agent Data Injection.** Prevention
 requires isolating trusted from untrusted data inside the agent, which a
 recorder cannot do. Agentmetry detects the consequence, as a sequence.
+
+**MITRE coverage is narrow on purpose, and ATLAS is new.** Agentmetry maps 19
+ATT&CK techniques across 10 tactics, out of 697 techniques in Enterprise v19.2,
+and 5 ATLAS techniques out of 178 in release 2026.07. That is roughly 3% of each
+matrix. It is not an official mapping, has not been validated by MITRE, and has
+not been through a MITRE evaluation. The labels exist for the behaviour a
+tool-boundary sensor actually observes; a call the mapper does not recognise
+carries no tag rather than a guess. The ATLAS block shipped in August 2026 and
+has far less production mileage than the ATT&CK mapping, which has been running
+since the first release.
 
 **Tamper evidence has a boundary.** The trail is hash-chained and verifiable,
 with optional external anchoring for threat models that include the host itself.
@@ -468,7 +495,8 @@ and decisions are per machine, forwarded to your SIEM as events. See
 | 📊 **Analytics & Process Tree** | Session-level charts, MITRE tactic breakdown, horizontal React Flow timeline |
 | 🔍 **Behavioral Detection** | Correlated sequence rules: credential exfil, guardrail bypass, download cradles, agent data injection, supply-chain merges |
 | 🛡️ **Local DLP** | Regex scanner detects AWS keys, GitHub tokens, Slack tokens, and PII at the hook boundary (`block` mode optional) |
-| 🎯 **MITRE ATT&CK mapping** | Per-tool tactic/technique tags on every canonical event |
+| 🎯 **MITRE ATT&CK mapping** | Tactic/technique tags on tool calls the mapper recognises. 19 techniques across 10 tactics; roughly 83% of tool calls in our own trail carry one. Unrecognised calls carry no tag rather than a guess |
+| 🧬 **MITRE ATLAS labels** | 5 ATLAS techniques on the AI-specific subset: indirect prompt injection, agent-tool credential harvesting, exfiltration and destruction via tool invocation, and MCP supply-chain rug pull. Absent on everything else, deliberately |
 | 🔐 **Argument hashing** | SHA-256 of tool args by default; plaintext never crosses the wire from hooks |
 | 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, generic webhook, alert webhook; Loki/LogQL via Alloy file tail |
 | 🔁 **Replay & evidence** | ASCII session timeline + tamper-evident evidence pack export |
