@@ -52,13 +52,62 @@ def test_install_cursor_global_hooks(tmp_path: Path, monkeypatch):
     assert "agentmetry_ingest.py" in text
 
 
-def test_bootstrap_skips_when_ingest_missing(tmp_path: Path, monkeypatch):
+def test_bootstrap_skips_when_no_target_is_reachable(tmp_path: Path, monkeypatch):
+    """An absent repo script is no longer enough to make ingest unreachable.
+
+    This asserted only that `scripts/agentmetry_ingest.py` was missing, which
+    was the whole story when `repo` was the only target. `hook_target` now also
+    answers `frozen` and `console`, so the test silently became a test of the
+    developer's install shape: green on a venv predating the console-script
+    entry point, red on any fresh `pip install -e .` where `agentmetry-hook`
+    exists and bootstrap correctly installs.
+
+    Neutralise all three the way `test_no_reachable_ingest_installs_nothing`
+    does, so the test asserts what its name claims on any machine.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(bootstrap_sys, "frozen", False, raising=False)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap._console_script", lambda: None)
     monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: tmp_path / "home")
+    assert hook_target(repo) == "none"
     result = bootstrap_tier_b_hooks(repo_root=repo)
     assert result["cursor"] is None
     assert result["claude"] is None
+
+
+def test_bootstrap_installs_from_a_wheel_with_only_the_console_script(
+    tmp_path: Path, monkeypatch
+):
+    """The wheel case, which had no test of its own.
+
+    A machine installed from a wheel has no checkout and no frozen binary, and
+    before the console-script target it had no way to reach ingest at all: every
+    installer bailed and the recorder ran unhooked. Nothing asserted the new
+    path works. The only thing demonstrating it was a CI failure in the test
+    above, which is not a test, it is a coincidence.
+    """
+    empty = tmp_path / "no-repo"
+    empty.mkdir()
+    home = tmp_path / "home"
+    console = tmp_path / "bin" / "agentmetry-hook"
+    console.parent.mkdir(parents=True)
+    console.write_text("# stub", encoding="utf-8")
+
+    monkeypatch.setattr(bootstrap_sys, "frozen", False, raising=False)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap._console_script", lambda: console)
+    monkeypatch.setattr("agentmetry.core.audit.hook_bootstrap.Path.home", lambda: home)
+
+    assert hook_target(empty) == "console"
+    result = bootstrap_tier_b_hooks(repo_root=empty)
+    # bootstrap_tier_b_hooks reports paths as strings, not Path objects.
+    assert result["cursor"] == str(home / ".cursor" / "hooks.json")
+    assert result["claude"] == str(home / ".claude" / "settings.json")
+
+    # The command has to name the console script, or the config claims coverage
+    # while invoking nothing, which is the failure this area keeps producing.
+    written = (home / ".cursor" / "hooks.json").read_text(encoding="utf-8")
+    assert "agentmetry-hook" in written
 
 
 def _repo_with_ingest(tmp_path: Path) -> Path:

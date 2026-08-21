@@ -42,12 +42,18 @@ def _ingest_script(repo_root: Path | None = None) -> Path:
     return root / "scripts" / "agentmetry_ingest.py"
 
 
-def cursor_hooks_payload(*, python: str, ingest: Path) -> dict[str, Any]:
+def cursor_hooks_payload(
+    *, python: str, ingest: Path, repo_root: Path | None = None
+) -> dict[str, Any]:
     return {
         "version": 1,
         "hooks": {
             event: [
-                {"command": hook_command("cursor", event, python=python, ingest=ingest)}
+                {
+                    "command": hook_command(
+                        "cursor", event, python=python, ingest=ingest, repo_root=repo_root
+                    )
+                }
             ]
             for event in CURSOR_HOOK_EVENTS
         },
@@ -74,7 +80,7 @@ def install_cursor_global_hooks(
     py = python or sys.executable
     hooks_dir = Path.home() / ".cursor"
     hooks_path = hooks_dir / "hooks.json"
-    payload = cursor_hooks_payload(python=py, ingest=ingest)
+    payload = cursor_hooks_payload(python=py, ingest=ingest, repo_root=root)
 
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hooks_path.write_text(
@@ -201,6 +207,14 @@ def hook_command(
     forms do not share an argument order, and pretending they did is how a
     frozen install would end up writing `agentmetry.exe hook cursor hook
     PreToolUse`.
+
+    `repo_root` has to be threaded in by the caller. The installers gate on
+    `hook_target(root)` and then built their command here, where `repo_root`
+    was None and the target was re-derived from `_repo_root()` instead. Two
+    decisions about which form to write, taken from two different roots. They
+    agree whenever the caller passed no root, which is every production call
+    today, and that is the only reason this has never produced a hook config
+    pointing at a script that is not there.
     """
     target = hook_target(repo_root)
     if target == "frozen":
@@ -212,12 +226,18 @@ def hook_command(
     return f'"{py}" "{script}" {source_app} hook {event}'
 
 
-def _claude_command(event: str, *, python: str, ingest: Path) -> str:
-    return hook_command("claude", event, python=python, ingest=ingest)
+def _claude_command(
+    event: str, *, python: str, ingest: Path, repo_root: Path | None = None
+) -> str:
+    return hook_command("claude", event, python=python, ingest=ingest, repo_root=repo_root)
 
 
-def _family_command(source_app: str, event: str, *, python: str, ingest: Path) -> str:
-    return hook_command(source_app, event, python=python, ingest=ingest)
+def _family_command(
+    source_app: str, event: str, *, python: str, ingest: Path, repo_root: Path | None = None
+) -> str:
+    return hook_command(
+        source_app, event, python=python, ingest=ingest, repo_root=repo_root
+    )
 
 
 def _is_our_hook_group(group: Any, *, source_app: str | None = None) -> bool:
@@ -248,6 +268,7 @@ def merge_family_hooks(
     source_app: str,
     python: str,
     ingest: Path,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Deep-merge Agentmetry hooks into a Claude-family settings dict."""
     hooks = settings.get("hooks")
@@ -262,7 +283,9 @@ def merge_family_hooks(
         kept.append({
             "hooks": [{
                 "type": "command",
-                "command": _family_command(source_app, event, python=python, ingest=ingest),
+                "command": _family_command(
+                    source_app, event, python=python, ingest=ingest, repo_root=repo_root
+                ),
                 "timeout": 10,
             }],
         })
@@ -272,7 +295,7 @@ def merge_family_hooks(
 
 
 def merge_claude_hooks(
-    settings: dict[str, Any], *, python: str, ingest: Path
+    settings: dict[str, Any], *, python: str, ingest: Path, repo_root: Path | None = None
 ) -> dict[str, Any]:
     """Deep-merge Agentmetry hooks into a Claude settings dict, non-destructively.
 
@@ -292,7 +315,9 @@ def merge_claude_hooks(
         kept.append({
             "hooks": [{
                 "type": "command",
-                "command": _claude_command(event, python=python, ingest=ingest),
+                "command": _claude_command(
+                    event, python=python, ingest=ingest, repo_root=repo_root
+                ),
                 "timeout": 10,
             }],
         })
@@ -332,7 +357,7 @@ def install_claude_global_hooks(
             return None
         settings = loaded
 
-    merge_claude_hooks(settings, python=py, ingest=ingest)
+    merge_claude_hooks(settings, python=py, ingest=ingest, repo_root=root)
     merge_claude_hook_env(settings, repo_root=root)
 
     settings_dir.mkdir(parents=True, exist_ok=True)
@@ -418,6 +443,7 @@ def _install_family_settings_hooks(
         events=FAMILY_HOOK_EVENTS,
         source_app=source_app,
         python=py,
+        repo_root=root,
         ingest=ingest,
     )
 
@@ -445,7 +471,9 @@ CODEX_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
 )
 
 
-def merge_codex_hooks(doc: dict[str, Any], *, python: str, ingest: Path) -> dict[str, Any]:
+def merge_codex_hooks(
+    doc: dict[str, Any], *, python: str, ingest: Path, repo_root: Path | None = None
+) -> dict[str, Any]:
     """Merge our groups into a Codex hooks document, non-destructively.
 
     Idempotent by the same marker every other adapter uses: a re-run drops the
@@ -465,7 +493,9 @@ def merge_codex_hooks(doc: dict[str, Any], *, python: str, ingest: Path) -> dict
             "hooks": [
                 {
                     "type": "command",
-                    "command": _family_command("codex", event, python=python, ingest=ingest),
+                    "command": _family_command(
+                        "codex", event, python=python, ingest=ingest, repo_root=repo_root
+                    ),
                     "timeout": 10,
                     "statusMessage": f"Agentmetry {event}",
                 }
@@ -517,7 +547,7 @@ def install_codex_global_hooks(
             return None
         doc = loaded
 
-    merge_codex_hooks(doc, python=py, ingest=ingest)
+    merge_codex_hooks(doc, python=py, ingest=ingest, repo_root=root)
 
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hooks_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
@@ -532,13 +562,13 @@ def _kimi_config_dir() -> Path:
     return Path.home() / ".kimi-code"
 
 
-def kimi_hooks_toml_block(*, python: str, ingest: Path) -> str:
+def kimi_hooks_toml_block(*, python: str, ingest: Path, repo_root: Path | None = None) -> str:
     lines = [
         KIMI_HOOKS_BEGIN,
         "# Managed by Agentmetry — re-run scripts/install_kimi_hooks.ps1 to update",
     ]
     for event in FAMILY_HOOK_EVENTS:
-        cmd = _family_command("kimi", event, python=python, ingest=ingest)
+        cmd = _family_command("kimi", event, python=python, ingest=ingest, repo_root=repo_root)
         lines.extend([
             "[[hooks]]",
             f'event = "{event}"',
@@ -581,7 +611,7 @@ def install_kimi_global_hooks(
     py = python or sys.executable
     config_dir = _kimi_config_dir()
     config_path = config_dir / "config.toml"
-    block = kimi_hooks_toml_block(python=py, ingest=ingest)
+    block = kimi_hooks_toml_block(python=py, ingest=ingest, repo_root=root)
 
     existing = ""
     if config_path.is_file():
