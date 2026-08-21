@@ -303,11 +303,33 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     # opens the session in the dashboard is not a control — emit it down the
     # same sinks so it reaches the SIEM and the alert webhook.
     pending_detections: list[tuple[Any, dict[str, Any], str, str, str]] = []
+    # The emitted-checkpoint below is what normally stops a rule firing twice,
+    # but it is only written after this loop finishes, so it cannot see a
+    # duplicate raised inside one batch. An inferred approval carries the
+    # correlation id of the event it was derived from, so the sequence rules
+    # re-evaluate the same session state and hand back the same finding a second
+    # time: two trail rows, distinct event_ids, identical rule, evidence and
+    # timestamps, differing only in `source.adapter` (hook vs inferred).
+    #
+    # Key on exactly what the checkpoint keys on, so within-batch and
+    # across-batch behave the same way rather than being two policies that can
+    # drift. Keeping the first occurrence also attributes the finding to the
+    # real capture path, because `canonical` leads the iteration and the
+    # synthetic event trails it.
+    #
+    # An approval inferred from events already on the trail must not be able to
+    # manufacture a finding those events did not already produce.
+    seen_detections: set[tuple[str, str]] = set()
     for event in (canonical, *inferred):
         corr = str(event.get("correlation_id") or "")
         host_id = str(event.get("host_id") or "")
         ts = str(event.get("timestamp_utc") or "")
         for detection in (*observe(event), *observe_host(event)):
+            scope = host_id if detection.rule_id.startswith("host-") else corr
+            key = (scope, detection.rule_id)
+            if key in seen_detections:
+                continue
+            seen_detections.add(key)
             pending_detections.append((detection, event, corr, host_id, ts))
 
     for detection, event, corr, host_id, ts in pending_detections:
