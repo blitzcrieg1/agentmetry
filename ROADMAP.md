@@ -87,6 +87,7 @@ item matters to you.
 | P1 | **Detection benchmark fixtures** | `tests/fixtures/` or `bench/` | CI runs rules against synthetic attack JSONL |
 | P2 | **More IDE hosts** | `scripts/` hooks | Windsurf, VS Code Copilot |
 | P2 | **Richer DLP** | DLP manifest | Source-code / PII heuristics beyond regex |
+| P1 | ~~**ATLAS enrichment on AI-specific detections**~~ | `core/audit/atlas.py` + detection manifest | ✓ Optional `atlas` block on detection events; one rule mapped (`untrusted-input-then-risky-action` → `AML.T0051.001`); ids resolved by name and pinned to ATLAS 2026.07 / format 6.0.0; schema 1.2.0; YAML override with id validation; benchmark unchanged at 0 missed / 0 false positives |
 
 ---
 

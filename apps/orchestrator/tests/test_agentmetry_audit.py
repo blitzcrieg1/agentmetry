@@ -50,7 +50,9 @@ def test_normalize_tool_called():
     out = normalize_outbox_row(row)
     assert out is not None
     assert out["schema_version"] == SCHEMA_VERSION
-    assert out["schema_version"] == "1.1.0"
+    # One deliberate literal in the suite, so an accidental bump is caught by
+    # something other than the constant agreeing with itself.
+    assert out["schema_version"] == "1.2.0"
     assert out["correlation_id"] == "thread-abc"
     assert out["initiator"]["actor_type"] == "human"
     assert out["actor"]["type"] == "user"

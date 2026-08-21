@@ -59,6 +59,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 
 logger = logging.getLogger(__name__)
@@ -241,7 +242,7 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
         reason += f" (unverifiable: {', '.join(facts['hooks_unverified'])})"
 
     return {
-        "schema_version": "1.1.0",
+        "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
         "session_id": "",
         "correlation_id": "",

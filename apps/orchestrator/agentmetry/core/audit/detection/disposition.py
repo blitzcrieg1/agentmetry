@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 
 logger = logging.getLogger(__name__)
@@ -392,7 +393,7 @@ def build_disposition_event(
     from agentmetry.core.config import settings
 
     return {
-        "schema_version": "1.1.0",
+        "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
         "correlation_id": correlation_id,
         "session_id": "",
