@@ -45,7 +45,7 @@ jobs:
       run:
         working-directory: apps/orchestrator
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # gitleaks scans the pushed commit range; a shallow clone can't walk it
           # (surfaces as "failed to scan Git repository: stderr is not empty").
@@ -82,7 +82,7 @@ jobs:
     # before anything else works. Exercise them on the OS they target.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -144,7 +144,7 @@ jobs:
       run:
         working-directory: apps/orchestrator
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -167,7 +167,7 @@ jobs:
       run:
         working-directory: apps/dashboard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
