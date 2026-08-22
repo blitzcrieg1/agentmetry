@@ -579,13 +579,15 @@ async def apply_disposition(
         except Exception:
             logger.exception("Failed to forward disposition for %s", _loggable(rule_id))
 
-    # `previous` and `normalized` are validated against STATUSES above, so both
-    # are already closed-set values. The other two are not.
+    # `previous` and `normalized` are validated against STATUSES before they get
+    # here, so passing them raw was safe and CodeQL kept flagging them anyway.
+    # Sanitizing a closed-set value is a no-op, and a no-op costs less than a
+    # dismissal somebody has to re-justify every time the tab is read.
     logger.info(
         "DISPOSITION %s %s -> %s by %s",
         _loggable(rule_id),
-        previous,
-        normalized,
+        _loggable(previous),
+        _loggable(normalized),
         _loggable(decided_by or "operator"),
     )
     return current
