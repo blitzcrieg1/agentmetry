@@ -1,148 +1,179 @@
 # Roadmap
 
-Agentmetry is in **public alpha**, moving toward **beta** as a **local-first mini-SIEM
-for AI coding agents**. Nothing here is a promise with a date. It is direction,
-grounded in operator dogfood (July 2026).
+**Last refreshed: 2026-08-22.** State, not aspiration. Dates are absolute,
+because the previous version phased everything in "weeks 3 to 6" from a July
+start and every window had elapsed while the file still read as current.
 
-**Primary persona:** security engineer / DevSecOps who needs tamper-evident agent
-tool-use logs and sequence detections without Docker or a cloud ledger.
+Agentmetry is a **local-first endpoint sensor for AI coding agents**: it records
+what an agent did at the tool boundary, correlates sequences, and forwards into
+the SIEM you already run. Not a console, not a sandbox, not a CASB.
 
-**Secondary persona:** EU dev shop / compliance-aware deployer (GDPR sovereignty,
-EU AI Act record-keeping narrative).
-
-**We will not build in the next 12 weeks:** multi-tenant cloud SaaS, LangGraph
-kernel rewrites, email autopilot, or Datadog-scale platform parity.
-
-Open or upvote an [issue](https://github.com/blitzcrieg1/agentmetry/issues) if an
-item matters to you.
+Nothing here is a promise with a date attached. It is what is being worked on,
+in what order, and why.
 
 ---
 
-## Shipped
+## How this file stays honest
 
-- **Capture**: IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity) and
-  an MCP stdio audit proxy, normalized to canonical schema v1.1.0.
-- **MITRE ATT&CK**: per-tool tactic/technique tagging, including credential-access
-  (T1552) upgrades when a read touches a key or secret file.
-- **Local DLP**: regex engine (AWS keys, GitHub PATs, Slack tokens, bearer
-  headers, private keys, US SSN) with a Luhn validator, `log`/`block` modes, and
-  scrubbing before storage at the hook boundary.
-- **Correlated detection**: sequence-rule engine: `credential-exfil`,
-  `approval-denied-then-executed`, `encoded-command-download`,
-  `pr-merged-without-review`, `untrusted-input-then-risky-action`,
-  `credential-read-then-cloud-api`, `dotfile-read-then-git-push`,
-  `remote-staging-then-execute`,
-  `destructive-delete-burst`, `autonomous-unapproved-write`,
-  `discovery-then-collect`, and opt-in `off-hours-activity`. Includes Agent Data
-  Injection chains ([arXiv:2607.05120](https://arxiv.org/abs/2607.05120)).
-  Detections stream to sinks as first-class events.
-- **SIEM forwarding**: file, webhook, Elastic ECS, Splunk HEC, Loki/LogQL, Sigma
-  pack, alert webhook.
-- **Dashboard Phase 1**: nano-inspired hunt layout: icon rail, detections strip,
-  event histogram, split-pane inspector, light/dark mode, CSV/JSONL export, feed
-  status in header (`apps/dashboard/`).
-- **Evidence**: export packs with SHA-256 integrity hash; `agentmetry verify`
-  for evidence JSON.
-- **JSONL hash chain**: file sink writes tamper-evident chained envelopes;
-  `agentmetry verify --trail <audit-forward.jsonl>` validates the chain (legacy
-  unchained prefix lines are reported separately).
-- **Ops CLI**: `agentmetry doctor`, `agentmetry stats`, `agentmetry export`.
-- **Compliance trust-kit**: [`docs/compliance/`](docs/compliance/) (AI Act
-  checklist, ISO mapping, data residency statement).
-- **Legal**: Apache 2.0 + CLA workflow (July 2026).
-- **Durable live detection state**: SQLite checkpoint for emitted rules and
-  session event windows (`core/audit/detection/live_store.py`); survives
-  orchestrator restart without re-firing detections.
-- **Windows one-flow install**: `scripts/install.ps1` (venv, dashboard deps,
-  IDE hooks, doctor).
-- **Visual truth**: README, agentmetry.ai, and `docs/assets/agentmetry.mp4` match Phase 1
-  dashboard and live demo output. The README hero plays inline on GitHub via a
-  `user-attachments` URL; refreshing it is a manual upload
-  ([docs/readme-media.md](docs/readme-media.md)).
+It did not, and that cost something real: an external audit in August 2026 read
+this file as current and produced six findings that were already fixed, plus a
+competitor list lifted from a section that was months out of date.
 
-- **Phase 0 complete**: README SIEM-first + Advanced runtime doc; dogfood issue template.
-- **Tool allow/deny policy YAML**: `agentmetry/policies/tool/manifest.yaml`; hook `log`/`block` via
-  `AGENTMETRY_TOOL_POLICY_MODE` (runs before DLP at the hook boundary).
+Two rules, so it does not happen again.
+
+- **Shipped work leaves this file.** It belongs in
+  [CHANGELOG.md](CHANGELOG.md), which is written per release and is the record.
+  A roadmap that accumulates a "Shipped" section becomes a second, worse
+  changelog that nobody updates.
+- **Every item names an issue.** If it is worth planning it is worth a number
+  somebody else can read, comment on, and close.
 
 ---
 
-## Phase 1: Trust & demo (weeks 3–6)
+## Where this actually is, on 2026-08-22
 
-| Priority | Item | Where | Done when |
-|----------|------|-------|-----------|
-| P0 | ~~**Tool allow/deny policy YAML**~~ | `agentmetry/policies/tool/manifest.yaml` | ✓ Hook enforcement + tests |
-| P1 | ~~**Dogfood metrics in CLI/dashboard**~~ | `agentmetry stats --days 7` + Analytics tab | ✓ Weekly events/detections/denials |
-| P1 | **Marketing site polish** | `ai-audit-watch` | Distinct detection screenshot (today it duplicates the hero); no “AI Audit Watch” residue. Canonical URL shipped; agentmetry.ai is the only domain |
-| P1 | **More detection rules** | `core/audit/detection/rules.py` | ~~Dotfile read → remote push~~ ✓ (`dotfile-read-then-git-push`). Remaining: consecutive writes outside project root; rapid-fire denials; package-install tampering |
+| | |
+|---|---|
+| Version | 0.5.0 on PyPI, released 2026-08-21 |
+| Canonical event schema | 1.2.0, additive |
+| Detection rules | 15 sequence rules, ATT&CK on every event, ATLAS on the AI-specific subset |
+| Benchmark | 50 recorded sessions, 26 attack and 24 benign, 0 missed and 0 false positives |
+| Tests | 1113 passing, 81% coverage, floor enforced in CI |
+| Dogfood gate | **2 of 4 consecutive green weeks**, clock started 2026-08-08 |
+| Own trail | 27,504 hash-chained lines, 24 external anchors |
+| Adoption | Public alpha. No design partner tenant yet, no reference customer |
 
----
-
-## Phase 2: Community & SIEM depth (weeks 7–10)
-
-| Priority | Item | Where | Done when |
-|----------|------|-------|-----------|
-| P1 | **OTLP export** | `core/audit/` sinks | Forwards to Jaeger / OTel collector |
-| P1 | ~~**YAML custom rules**~~ (thresholds + count rules) | `agentmetry/policies/detection/manifest.yaml` | ✓ Analysts tune bursts / add count rules without Python |
-| P1 | **YAML sequence rules + Sigma import** | loader + docs | Sequence correlation in YAML; Sigma import for point alerts |
-| P1 | **Detection benchmark fixtures** | `tests/fixtures/` or `bench/` | CI runs rules against synthetic attack JSONL |
-| P2 | **More IDE hosts** | `scripts/` hooks | Windsurf, VS Code Copilot |
-| P2 | **Richer DLP** | DLP manifest | Source-code / PII heuristics beyond regex |
-| P1 | ~~**ATLAS enrichment on AI-specific detections**~~ | `core/audit/atlas.py` + detection manifest | ✓ Optional `atlas` block on detection events; one rule mapped (`untrusted-input-then-risky-action` → `AML.T0051.001`); ids resolved by name and pinned to ATLAS 2026.07 / format 6.0.0; schema 1.2.0; YAML override with id validation; benchmark unchanged at 0 missed / 0 false positives |
+The last row is the one that matters. Engineering is further along than
+distribution by a wide margin, and the ordering below reflects that.
 
 ---
 
-## Phase 3: Optional enterprise lane (weeks 11–12)
+## The commercial question, resolved
 
-| Priority | Item | Where | Done when |
-|----------|------|-------|-----------|
-| P2 | **Cursor hook partner doc** | `docs/` | Third party can forward hook events into Agentmetry JSONL |
-| P2 | **Compliance kit v2** | `docs/compliance/` | Hash-chain verify mapped to EU AI Act Art. 12 checklist |
-| P2 | **Framework adapters** | `adapters/` | LangChain / AutoGen listeners (CrewAI / OpenSRE pattern) |
+The previous version of this file said *"design partner / paid pilot: defer
+until after beta"* while [agentmetry.ai/pilot](https://agentmetry.ai/pilot) was
+live and a ten-account pipeline sat in the enterprise repo. One of those was
+wrong.
 
----
+**Resolved in favour of the pilot.** A design partner engagement is what
+*produces* beta evidence rather than something that waits for it: the MSI, the
+Intune remediation pair and the Splunk TA have never run against a tenant that
+is not this one, and no amount of local testing changes that. The pilot page
+already states the limits plainly, which is what makes offering it before beta
+defensible rather than reckless.
 
-## Exploring (no dates)
-
-- **Policy-as-code**: OPA / Rego alongside YAML tool policy.
-- **MCP transport**: SSE / streamable-HTTP audit proxy in addition to stdio.
-- **Threat-intel interop**: STIX/TAXII export of detections.
-- **More sinks**: Datadog, New Relic.
-- **Repo split**: only if GitHub positioning stays confused after README trim (not a default action).
-
----
-
-## Beta gates (operator)
-
-Declare **beta** only when all are true:
-
-1. **4 consecutive green dogfood weeks**: no orchestrator crashes; detection
-   checkpoint survives restarts ([checklist](docs/agentmetry-dogfood-checklist.md)).
-2. **`agentmetry doctor` green** on three distinct Windows 11 setups.
-3. **`agentmetry verify --trail`** demonstrated in README.
-4. **agentmetry.ai hero** matches local Phase 1 dashboard.
-
-**Weekly metrics to log:** events captured, detections fired, false positives,
-install success (manual count is fine).
-
-**Design partner / paid pilot:** defer until after beta; inbound EU consultancy
-interest only.
+Beta is still gated on the list below. It is not gated on a signature, and a
+signature is not gated on it.
 
 ---
 
-## Competitive focus (why this order)
+## Beta gates
 
-Agentmetry wins today on **multi-IDE capture**, **MITRE-mapped sequence
-detections**, and **SIEM forwarding without a cloud ledger**. Peers
-(AgentLens, mcp-audit, mcp-tap) lead on **install UX**, **HMAC/hash-chain
-narrative**, and **OTLP**. The phases above close that gap without abandoning
-the local-first wedge.
+Declare beta when all four are true. Two are.
+
+| Gate | Status |
+|---|---|
+| Four consecutive green dogfood weeks | **2 of 4.** Week 3 in progress. Earliest close **2026-09-04** |
+| `agentmetry verify --trail` demonstrated in the README | Done |
+| `agentmetry doctor` green on three distinct Windows 11 setups | **1 of 3.** Needs two machines that are not the maintainer's |
+| Public claims match shipped behaviour | Done. `/compare`, the limitations section and the benchmark all state numbers the reader can reproduce |
+
+The third gate is the one with no plan attached, and it is a real gap: every
+`doctor` result on record comes from one machine. A pilot tenant closes it as a
+side effect, which is another argument for the ordering below.
 
 ---
 
-## How to help
+## Now (through 2026-09-05)
 
-Best contributions: **detection rules**, **DLP patterns**, **SIEM adapters**,
-**YAML rules** (once loader lands): each small, testable, self-contained.
+Ordered by what unblocks the most. Only the first item is not code, and it is
+the most important one on the page.
 
-See [Contributing](CONTRIBUTING.md) and
-[good first issues](https://github.com/blitzcrieg1/agentmetry/issues).
+| Item | Issue | Why now |
+|---|---|---|
+| **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. Nothing else on this list matters as much |
+| Detection precision pass | [#44](https://github.com/blitzcrieg1/agentmetry/issues/44) [#49](https://github.com/blitzcrieg1/agentmetry/issues/49) [#50](https://github.com/blitzcrieg1/agentmetry/issues/50) [#51](https://github.com/blitzcrieg1/agentmetry/issues/51) [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Five false-positive sources in frozen files. Land as one pass with #55 first, after the dogfood gate closes, so the ruleset fingerprint moves once |
+| Evidence pack integrity covers `meta` | [#75](https://github.com/blitzcrieg1/agentmetry/issues/75) | The date range on an evidence pack can currently be rewritten without breaking the hash. Needs a schema bump so existing packs keep verifying |
+| Work the Dependabot queue | n/a | 15 open. The four GitHub Actions bumps touch `release.yml` and want the dry run before merging |
+
+**Held deliberately until 2026-09-05:** anything that edits
+`detection/rules.py`, `detection/traits.py`, `detection/engine.py` or
+`audit/mitre.py`, and anything that edits the detection manifest those four are
+hashed alongside. Together they are the ruleset fingerprint, and moving it
+restarts the dogfood clock. Four green weeks measured against four different
+rulesets is not a number worth quoting, which is why the freeze is checkable
+rather than promised.
+
+---
+
+## Next (September to October 2026)
+
+| Item | Issue | Note |
+|---|---|---|
+| **Ingest Claude Code OpenTelemetry as a third capture tier** | [#56](https://github.com/blitzcrieg1/agentmetry/issues/56) | Anthropic ships observed approval decisions we currently infer. Ingesting beats competing, and it closes [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) for free. Reasoning in [the notes](https://agentmetry.ai/blog/why-not-just-opentelemetry) |
+| Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump |
+| Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
+| Benchmark coverage for the six uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | 13 of 15 rules have corpus coverage. Benign sessions harvested from the real trail beat invented ones |
+| Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
+| OTLP **export** | none yet | Distinct from #56, which is ingest. Table stakes for teams standardised on a collector |
+
+---
+
+## Later, or only if somebody asks
+
+- `EventStore` protocol before a second storage backend
+  ([#35](https://github.com/blitzcrieg1/agentmetry/issues/35))
+- Windsurf and VS Code Copilot hook installers
+  ([#7](https://github.com/blitzcrieg1/agentmetry/issues/7))
+- Dashboard triage queue ([#27](https://github.com/blitzcrieg1/agentmetry/issues/27))
+- MCP audit proxy over SSE and streamable HTTP, not only stdio
+- STIX/TAXII export of detections
+- DLP beyond regex. Real, and it waits for revenue
+
+---
+
+## Where this sits against what else exists
+
+Maintained at **[agentmetry.ai/compare](https://agentmetry.ai/compare)**, with
+the rows where each alternative wins. Not duplicated here, because a
+competitive section in a roadmap is exactly what went stale last time.
+
+The short version: Claude Code's native OpenTelemetry is the most important
+alternative and is being ingested rather than argued with. MintMCP is the
+closest peer on capture and is ahead on everything procurement measures.
+Prompt Security, inside SentinelOne, covers the unmanaged-agent gap this
+project refuses to claim. What nobody else on that page offers is a local
+hash-chained trail the customer owns, cross-agent correlation, and a detection
+benchmark a sceptic can run in ten seconds.
+
+---
+
+## Not building
+
+Stated so the answer is on record rather than re-argued.
+
+- Multi-tenant cloud SaaS or any vendor control plane. The local-first
+  property is the product, not a stage it grows out of
+- CASB or shadow-AI discovery. Different sensor, different category, and
+  [others do it](https://agentmetry.ai/compare)
+- ML guardrails and prompt firewalls. A recorder does not need a model
+- An agent runtime, a skill kernel, or a LangGraph rewrite. Removed once
+  already and staying removed
+- Autonomous remediation. Blocking is opt-in, at the hook boundary, and stays
+  the smaller half of the product
+
+---
+
+## Helping
+
+The most useful contributions are small, testable and self-contained:
+**detection rules**, **DLP patterns**, **SIEM adapters**, **YAML rules**, and
+**benchmark corpus cases**. A case that makes a rule fire when it should not is
+worth more than a case that confirms it works.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[good first issues](https://github.com/blitzcrieg1/agentmetry/labels/good%20first%20issue).
+
+Being told a detection is wrong is worth more than being told it is right. If a
+rule fires on something legitimate on your machine, that is the highest-value
+issue you can open.
