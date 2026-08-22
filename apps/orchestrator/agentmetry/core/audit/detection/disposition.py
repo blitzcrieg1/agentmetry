@@ -72,19 +72,32 @@ def _loggable(value: object, *, limit: int = 120) -> str:
     of them lets the writer append whatever they like to the orchestrator log,
     including lines that look like ours.
 
-    The trail is unaffected, which is the part worth being clear about. Canonical
-    events are JSON and a newline inside a string is escaped by the encoder, so
-    evidence is not forgeable this way. This protects the operator log, which is
-    what a human reads while deciding whether the evidence is worth opening.
+    The bound is worth stating precisely. The trail is unaffected: canonical
+    events are JSON and the encoder escapes a newline inside a string, so
+    evidence was never forgeable this way. This protects the operator log, which
+    is what a human reads while deciding whether the evidence is worth opening.
 
-    Control characters become escapes rather than being stripped, so a value that
-    contained one still looks different from one that did not. Truncated, because
-    a log line is not a place to render an unbounded string.
+    The replacements are written out one call at a time on purpose. An earlier
+    version did the same job with `str.encode("unicode_escape")`, which is
+    shorter and which CodeQL cannot follow, so `py/log-injection` stayed open on
+    code that was already fixed. A sanitizer the scanner does not recognise
+    leaves you arguing with a dashboard instead of reading it.
+
+    Line breaks become visible escapes rather than disappearing, so a value that
+    contained one still looks different from one that did not.
     """
     text = str(value)
     if len(text) > limit:
-        text = text[: limit - 1] + "…"
-    return text.encode("unicode_escape").decode("ascii")
+        text = text[: limit - 3] + "..."
+    # Backslash first, or the escapes introduced below get double-escaped.
+    text = text.replace("\\", "\\\\")
+    text = text.replace("\r", "\\r")
+    text = text.replace("\n", "\\n")
+    text = text.replace("\t", "\\t")
+    # Anything else non-printable (NUL, the ESC that starts an ANSI sequence)
+    # is dropped rather than escaped: it carries no meaning a reader needs and
+    # a terminal will act on some of it.
+    return "".join(ch for ch in text if ch.isprintable())
 
 
 _MAX_NOTE_CHARS = 4000

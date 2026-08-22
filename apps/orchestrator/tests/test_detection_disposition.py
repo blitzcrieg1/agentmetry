@@ -394,4 +394,4 @@ def test_loggable_truncates_rather_than_rendering_an_unbounded_string():
 
     out = _loggable("x" * 5000)
     assert len(out) < 200
-    assert out.endswith(BACKSLASH + "u2026")
+    assert out.endswith("...")
