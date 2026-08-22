@@ -66,6 +66,17 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      - name: Coverage floor
+        # A number that only ever goes up, checked on one OS so the gate is a
+        # single fact rather than a race between two runners.
+        #
+        # The floor is deliberately a few points under the current figure. Set
+        # flush against it and an unrelated refactor that moves a branch turns
+        # master red for no defect, which is how a coverage gate gets deleted.
+        # Raise it when a deliberate push clears it, not automatically.
+        if: matrix.os == 'ubuntu-latest'
+        run: pytest -q --cov=agentmetry --cov-report=term --cov-fail-under=78
+
   hooks-windows:
     # The PowerShell installers and the hook client are the parts a user runs
     # before anything else works. Exercise them on the OS they target.

@@ -319,6 +319,13 @@ class CheckpointResult:
     checkpoint: Checkpoint
     ok: bool
     message: str
+    # A checkpoint written for a different file says nothing about this one, in
+    # either direction. Scoring it as a failure made `verify --trail` report
+    # TAMPERING on a clean trail whenever AGENTMETRY_ANCHOR_LOG held checkpoints
+    # for another trail, which is the ordinary case after an export or a rename.
+    # A trust command that cries wolf on a good file gets muted, and then it is
+    # not a trust command.
+    applicable: bool = True
 
 
 @dataclass(frozen=True)
@@ -336,12 +343,28 @@ class AnchorCoverage:
         return all(r.ok for r in self.results)
 
     @property
+    def tampering(self) -> bool:
+        """A checkpoint that *does* cover this trail disagrees with it.
+
+        Distinct from `not ok`, which is also true when every checkpoint in the
+        log was written for some other file. That is a misconfiguration and
+        deserves saying, but calling it tampering is a false statement about a
+        file nothing has contradicted.
+        """
+        return any(r.applicable and not r.ok for r in self.results)
+
+    @property
     def unanchored(self) -> int:
         return max(0, self.tree_size - self.anchored_through)
 
     @property
     def failures(self) -> list[CheckpointResult]:
-        return [r for r in self.results if not r.ok]
+        return [r for r in self.results if r.applicable and not r.ok]
+
+    @property
+    def not_applicable(self) -> list[CheckpointResult]:
+        """Checkpoints written for a different trail. Reported, never scored."""
+        return [r for r in self.results if not r.applicable]
 
 
 def verify_anchors(
@@ -358,6 +381,10 @@ def verify_anchors(
       chain alone cannot see;
     * the checkpoint is malformed — says nothing about the trail either way, and
       must not be scored as a pass.
+
+    A checkpoint naming a *different* trail is a fourth case and not a failure.
+    It is reported so the count is honest and then ignored, because scoring it
+    either way would be an opinion about a file it never committed to.
     """
     anchors = Path(anchor_file) if anchor_file else anchor_path(Path(trail_path))
     checkpoints = read_checkpoints(anchors)
@@ -368,7 +395,12 @@ def verify_anchors(
     for cp in checkpoints:
         if cp.trail_name and cp.trail_name != Path(trail_path).name:
             results.append(
-                CheckpointResult(cp, False, f"checkpoint is for a different trail ({cp.trail_name})")
+                CheckpointResult(
+                    cp,
+                    False,
+                    f"checkpoint is for a different trail ({cp.trail_name})",
+                    applicable=False,
+                )
             )
             continue
         try:
@@ -424,6 +456,15 @@ def coverage_lines(coverage: AnchorCoverage) -> list[str]:
     lines = [f"  anchors: {coverage.checkpoints} checkpoint(s)"]
     for failure in coverage.failures:
         lines.append(f"    TAMPERING — {failure.message}")
+    skipped = coverage.not_applicable
+    if skipped:
+        # Counted, not listed. One line stays readable when a shared anchor log
+        # holds hundreds of checkpoints for other trails.
+        names = sorted({r.checkpoint.trail_name for r in skipped if r.checkpoint.trail_name})
+        lines.append(
+            f"    {len(skipped)} checkpoint(s) skipped: written for "
+            f"{', '.join(names) or 'another trail'}, not this file"
+        )
 
     if coverage.anchored_through:
         lines.append(f"    records 1-{coverage.anchored_through} anchored")
