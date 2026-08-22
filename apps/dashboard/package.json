@@ -38,5 +38,12 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5",
     "vitest": "^2.1.9"
+  },
+  "overrides": {
+    "sharp": "^0.35.3"
+  },
+  "overridesNote": {
+    "reason": "sharp is an optional transitive of next. Its only caller is the image optimizer, which next.config.js disables (images.unoptimized) and which cannot run in a static export anyway, so the libvips advisory is unreachable here. The override closes the alert without taking Next 16, which is what Dependabot's sharp PR actually proposed.",
+    "remove_when": "a 15.x depends on sharp >=0.35 itself, or the Next 16 migration is done on purpose"
   }
 }
