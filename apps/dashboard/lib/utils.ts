@@ -6,7 +6,28 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  // crypto.getRandomValues rather than Math.random. This id scopes a browser's
+  // view of the feed and is not a credential, so the practical risk of a
+  // predictable value is nil. It is fixed anyway for two reasons: CodeQL scores
+  // js/insecure-randomness as high and it was the only high-severity alert on
+  // the security tab of a security product, and an id that is not a secret
+  // today is exactly the kind of thing that quietly becomes one later.
+  //
+  // randomUUID needs a secure context, which a dashboard served over plain
+  // http on a LAN address is not, so this uses getRandomValues directly and
+  // falls back only where neither exists (older SSR paths, not browsers).
+  const bytes = new Uint8Array(8);
+  const c = globalThis.crypto;
+  if (c?.getRandomValues) {
+    c.getRandomValues(bytes);
+  } else {
+    // No secure source available. Better a visibly degraded id than a silent
+    // one: a collision here shows up as a feed that will not scope, which is
+    // debuggable, rather than as a security property nobody checked.
+    return `session-${Date.now()}-insecure`;
+  }
+  const suffix = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `session-${Date.now()}-${suffix}`;
 }
 
 // When the dashboard is served as a static export by the orchestrator itself

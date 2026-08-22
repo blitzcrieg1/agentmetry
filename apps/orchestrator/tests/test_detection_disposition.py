@@ -348,3 +348,50 @@ def test_disposition_event_matches_the_canonical_envelope(monkeypatch):
               "host_id", "fleet_id", "source", "actor", "initiator", "action", "agent"}
     assert shared <= set(detection)
     assert shared <= set(disposition)
+
+
+# ----------------------------------------------------------------------
+# Log injection (CodeQL py/log-injection, six alerts in this module)
+#
+# `rule_id`, `decided_by` and the disposition keys derived from `correlation_id`
+# all originate outside this process. A newline in any of them let the writer
+# append lines to the orchestrator log that look exactly like ours.
+#
+# `chr(92)` rather than an escaped backslash literal throughout: these
+# assertions are about backslashes, and writing them as escapes makes the test
+# harder to read than the thing it tests.
+# ----------------------------------------------------------------------
+
+BACKSLASH = chr(92)
+
+
+def test_loggable_escapes_newlines_so_a_log_line_cannot_be_forged():
+    from agentmetry.core.audit.detection.disposition import _loggable
+
+    forged = _loggable("credential-exfil" + chr(10) + "INFO DISPOSITION other -> resolved")
+    assert chr(10) not in forged, "a real newline survived, the log is forgeable"
+    assert BACKSLASH + "n" in forged, "the newline should be visible as an escape"
+
+
+def test_loggable_escapes_carriage_returns_and_other_control_characters():
+    from agentmetry.core.audit.detection.disposition import _loggable
+
+    for raw in ("a" + chr(13) + "b", "a" + chr(0) + "b", "a" + chr(27) + "[31mb"):
+        out = _loggable(raw)
+        assert not any(ord(c) < 0x20 for c in out), (raw, out)
+
+
+def test_loggable_leaves_ordinary_values_untouched():
+    """A sanitizer that mangles normal ids makes the log worse, not better."""
+    from agentmetry.core.audit.detection.disposition import _loggable
+
+    for raw in ("credential-exfil", "host-subagent-swarm-burst", "operator", "dev_01"):
+        assert _loggable(raw) == raw
+
+
+def test_loggable_truncates_rather_than_rendering_an_unbounded_string():
+    from agentmetry.core.audit.detection.disposition import _loggable
+
+    out = _loggable("x" * 5000)
+    assert len(out) < 200
+    assert out.endswith(BACKSLASH + "u2026")

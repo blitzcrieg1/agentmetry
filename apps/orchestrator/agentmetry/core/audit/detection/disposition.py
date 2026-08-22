@@ -62,6 +62,31 @@ _NOTE_REQUIRED = frozenset({"false_positive", "risk_accepted"})
 #: States that mean no further action is expected.
 CLOSED_STATUSES = frozenset({"resolved", "false_positive", "risk_accepted"})
 
+
+def _loggable(value: object, *, limit: int = 120) -> str:
+    """Flatten a value so it cannot forge log lines.
+
+    `rule_id`, `decided_by` and the disposition keys derived from
+    `correlation_id` all originate outside this process: a rule id can come from
+    an operator's YAML, a correlation id comes from the agent. A newline in any
+    of them lets the writer append whatever they like to the orchestrator log,
+    including lines that look like ours.
+
+    The trail is unaffected, which is the part worth being clear about. Canonical
+    events are JSON and a newline inside a string is escaped by the encoder, so
+    evidence is not forgeable this way. This protects the operator log, which is
+    what a human reads while deciding whether the evidence is worth opening.
+
+    Control characters become escapes rather than being stripped, so a value that
+    contained one still looks different from one that did not. Truncated, because
+    a log line is not a place to render an unbounded string.
+    """
+    text = str(value)
+    if len(text) > limit:
+        text = text[: limit - 1] + "…"
+    return text.encode("unicode_escape").decode("ascii")
+
+
 _MAX_NOTE_CHARS = 4000
 _MAX_ASSIGNEE_CHARS = 128
 
@@ -234,7 +259,11 @@ class DispositionStore:
                     "DELETE FROM detection_dispositions WHERE detection_key = ?",
                     (stale_key,),
                 )
-                logger.info("Migrated disposition %s -> %s after rule rename", stale_key, key)
+                logger.info(
+                    "Migrated disposition %s -> %s after rule rename",
+                    _loggable(stale_key),
+                    _loggable(key),
+                )
 
         history.append({
             "status": normalized,
@@ -535,14 +564,16 @@ async def apply_disposition(
         try:
             await sink.emit(event)
         except Exception:
-            logger.exception("Failed to forward disposition for %s", rule_id)
+            logger.exception("Failed to forward disposition for %s", _loggable(rule_id))
 
+    # `previous` and `normalized` are validated against STATUSES above, so both
+    # are already closed-set values. The other two are not.
     logger.info(
         "DISPOSITION %s %s -> %s by %s",
-        rule_id,
+        _loggable(rule_id),
         previous,
         normalized,
-        decided_by or "operator",
+        _loggable(decided_by or "operator"),
     )
     return current
 
