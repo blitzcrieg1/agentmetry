@@ -96,3 +96,7 @@ docs/*-review-*.md
 docs/*audit*prompt*.md
 docs/audit-*.md
 docs/*-audit-*.md
+
+# pytest-cov data file
+.coverage
+.coverage.*

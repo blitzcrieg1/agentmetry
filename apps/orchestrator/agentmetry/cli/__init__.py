@@ -944,7 +944,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 print(line)
             if source == "config" and not anchor_log.is_file():
                 print(f"    AGENTMETRY_ANCHOR_LOG points at {anchor_log}, which does not exist")
-            if not coverage.ok:
+            if coverage.tampering:
                 # The chain printed OK several lines ago and it was telling the
                 # truth: the file is internally consistent, because whoever
                 # rewrote it made it so. Leaving that as the last word would let
@@ -952,6 +952,17 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 print(
                     "FAILED — the chain is internally consistent but contradicts a "
                     "published anchor. The file was rewritten."
+                )
+                return 1
+            if not coverage.ok:
+                # Checkpoints exist and none of them cover this file. Worth
+                # failing, because an operator who configured an anchor log
+                # believes they are anchored. Not worth calling tampering:
+                # nothing here contradicts the trail, and a trust command that
+                # says "rewritten" about a clean file gets muted.
+                print(
+                    "FAILED — no checkpoint in this anchor log covers this trail. "
+                    "Check AGENTMETRY_ANCHOR_LOG, or anchor this file."
                 )
                 return 1
             return 0
