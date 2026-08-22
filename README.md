@@ -455,16 +455,33 @@ with optional external anchoring for threat models that include the host itself.
 The chain covers JSONL lines written after chaining was enabled, and it protects
 the JSONL, not the SQLite index the dashboard reads.
 
-**Tamper-evident is not attributable.** Ingest authenticates with one shared key,
-so any host holding it can post events claiming any `host_id`, any `fleet_id`, and
-any user identity. The chain proves ordering and non-modification of what was
-written; it does not prove who wrote it. For one developer recording their own
-machine that is a fair trade and the default. Across a fleet it means the trail
-records claims rather than facts, and a claim is not evidence. Per-host
-cryptographic identity is not in the open-source core and is not planned for it;
-it is being built into Agentmetry Enterprise, where fleets and key management are
-the problem being solved. Nothing here is removed or degraded either way, and the
-shared-key path stays the single-machine default.
+**Tamper-evident is not attributable.** The chain proves ordering and
+non-modification of what was written. It does not prove who wrote it.
+
+Be precise about the shape of that, because an earlier version of this paragraph
+was not. It said a key holder could post events "claiming any `host_id`, any
+`fleet_id`, and any user identity", which is not what the code does and made the
+weakness sound like identity spoofing. Ingest takes no identity from the caller:
+`ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id` or
+`fleet_id` field, and `agentmetry/core/audit/identity.py` stamps every canonical
+event with the *receiving* orchestrator's own hostname plus its configured
+`fleet_id`. A client cannot claim to be another machine.
+
+What one shared key does buy an attacker is **injection**. Anyone holding
+`AGENTMETRY_API_KEY` can post to that orchestrator, and the events arrive stamped
+as native to the machine that accepted them, indistinguishable from real ones. A
+second consequence follows from the same design: point several hosts at one
+central orchestrator and every event carries that orchestrator's `host_id`, so
+per-host attribution is absent by construction rather than forgeable.
+
+For one developer recording their own machine both are a fair trade, and it is
+the default. Across a fleet it means the trail records what a machine *accepted*
+rather than what a machine *did*, and an auditor should hear that from you rather
+than find it. Per-host cryptographic identity is not in the open-source core and
+is not planned for it; it is being built into Agentmetry Enterprise as Ed25519
+host keypairs held in the OS keystore with per-post signatures, where fleets, key
+rotation and revocation are the problem being solved. Nothing here is removed or
+degraded either way, and the shared-key path stays the single-machine default.
 
 Read on its own, the chain catches corruption, truncation and in-place edits. It
 does not catch an attacker with write access to the data directory: they can edit
