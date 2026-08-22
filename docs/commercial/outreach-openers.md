@@ -12,9 +12,9 @@ Nothing here is a template with your company name substituted in. Each opener
 targets a different reason someone would need this, and most of them will be
 wrong for most people.
 
-**Status as of 2026-08-21: none of these have been sent.** No reply data, no
-conversion data, nothing validated. Treat the sequencing below as reasoning
-rather than evidence.
+**Status as of 2026-08-22: none sent yet.** Recipients and copy-ready bodies
+for openers **#2** and **#5** are in [outreach-log.md](./outreach-log.md).
+No reply data yet. Treat the sequencing below as reasoning rather than evidence.
 
 ## The offer they point at
 
