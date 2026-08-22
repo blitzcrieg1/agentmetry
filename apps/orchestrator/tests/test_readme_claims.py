@@ -126,3 +126,56 @@ def test_readme_documents_every_cli_command():
     assert not undocumented, (
         f"CLI commands missing from the README CLI Reference: {undocumented}"
     )
+
+
+# ----------------------------------------------------------------------
+# The attribution paragraph
+#
+# The README used to say a shared-key holder could post events "claiming any
+# host_id, any fleet_id, and any user identity". That was never what the code
+# did, and the overstatement travelled: three separate external audits repeated
+# it back as the project's fatal flaw. Overstating a weakness costs the same
+# credibility as overstating a strength, and it is harder to notice because it
+# sounds like honesty.
+#
+# The corrected paragraph makes a claim about the code, so the code checks it.
+# ----------------------------------------------------------------------
+
+
+def test_ingest_body_takes_no_identity_from_the_caller():
+    """The README says a client cannot claim to be another machine."""
+    from agentmetry.api.routes.audit import ExternalIngestBody
+
+    fields = set(ExternalIngestBody.model_fields)
+    assert "host_id" not in fields
+    assert "fleet_id" not in fields
+    # Nothing user-shaped either. If an identity field is ever added to this
+    # body, the README paragraph becomes false in the direction that matters.
+    assert not [f for f in fields if "user" in f or "operator" in f], sorted(fields)
+
+
+def test_identity_is_stamped_from_the_receiving_host():
+    from agentmetry.core.audit.identity import identity_fields
+
+    fields = identity_fields()
+    assert "host_id" in fields and fields["host_id"], fields
+    # fleet_id is omitted rather than emitted empty, so only assert the shape.
+    assert set(fields) <= {"host_id", "fleet_id"}, fields
+
+
+def test_readme_does_not_reintroduce_the_overstatement():
+    """Guards the correction itself, not just the code behind it.
+
+    The old sentence is quoted inside the corrected paragraph on purpose, so
+    this checks it never appears as an assertion again: once as a quotation is
+    expected, twice means somebody pasted the old text back.
+    """
+    text = _readme()
+    assert text.count("claiming any `host_id`") <= 1, (
+        "the overstated attribution claim appears more than once; the paragraph "
+        "quotes it exactly once while correcting it"
+    )
+    # The correction names the two files a reader can check. If either rename
+    # happens without updating the README, the invitation stops working.
+    assert "agentmetry/api/routes/audit.py" in text
+    assert "agentmetry/core/audit/identity.py" in text
