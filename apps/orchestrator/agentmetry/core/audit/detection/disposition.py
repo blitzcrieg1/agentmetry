@@ -62,6 +62,44 @@ _NOTE_REQUIRED = frozenset({"false_positive", "risk_accepted"})
 #: States that mean no further action is expected.
 CLOSED_STATUSES = frozenset({"resolved", "false_positive", "risk_accepted"})
 
+
+def _loggable(value: object, *, limit: int = 120) -> str:
+    """Flatten a value so it cannot forge log lines.
+
+    `rule_id`, `decided_by` and the disposition keys derived from
+    `correlation_id` all originate outside this process: a rule id can come from
+    an operator's YAML, a correlation id comes from the agent. A newline in any
+    of them lets the writer append whatever they like to the orchestrator log,
+    including lines that look like ours.
+
+    The bound is worth stating precisely. The trail is unaffected: canonical
+    events are JSON and the encoder escapes a newline inside a string, so
+    evidence was never forgeable this way. This protects the operator log, which
+    is what a human reads while deciding whether the evidence is worth opening.
+
+    The replacements are written out one call at a time on purpose. An earlier
+    version did the same job with `str.encode("unicode_escape")`, which is
+    shorter and which CodeQL cannot follow, so `py/log-injection` stayed open on
+    code that was already fixed. A sanitizer the scanner does not recognise
+    leaves you arguing with a dashboard instead of reading it.
+
+    Line breaks become visible escapes rather than disappearing, so a value that
+    contained one still looks different from one that did not.
+    """
+    text = str(value)
+    if len(text) > limit:
+        text = text[: limit - 3] + "..."
+    # Backslash first, or the escapes introduced below get double-escaped.
+    text = text.replace("\\", "\\\\")
+    text = text.replace("\r", "\\r")
+    text = text.replace("\n", "\\n")
+    text = text.replace("\t", "\\t")
+    # Anything else non-printable (NUL, the ESC that starts an ANSI sequence)
+    # is dropped rather than escaped: it carries no meaning a reader needs and
+    # a terminal will act on some of it.
+    return "".join(ch for ch in text if ch.isprintable())
+
+
 _MAX_NOTE_CHARS = 4000
 _MAX_ASSIGNEE_CHARS = 128
 
@@ -234,7 +272,11 @@ class DispositionStore:
                     "DELETE FROM detection_dispositions WHERE detection_key = ?",
                     (stale_key,),
                 )
-                logger.info("Migrated disposition %s -> %s after rule rename", stale_key, key)
+                logger.info(
+                    "Migrated disposition %s -> %s after rule rename",
+                    _loggable(stale_key),
+                    _loggable(key),
+                )
 
         history.append({
             "status": normalized,
@@ -535,14 +577,16 @@ async def apply_disposition(
         try:
             await sink.emit(event)
         except Exception:
-            logger.exception("Failed to forward disposition for %s", rule_id)
+            logger.exception("Failed to forward disposition for %s", _loggable(rule_id))
 
+    # `previous` and `normalized` are validated against STATUSES above, so both
+    # are already closed-set values. The other two are not.
     logger.info(
         "DISPOSITION %s %s -> %s by %s",
-        rule_id,
+        _loggable(rule_id),
         previous,
         normalized,
-        decided_by or "operator",
+        _loggable(decided_by or "operator"),
     )
     return current
 
