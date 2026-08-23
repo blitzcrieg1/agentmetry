@@ -154,6 +154,8 @@ index=main sourcetype=agentmetry:json action_type=heartbeat
 
 **Alert:** Unscheduled until the fleet has a baseline. A vendor adding a tool looks identical to a poisoned description; treat the hit as an investigation.
 
+**What S7 does not prove.** A stable fingerprint is not a stable server: call-time behavior can diverge while `tools/list` stays fixed. The first observation on a host is not a trusted baseline (install after a swap and the trail stays clean). Additive optional fields and OAuth-gated listings move the digest without a malicious release. See [Coverage & Limitations](../../README.md#coverage--limitations) in the README.
+
 ---
 
 ## What S4 to S7 do and do not prove
