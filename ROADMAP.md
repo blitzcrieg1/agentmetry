@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-08-22.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-08-23.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -30,15 +30,15 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-08-22
+## Where this actually is, on 2026-08-23
 
 | | |
 |---|---|
 | Version | 0.5.0 on PyPI, released 2026-08-21 |
 | Canonical event schema | 1.2.0, additive |
-| Detection rules | 15 sequence rules, ATT&CK on every event, ATLAS on the AI-specific subset |
+| Detection rules | 15 sequence rules, ATT&CK on every event, ATLAS on the AI-specific subset. All 15 exported as Sigma, generated from the engine |
 | Benchmark | 50 recorded sessions, 26 attack and 24 benign, 0 missed and 0 false positives |
-| Tests | 1113 passing, 81% coverage, floor enforced in CI |
+| Tests | 1125 passing, 81% coverage, floor enforced in CI |
 | Dogfood gate | **2 of 4 consecutive green weeks**, clock started 2026-08-08 |
 | Own trail | 27,504 hash-chained lines, 24 external anchors |
 | Adoption | Public alpha. No design partner tenant yet, no reference customer |
@@ -94,7 +94,6 @@ the most important one on the page.
 | **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. Nothing else on this list matters as much |
 | Detection precision pass | [#44](https://github.com/blitzcrieg1/agentmetry/issues/44) [#49](https://github.com/blitzcrieg1/agentmetry/issues/49) [#50](https://github.com/blitzcrieg1/agentmetry/issues/50) [#51](https://github.com/blitzcrieg1/agentmetry/issues/51) [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Five false-positive sources in frozen files. Land as one pass with #55 first, after the dogfood gate closes, so the ruleset fingerprint moves once |
 | Evidence pack integrity covers `meta` | [#75](https://github.com/blitzcrieg1/agentmetry/issues/75) | The date range on an evidence pack can currently be rewritten without breaking the hash. Needs a schema bump so existing packs keep verifying |
-| Work the Dependabot queue | n/a | 15 open. The four GitHub Actions bumps touch `release.yml` and want the dry run before merging |
 
 **Held deliberately until 2026-09-05:** anything that edits
 `detection/rules.py`, `detection/traits.py`, `detection/engine.py` or
@@ -108,14 +107,21 @@ rather than promised.
 
 ## Next (September to October 2026)
 
+Reordered 2026-08-23 around one test: **does this item make the sensor land in
+somebody else's SIEM?** The three at the top are what a security team touches
+before they touch anything this project renders itself. Everything the dashboard
+wants has moved to the bottom of the page.
+
 | Item | Issue | Note |
 |---|---|---|
+| **Splunk TA through AppInspect and a Splunkbase listing** | [enterprise #8](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/8) | The TA works and has tests. It is a directory you copy onto a search head, which is a different conversation from a listing a security team can find. No public copy claims certification until it exists |
+| **Per-host identity on a fleet trail** | [enterprise #1](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/1) | A fleet trail is tamper-evident and not yet attributable. Ed25519 per host, so a forwarded event says which machine signed it |
 | **Ingest Claude Code OpenTelemetry as a third capture tier** | [#56](https://github.com/blitzcrieg1/agentmetry/issues/56) | Anthropic ships observed approval decisions we currently infer. Ingesting beats competing, and it closes [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) for free. Reasoning in [the notes](https://agentmetry.ai/blog/why-not-just-opentelemetry) |
+| OTLP **export** | none yet | Distinct from #56, which is ingest. Table stakes for teams standardised on a collector |
 | Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump |
 | Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
 | Benchmark coverage for the six uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | 13 of 15 rules have corpus coverage. Benign sessions harvested from the real trail beat invented ones |
 | Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
-| OTLP **export** | none yet | Distinct from #56, which is ingest. Table stakes for teams standardised on a collector |
 
 ---
 
@@ -125,10 +131,27 @@ rather than promised.
   ([#35](https://github.com/blitzcrieg1/agentmetry/issues/35))
 - Windsurf and VS Code Copilot hook installers
   ([#7](https://github.com/blitzcrieg1/agentmetry/issues/7))
-- Dashboard triage queue ([#27](https://github.com/blitzcrieg1/agentmetry/issues/27))
 - MCP audit proxy over SSE and streamable HTTP, not only stdio
 - STIX/TAXII export of detections
 - DLP beyond regex. Real, and it waits for revenue
+
+### The dashboard, last on purpose
+
+It is a **local inspection surface for the machine the sensor runs on**, and it
+stays one. The SIEM is the console, which is the claim on every page of the
+site, and a triage queue built here would be the second-best version of a
+feature the customer already bought.
+
+It is not being deleted and it is not unmaintained: it builds in CI, and the
+Next 16 migration went in because dependency alerts had to close, not because a
+screen needed adding. That is the level of attention it gets.
+
+- Keyboard triage queue for the Detections tab
+  ([#27](https://github.com/blitzcrieg1/agentmetry/issues/27))
+- Remove the removed product's state model
+  ([#26](https://github.com/blitzcrieg1/agentmetry/issues/26))
+- Work through the 12 `set-state-in-effect` sites and let the rule error again
+  ([#95](https://github.com/blitzcrieg1/agentmetry/issues/95))
 
 ---
 
