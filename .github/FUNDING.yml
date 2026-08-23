@@ -1,0 +1,4 @@
+# Puts the Sponsor button on the repository page. Enabling GitHub Sponsors on
+# the account does not do this on its own: the button only appears when a repo
+# carries this file.
+github: blitzcrieg1
