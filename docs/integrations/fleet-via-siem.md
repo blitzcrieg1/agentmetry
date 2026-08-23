@@ -91,9 +91,9 @@ anyone acted, so this count is the real health metric for the deployment.
 
 ```
 index=agentmetry action.type=detection
-| eval key=correlation_id.":".'detection.rule_id'
+| eval key=correlation_id."::".'detection.rule_id'
 | search NOT [ search index=agentmetry action.type=detection_disposition
-               | eval key=correlation_id.":".'disposition.rule_id' | fields key ]
+               | eval key=correlation_id."::".'disposition.rule_id' | fields key ]
 | stats count by host_id, detection.rule_id
 ```
 
