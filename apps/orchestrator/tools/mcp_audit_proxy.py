@@ -11,8 +11,9 @@ Set AGENTMETRY_SOURCE_APP=mcp_proxy (default).
 Correlation: all calls in one proxy process share a per-process session id
 (override with AGENTMETRY_CORRELATION_ID) — NOT the JSON-RPC request id, which
 collides across sessions. The JSON-RPC id is used only to match a response to
-its request so a server error becomes a tool_failed event, and so a
-paginated tools/list can be assembled before it is hashed.
+its request so a server error becomes a tool_failed event, so a paginated
+tools/list can be assembled before it is hashed, and so an initialize response
+can be paired with the next completed tools/list.
 
 Redaction: tool arguments are hashed in-process (input_hash); plaintext args
 never cross the wire to the orchestrator. Tool descriptions are hashed the
@@ -42,6 +43,7 @@ from agentmetry_ingest import hash_arguments, post_ingest  # noqa: E402
 from agentmetry.core.diagnostics.mcp_schema import (  # noqa: E402
     ToolsListBuffer,
     fingerprint_tools,
+    parse_initialize_result,
 )
 
 # Per-process session id — ties every tool call in this MCP connection together.
@@ -63,10 +65,15 @@ def _qualified(server_name: str, tool_name: str) -> str:
 
 
 def build_schema_payload(
-    server_name: str, tools: list[Any], correlation_id: str
+    server_name: str,
+    tools: list[Any],
+    correlation_id: str,
+    *,
+    server_version: str = "",
+    list_changed: bool | None = None,
 ) -> dict[str, Any]:
     """Hash-only ingest of a completed `tools/list`. Descriptions stay here."""
-    return {
+    payload: dict[str, Any] = {
         "source_app": _source_app(),
         "adapter": "mcp_audit_proxy",
         "event_type": "mcp_schema",
@@ -75,6 +82,11 @@ def build_schema_payload(
         "schema_tool_count": len(tools),
         "tool": {"server": server_name},
     }
+    if server_version:
+        payload["server_version"] = server_version
+    if list_changed is not None:
+        payload["list_changed"] = list_changed
+    return payload
 
 
 def build_call_payload(
@@ -139,6 +151,9 @@ async def _relay_stdin(
             continue
         rid = msg.get("id")
         method = msg.get("method")
+        if method == "initialize" and rid is not None:
+            pending[str(rid)] = {"kind": "init", "server": server_name}
+            continue
         if method == "tools/list" and rid is not None:
             pending[str(rid)] = {"kind": "list", "server": server_name}
             continue
@@ -160,6 +175,7 @@ async def _relay_stdout(
     pending: dict[str, dict[str, str]],
     server_name: str,
     list_buf: ToolsListBuffer,
+    handshake: dict[str, Any],
 ) -> None:
     correlation = _correlation_id()
     while True:
@@ -179,6 +195,11 @@ async def _relay_stdout(
         ctx = pending.pop(str(rid), None)
         if ctx is None:
             continue
+        if ctx.get("kind") == "init":
+            if not msg.get("error"):
+                handshake.clear()
+                handshake.update(parse_initialize_result(msg.get("result")))
+            continue
         if ctx.get("kind") == "list":
             if msg.get("error"):
                 # Drop the pages already accumulated. Keeping them would let a
@@ -189,7 +210,14 @@ async def _relay_stdout(
             done = list_buf.add_page(msg.get("result"))
             if done is not None:
                 post_ingest(
-                    build_schema_payload(server_name, done, correlation), quiet=True
+                    build_schema_payload(
+                        server_name,
+                        done,
+                        correlation,
+                        server_version=str(handshake.get("server_version") or ""),
+                        list_changed=handshake.get("list_changed"),
+                    ),
+                    quiet=True,
                 )
             continue
         err_payload = build_error_payload(msg, ctx, correlation)
@@ -211,9 +239,10 @@ async def run_proxy(command: list[str], server_name: str) -> int:
 
     pending: dict[str, dict[str, str]] = {}
     list_buf = ToolsListBuffer()
+    handshake: dict[str, Any] = {}
     stdin_task = asyncio.create_task(_relay_stdin(proc.stdin, server_name, pending))
     stdout_task = asyncio.create_task(
-        _relay_stdout(proc.stdout, pending, server_name, list_buf)
+        _relay_stdout(proc.stdout, pending, server_name, list_buf, handshake)
     )
 
     async def _stderr() -> None:

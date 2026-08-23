@@ -62,6 +62,18 @@ def test_schema_payload_moves_when_the_description_does():
     assert a["schema_fingerprint"] != b["schema_fingerprint"]
 
 
+def test_schema_payload_carries_initialize_handshake():
+    payload = proxy.build_schema_payload(
+        "postmark",
+        [{"name": "t", "description": "x"}],
+        "sess",
+        server_version="3.1.0",
+        list_changed=True,
+    )
+    assert payload["server_version"] == "3.1.0"
+    assert payload["list_changed"] is True
+
+
 def test_call_payload_preserves_already_qualified_name():
     msg = {"method": "tools/call", "params": {"name": "mcp__x.read", "arguments": {}}}
     payload = proxy.build_call_payload(msg, "vault_fs", "s")
@@ -89,7 +101,7 @@ def test_correlation_env_override(monkeypatch):
     assert proxy._correlation_id() == "fixed-corr"
 
 
-async def _drive_stdout(lines, pending, monkeypatch):
+async def _drive_stdout(lines, pending, monkeypatch, handshake=None):
     """Run the real stdout relay over canned server output, capturing ingests."""
     sent = []
     monkeypatch.setattr(proxy, "post_ingest", lambda payload, **kw: sent.append(payload))
@@ -98,8 +110,9 @@ async def _drive_stdout(lines, pending, monkeypatch):
         reader.feed_data(json.dumps(line).encode() + b"\n")
     reader.feed_eof()
     buf = proxy.ToolsListBuffer()
-    await proxy._relay_stdout(reader, pending, "postmark", buf)
-    return sent
+    hs = handshake if handshake is not None else {}
+    await proxy._relay_stdout(reader, pending, "postmark", buf, hs)
+    return sent, hs
 
 
 @pytest.mark.asyncio
@@ -116,7 +129,7 @@ async def test_a_failed_page_does_not_make_the_next_listing_look_poisoned(monkey
     tool_a = {"name": "a", "description": "A", "inputSchema": {"type": "object"}}
     tool_b = {"name": "b", "description": "B", "inputSchema": {"type": "object"}}
     pending = {str(i): {"kind": "list", "server": "postmark"} for i in range(1, 5)}
-    sent = await _drive_stdout(
+    sent, _ = await _drive_stdout(
         [
             {"jsonrpc": "2.0", "id": 1, "result": {"tools": [tool_a], "nextCursor": "p2"}},
             {"jsonrpc": "2.0", "id": 2, "error": {"code": -32000, "message": "dropped"}},
@@ -132,3 +145,30 @@ async def test_a_failed_page_does_not_make_the_next_listing_look_poisoned(monkey
     from agentmetry.core.diagnostics.mcp_schema import fingerprint_tools
 
     assert sent[0]["schema_fingerprint"] == fingerprint_tools([tool_a, tool_b])
+
+
+@pytest.mark.asyncio
+async def test_initialize_handshake_is_attached_to_the_next_tools_list(monkeypatch):
+    tool = {"name": "a", "description": "A", "inputSchema": {"type": "object"}}
+    pending = {
+        "1": {"kind": "init", "server": "postmark"},
+        "2": {"kind": "list", "server": "postmark"},
+    }
+    sent, _ = await _drive_stdout(
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "serverInfo": {"name": "postmark", "version": "15.0.0"},
+                    "capabilities": {"tools": {"listChanged": True}},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 2, "result": {"tools": [tool]}},
+        ],
+        pending,
+        monkeypatch,
+    )
+    assert len(sent) == 1
+    assert sent[0]["server_version"] == "15.0.0"
+    assert sent[0]["list_changed"] is True
