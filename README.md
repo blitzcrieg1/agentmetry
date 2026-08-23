@@ -502,6 +502,29 @@ detection can be recomputed from it.
 and decisions are per machine, forwarded to your SIEM as events. See
 [fleet via your SIEM](docs/integrations/fleet-via-siem.md).
 
+**MCP schema fingerprinting is a tripwire, not a proof of a stable server.**
+The recorder hashes the full `tools/list` payload (names, descriptions,
+`inputSchema`, annotations) and emits when that digest moves while the config
+digest does not. That catches the postmark-mcp shape. It does not prove the
+server is safe:
+
+- A quiet digest only means the listing has not changed since this install
+  started watching. A server can keep `tools/list` identical and still change
+  what a tool does at call time.
+- The first observation is not a trusted baseline. If you install after a
+  swap, that post-swap listing becomes "normal" and the trail stays clean.
+- Additive optional fields and legit vendor tool adds move the same digest as
+  a poisoned description. Treat a move as investigate, not auto-page, until
+  you have a changelog or a local description delta.
+- Auth-gated and per-user listings can change the digest without any release
+  change. Failed fetches are not "tools removed."
+
+Hardening beyond these honesty notes is tracked in
+[#103](https://github.com/blitzcrieg1/agentmetry/issues/103),
+[#104](https://github.com/blitzcrieg1/agentmetry/issues/104),
+[#105](https://github.com/blitzcrieg1/agentmetry/issues/105), and
+[#106](https://github.com/blitzcrieg1/agentmetry/issues/106).
+
 ---
 
 ## Capabilities & Integrations
