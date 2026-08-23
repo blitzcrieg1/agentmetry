@@ -68,6 +68,33 @@ def server_id(name: str) -> str:
     return hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
 
 
+def parse_initialize_result(result: Any) -> dict[str, Any]:
+    """Handshake fields that help separate releases from rug pulls.
+
+    ``serverInfo.version`` is attacker-controlled but useful as a benign-churn
+    handle: digest moved + version moved often means a shipped release; digest
+    moved + version stable is the shape worth investigating first.
+
+    ``capabilities.tools.listChanged`` records whether the server promised
+    ``notifications/tools/list_changed``; a gap between that promise and a
+    silent listing change is only visible if both are captured.
+    """
+    out: dict[str, Any] = {}
+    if not isinstance(result, dict):
+        return out
+    info = result.get("serverInfo")
+    if isinstance(info, dict):
+        version = info.get("version")
+        if version is not None and str(version).strip():
+            out["server_version"] = str(version).strip()
+    caps = result.get("capabilities")
+    if isinstance(caps, dict):
+        tools = caps.get("tools")
+        if isinstance(tools, dict) and "listChanged" in tools:
+            out["list_changed"] = bool(tools["listChanged"])
+    return out
+
+
 class ToolsListBuffer:
     """Accumulate paginated `tools/list` pages until the cursor is exhausted.
 
@@ -110,6 +137,8 @@ class SchemaRecord:
     observed_at: str
     previous: str = ""
     source: str = ""
+    server_version: str = ""
+    list_changed: bool | None = None
 
 
 @dataclass
@@ -150,12 +179,15 @@ def load_store(path: Path | None = None) -> SchemaStore:
         for name, rec in block.items():
             if not isinstance(rec, dict) or not rec.get("fingerprint"):
                 continue
+            list_changed = rec.get("list_changed")
             servers[str(name)] = SchemaRecord(
                 fingerprint=str(rec.get("fingerprint") or ""),
                 tool_count=int(rec.get("tool_count") or 0),
                 observed_at=str(rec.get("observed_at") or ""),
                 previous=str(rec.get("previous") or ""),
                 source=str(rec.get("source") or ""),
+                server_version=str(rec.get("server_version") or ""),
+                list_changed=list_changed if isinstance(list_changed, bool) else None,
             )
     return SchemaStore(servers=servers)
 
@@ -170,6 +202,8 @@ def _dump(store: SchemaStore) -> dict[str, Any]:
                 "observed_at": rec.observed_at,
                 "previous": rec.previous,
                 "source": rec.source,
+                **({"server_version": rec.server_version} if rec.server_version else {}),
+                **({"list_changed": rec.list_changed} if rec.list_changed is not None else {}),
             }
             for name, rec in sorted(store.servers.items())
         },
@@ -218,6 +252,8 @@ def record_observation(
     tool_count: int,
     *,
     source: str = "mcp_proxy",
+    server_version: str = "",
+    list_changed: bool | None = None,
     path: Path | None = None,
     now: str | None = None,
 ) -> str:
@@ -235,6 +271,10 @@ def record_observation(
         if existing and existing.fingerprint == fp:
             existing.observed_at = stamp
             existing.tool_count = tool_count
+            if server_version:
+                existing.server_version = server_version
+            if list_changed is not None:
+                existing.list_changed = list_changed
             _write_store(store, target)
             return "same"
         previous = existing.fingerprint if existing else ""
@@ -244,6 +284,8 @@ def record_observation(
             observed_at=stamp,
             previous=previous,
             source=source,
+            server_version=server_version,
+            list_changed=list_changed,
         )
         _write_store(store, target)
         return "changed" if previous else "new"
@@ -262,7 +304,14 @@ def schema_summary_lines(store: SchemaStore | None = None) -> list[str]:
     ]
     for name, rec in sorted(store.servers.items()):
         extra = f", was {rec.previous[:16]}" if rec.previous else ""
+        version = f", v={rec.server_version}" if rec.server_version else ""
+        notify = (
+            ", listChanged"
+            if rec.list_changed
+            else (", no listChanged" if rec.list_changed is False else "")
+        )
         lines.append(
-            f"      schema {name}: {rec.fingerprint[:16]} ({rec.tool_count} tools{extra})"
+            f"      schema {name}: {rec.fingerprint[:16]} "
+            f"({rec.tool_count} tools{version}{notify}{extra})"
         )
     return lines

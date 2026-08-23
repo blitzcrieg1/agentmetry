@@ -177,7 +177,7 @@ def _get_sink():
     return _sink
 
 
-def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str]:
+def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str, str, bool | None]:
     tool = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
     server = str(tool.get("server") or payload.get("server") or "")
     fingerprint = str(payload.get("schema_fingerprint") or "")
@@ -186,7 +186,11 @@ def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str]
     except (TypeError, ValueError):
         tool_count = 0
     source = str(payload.get("adapter") or "mcp_proxy")
-    return server, fingerprint, tool_count, source
+    server_version = str(payload.get("server_version") or "")
+    list_changed = payload.get("list_changed")
+    if list_changed is not None and not isinstance(list_changed, bool):
+        list_changed = None
+    return server, fingerprint, tool_count, source, server_version, list_changed
 
 
 def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, Any]:
@@ -199,13 +203,29 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
     from agentmetry.core.audit.atlas import RUG_PULL
     from agentmetry.core.diagnostics.mcp_schema import server_id
 
-    server, fingerprint, tool_count, _source = _schema_payload_fields(payload)
+    server, fingerprint, tool_count, _source, server_version, list_changed = _schema_payload_fields(payload)
     outcome = "changed" if status == "changed" else "success"
     reason = (
         "MCP tool schema changed; config may be unchanged (rug-pull candidate)"
         if status == "changed"
         else "MCP tool schema observed"
     )
+    mcp_schema: dict[str, Any] = {
+        "server_id": server_id(server) if server else "",
+        "fingerprint": fingerprint,
+        "tool_count": tool_count,
+        "status": status,
+        # Only a schema that MOVED is the technique. `new` is the first
+        # sight of a server and `same` is a quiet reconnect; tagging either
+        # as a rug pull would put a Defense Evasion label on installing a
+        # tool. ATT&CK has no id for this at all, which is the clearest
+        # case in the product for ATLAS existing alongside it.
+        **({"atlas": dict(RUG_PULL)} if status == "changed" else {}),
+    }
+    if server_version:
+        mcp_schema["server_version"] = server_version
+    if list_changed is not None:
+        mcp_schema["list_changed"] = list_changed
     return {
         "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
@@ -223,18 +243,7 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
         "actor": {"type": "system", "id": "agentmetry", "role": "recorder"},
         "action": {"type": "mcp_schema", "outcome": outcome, "reason": reason},
         "agent": {"name": "agentmetry", "skill_id": ""},
-        "mcp_schema": {
-            "server_id": server_id(server) if server else "",
-            "fingerprint": fingerprint,
-            "tool_count": tool_count,
-            "status": status,
-            # Only a schema that MOVED is the technique. `new` is the first
-            # sight of a server and `same` is a quiet reconnect; tagging either
-            # as a rug pull would put a Defense Evasion label on installing a
-            # tool. ATT&CK has no id for this at all, which is the clearest
-            # case in the product for ATLAS existing alongside it.
-            **({"atlas": dict(RUG_PULL)} if status == "changed" else {}),
-        },
+        "mcp_schema": mcp_schema,
     }
 
 
@@ -260,20 +269,34 @@ async def _ingest_observed_schema(payload: dict[str, Any]) -> dict[str, Any]:
         record_observation,
     )
 
-    server, fingerprint, tool_count, source = _schema_payload_fields(payload)
+    server, fingerprint, tool_count, source, server_version, list_changed = _schema_payload_fields(payload)
     status = classify_observation(server, fingerprint)
     canonical = build_schema_canonical(payload, status)
     if status == "same":
         # Only the timestamp moves, and nothing alerts on it, so there is
         # nothing to make durable first.
-        record_observation(server, fingerprint, tool_count, source=source)
+        record_observation(
+            server,
+            fingerprint,
+            tool_count,
+            source=source,
+            server_version=server_version,
+            list_changed=list_changed,
+        )
         return canonical
     get_trail_db().insert(canonical)
     sink = _get_sink()
     if sink is None:
         raise RuntimeError("No audit sinks configured")
     await sink.emit(canonical)
-    record_observation(server, fingerprint, tool_count, source=source)
+    record_observation(
+        server,
+        fingerprint,
+        tool_count,
+        source=source,
+        server_version=server_version,
+        list_changed=list_changed,
+    )
     return canonical
 
 

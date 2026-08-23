@@ -23,6 +23,7 @@ from agentmetry.core.diagnostics.mcp_schema import (
     classify_observation,
     fingerprint_tools,
     load_store,
+    parse_initialize_result,
     record_observation,
     schema_summary_lines,
     server_id,
@@ -79,6 +80,22 @@ def test_server_id_is_opaque_and_stable():
     assert len(server_id("github")) == 16
 
 
+def test_parse_initialize_result_extracts_version_and_list_changed():
+    parsed = parse_initialize_result(
+        {
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {"name": "demo", "version": "1.2.3"},
+            "capabilities": {"tools": {"listChanged": True}},
+        }
+    )
+    assert parsed == {"server_version": "1.2.3", "list_changed": True}
+
+
+def test_parse_initialize_result_ignores_missing_fields():
+    assert parse_initialize_result({}) == {}
+    assert parse_initialize_result(None) == {}
+
+
 @pytest.fixture()
 def schema_home(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
@@ -116,10 +133,48 @@ def test_digest_moves_when_one_server_changes_and_not_when_order_does(schema_hom
 
 
 def test_summary_names_servers_locally_but_not_descriptions(schema_home):
-    record_observation("very-secret-internal-tool", fingerprint_tools([_tool()]), 1)
+    record_observation(
+        "very-secret-internal-tool",
+        fingerprint_tools([_tool()]),
+        1,
+        server_version="1.0.0",
+        list_changed=True,
+    )
     text = "\n".join(schema_summary_lines())
     assert "very-secret-internal-tool" in text
+    assert "v=1.0.0" in text
+    assert "listChanged" in text
     assert "Send an email" not in text
+
+
+@pytest.mark.asyncio
+async def test_ingest_carries_initialize_handshake_fields(schema_home, monkeypatch):
+    monkeypatch.setattr(settings, "audit_export_enabled", True)
+    monkeypatch.setattr(settings, "audit_ingest_enabled", True)
+    monkeypatch.setattr(settings, "audit_sink", "file")
+    monkeypatch.setattr(settings, "audit_db_path", schema_home / "audit.db")
+    from agentmetry.core.audit.trail_db import reset_trail_db
+
+    reset_trail_db()
+    reset_ingest_sink_cache()
+    fp = fingerprint_tools([_tool()])
+    payload = {
+        "source_app": "mcp_proxy",
+        "adapter": "mcp_audit_proxy",
+        "event_type": "mcp_schema",
+        "schema_fingerprint": fp,
+        "schema_tool_count": 1,
+        "tool": {"server": "github"},
+        "server_version": "2.4.1",
+        "list_changed": False,
+    }
+    event = await ingest_external_event(payload)
+    assert event["mcp_schema"]["server_version"] == "2.4.1"
+    assert event["mcp_schema"]["list_changed"] is False
+    store = load_store()
+    assert store.servers["github"].server_version == "2.4.1"
+    assert store.servers["github"].list_changed is False
+    reset_ingest_sink_cache()
 
 
 @pytest.mark.asyncio
