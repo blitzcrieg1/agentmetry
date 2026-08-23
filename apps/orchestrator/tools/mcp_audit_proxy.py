@@ -204,7 +204,10 @@ async def run_proxy(command: list[str], server_name: str) -> int:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    assert proc.stdin and proc.stdout and proc.stderr
+    # noqa S101: narrowing for the type checker, not a runtime check.
+    # create_subprocess_exec with PIPE on all three always sets them, and
+    # python -O would strip this without changing behaviour.
+    assert proc.stdin and proc.stdout and proc.stderr  # noqa: S101
 
     pending: dict[str, dict[str, str]] = {}
     list_buf = ToolsListBuffer()

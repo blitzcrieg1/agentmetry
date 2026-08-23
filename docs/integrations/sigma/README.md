@@ -13,6 +13,60 @@ Portable [Sigma](https://sigmahq.io/) rules for Agentmetry canonical events, por
 | Recorder silent | `agentmetry_recorder_silent.yml` | informational | The heartbeat itself. Not a finding alone; the correlation notes in the file carry the absence check, including a machine that never enrolled |
 | MCP tool schema changed | `agentmetry_mcp_schema_changed.yml` | medium | `tools/list` fingerprint moved. Rug pull / tool poisoning. Config digest may be unchanged; that conjunction is in the rule file |
 
+---
+
+## The sequence detections (generated)
+
+The table above covers the recorder's **own health**: is it alive, is coverage
+intact, did an MCP schema move, is anybody triaging. Useful, and none of it is
+the product.
+
+`agentmetry_rule_*.yml` covers the fifteen **sequence detections**, which are
+what a SOC actually routes on. One file per rule, matching the detection event
+in the trail:
+
+```yaml
+detection:
+  selection:
+    action.type: detection
+    detection.rule_id: credential-exfil
+  condition: selection
+level: critical
+tags:
+  - attack.ta0006
+  - attack.ta0011
+  - attack.t1071.001
+  - attack.t1552.004
+```
+
+Sixteen files for fifteen rules. `encoded-command-download` is deliberately two
+detections: `critical` for remote code fetched and executed, `low` for local
+content piped into an interpreter, where `rules.py` says the low one exists "so
+it stops drowning the criticals". A single Sigma `level` would either page on
+the quiet variant or stay silent on the loud one, so each gets a rule and the
+selection pins `action.outcome`.
+
+### Do not hand-edit these
+
+They are produced by `apps/orchestrator/tools/generate_sigma_pack.py`, which
+replays the benchmark corpus through the real rule engine and reads the
+severities and MITRE ids off the `Detection` objects it emits. Editing a level
+here creates a claim that disagrees with the code, and the code is what fires.
+
+```bash
+cd apps/orchestrator
+.venv/Scripts/python.exe tools/generate_sigma_pack.py
+```
+
+Rerunning is idempotent: the rule UUIDs are derived from the rule id rather than
+generated, so a consumer who pinned one keeps working.
+
+`tests/test_sigma_pack.py` fails if a rule is added without a Sigma rule, if a
+Sigma rule survives a deleted rule, or if a severity here disagrees with the
+engine. Two of the fifteen (`host-subagent-swarm-burst`, `off-hours-activity`)
+have no corpus case and carry an explicit entry in the generator, which is
+tracked in [issue #36](https://github.com/blitzcrieg1/agentmetry/issues/36).
+
 ## Field mapping — read before deploying
 
 Sigma rules reference the **canonical schema** ([`../../agentmetry-event-schema.md`](../../agentmetry-event-schema.md)) using dotted JSON paths (`action.type`, `tool.qualified`). **Field names differ by the sink you forward to** — you must supply the right Sigma processing pipeline for your backend, or adjust the field names:

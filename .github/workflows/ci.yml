@@ -56,7 +56,9 @@ jobs:
       - name: Install orchestrator
         run: pip install -e ".[dev]"
       - name: Lint
-        run: ruff check agentmetry tests
+        # tools/ is linted too: the Sigma pack generator lives there and
+        # emits rules a SOC routes on, which is not a place for unlinted code.
+        run: ruff check agentmetry tests tools
       - name: Secret scan
         # The gitleaks action ships a Linux container only.
         if: matrix.os == 'ubuntu-latest'
