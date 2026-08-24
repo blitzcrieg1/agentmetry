@@ -9,6 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-24
+
+Most of this release came from strangers. The MCP schema work was posted to
+r/mcp for review, six people took the design apart, and seven issues were filed
+against this project as a result. Three of them are fixed below.
+
 ### Added
 
 - **The fifteen sequence detections ship as Sigma rules.** The Sigma pack
@@ -47,6 +53,92 @@ separately (currently `1.2.0`) and changes additively.
   That table is checked against `BUILTIN_RULE_IDS` rather than trusted: a
   sixteenth rule with neither a corpus case nor an entry fails the script instead
   of silently shipping a pack that claims more than it has.
+
+- **The initialize handshake is recorded, so a release can be told from a rug
+  pull.** `serverInfo.version` and `capabilities.tools.listChanged` cross the
+  wire on every MCP session and were being discarded. Both are now attached to
+  the schema fingerprint event.
+
+  The digest moving is ambiguous on its own. Digest moved and server version
+  moved usually means somebody shipped a release. Digest moved and version
+  identical is the shape worth looking at first. The Sigma rule previously told
+  an analyst to go and read a changelog; the version string is the handle that
+  makes that check something a machine can do.
+
+  Said plainly in the code and repeated here: the version is attacker
+  controlled. It separates ordinary churn from suspicious churn and it is not a
+  security boundary. `listChanged` is captured for the inverse case, a server
+  that promised to send `notifications/tools/list_changed`, changed its list,
+  and stayed silent.
+
+- **A schema move now names the tool that moved.** Each tool gets its own digest
+  alongside the whole-listing digest, so an alert can say which tool changed
+  rather than only which server. Tools added and removed come through as counts.
+
+  The obvious way to answer "why did this fire" is to store the listing itself.
+  That would mean writing a poisoned tool description into the trail and then
+  forwarding it to a SIEM, which is storing the payload. So the answer is a hash
+  per tool instead: enough to point at one tool and reach for an inspector,
+  never enough to carry the attack. The id is a hash of the tool name for the
+  same reason server names are hashed, since a tool called
+  `internal-payroll-export` is itself information.
+
+  Requested by the first external tester to run the sensor, and shipped inside
+  the week he agreed to test it. Closes
+  [#120](https://github.com/blitzcrieg1/agentmetry/issues/120).
+
+### Fixed
+
+- **A failed `tools/list` is no longer silent, and an empty one no longer
+  poisons the baseline.** Two false-positive roads, both closing
+  [#106](https://github.com/blitzcrieg1/agentmetry/issues/106).
+
+  A listing that errors partway already had its accumulated pages dropped, which
+  stopped a retry hashing to a fingerprint no server ever served. But nothing was
+  recorded, and silence is not the same as unknown: an operator reading a quiet
+  week could not tell a server that never moved from one nobody managed to read.
+  A failed listing now emits an explicit `unavailable` event and leaves the
+  stored baseline exactly where it was.
+
+  The second road arrives through a success. A registry that intermittently
+  answers with no tools, or a server listed before it finished starting, wrote an
+  empty baseline. The next healthy listing then differed from it and was reported
+  as a change, which labels a server coming up correctly as a rug pull. Growing
+  out of an empty baseline is now a first sighting. Deliberately one way: going
+  from a populated listing to an empty one is still a change, because tools
+  actually disappearing is the thing this watches for.
+
+- **Splunk disposition searches joined on the wrong key.** The saved searches
+  matched dispositions to detections by `correlation_id` alone, so a session with
+  two findings had one disposition close both. The join is now
+  `correlation_id::rule_id`.
+
+- **Seven CodeQL findings, and the log sanitizer rewritten so CodeQL can follow
+  it.** The first fix used `encode("unicode_escape")`, which is correct and which
+  static analysis could not trace through, leaving the alerts open. Replaced with
+  an explicit chain of `.replace()` calls.
+
+### Changed
+
+- **Dashboard on Next 16, React 19, with eslint 9 flat config.** Driven by
+  dependency advisories rather than by any feature. `next lint` was removed in
+  Next 16 and fails with a message about an invalid project directory, which
+  reads like a broken path rather than a deleted command, so `package.json` now
+  calls eslint directly. Twelve `react-hooks/set-state-in-effect` sites are
+  downgraded to warnings and tracked in
+  [#95](https://github.com/blitzcrieg1/agentmetry/issues/95) rather than
+  refactored inside a framework migration.
+
+- **`README.md` states what the MCP fingerprint does not prove.** A reviewer
+  pointed out that a quiet digest reads as a claim that the server is safe. It is
+  a tripwire. A server can hold its listing identical and change what a tool does
+  at call time, and that is now written down instead of implied.
+
+- **The attribution paragraph in `README.md` was corrected, having overstated the
+  weakness.** It claimed a key holder could post events asserting any `host_id`,
+  `fleet_id` and user identity. The ingest body has no identity fields and they
+  are stamped by the receiving host. Four separate reviews repeated the error
+  back before anyone checked the code. Three tests now pin the behaviour.
 
 ## [0.5.0] - 2026-08-21
 
