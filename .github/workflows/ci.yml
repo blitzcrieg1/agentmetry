@@ -161,18 +161,26 @@ jobs:
       - name: Audit dependencies
         run: |
           python -m pip install --upgrade pip-audit
-          # `--skip-editable` drops Agentmetry itself, which the step above
-          # installed with `pip install -e`. Auditing our own package against
-          # PyPI asks whether the version we are about to publish is already
-          # published, and under `--strict` the honest answer "no" is a
-          # failure. That made every version bump red: 0.6.0 failed with
-          # "Dependency not found on PyPI and could not be audited", which
-          # reads like a supply-chain finding and is a release blocking itself.
+          # Audit the dependency set, not the environment.
           #
-          # `--strict` stays. Failing on a dependency that cannot be audited is
-          # the whole point; the exclusion is only for the one package whose
-          # source is this checkout.
-          pip-audit --progress-spinner off --strict --skip-editable
+          # Auditing the environment includes Agentmetry itself, installed
+          # editable by the step above, and asks PyPI whether the version we
+          # are about to publish is already published. Under `--strict` the
+          # honest answer "no" is a build failure, so every version bump went
+          # red: 0.6.0 failed with "Dependency not found on PyPI and could not
+          # be audited", which reads like a supply-chain finding and is really
+          # a release blocking itself.
+          #
+          # `--skip-editable` does not help. It excludes the package and then
+          # `--strict` fails precisely because something was excluded
+          # ("distribution marked as editable"). The two flags cannot both hold.
+          #
+          # `pip freeze --exclude-editable` is the dependency set with our own
+          # package removed, which is the thing we actually wanted to ask about.
+          # `--strict` stays, because failing on a dependency that cannot be
+          # audited is the reason this job exists.
+          pip freeze --exclude-editable > /tmp/deps.txt
+          pip-audit --progress-spinner off --strict -r /tmp/deps.txt
 
   dashboard:
     runs-on: ubuntu-latest
