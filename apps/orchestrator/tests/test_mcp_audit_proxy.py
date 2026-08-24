@@ -140,11 +140,25 @@ async def test_a_failed_page_does_not_make_the_next_listing_look_poisoned(monkey
         pending,
         monkeypatch,
     )
-    assert len(sent) == 1, "the aborted listing must not be fingerprinted"
-    assert sent[0]["schema_tool_count"] == 2
+    schemas = [p for p in sent if p["event_type"] == "mcp_schema"]
+    assert len(schemas) == 1, "the aborted listing must not be fingerprinted"
+    assert schemas[0]["schema_tool_count"] == 2
     from agentmetry.core.diagnostics.mcp_schema import fingerprint_tools
 
-    assert sent[0]["schema_fingerprint"] == fingerprint_tools([tool_a, tool_b])
+    assert schemas[0]["schema_fingerprint"] == fingerprint_tools([tool_a, tool_b])
+
+    # The dropped page is now said out loud rather than only swallowed.
+    # Silence and unknown look identical in a trail, and an operator reading a
+    # quiet week cannot tell a server that never moved from one nobody
+    # succeeded in listing.
+    unavailable = [p for p in sent if p["event_type"] == "mcp_schema_unavailable"]
+    assert len(unavailable) == 1
+    assert unavailable[0]["tool"]["server"] == "postmark"
+    assert "dropped" in unavailable[0]["reason"]
+    assert "schema_fingerprint" not in unavailable[0], (
+        "a failed listing has nothing to fingerprint; emitting one would let a "
+        "transport error advance the baseline"
+    )
 
 
 @pytest.mark.asyncio

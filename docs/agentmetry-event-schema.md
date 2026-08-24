@@ -86,6 +86,32 @@ Agentmetry's rule vocabulary.
 | `detection.atlas` | `action.type: detection`, and only for rules that describe an AI-specific technique | `{framework, tactic_id, tactic, technique_id, technique, atlas_version}` |
 | `tool.atlas` | `tool_called` where ATLAS says something ATT&CK cannot | Same shape |
 | `mcp_schema.atlas` | `action.type: mcp_schema` with `status: changed` | Same shape |
+| `mcp_schema.tools_changed` | `action.type: mcp_schema` with `status: changed`, when a per-tool baseline exists | Hashed ids of the tools whose own digest moved |
+| `mcp_schema.tools_added` / `tools_removed` | Same | Counts, not ids |
+
+**Note on `mcp_schema` outcomes.** `action.outcome` is one of `success`,
+`changed` or `unavailable`. The first two mean a listing was read: `changed` is
+the rug-pull shape and `success` covers a first sighting or a quiet reconnect.
+
+`unavailable` means a `tools/list` was attempted and did not complete, and it
+carries no `fingerprint`, no `tool_count` and no `atlas` block. It exists
+because silence and unknown are indistinguishable in a trail: without it, a
+server nobody managed to read looks exactly like a server that never moved. A
+failed listing never advances the stored baseline, so a registry answering 410
+intermittently cannot manufacture a rug-pull alert on the next healthy read.
+
+**Note on the tool ids.** `tools_changed` names tools the way `server_id` names
+servers: a 16-hex hash, never the tool name. It answers "which one" and nothing
+about what the tool says, because the description is where a poisoning payload
+lives and the trail forwards to a SIEM. An id resolves only against a baseline
+that still holds it, which is why appearing and vanishing tools are counted
+rather than named.
+
+An empty listing that later grows is reported as `success`, not `changed`. A
+server listed before it finished starting writes an empty baseline, and calling
+the first healthy read a change would label a server coming up correctly as an
+attack. Going the other way, from a populated listing to an empty one, stays
+`changed`.
 
 A 1.1.0 consumer parses a 1.2.0 event and meets one key it does not recognise,
 which its JSON parser already handles. Nothing moved, nothing changed meaning,

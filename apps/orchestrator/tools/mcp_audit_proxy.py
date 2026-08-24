@@ -42,6 +42,7 @@ if str(_REPO_ROOT / "scripts") not in sys.path:
 from agentmetry_ingest import hash_arguments, post_ingest  # noqa: E402
 from agentmetry.core.diagnostics.mcp_schema import (  # noqa: E402
     ToolsListBuffer,
+    fingerprint_each_tool,
     fingerprint_tools,
     parse_initialize_result,
 )
@@ -80,6 +81,9 @@ def build_schema_payload(
         "correlation_id": correlation_id,
         "schema_fingerprint": fingerprint_tools(tools),
         "schema_tool_count": len(tools),
+        # Per-tool digests so a move can name the tool rather than only the
+        # server. Hashes of hashed names: still no description on the wire.
+        "schema_tool_digests": fingerprint_each_tool(tools),
         "tool": {"server": server_name},
     }
     if server_version:
@@ -87,6 +91,32 @@ def build_schema_payload(
     if list_changed is not None:
         payload["list_changed"] = list_changed
     return payload
+
+
+def build_schema_unavailable_payload(
+    server_name: str, correlation_id: str, reason: str
+) -> dict[str, Any]:
+    """A `tools/list` that did not complete. Not a schema, and not an absence of one.
+
+    One registry answers 410 to roughly half the requests for the same URL, at
+    random. Treating that as "the tools are gone" is a false rug pull arriving
+    by a different road from the one the fingerprint guards, and the recorder
+    would be the thing manufacturing it.
+
+    Hook coverage already distinguishes covered from absent from unknown, and
+    the listing side needs the same honesty: a transport failure is a gap in
+    what we saw, not a change in what the server serves. So this event says a
+    listing was attempted and did not land, and the stored baseline is left
+    exactly where it was.
+    """
+    return {
+        "source_app": _source_app(),
+        "adapter": "mcp_audit_proxy",
+        "event_type": "mcp_schema_unavailable",
+        "correlation_id": correlation_id,
+        "reason": reason,
+        "tool": {"server": server_name},
+    }
 
 
 def build_call_payload(
@@ -206,6 +236,18 @@ async def _relay_stdout(
                 # retried listing append onto a stale prefix and hash to a
                 # fingerprint no server ever served, reported as a rug pull.
                 list_buf.reset()
+                err = msg.get("error")
+                reason = str(err.get("message") if isinstance(err, dict) else err)
+                # Dropping the pages stops the false positive. It does not
+                # record that we tried and failed, and silence is not the same
+                # as unknown: an operator reading a quiet week cannot tell a
+                # server that never moved from one we never managed to list.
+                post_ingest(
+                    build_schema_unavailable_payload(
+                        server_name, correlation, reason or "tools/list failed"
+                    ),
+                    quiet=True,
+                )
                 continue
             done = list_buf.add_page(msg.get("result"))
             if done is not None:

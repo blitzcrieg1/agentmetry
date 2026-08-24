@@ -23,6 +23,13 @@ description: >
   wrapping a new proxy does not fire this rule. Adding a legitimate tool
   to an already-observed server does fire it. That is an investigation, not
   a conviction; the recorder will not pretend to tell those apart.
+
+  A listing that failed is action.outcome=unavailable and deliberately does
+  not match this rule. It carries no fingerprint and never advances the
+  stored baseline, because a registry that intermittently answers 410 would
+  otherwise manufacture this alert on the next healthy read. Alert on
+  unavailable separately if you want to know a server has gone unreadable;
+  it is a gap in coverage, not a change in what the server serves.
 references:
   - https://github.com/blitzcrieg1/agentmetry/blob/master/docs/integrations/detections-splunk.md
   - https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
@@ -42,6 +49,12 @@ fields:
   - mcp_schema.server_id
   - mcp_schema.fingerprint
   - mcp_schema.tool_count
+  # Which tool moved, as a hashed id, plus counts for tools that appeared or
+  # vanished. Triage starts here: one changed id on an otherwise stable server
+  # is a different investigation from a rewritten catalogue.
+  - mcp_schema.tools_changed
+  - mcp_schema.tools_added
+  - mcp_schema.tools_removed
 falsepositives:
   - A vendor adding a tool to a pinned MCP server. The schema digest should
     move; confirm against the changelog before treating it as hostile.
