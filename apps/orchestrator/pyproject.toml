@@ -47,7 +47,7 @@ dependencies = [
 # so a linter release could turn a green branch red with no change to this repo.
 # It did: 0.16.0 widened the default rule set and CI reported 132 errors against
 # code that passed locally on 0.15.x. Bump this deliberately, not by accident.
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=6.0", "ruff==0.16.3"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=6.0", "ruff==0.16.4"]
 
 [project.urls]
 Homepage = "https://agentmetry.ai"
