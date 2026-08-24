@@ -161,7 +161,18 @@ jobs:
       - name: Audit dependencies
         run: |
           python -m pip install --upgrade pip-audit
-          pip-audit --progress-spinner off --strict
+          # `--skip-editable` drops Agentmetry itself, which the step above
+          # installed with `pip install -e`. Auditing our own package against
+          # PyPI asks whether the version we are about to publish is already
+          # published, and under `--strict` the honest answer "no" is a
+          # failure. That made every version bump red: 0.6.0 failed with
+          # "Dependency not found on PyPI and could not be audited", which
+          # reads like a supply-chain finding and is a release blocking itself.
+          #
+          # `--strict` stays. Failing on a dependency that cannot be audited is
+          # the whole point; the exclusion is only for the one package whose
+          # source is this checkout.
+          pip-audit --progress-spinner off --strict --skip-editable
 
   dashboard:
     runs-on: ubuntu-latest
