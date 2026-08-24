@@ -46,11 +46,13 @@ _lock = threading.Lock()
 _VOLATILE = frozenset({"_meta"})
 
 
-def fingerprint_tools(tools: list[Any] | None) -> str:
-    """Stable SHA-256 of a `tools/list` result.
+def _canonical_entries(tools: list[Any] | None) -> list[dict[str, Any]]:
+    """Volatile keys dropped, sorted by tool name.
 
-    Order of tools and of object keys must not move the hash: MCP servers do
-    not guarantee either. A description edit must, because that is the poison.
+    Split out so the whole-listing hash and the per-tool hashes canonicalise
+    identically. If they ever diverged, a tool could move its own digest
+    without moving the listing digest, or the reverse, and the pair would stop
+    being a diff of the same thing.
     """
     canonical: list[dict[str, Any]] = []
     for tool in tools or []:
@@ -59,13 +61,69 @@ def fingerprint_tools(tools: list[Any] | None) -> str:
         entry = {k: v for k, v in tool.items() if k not in _VOLATILE}
         canonical.append(entry)
     canonical.sort(key=lambda t: str(t.get("name") or ""))
-    blob = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    return canonical
+
+
+def _blob(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+
+
+def fingerprint_tools(tools: list[Any] | None) -> str:
+    """Stable SHA-256 of a `tools/list` result.
+
+    Order of tools and of object keys must not move the hash: MCP servers do
+    not guarantee either. A description edit must, because that is the poison.
+    """
+    return hashlib.sha256(_blob(_canonical_entries(tools))).hexdigest()
+
+
+def fingerprint_each_tool(tools: list[Any] | None) -> dict[str, str]:
+    """`{tool_id: digest}` for one listing, alongside the whole-listing hash.
+
+    The listing digest answers "did this server change". It cannot answer
+    "which tool changed", and that is the first thing an operator asks when
+    one fires. Storing the inputs would answer it, and would also mean writing
+    a poisoned description into the trail and forwarding it to a SIEM, so the
+    answer is a digest per tool instead: enough to name the tool that moved,
+    never enough to carry the payload.
+
+    Keyed on a hashed name for the same reason server names are hashed. A tool
+    called `internal-payroll-export` is itself information.
+    """
+    return {
+        tool_id(str(entry.get("name") or "")): hashlib.sha256(_blob(entry)).hexdigest()
+        for entry in _canonical_entries(tools)
+    }
 
 
 def server_id(name: str) -> str:
     """Opaque 16-hex id for a server name. Publish this, never the name."""
     return hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+
+
+def tool_id(name: str) -> str:
+    """Opaque 16-hex id for a tool name. Same rule as `server_id`."""
+    return hashlib.sha256(f"tool:{name}".encode("utf-8")).hexdigest()[:16]
+
+
+def tool_delta(previous: dict[str, str], current: dict[str, str]) -> dict[str, Any]:
+    """What moved between two per-tool digest maps.
+
+    Counts for added and removed, ids for changed. An id is only meaningful
+    against a baseline that still holds it, so listing ids for tools that
+    appeared or vanished would name things the reader cannot look up.
+    """
+    changed = sorted(
+        tid for tid, digest in current.items()
+        if tid in previous and previous[tid] != digest
+    )
+    return {
+        "changed": changed,
+        "added": len([tid for tid in current if tid not in previous]),
+        "removed": len([tid for tid in previous if tid not in current]),
+    }
 
 
 def parse_initialize_result(result: Any) -> dict[str, Any]:
@@ -139,6 +197,10 @@ class SchemaRecord:
     source: str = ""
     server_version: str = ""
     list_changed: bool | None = None
+    #: `{tool_id: digest}`. Empty on records written before this existed, which
+    #: is why a delta against an empty baseline reports nothing changed rather
+    #: than reporting every tool as new.
+    tool_digests: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -180,6 +242,7 @@ def load_store(path: Path | None = None) -> SchemaStore:
             if not isinstance(rec, dict) or not rec.get("fingerprint"):
                 continue
             list_changed = rec.get("list_changed")
+            digests = rec.get("tool_digests")
             servers[str(name)] = SchemaRecord(
                 fingerprint=str(rec.get("fingerprint") or ""),
                 tool_count=int(rec.get("tool_count") or 0),
@@ -188,13 +251,18 @@ def load_store(path: Path | None = None) -> SchemaStore:
                 source=str(rec.get("source") or ""),
                 server_version=str(rec.get("server_version") or ""),
                 list_changed=list_changed if isinstance(list_changed, bool) else None,
+                tool_digests={
+                    str(k): str(v) for k, v in digests.items() if isinstance(v, str)
+                }
+                if isinstance(digests, dict)
+                else {},
             )
     return SchemaStore(servers=servers)
 
 
 def _dump(store: SchemaStore) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "servers": {
             name: {
                 "fingerprint": rec.fingerprint,
@@ -204,6 +272,7 @@ def _dump(store: SchemaStore) -> dict[str, Any]:
                 "source": rec.source,
                 **({"server_version": rec.server_version} if rec.server_version else {}),
                 **({"list_changed": rec.list_changed} if rec.list_changed is not None else {}),
+                **({"tool_digests": rec.tool_digests} if rec.tool_digests else {}),
             }
             for name, rec in sorted(store.servers.items())
         },
@@ -226,7 +295,7 @@ def _normalise(server: str, fingerprint: str) -> tuple[str, str]:
 
 
 def classify_observation(
-    server: str, fingerprint: str, *, path: Path | None = None
+    server: str, fingerprint: str, *, tool_count: int = 0, path: Path | None = None
 ) -> str:
     """`new`, `changed`, or `same`, without writing anything.
 
@@ -243,7 +312,46 @@ def classify_observation(
         existing = load_store(path or store_path()).servers.get(name)
     if existing is None:
         return "new"
-    return "same" if existing.fingerprint == fp else "changed"
+    if existing.fingerprint == fp:
+        return "same"
+    if existing.tool_count == 0 and tool_count > 0:
+        # Growing out of an empty baseline is a first sighting, not a move.
+        #
+        # A registry that intermittently answers with no tools, or a server
+        # listed before it finished starting, writes an empty baseline. The
+        # next healthy listing then differs from it, and reporting that as
+        # `changed` labels a server coming up correctly as a rug pull. This is
+        # the same false positive as a 410, arriving through a success.
+        #
+        # Deliberately one-way. Going from a populated listing to an empty one
+        # stays `changed`, because tools actually disappearing is a real event
+        # and the whole point of watching.
+        return "new"
+    return "changed"
+
+
+def classify_tool_delta(
+    server: str, tool_digests: dict[str, str], *, path: Path | None = None
+) -> dict[str, Any]:
+    """Which tools moved, read without writing.
+
+    Split from `record_observation` for the same reason `classify_observation`
+    is: the caller needs the verdict before the store advances, because once
+    it advances the previous map is gone and the delta cannot be recovered.
+
+    A server with no stored per-tool map yields an empty delta rather than one
+    claiming every tool is new. Records written before this field existed have
+    no map, and reporting a whole catalogue as added on first upgrade would
+    manufacture exactly the alert this is meant to explain.
+    """
+    name = (server or "").strip()
+    if not name:
+        return tool_delta({}, {})
+    with _lock:
+        existing = load_store(path or store_path()).servers.get(name)
+    if existing is None or not existing.tool_digests:
+        return tool_delta({}, {})
+    return tool_delta(existing.tool_digests, tool_digests)
 
 
 def record_observation(
@@ -254,6 +362,7 @@ def record_observation(
     source: str = "mcp_proxy",
     server_version: str = "",
     list_changed: bool | None = None,
+    tool_digests: dict[str, str] | None = None,
     path: Path | None = None,
     now: str | None = None,
 ) -> str:
@@ -275,6 +384,12 @@ def record_observation(
                 existing.server_version = server_version
             if list_changed is not None:
                 existing.list_changed = list_changed
+            if tool_digests:
+                # An unchanged listing backfills the per-tool map for records
+                # written before it existed, so the first real change after an
+                # upgrade has a baseline to diff against instead of reporting
+                # nothing.
+                existing.tool_digests = dict(tool_digests)
             _write_store(store, target)
             return "same"
         previous = existing.fingerprint if existing else ""
@@ -286,6 +401,7 @@ def record_observation(
             source=source,
             server_version=server_version,
             list_changed=list_changed,
+            tool_digests=dict(tool_digests or {}),
         )
         _write_store(store, target)
         return "changed" if previous else "new"

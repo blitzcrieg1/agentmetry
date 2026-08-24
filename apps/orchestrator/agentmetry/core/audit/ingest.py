@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from agentmetry.core.audit.detection.live import (
     build_detection_event,
@@ -177,7 +177,19 @@ def _get_sink():
     return _sink
 
 
-def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str, str, bool | None]:
+class _SchemaFields(NamedTuple):
+    """Parsed `mcp_schema` payload. A NamedTuple because it outgrew a tuple."""
+
+    server: str
+    fingerprint: str
+    tool_count: int
+    source: str
+    server_version: str
+    list_changed: bool | None
+    tool_digests: dict[str, str]
+
+
+def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
     tool = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
     server = str(tool.get("server") or payload.get("server") or "")
     fingerprint = str(payload.get("schema_fingerprint") or "")
@@ -190,11 +202,30 @@ def _schema_payload_fields(payload: dict[str, Any]) -> tuple[str, str, int, str,
     list_changed = payload.get("list_changed")
     if list_changed is not None and not isinstance(list_changed, bool):
         list_changed = None
-    return server, fingerprint, tool_count, source, server_version, list_changed
+    raw_digests = payload.get("schema_tool_digests")
+    tool_digests = (
+        {str(k): str(v) for k, v in raw_digests.items() if isinstance(v, str)}
+        if isinstance(raw_digests, dict)
+        else {}
+    )
+    return _SchemaFields(
+        server, fingerprint, tool_count, source, server_version, list_changed, tool_digests
+    )
 
 
-def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, Any]:
-    """Attestation that a `tools/list` was observed. Names and descriptions stay off it."""
+def build_schema_canonical(
+    payload: dict[str, Any], status: str, delta: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Attestation that a `tools/list` was observed. Names and descriptions stay off it.
+
+    `delta` names which tools moved, and is only meaningful when the listing
+    changed. It carries hashed tool ids and counts, never a tool name and never
+    any part of a description: enough for an operator to say "that one" and
+    reach for an inspector, not enough to put the payload in the trail.
+
+    The delta is passed in rather than computed here because it has to be read
+    before the store advances, and this function must stay pure.
+    """
     import uuid
     from datetime import datetime, timezone
 
@@ -203,7 +234,9 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
     from agentmetry.core.audit.atlas import RUG_PULL
     from agentmetry.core.diagnostics.mcp_schema import server_id
 
-    server, fingerprint, tool_count, _source, server_version, list_changed = _schema_payload_fields(payload)
+    fields = _schema_payload_fields(payload)
+    server, fingerprint, tool_count = fields.server, fields.fingerprint, fields.tool_count
+    server_version, list_changed = fields.server_version, fields.list_changed
     outcome = "changed" if status == "changed" else "success"
     reason = (
         "MCP tool schema changed; config may be unchanged (rug-pull candidate)"
@@ -226,6 +259,15 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
         mcp_schema["server_version"] = server_version
     if list_changed is not None:
         mcp_schema["list_changed"] = list_changed
+    if status == "changed" and delta and (
+        delta.get("changed") or delta.get("added") or delta.get("removed")
+    ):
+        # Only on a move. A `new` server has nothing to diff against, and
+        # attaching an empty delta to `same` would put a field on the quietest
+        # event class in the trail for no reader.
+        mcp_schema["tools_changed"] = list(delta.get("changed") or [])
+        mcp_schema["tools_added"] = int(delta.get("added") or 0)
+        mcp_schema["tools_removed"] = int(delta.get("removed") or 0)
     return {
         "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
@@ -247,6 +289,70 @@ def build_schema_canonical(payload: dict[str, Any], status: str) -> dict[str, An
     }
 
 
+def build_schema_unavailable_canonical(payload: dict[str, Any]) -> dict[str, Any]:
+    """A `tools/list` attempt that did not land.
+
+    Carries no fingerprint, because there is nothing to fingerprint, and no
+    ATLAS block, because a failed fetch is not a technique. `status` is
+    `unavailable` rather than an absence, so a SIEM can tell a server that has
+    not moved from one nobody managed to read.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    from agentmetry.core.audit.canonical import SCHEMA_VERSION
+    from agentmetry.core.audit.identity import identity_fields
+    from agentmetry.core.diagnostics.mcp_schema import server_id
+
+    tool = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
+    server = str(tool.get("server") or payload.get("server") or "")
+    reason = str(payload.get("reason") or "tools/list failed")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "event_id": str(uuid.uuid4()),
+        "session_id": str(payload.get("session_id") or ""),
+        "correlation_id": str(payload.get("correlation_id") or payload.get("thread_id") or ""),
+        "timestamp_utc": str(payload.get("timestamp_utc") or datetime.now(timezone.utc).isoformat()),
+        **identity_fields(),
+        "source_topic": "agentmetry/mcp_schema",
+        "source": {
+            "tier": "external",
+            "app": str(payload.get("source_app") or "mcp_proxy"),
+            "adapter": str(payload.get("adapter") or "mcp_audit_proxy"),
+        },
+        "initiator": {"actor_type": "system", "trigger": "scheduled", "operator_id": ""},
+        "actor": {"type": "system", "id": "agentmetry", "role": "recorder"},
+        "action": {
+            "type": "mcp_schema",
+            "outcome": "unavailable",
+            "reason": f"MCP tools/list did not complete: {reason}",
+        },
+        "agent": {"name": "agentmetry", "skill_id": ""},
+        "mcp_schema": {
+            "server_id": server_id(server) if server else "",
+            "status": "unavailable",
+        },
+    }
+
+
+async def _ingest_unavailable_schema(payload: dict[str, Any]) -> dict[str, Any]:
+    """Record that a listing failed, and leave the stored baseline alone.
+
+    The store is untouched on purpose. Advancing it from a failure is the
+    mechanism that turns a flaky registry into a rug-pull alert, which is the
+    thing this event exists to stop.
+    """
+    from agentmetry.core.audit.trail_db import get_trail_db
+
+    canonical = build_schema_unavailable_canonical(payload)
+    get_trail_db().insert(canonical)
+    sink = _get_sink()
+    if sink is None:
+        raise RuntimeError("No audit sinks configured")
+    await sink.emit(canonical)
+    return canonical
+
+
 async def _ingest_observed_schema(payload: dict[str, Any]) -> dict[str, Any]:
     """Record a `tools/list` fingerprint. Emit a trail event only when it moves.
 
@@ -266,37 +372,39 @@ async def _ingest_observed_schema(payload: dict[str, Any]) -> dict[str, Any]:
     from agentmetry.core.audit.trail_db import get_trail_db
     from agentmetry.core.diagnostics.mcp_schema import (
         classify_observation,
+        classify_tool_delta,
         record_observation,
     )
 
-    server, fingerprint, tool_count, source, server_version, list_changed = _schema_payload_fields(payload)
-    status = classify_observation(server, fingerprint)
-    canonical = build_schema_canonical(payload, status)
+    f = _schema_payload_fields(payload)
+    status = classify_observation(f.server, f.fingerprint, tool_count=f.tool_count)
+    # Read before the store advances. Afterwards the previous per-tool map is
+    # gone and the question "which tool moved" has no answer left.
+    delta = classify_tool_delta(f.server, f.tool_digests) if status == "changed" else None
+    canonical = build_schema_canonical(payload, status, delta)
+
+    def _advance() -> str:
+        return record_observation(
+            f.server,
+            f.fingerprint,
+            f.tool_count,
+            source=f.source,
+            server_version=f.server_version,
+            list_changed=f.list_changed,
+            tool_digests=f.tool_digests,
+        )
+
     if status == "same":
         # Only the timestamp moves, and nothing alerts on it, so there is
         # nothing to make durable first.
-        record_observation(
-            server,
-            fingerprint,
-            tool_count,
-            source=source,
-            server_version=server_version,
-            list_changed=list_changed,
-        )
+        _advance()
         return canonical
     get_trail_db().insert(canonical)
     sink = _get_sink()
     if sink is None:
         raise RuntimeError("No audit sinks configured")
     await sink.emit(canonical)
-    record_observation(
-        server,
-        fingerprint,
-        tool_count,
-        source=source,
-        server_version=server_version,
-        list_changed=list_changed,
-    )
+    _advance()
     return canonical
 
 
@@ -305,8 +413,11 @@ async def ingest_external_event(payload: dict[str, Any]) -> dict[str, Any]:
     if not settings.audit_ingest_enabled:
         raise ValueError("External audit ingest is disabled")
 
-    if str(payload.get("event_type") or "") == "mcp_schema":
+    event_type = str(payload.get("event_type") or "")
+    if event_type == "mcp_schema":
         return await _ingest_observed_schema(payload)
+    if event_type == "mcp_schema_unavailable":
+        return await _ingest_unavailable_schema(payload)
 
     canonical = build_external_canonical(payload)
 
