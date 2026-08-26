@@ -64,13 +64,25 @@ def renamed(monkeypatch):
 # --- the declared id list cannot drift from the code -------------------------
 
 def test_builtin_rule_ids_match_what_the_rules_actually_emit():
-    """The set is written out by hand; this is what keeps it honest."""
+    """The set is written out by hand; this is what keeps it honest.
+
+    Every id a rule emits must be declared either as published or as
+    experimental. Experimental means the rule runs but is not counted, not
+    documented, and not exported to Sigma, because no capture surface currently
+    produces the signal it reads.
+    """
+    from agentmetry.core.audit.detection.rules import EXPERIMENTAL_RULE_IDS
+
     source = Path(rules_module.__file__).read_text(encoding="utf-8")
     emitted = set(re.findall(r'rule_id="([a-z0-9-]+)"', source))
-    assert emitted == set(BUILTIN_RULE_IDS), {
-        "missing from BUILTIN_RULE_IDS": sorted(emitted - set(BUILTIN_RULE_IDS)),
-        "declared but never emitted": sorted(set(BUILTIN_RULE_IDS) - emitted),
+    declared = set(BUILTIN_RULE_IDS) | set(EXPERIMENTAL_RULE_IDS)
+    assert emitted == declared, {
+        "emitted but undeclared": sorted(emitted - declared),
+        "declared but never emitted": sorted(declared - emitted),
     }
+    assert not (set(BUILTIN_RULE_IDS) & set(EXPERIMENTAL_RULE_IDS)), (
+        "a rule cannot be both published and experimental"
+    )
 
 
 def test_known_rule_ids_includes_yaml_count_rules():

@@ -9,6 +9,94 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-26
+
+Honesty release. Two published claims were false on the live path and four
+known false positives were shipping under a freeze. All six are fixed, and the
+detection freeze was broken deliberately to do it, so the four-week dogfood
+clock restarts from this tag.
+
+### Fixed
+
+- **The 0.6.0 MCP fields never survived HTTP ingest.** `ExternalIngestBody`
+  declared `schema_fingerprint` and `schema_tool_count` and nothing else, and
+  pydantic ignores unknown keys silently. So `schema_tool_digests`,
+  `server_version`, `list_changed` and `initiator` were computed by the proxy,
+  POSTed, and discarded at the boundary. A schema move could only ever name the
+  server, never the tool.
+
+  The tests passed because they call the ingest functions with a dict and never
+  cross the model. That is the second time this exact failure has shipped from
+  this file: `tool.traits` and `tool.mitre` went the same way, which made
+  hashed-only events invisible to every command rule. So the fix is a
+  structural guard rather than four more fields. `test_ingest_roundtrip.py`
+  builds payloads with the real proxy builders and fails if any key does not
+  survive the model.
+
+  `initiator` is opened with `actor_type` constrained to a known set and
+  coerced down to `agent`, never up: `human` resets approval gates and
+  `autonomous` is what a rule keys on, so an unrecognised string must not land
+  on either. Identity is unchanged, and a test pins that a client still cannot
+  assert `host_id` or `fleet_id`.
+
+- **`.env.example` was credential access** (#44). Six of seventeen week-one
+  dogfood findings, every one a critical. It is the file you commit *instead*
+  of a credential file, and reading it is day one in any repository. A bare
+  `.env` and `.env.local` still map to credential access.
+
+- **A pipe into an interpreter running its own script was a download cradle**
+  (#50). `curl api/x.json | python -c 'json.load(sys.stdin)'` is a data
+  pipeline: the interpreter was handed its own program and never executes the
+  download. Cradles without an inline script, `curl x.sh | bash` and
+  `curl x.py | python`, still fire critical, and local staging then execution
+  still records at low.
+
+- **Any staging-host fetch followed by any `python -c` was critical staging**
+  (#51), with nothing linking the two. GitHub raw serves documentation as well
+  as payloads, and a fetch that only printed staged no artifact for a later
+  command to run. The bound form, where the file downloaded is the file
+  executed, is untouched.
+
+- **A credential path named inside a structured tool argument read as a
+  credential access** (#49), the sibling of #44. Structured arguments have no
+  shell quoting to mask, so a path mentioned in an MCP message was mapped to
+  T1552. Path rules now skip free-text argument values. The same path arriving
+  in a `path` argument is still a read.
+
+### Changed
+
+- **`autonomous-unapproved-write` leaves the published set.** It keys on
+  `initiator.actor_type == "autonomous"`. The bus and SDK paths produce that,
+  so the rule is correct and stays registered. No IDE capture surface produces
+  it: across roughly 32,000 events of real traffic from five agent surfaces the
+  actor is `human`, `agent` or `system` and never once `autonomous`.
+
+  It was counted in "fifteen detection rules", exported to Sigma at severity
+  high, and named in the pitch as the flagship no-default-self-approve story. A
+  published rule that cannot fire is a claim, not a detection. It is now
+  `EXPERIMENTAL_RULE_IDS`: registered, uncounted, undocumented in the published
+  table, and not exported.
+
+  **Fourteen published rules, one experimental.** The Sigma pack is fifteen
+  files for fourteen ids, because `encoded-command-download` still splits by
+  severity.
+
+- **The benchmark corpus carries the false positives it claims to have none
+  of.** 54 cases, 26 attack and 28 benign, up from 50. The four shapes above
+  are in it as tagged benign, so a regression fails CI. "0 false positives" now
+  means something it did not mean in 0.6.0, when the corpus simply did not
+  contain the cases that were known to fail.
+
+- **The detection freeze is broken and the dogfood clock restarts.** The
+  ruleset fingerprint moves from `56ad3de1ad8533cf` to `15846a0915769d4a`. Four
+  consecutive green weeks are measured from this tag. Shipping criticals on
+  `.env.example` to the first external tester was the more expensive of the two
+  options.
+
+- The supply-chain CI job audits the dependency set rather than the
+  environment. `pip-audit --strict` was asking PyPI whether the version about
+  to be published was already published, and failing every version bump.
+
 ## [0.6.0] - 2026-08-24
 
 Most of this release came from strangers. The MCP schema work was posted to

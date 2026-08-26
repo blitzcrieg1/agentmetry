@@ -44,11 +44,22 @@ DOWNLOAD_EXEC = re.compile(
 ENCODED_CMD = re.compile(r"-enc(odedcommand)?\b|frombase64string", re.IGNORECASE)
 
 # Fetch remote content and feed it straight to an interpreter (ADI §4.2).
+# An interpreter given its own program does not execute the pipe; it reads it as
+# data. `curl api/x.json | python -c 'json.load(sys.stdin)'` is a data pipeline,
+# and calling it a download cradle put a critical on ordinary scripting (issue
+# #50). `curl x.sh | python` has no script of its own, so the download *is* the
+# program, and that stays a cradle.
+#
+# Residual, stated rather than hidden: `| python -c "exec(sys.stdin.read())"`
+# reaches for the download deliberately and slips this. INLINE_EVAL sees that
+# shape, and a cradle written that way is no longer hiding.
+_INLINE_SCRIPT = r"(?!\s*-\w*[ce]\b)"
+
 PIPE_TO_SHELL = re.compile(
     r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
-    r"(sudo\s+)?\b(ba|z|k|da)?sh\b|"
+    r"(sudo\s+)?\b(ba|z|k|da)?sh\b" + _INLINE_SCRIPT + r"|"
     r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
-    r"(iex|invoke-expression|python\d?|perl|ruby|node)\b",
+    r"(iex|invoke-expression|python\d?|perl|ruby|node)\b" + _INLINE_SCRIPT,
     re.IGNORECASE,
 )
 
@@ -314,6 +325,18 @@ RISKY_EXEC_AFTER_STAGING = re.compile(
     r"\bpowershell(?:\.exe)?\s+-(?:enc|f|file)\b",
     re.IGNORECASE,
 )
+#: A fetch that leaves something behind: written to disk, or handed onward. A
+#: fetch that only printed staged nothing, so there is no artifact for a later
+#: command to run (issue #51).
+STAGES_ARTIFACT = re.compile(
+    r"\s-[a-zA-Z]*[oO]|"          # curl -o / -O, wget -O
+    r"\s--output(?:-document)?|"
+    r"\s>\s*\S|"                     # shell redirect to a file
+    r"\s-[a-zA-Z]*P|"             # wget -P <dir>
+    r"[|]",                          # piped onward, including into an interpreter
+    re.IGNORECASE,
+)
+
 BENIGN_AFTER_STAGING = re.compile(
     r"\b(npm|yarn|pnpm|pip|pip3|cargo|go)\s+(?:install|run|build)\b",
     re.IGNORECASE,
@@ -359,13 +382,27 @@ CREDENTIAL_PATH = re.compile(
 # directly after something that reads a file. A bare mention in prose does not
 # qualify, which costs nothing: nobody reads a credential file without naming a
 # path or a verb.
+# `.env.example` is not a credential file. It is the file you commit *instead*
+# of one, and reading it is what every developer does on their first day in a
+# repository. It was six of seventeen week-one dogfood findings, every one a
+# critical, which is the exact rate at which people stop reading criticals
+# (issue #44).
+#
+# The lookahead sits immediately after `\.env` rather than at the end, because
+# at the end it fails and the engine simply matches the shorter `.env` prefix,
+# leaving the placeholder tagged anyway.
+#
+# Placeholders only. `.env.local`, `.env.production` and a bare `.env` still
+# match, because those hold real values.
+_ENV_PLACEHOLDER = r"(?!\.(?:example|sample|template|dist|defaults|placeholder)\b)"
+
 ENV_FILE = re.compile(
-    r"[\w.~$-]*[/\\]\.env(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"[\w.~$-]*[/\\]\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
     r"\b(?:cat|bat|less|more|head|tail|type|source|export|dotenv|load_dotenv|"
     r"get-content|gc|cp|mv|scp|rsync|base64|xxd|od|strings|"
     r"grep|rg|ag|awk|sed|nano|vim|vi|emacs|code|open|start)"
-    r"\s+(?:-[-\w]+\s+)*\.env(?:\.[A-Za-z0-9_-]+)?\b|"
-    r"^\s*\.env(?:\.[A-Za-z0-9_-]+)?\b",
+    r"\s+(?:-[-\w]+\s+)*\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"^\s*\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b",
     re.IGNORECASE | re.MULTILINE,
 )
 

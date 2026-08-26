@@ -75,7 +75,6 @@ sequenceDiagram
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
-| `autonomous-unapproved-write` | high | Autonomous agent writes/deletes with no prior human approval |
 | `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
 | `destructive-delete-burst` | high | 5+ deletions in one session, by technique or command (`rm -rf`) |
 | `discovery-then-collect` | medium | Filesystem recon burst (TA0007) → data collection |
@@ -127,3 +126,17 @@ chains are sequences of tool calls, and both are detected:
 here should be read as claiming otherwise.** Prevention requires isolating
 trusted from untrusted data inside the agent, which is the paper's own
 conclusion and is not something a recorder can do. We detect the consequence.
+
+## Experimental: not in the published set
+
+`autonomous-unapproved-write` keys on `initiator.actor_type == "autonomous"`.
+The bus and SDK paths produce that value (cron, vault_watch, ingress,
+recovery), so the rule is correct and still registered. No IDE capture surface
+produces it: across roughly 32,000 events of real traffic from five agent
+surfaces the actor is `human`, `agent` or `system` and never once `autonomous`.
+Ingest deliberately cannot let a client claim it either, because that would let
+anyone fake this detection.
+
+So it is not counted in the rule total, not exported to Sigma, and not part of
+any published claim, until a capture surface produces the signal it reads. It
+stays registered so a session that really is autonomous is still caught.

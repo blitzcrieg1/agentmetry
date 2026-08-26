@@ -43,6 +43,7 @@ from .traits import (
     PR_MERGE_COMMAND as _PR_MERGE_COMMAND,
     RAW_IP_URL as _RAW_IP_URL,
     RISKY_EXEC_AFTER_STAGING as _RISKY_EXEC_AFTER_STAGING,
+    STAGES_ARTIFACT as _STAGES_ARTIFACT,
     STAGING_FETCH as _STAGING_FETCH,
     STAGING_HOST as _STAGING_HOST,
     UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
@@ -307,7 +308,14 @@ def _is_staging_fetch(event: dict[str, Any]) -> bool:
         if not _STAGING_HOST.search(cmd):
             return False
         words = _command_words(event)
-        return bool(_STAGING_FETCH.search(words) or _DOWNLOAD_EXEC.search(words))
+        if not (_STAGING_FETCH.search(words) or _DOWNLOAD_EXEC.search(words)):
+            return False
+        # A fetch that only printed staged nothing, so there is no artifact for
+        # a later command to run. `curl raw.githubusercontent.com/.../README.md`
+        # followed an hour later by any `python -c` was reported as critical
+        # staging with no link between the two (issue #51). GitHub raw is where
+        # documentation lives as well as where payloads do.
+        return bool(_STAGES_ARTIFACT.search(cmd))
     return _has_trait(event, "staging_fetch")
 
 
@@ -1265,9 +1273,30 @@ HOST_REGISTRY = [
 #: and the alternative is calling every rule to find out what it might say.
 #: `test_detection_rule_identity.py` greps this module and fails if the two
 #: disagree, so it cannot drift silently.
+#: Rules that are in the tree and run, but are NOT part of the published set.
+#:
+#: `autonomous-unapproved-write` keys on `initiator.actor_type == "autonomous"`.
+#: The bus and SDK paths do produce that (cron, vault_watch, ingress, recovery),
+#: so the rule is correct and still registered. The IDE hook path never does:
+#: across roughly 32,000 events of real dogfood traffic from five agent
+#: surfaces, the actor is `human`, `agent` or `system` and never once
+#: `autonomous`. Ingest coercion deliberately cannot promote a client into it
+#: either, because that would let anyone fake this rule.
+#:
+#: So on every capture surface a user actually installs, it cannot fire. It was
+#: being counted in "fifteen detection rules", shipped in the Sigma pack at
+#: severity high, and named in the pitch as the flagship no-default-self-approve
+#: story. A published rule that cannot fire is a claim, not a detection.
+#:
+#: It stays registered so that a session which really is autonomous is still
+#: caught. It leaves the published set until a capture surface produces the
+#: signal it reads.
+EXPERIMENTAL_RULE_IDS: frozenset[str] = frozenset({
+    "autonomous-unapproved-write",
+})
+
 BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "credential-exfil",
-    "autonomous-unapproved-write",
     "discovery-then-collect",
     "approval-denied-then-executed",
     "encoded-command-download",

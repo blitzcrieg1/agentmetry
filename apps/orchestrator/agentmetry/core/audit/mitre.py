@@ -160,6 +160,33 @@ def _reaches_remote_host(text: str) -> bool:
     return any(not _LOOPBACK.match(host) for host in hosts)
 
 
+#: Argument names that carry free text a human or a model wrote. A credential
+#: path inside one of these is something being talked about.
+_PROSE_KEYS = frozenset(
+    {
+        "text", "content", "body", "message", "prompt", "query", "description",
+        "summary", "comment", "note", "title", "instruction", "instructions",
+        "question", "answer", "input", "output", "markdown", "html",
+    }
+)
+
+
+def _path_evidence_text(evidence: Any, fallback: str) -> str:
+    """Evidence with prose arguments removed, for path-based rules only.
+
+    Returns everything except the free-text values, so `{"path": "~/.ssh/id_rsa"}`
+    still reads as a credential access and `{"text": "look in ~/.ssh/id_rsa"}`
+    does not. Non-dict evidence is unchanged: there are no argument names to
+    reason about, and guessing would be worse than not trying.
+    """
+    if not isinstance(evidence, dict):
+        return fallback
+    kept = {k: v for k, v in evidence.items() if str(k).lower() not in _PROSE_KEYS}
+    if not kept:
+        return ""
+    return _evidence_text(kept)
+
+
 def _shell_text(evidence: Any) -> str | None:
     """The shell command inside `evidence`, or None if this is not shell text.
 
@@ -210,8 +237,21 @@ def get_mitre_mapping(
         # text somebody is writing, not a file somebody is reading. Structured
         # evidence is not masked at all -- see _shell_text.
         shell = _shell_text(evidence)
-        literal = mask_literals(shell, include_double=False).lower() if shell else text
-        written = mask_literals(shell).lower() if shell else text
+        if shell:
+            literal = mask_literals(shell, include_double=False).lower()
+            written = mask_literals(shell).lower()
+        else:
+            # Structured args, so there is no shell quoting to mask. Path rules
+            # then run against whichever values could plausibly *be* a path.
+            #
+            # An MCP tool called with `{"text": "check ~/.aws/credentials"}` is
+            # a message that names a file, not a read of one, and it was being
+            # mapped to T1552 (issue #49). Prose lives in `text`, `content`,
+            # `prompt` and their siblings; a path the tool will open arrives in
+            # `path`, `file`, `target`. Same defect class as #44: a mention
+            # treated as a read.
+            literal = _path_evidence_text(evidence, text)
+            written = text
         if PRIVATE_KEY_PATH.search(literal):
             return _PRIVATE_KEY
         if (
