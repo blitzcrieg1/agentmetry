@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from agentmetry.core.auth import require_api_key
 from agentmetry.core.audit.detection.disposition import STATUSES, get_disposition_store
@@ -42,8 +42,48 @@ class IngestToolBody(BaseModel):
     mitre: dict[str, str] | None = None
 
 
+#: Actor kinds a capture surface may assert. Anything else is coerced to
+#: `agent`, which is the safe direction: never silently promoted to `human`
+#: (whose approvals reset detection gates) and never to `autonomous` (which
+#: `autonomous-unapproved-write` keys on). A surface that needs a new kind adds
+#: it here deliberately rather than by sending a novel string.
+_ACTOR_TYPES = frozenset({"human", "agent", "autonomous", "system"})
+
+
+class IngestInitiatorBody(BaseModel):
+    """Who triggered this call, as the capture surface saw it.
+
+    This is not identity. `identity_fields()` stamps `host_id` and `fleet_id` on
+    the receiving orchestrator whatever a client sends, and that lockdown is
+    unchanged here: this field says what *kind* of actor acted, never which
+    machine it was. `external.py` already reads and honours it; without the
+    field declared, pydantic dropped it before that code ever saw it.
+    """
+
+    actor_type: str = "human"
+    trigger: str = "manual"
+    operator_id: str = ""
+
+    @field_validator("actor_type")
+    @classmethod
+    def _known_actor(cls, v: str) -> str:
+        return v if v in _ACTOR_TYPES else "agent"
+
+
 class ExternalIngestBody(BaseModel):
-    """Adapter payload — normalized to canonical v1.1 on ingest."""
+    """Adapter payload — normalized to canonical v1.2 on ingest.
+
+    Every field a capture surface sends must be declared here. Pydantic ignores
+    what it does not know, silently, so an undeclared field is not an error at
+    ingest: it is a feature that works in unit tests and disappears over HTTP.
+
+    That has now happened twice. `traits` and `mitre` were dropped, which made
+    hashed-only events invisible to every command rule. Then 0.6.0 shipped MCP
+    per-tool digests and the initialize handshake, and those were dropped too,
+    so the release headline did not survive the wire. `test_ingest_roundtrip.py`
+    exists so there is not a third time: it builds real proxy payloads and fails
+    if any key does not survive this model.
+    """
 
     source_app: str = Field(
         ...,
@@ -71,10 +111,19 @@ class ExternalIngestBody(BaseModel):
     # pydantic drops it and a `log`-mode match is silently lost.
     dlp: dict[str, Any] | None = None
     tool_policy: dict[str, Any] | None = None
+    # Who the capture surface says triggered this. Honoured by external.py.
+    initiator: IngestInitiatorBody | None = None
     # Compact `tools/list` fingerprint from mcp_audit_proxy. Hash only: the
     # description never leaves the proxy process.
     schema_fingerprint: str = ""
     schema_tool_count: int = 0
+    # 0.6.0 MCP fields. Per-tool digests so a schema move names the tool that
+    # moved rather than only the server, and the two initialize handshake
+    # fields that separate a shipped release from a rug pull. All hashes and
+    # flags: no tool name, no description, nothing model-visible.
+    schema_tool_digests: dict[str, str] = Field(default_factory=dict)
+    server_version: str = ""
+    list_changed: bool | None = None
 
 
 def _parse_event_ts(event: dict[str, Any]) -> datetime | None:
