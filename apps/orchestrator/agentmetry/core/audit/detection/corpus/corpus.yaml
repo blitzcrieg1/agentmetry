@@ -454,6 +454,48 @@ cases:
       at low with no T1105 and no TA0011, neither of which a loopback fetch
       earns.
 
+  - name: fetch piped into the interpreter's own script
+    session: benign_fetch_piped_into_own_script.jsonl
+    expect: []
+    benign: true
+    note: >
+      Issue #50. `curl api/x.json | python -c 'json.load(sys.stdin)'` was
+      critical. An interpreter handed its own program does not execute the pipe,
+      it reads it as data, so this is a data pipeline and not a cradle. The
+      cradle shapes have no inline script and still fire: see the two cases
+      above.
+
+  - name: read .env.example while setting a project up
+    session: benign_env_example_read.jsonl
+    expect: []
+    benign: true
+    note: >
+      Issue #44, six of seventeen week-one dogfood findings and every one a
+      critical. `.env.example` is the file you commit *instead* of a credential
+      file, and reading it is day one in any repository. A bare `.env` and
+      `.env.local` still map to credential access.
+
+  - name: fetch docs from GitHub raw, then run an unrelated script
+    session: benign_github_raw_docs_then_script.jsonl
+    expect: []
+    benign: true
+    note: >
+      Issue #51. Any staging-host fetch followed by any `python -c` was critical
+      with nothing linking the two. GitHub raw serves documentation as well as
+      payloads, and a fetch that only printed staged no artifact for a later
+      command to run. The bound form, where the file downloaded is the file
+      executed, still fires.
+
+  - name: MCP message that names a credential path
+    session: benign_mcp_text_mentions_credential_path.jsonl
+    expect: []
+    benign: true
+    note: >
+      Issue #49, the sibling of #44. Structured tool arguments have no shell
+      quoting to mask, so a path inside a free-text field read as a credential
+      access. Naming `~/.aws/credentials` in a Slack message is a mention. The
+      same path arriving in a `path` argument is still a read.
+
   - name: remote pipe to shell is still a cradle
     session: attack_remote_pipe_to_shell.jsonl
     expect: [encoded-command-download]

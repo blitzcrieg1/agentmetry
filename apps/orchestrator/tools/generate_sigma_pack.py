@@ -41,7 +41,7 @@ from pathlib import Path
 
 from agentmetry.core.audit.detection.benchmark import DEFAULT_CORPUS_DIR
 from agentmetry.core.audit.detection.engine import run_detections, run_host_detections
-from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS
+from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS, EXPERIMENTAL_RULE_IDS
 
 OUT = Path(__file__).resolve().parents[2].parent / "docs" / "integrations" / "sigma"
 
@@ -158,6 +158,11 @@ tags:
 
 def main() -> int:
     harvested = _harvest()
+    # Experimental rules run and can fire on a synthesised corpus session, but
+    # no capture surface a user installs produces the signal they read. Shipping
+    # a Sigma rule for one would put a detection in a customer's SIEM that can
+    # never match, which is the same lie as counting it in the published total.
+    harvested = {k: v for k, v in harvested.items() if k[0] not in EXPERIMENTAL_RULE_IDS}
     for rule_id, entry in _UNCOVERED.items():
         harvested.setdefault((rule_id, entry["severity"]), entry)
 

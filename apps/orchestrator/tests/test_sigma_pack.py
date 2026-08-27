@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS
+from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS, EXPERIMENTAL_RULE_IDS
 
 SIGMA_DIR = Path(__file__).resolve().parents[3] / "docs" / "integrations" / "sigma"
 
@@ -82,6 +82,11 @@ def test_severities_match_the_engine():
             if line.strip()
         ]
         for det in (*run_detections(events), *run_host_detections(events)):
+            if det.rule_id in EXPERIMENTAL_RULE_IDS:
+                # Fires on a synthesised corpus session, but no capture surface
+                # a user installs produces the signal it reads. Exporting it
+                # would put a rule in a customer's SIEM that can never match.
+                continue
             doc = generated.get((det.rule_id, det.severity))
             assert doc is not None, (
                 f"{det.rule_id} fires at {det.severity} and no Sigma rule carries that "
