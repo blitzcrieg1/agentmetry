@@ -67,6 +67,55 @@ def test_dlp_scan_dashscope_api_token():
     assert verdict.match.rule_id == "dashscope_api_token"
 
 
+def test_dlp_scan_stripe_live_key():
+    key = "sk_live_" + "a1b2c3d4e5f6g7h8i9j0k1l2"  # gitleaks:allow fake fixture, not a real Stripe key
+    args = {"command": f"curl -u {key}: https://api.stripe.com/v1/charges"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "stripe_api_key"
+
+
+def test_dlp_scan_stripe_test_key():
+    key = "sk_test_" + "a1b2c3d4e5f6g7h8i9j0k1l2"  # gitleaks:allow fake fixture, not a real Stripe key
+    args = {"command": f"export STRIPE_SECRET_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "stripe_api_key"
+
+
+def test_dlp_scan_stripe_key_too_short_is_near_miss():
+    # Stripe-shaped prefix, but the token body is well under the 24-char floor —
+    # must not fire, or every "sk_live_" mention in a comment/docstring would.
+    key = "sk_live_abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_anthropic_api_key():
+    key = "sk-ant-api03-" + "a1B2c3D4e5F6g7H8i9J0k1L2"  # gitleaks:allow fake fixture, not a real Anthropic key
+    args = {"command": f"export ANTHROPIC_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "anthropic_api_key"
+
+
+def test_dlp_scan_generic_provider_api_key():
+    key = "sk-" + "a1B2c3D4e5F6g7H8i9J0k1L2"  # gitleaks:allow fake fixture, not a real OpenAI key
+    args = {"command": f"export OPENAI_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "generic_provider_api_key"
+
+
+def test_dlp_scan_generic_key_short_word_is_near_miss():
+    # "sk-" followed by a short ordinary word, not a 20+ char token — must not
+    # fire, or any mention of e.g. "sk-test" in a log line becomes a critical finding.
+    args = {"command": "echo sk-test"}  # gitleaks:allow fake fixture, deliberately too short
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
 def test_dlp_scan_safe_args():
     args = {"command": "ls -la"}
     verdict = scan("run_command", args)

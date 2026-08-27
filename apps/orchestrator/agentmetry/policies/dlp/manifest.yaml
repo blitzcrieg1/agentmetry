@@ -159,3 +159,29 @@ rules:
     pattern: "(?i)\\b(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|OPENAI_BASE_URL|OPENAI_API_BASE|GEMINI_BASE_URL|MOONSHOT_API_KEY|DASHSCOPE_API_KEY|DEEPSEEK_API_KEY|ZHIPUAI_API_KEY|MINIMAX_API_KEY|QWEN_API_KEY|HTTP_PROXY|HTTPS_PROXY|NODE_OPTIONS|PYTHONSTARTUP|LD_PRELOAD)[\"']?\\s*[=:]"
     category: "execution_hijack"
     severity: "critical"
+
+  - id: "stripe_api_key"
+    name: "Stripe API Key"
+    description: "Detects Stripe live/test secret keys"
+    pattern: "(?i)\\bsk_(live|test)_[0-9a-z]{24,}\\b"
+    category: "credentials"
+    severity: "critical"
+
+  # Anthropic keys (sk-ant-api03-...) don't fit the generic sk-[a-zA-Z0-9]{20,}
+  # shape below: the hyphen after "ant" (and again after "api03") breaks the
+  # alnum-only run at 3 characters, so the generic rule never fires on them
+  # despite starting with the same "sk-" prefix. Needs its own rule, and a
+  # distinct rule id is more useful in a detection than a generic match anyway.
+  - id: "anthropic_api_key"
+    name: "Anthropic API Key"
+    description: "Detects Anthropic API keys (sk-ant-...)"
+    pattern: "(?i)\\bsk-ant-[a-zA-Z0-9_-]{20,}"
+    category: "credentials"
+    severity: "critical"
+
+  - id: "generic_provider_api_key"
+    name: "Generic LLM Provider API Key"
+    description: "Detects OpenAI-shaped provider API keys (sk-...); Anthropic and DashScope keys have their own rules above"
+    pattern: "(?i)\\bsk-[a-zA-Z0-9]{20,}\\b"
+    category: "credentials"
+    severity: "critical"
