@@ -1,0 +1,16 @@
+# Author identity map.
+#
+# Three git identities belong to one maintainer, and one of them is the git
+# default placeholder: 116 commits from July 2026 were authored as
+# `Spiro <your-email@example.com>`. That address links to no GitHub account, so
+# roughly a quarter of this repository's history showed as an unrecognised
+# contributor and counted toward nobody.
+#
+# A mailmap fixes attribution without rewriting history. `git shortlog`,
+# `git blame`, `git log` and GitHub's contributor graph all honour it, and no
+# commit hash changes, so nobody's clone breaks.
+#
+# Format: Canonical Name <canonical@email>  Old Name <old@email>
+
+Ioannis Loutsis <44038245+blitzcrieg1@users.noreply.github.com> Ioannis L. <44038245+blitzcrieg1@users.noreply.github.com>
+Ioannis Loutsis <44038245+blitzcrieg1@users.noreply.github.com> Spiro <your-email@example.com>
