@@ -9,7 +9,7 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-08-26
+## [0.7.0] - 2026-08-27
 
 Honesty release. Two published claims were false on the live path and four
 known false positives were shipping under a freeze. All six are fixed, and the
