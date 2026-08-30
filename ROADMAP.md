@@ -34,12 +34,12 @@ Two rules, so it does not happen again.
 
 | | |
 |---|---|
-| Version | 0.7.0 on PyPI, released 2026-08-26 |
+| Version | 0.7.0 on PyPI, released 2026-08-27 |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
 | Tests | 1148 passing, 81% coverage, floor enforced in CI |
-| Dogfood gate | **0 of 4.** Clock restarted 2026-08-26 at 0.7.0, deliberately, to fix four shipping false positives |
+| Dogfood gate | **0 of 4.** Clock restarted 2026-08-30, after 0.7.0, deliberately, to fix four shipping false positives |
 | Own trail | 27,504 hash-chained lines, 24 external anchors |
 | Adoption | Public alpha. No design partner tenant yet, no reference customer |
 
@@ -73,7 +73,7 @@ Declare beta when all four are true. Two are.
 
 | Gate | Status |
 |---|---|
-| Four consecutive green dogfood weeks | **0 of 4.** Restarted 2026-08-26. Earliest close **2026-09-23** |
+| Four consecutive green dogfood weeks | **0 of 4.** Restarted 2026-08-30. Earliest close **2026-09-26** |
 | `agentmetry verify --trail` demonstrated in the README | Done |
 | `agentmetry doctor` green on three distinct Windows 11 setups | **1 of 3.** Needs two machines that are not the maintainer's |
 | Public claims match shipped behaviour | Done. `/compare`, the limitations section and the benchmark all state numbers the reader can reproduce |
@@ -84,7 +84,7 @@ side effect, which is another argument for the ordering below.
 
 ---
 
-## Now (through 2026-09-23)
+## Now (through 2026-09-26)
 
 Ordered by what unblocks the most. Only the first item is not code, and it is
 the most important one on the page.
@@ -95,7 +95,7 @@ the most important one on the page.
 | Detection precision pass | [#44](https://github.com/blitzcrieg1/agentmetry/issues/44) [#49](https://github.com/blitzcrieg1/agentmetry/issues/49) [#50](https://github.com/blitzcrieg1/agentmetry/issues/50) [#51](https://github.com/blitzcrieg1/agentmetry/issues/51) [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Five false-positive sources in frozen files. Land as one pass with #55 first, after the dogfood gate closes, so the ruleset fingerprint moves once |
 | Evidence pack integrity covers `meta` | [#75](https://github.com/blitzcrieg1/agentmetry/issues/75) | The date range on an evidence pack can currently be rewritten without breaking the hash. Needs a schema bump so existing packs keep verifying |
 
-**Held deliberately until 2026-09-23:** anything that edits
+**Held deliberately until 2026-09-26:** anything that edits
 `detection/rules.py`, `detection/traits.py`, `detection/engine.py` or
 `audit/mitre.py`, and anything that edits the detection manifest those four are
 hashed alongside. Together they are the ruleset fingerprint, and moving it

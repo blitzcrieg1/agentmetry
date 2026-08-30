@@ -23,7 +23,7 @@ investor material. Never in landing-page copy or a cold first line.
 
 ---
 
-## The detection freeze, restarted 2026-08-26
+## The detection freeze, restarted 2026-08-30
 
 **Do not edit these files.** They are hashed into the ruleset fingerprint, and
 changing any of them restarts the four-week dogfood clock that gates beta.
@@ -36,12 +36,13 @@ apps/orchestrator/agentmetry/core/audit/mitre.py
 apps/orchestrator/agentmetry/policies/detection/manifest.yaml
 ```
 
-The clock **restarted at 0.7.0 on 2026-08-26**, and the freeze runs again from
+The clock **restarted on 2026-08-30**, after 0.7.0, and the freeze runs again from
 there. The previous run reached 3 of 4 green weeks and was ended deliberately:
 four known false positives (#44, #49, #50, #51) were shipping as criticals to
 the first external tester, and a clean gate measured against a ruleset that
 fires critical on `.env.example` is not worth the weeks it took. Earliest close
-is now **2026-09-23**. Check it any time:
+is **2026-09-26**, the end of week four. Check it any time, and trust
+this command over this file:
 
 ```bash
 apps/orchestrator/.venv/Scripts/python.exe -m agentmetry.cli dogfood
@@ -57,13 +58,12 @@ apps/orchestrator/.venv/Scripts/python.exe -c "from agentmetry.core.audit.dogfoo
 # expect 15846a0915769d4a
 ```
 
-Four of the five parked detection-precision bugs were fixed in 0.7.0 (#44,
-#49, #50, #51), which is why the clock restarted. Still parked: [#44](https://github.com/blitzcrieg1/agentmetry/issues/44),
-[#49](https://github.com/blitzcrieg1/agentmetry/issues/49),
-[#50](https://github.com/blitzcrieg1/agentmetry/issues/50),
-[#51](https://github.com/blitzcrieg1/agentmetry/issues/51),
-[#55](https://github.com/blitzcrieg1/agentmetry/issues/55). Land them as one
-pass with #55, so the fingerprint moves once more and not again.
+Four of the five parked detection-precision bugs were fixed in 0.7.0 and are
+closed: #44, #49, #50, #51. Fixing them is why the clock restarted.
+
+**Still parked: [#55](https://github.com/blitzcrieg1/agentmetry/issues/55)
+alone.** It is the last change that will move the fingerprint, so land it in
+one pass rather than piecemeal, and expect another restart when it lands.
 
 Files in `detection/` that are **not** frozen and are safe to edit:
 `disposition.py`, `live.py`, `live_store.py`, `benchmark.py`, `yaml_rules.py`,

@@ -1,6 +1,6 @@
 # Agentmetry: recording what AI coding agents actually did
 
-**A technical whitepaper.** Version 0.7.0, 2026-08-26.
+**A technical whitepaper.** Version 0.7.0, 2026-08-27.
 
 Every number in this document comes from a command in the repository. Where a
 claim cannot be reproduced, it is not made.
