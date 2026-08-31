@@ -588,7 +588,7 @@ GET /api/v1/audit/detections/{correlation_id}
 ### Triage: what the human decided
 
 A detection nobody answered is an alert, not a control. Every finding carries a
-disposition, set from the Detections tab or over the API:
+disposition, set from the Detections tab, the CLI, or over the API:
 
 | Status | Meaning |
 | ------ | ------- |
@@ -603,6 +603,11 @@ disposition, set from the Detections tab or over the API:
 POST /api/v1/audit/detections/disposition
 {"correlation_id": "...", "rule_id": "credential-exfil",
  "status": "risk_accepted", "note": "known internal test harness"}
+```
+
+```bash
+agentmetry disposition run-42 credential-exfil \
+  --status risk_accepted --note "known internal test harness"
 ```
 
 Three properties make this evidence rather than a checkbox:
@@ -775,6 +780,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry backup` / `restore` | Zip the vault and data stores; restore one (server stopped) |
 | `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
+| `agentmetry disposition <correlation_id> <rule_id>` | Close a detection through the API with `--status resolved\|false_positive\|risk_accepted`; false positives and accepted risks require `--note` |
 | `agentmetry replay <correlation_id>` | ASCII audit timeline for one session (audit trail) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
