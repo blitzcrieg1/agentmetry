@@ -395,6 +395,26 @@ def test_detections_reports_an_empty_session_cleanly(monkeypatch, capsys):
     assert "No detections" in capsys.readouterr().out
 
 
+def test_detections_explains_a_disabled_export(monkeypatch, capsys):
+    from agentmetry import cli
+
+    class Resp:
+        @staticmethod
+        def json():
+            return {
+                "detections": [],
+                "correlation_id": "session-7",
+                "enabled": False,
+                "count": 0,
+            }
+
+    monkeypatch.setattr(cli.httpx, "get", lambda *_args, **_kwargs: Resp())
+    assert main(["detections", "session-7"]) == 1
+    out = capsys.readouterr().out
+    assert "Audit export is disabled" in out
+    assert "AGENTMETRY_AUDIT_EXPORT_ENABLED=1" in out
+
+
 def test_detections_says_so_when_the_orchestrator_is_down(monkeypatch, capsys):
     from agentmetry import cli
 

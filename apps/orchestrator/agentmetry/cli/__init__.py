@@ -250,6 +250,10 @@ def cmd_detections(args: argparse.Namespace) -> int:
     except Exception:
         print("Not running - start Agentmetry first (detections reads via the API).")
         return 1
+    if not data.get("enabled", True):
+        print("Audit export is disabled, so no sessions are recorded.")
+        print("Set AGENTMETRY_AUDIT_EXPORT_ENABLED=1 and restart.")
+        return 1
     detections = data.get("detections") or []
     if not detections:
         print(f"No detections for {args.correlation_id}.")
