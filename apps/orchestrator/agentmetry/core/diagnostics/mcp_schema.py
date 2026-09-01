@@ -42,8 +42,35 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 
-#: Keys that change between calls without changing what the model is told.
-_VOLATILE = frozenset({"_meta"})
+#: Bump when the bytes fed to the hash change.
+#:
+#: A stored fingerprint is only comparable to one computed the same way, so a
+#: baseline written under an older version is re-baselined rather than reported
+#: as a change. Without that, the upgrade that fixes a blind spot hands every
+#: existing user a rug-pull alert on the same morning.
+#:
+#: 1: `_meta` stripped before hashing.
+#: 2: `_meta` hashed. See below.
+FINGERPRINT_VERSION = 2
+
+#: Keys dropped before hashing, because they change between calls without
+#: changing what the model is told.
+#:
+#: **Empty, and it is meant to stay nearly empty.** It used to hold `_meta`, on
+#: the reasonable-sounding grounds that `_meta` is transport bookkeeping. It is
+#: not. `_meta` rides on the tool object, reaches clients, and whether it
+#: reaches the *model* is client-dependent, which makes it the obvious place to
+#: move behaviour-bearing text once descriptions are being watched. Stripping it
+#: meant a poisoned listing hashed identically to a clean one: not a weakened
+#: signal, an absent one (issue #142).
+#:
+#: The rules in this project are public on purpose, so its exemptions are public
+#: too, and an exemption is a documented bypass.
+#:
+#: The bar for adding a key here is therefore evidence that it genuinely varies
+#: per call on a real server, plus a note saying which server and why. "It looks
+#: like metadata" is how the last entry got in.
+_VOLATILE: frozenset[str] = frozenset()
 
 
 def _canonical_entries(tools: list[Any] | None) -> list[dict[str, Any]]:
@@ -201,6 +228,9 @@ class SchemaRecord:
     #: is why a delta against an empty baseline reports nothing changed rather
     #: than reporting every tool as new.
     tool_digests: dict[str, str] = field(default_factory=dict)
+    #: Which hashing this fingerprint was computed with. Defaults to 1 because
+    #: a record that does not say was written before the field existed.
+    fingerprint_version: int = 1
 
 
 @dataclass
@@ -256,13 +286,14 @@ def load_store(path: Path | None = None) -> SchemaStore:
                 }
                 if isinstance(digests, dict)
                 else {},
+                fingerprint_version=int(rec.get("fingerprint_version") or 1),
             )
     return SchemaStore(servers=servers)
 
 
 def _dump(store: SchemaStore) -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "servers": {
             name: {
                 "fingerprint": rec.fingerprint,
@@ -273,6 +304,7 @@ def _dump(store: SchemaStore) -> dict[str, Any]:
                 **({"server_version": rec.server_version} if rec.server_version else {}),
                 **({"list_changed": rec.list_changed} if rec.list_changed is not None else {}),
                 **({"tool_digests": rec.tool_digests} if rec.tool_digests else {}),
+                "fingerprint_version": rec.fingerprint_version,
             }
             for name, rec in sorted(store.servers.items())
         },
@@ -311,6 +343,13 @@ def classify_observation(
     with _lock:
         existing = load_store(path or store_path()).servers.get(name)
     if existing is None:
+        return "new"
+    if existing.fingerprint_version != FINGERPRINT_VERSION:
+        # The stored digest was computed over different bytes, so it is not
+        # comparable and a mismatch says nothing about the server. Re-baseline
+        # instead. Without this, the release that closed the `_meta` blind spot
+        # would have reported a rug pull on every server every user had ever
+        # observed, on upgrade day, and taught them the alert is noise.
         return "new"
     if existing.fingerprint == fp:
         return "same"
@@ -384,6 +423,7 @@ def record_observation(
                 existing.server_version = server_version
             if list_changed is not None:
                 existing.list_changed = list_changed
+            existing.fingerprint_version = FINGERPRINT_VERSION
             if tool_digests:
                 # An unchanged listing backfills the per-tool map for records
                 # written before it existed, so the first real change after an
@@ -402,6 +442,7 @@ def record_observation(
             server_version=server_version,
             list_changed=list_changed,
             tool_digests=dict(tool_digests or {}),
+            fingerprint_version=FINGERPRINT_VERSION,
         )
         _write_store(store, target)
         return "changed" if previous else "new"
