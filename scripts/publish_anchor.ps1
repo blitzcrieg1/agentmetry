@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Take a checkpoint of the trail and publish it to the anchor repository.
 
