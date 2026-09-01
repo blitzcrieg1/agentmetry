@@ -1,4 +1,4 @@
-# Agentmetry — Windows one-flow install (orchestrator + dashboard + IDE hooks).
+﻿# Agentmetry: Windows one-flow install (orchestrator + dashboard + IDE hooks).
 #
 # Usage (from repo root):
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1
@@ -107,7 +107,7 @@ Pop-Location
 if (-not $SkipDashboard) {
     Write-Step "Installing dashboard dependencies"
     Push-Location $DashRoot
-    # npm ci installs exactly what package-lock.json pins — reproducible on
+    # npm ci installs exactly what package-lock.json pins, which is reproducible on
     # fresh machines, which is what an installer is for.
     & npm ci --no-fund --no-audit
     Pop-Location
@@ -115,8 +115,24 @@ if (-not $SkipDashboard) {
 
 if (-not $SkipHooks) {
     Write-Step "Installing IDE hooks (Claude Code + Cursor)"
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\install_claude_hooks.ps1")
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\install_cursor_hooks.ps1")
+    # Each hook installer already checks $LASTEXITCODE and exits non-zero on
+    # failure. That was useless while this caller ignored it: both could fail
+    # with ModuleNotFoundError and this script still printed "Install complete"
+    # and exited 0, so a user, and any deployment automation, was told hooks
+    # were installed when nothing had been (issue #137).
+    #
+    # A recorder whose whole claim is that removal changes what it says about
+    # itself cannot ship an installer that reports success after a failure.
+    foreach ($hookScript in @("install_claude_hooks.ps1", "install_cursor_hooks.ps1")) {
+        & powershell -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\$hookScript")
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ""
+            Write-Host "$hookScript FAILED (exit $LASTEXITCODE)." -ForegroundColor Red
+            Write-Host "Hooks are NOT installed, so nothing will be recorded." -ForegroundColor Red
+            Write-Host "Re-run with -SkipHooks to install everything else, then fix hooks separately."
+            exit $LASTEXITCODE
+        }
+    }
 }
 
 if (-not $NoDoctor) {
@@ -136,7 +152,7 @@ Write-Host "  5. Trail:     scripts\agentmetry.bat verify --trail apps\orchestra
 Write-Host "  6. Stats:      scripts\agentmetry.bat stats --days 7"
 Write-Host ""
 if ($ToolPolicyBlock -or $DlpBlock) {
-    Write-Host "Hook enforcement enabled in apps\orchestrator\.env — restart Claude Code / Cursor after hooks install." -ForegroundColor Yellow
+    Write-Host "Hook enforcement enabled in apps\orchestrator\.env. Restart Claude Code / Cursor after hooks install." -ForegroundColor Yellow
 }
 if (-not $SkipHooks) {
     Write-Host "Fully quit and restart Claude Code / Cursor so hooks load." -ForegroundColor Yellow

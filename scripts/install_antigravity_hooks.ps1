@@ -1,4 +1,4 @@
-# Install Agentmetry hooks for Google Antigravity 2.0 (global + scratch workspace).
+﻿# Install Agentmetry hooks for Google Antigravity 2.0 (global + scratch workspace).
 #
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\install_antigravity_hooks.ps1
 
@@ -6,7 +6,16 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Ingest = Join-Path $RepoRoot "scripts\agentmetry_ingest.py"
 $Wrapper = Join-Path $RepoRoot "scripts\agentmetry_antigravity_hook.cmd"
-$Python = (Get-Command python -ErrorAction Stop).Source
+# Prefer the orchestrator venv. `install.ps1` creates it and installs
+# Agentmetry into it, but global python usually has no `agentmetry` module, so
+# resolving `python` here failed with ModuleNotFoundError on a clean machine
+# while the top-level installer still reported success (issue #137).
+$VenvPython = Join-Path $RepoRoot "apps\orchestrator\.venv\Scripts\python.exe"
+if (Test-Path $VenvPython) {
+    $Python = $VenvPython
+} else {
+    $Python = (Get-Command python -ErrorAction Stop).Source
+}
 
 @(
     "@echo off",

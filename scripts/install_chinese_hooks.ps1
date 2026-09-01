@@ -1,11 +1,20 @@
-# Install Agentmetry hooks for all supported Chinese CLI agents.
+﻿# Install Agentmetry hooks for all supported Chinese CLI agents.
 # Skips agents whose config dirs are missing (not installed on this machine).
 #
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\install_chinese_hooks.ps1
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Python = (Get-Command python -ErrorAction Stop).Source
+# Prefer the orchestrator venv. `install.ps1` creates it and installs
+# Agentmetry into it, but global python usually has no `agentmetry` module, so
+# resolving `python` here failed with ModuleNotFoundError on a clean machine
+# while the top-level installer still reported success (issue #137).
+$VenvPython = Join-Path $RepoRoot "apps\orchestrator\.venv\Scripts\python.exe"
+if (Test-Path $VenvPython) {
+    $Python = $VenvPython
+} else {
+    $Python = (Get-Command python -ErrorAction Stop).Source
+}
 $Bootstrap = Join-Path $RepoRoot "apps\orchestrator\agentmetry\core\audit\hook_bootstrap.py"
 
 $targets = @(
