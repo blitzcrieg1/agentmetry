@@ -238,16 +238,28 @@ def build_schema_canonical(
     server, fingerprint, tool_count = fields.server, fields.fingerprint, fields.tool_count
     server_version, list_changed = fields.server_version, fields.list_changed
     outcome = "changed" if status == "changed" else "success"
-    reason = (
-        "MCP tool schema changed; config may be unchanged (rug-pull candidate)"
-        if status == "changed"
-        else "MCP tool schema observed"
-    )
+    _REASONS = {
+        "changed": "MCP tool schema changed; config may be unchanged (rug-pull candidate)",
+        # Says what it is and what it is not. A re-baseline adopts whatever the
+        # server serves today without comparing it to anything, so if the server
+        # was already poisoned before our hashing changed, this event is the
+        # moment that state became the trusted one. `new` would have hidden that
+        # behind a word that also means "nothing was ever wrong here" (#146).
+        "rebaselined": (
+            "MCP tool schema re-baselined after a fingerprint change; "
+            "trust-on-first-use, not compared against the previous baseline"
+        ),
+    }
+    reason = _REASONS.get(status, "MCP tool schema observed")
     mcp_schema: dict[str, Any] = {
         "server_id": server_id(server) if server else "",
         "fingerprint": fingerprint,
         "tool_count": tool_count,
         "status": status,
+        # A baseline nobody has verified against a predecessor. Structured
+        # rather than left in the reason string so a SIEM can count them
+        # instead of matching prose.
+        **({"unverified_baseline": True} if status == "rebaselined" else {}),
         # Only a schema that MOVED is the technique. `new` is the first
         # sight of a server and `same` is a quiet reconnect; tagging either
         # as a rug pull would put a Defense Evasion label on installing a

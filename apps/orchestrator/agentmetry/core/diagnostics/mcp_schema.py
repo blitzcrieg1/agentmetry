@@ -350,7 +350,19 @@ def classify_observation(
         # instead. Without this, the release that closed the `_meta` blind spot
         # would have reported a rug pull on every server every user had ever
         # observed, on upgrade day, and taught them the alert is noise.
-        return "new"
+        #
+        # `rebaselined` rather than `new`, and the distinction is the whole
+        # point (issue #146). `new` says "we had never seen this server". This
+        # says "we had a baseline, our hashing changed, and we are trusting
+        # whatever the server says today without comparing it to anything".
+        #
+        # Those carry different evidence. If a server was already poisoned
+        # before the upgrade, this observation adopts the poisoned state and an
+        # operator reading a quiet week must be able to see that, rather than
+        # find a word that also means "nothing has ever been wrong here".
+        # Trading a loud false positive for a silent false negative is the
+        # worse half of that trade for a recorder.
+        return "rebaselined"
     if existing.fingerprint == fp:
         return "same"
     if existing.tool_count == 0 and tool_count > 0:
