@@ -43,6 +43,7 @@ from agentmetry_ingest import hash_arguments, post_ingest  # noqa: E402
 from agentmetry.core.diagnostics.mcp_schema import (  # noqa: E402
     ToolsListBuffer,
     fingerprint_each_tool,
+    scan_concealed_text,
     fingerprint_tools,
     parse_initialize_result,
 )
@@ -86,6 +87,11 @@ def build_schema_payload(
         "schema_tool_digests": fingerprint_each_tool(tools),
         "tool": {"server": server_name},
     }
+    # Counts per category, never the text. Omitted entirely when clean, so the
+    # quiet case adds no field to the quietest event class in the trail.
+    concealed = scan_concealed_text(tools)
+    if concealed:
+        payload["schema_concealed"] = concealed
     if server_version:
         payload["server_version"] = server_version
     if list_changed is not None:

@@ -122,6 +122,10 @@ class ExternalIngestBody(BaseModel):
     # fields that separate a shipped release from a rug pull. All hashes and
     # flags: no tool name, no description, nothing model-visible.
     schema_tool_digests: dict[str, str] = Field(default_factory=dict)
+    # Concealed-character counts per category. Declared here because pydantic
+    # drops what it does not know, silently, which has already cost this file
+    # two shipped bugs.
+    schema_concealed: dict[str, int] = Field(default_factory=dict)
     server_version: str = ""
     list_changed: bool | None = None
 

@@ -125,6 +125,69 @@ def fingerprint_each_tool(tools: list[Any] | None) -> dict[str, str]:
     }
 
 
+#: Characters that render as nothing, or reverse rendering order, while still
+#: reaching the model. Grouped by category so a finding can say what kind of
+#: concealment it is without carrying the text.
+#:
+#: The TAG block is the one that matters most: U+E0000 to U+E007F mirrors ASCII,
+#: so an entire second instruction can be written in it and displayed as an
+#: empty string. Research calls the result an approval-view fidelity gap, and
+#: the phrase is exact: the human approving a tool reads one string and the
+#: model receives another.
+#:
+#: Private Use Area is deliberately absent. It is genuinely used for icon fonts
+#: and would fire on legitimate descriptions, and a category that cries wolf
+#: costs more than the one case it might catch.
+_CONCEALED_RANGES: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
+    ("tag_block", ((0xE0000, 0xE007F),)),
+    ("zero_width", ((0x200B, 0x200D), (0xFEFF, 0xFEFF), (0x00AD, 0x00AD))),
+    ("bidi_control", ((0x202A, 0x202E), (0x2066, 0x2069))),
+)
+
+
+def _walk_strings(value: Any):
+    """Every string anywhere in a tool definition.
+
+    Deliberately not a list of field names. #103 settled that argument for the
+    severity split and it applies here for the same reason: an allowlist fails
+    open on whatever the spec adds next, and a field nobody has thought about
+    yet should default to inspected rather than invisible.
+    """
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _walk_strings(key)
+            yield from _walk_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_strings(item)
+
+
+def scan_concealed_text(tools: list[Any] | None) -> dict[str, int]:
+    """Counts of concealed characters per category, or an empty dict if clean.
+
+    Counts only. Never the text, never which tool, never the surrounding
+    string. A finding that carries the payload has stored the payload, which is
+    the rule the whole module is built on.
+
+    This is the one poisoning check that works on a single observation. The
+    fingerprint answers "did this server change what it advertises" and is
+    silent about a server that was hostile from the first listing anybody ever
+    took. Concealed control characters need no baseline, because there is no
+    legitimate reason for a tool description to contain any.
+    """
+    found: dict[str, int] = {}
+    for text in _walk_strings(_canonical_entries(tools)):
+        for char in text:
+            point = ord(char)
+            for label, ranges in _CONCEALED_RANGES:
+                if any(low <= point <= high for low, high in ranges):
+                    found[label] = found.get(label, 0) + 1
+                    break
+    return found
+
+
 def server_id(name: str) -> str:
     """Opaque 16-hex id for a server name. Publish this, never the name."""
     return hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
