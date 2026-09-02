@@ -37,7 +37,7 @@ Two rules, so it does not happen again.
 | Version | 0.7.0 on PyPI, released 2026-08-27 |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
-| Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
+| Benchmark | 57 recorded sessions, 26 attack and 31 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
 | Tests | 1148 passing, 81% coverage, floor enforced in CI |
 | Dogfood gate | **0 of 4.** Clock restarted 2026-08-30, after 0.7.0, deliberately, to fix four shipping false positives |
 | Own trail | 27,504 hash-chained lines, 24 external anchors |
