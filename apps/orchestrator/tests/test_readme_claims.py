@@ -179,3 +179,46 @@ def test_readme_does_not_reintroduce_the_overstatement():
     # happens without updating the README, the invitation stops working.
     assert "agentmetry/api/routes/audit.py" in text
     assert "agentmetry/core/audit/identity.py" in text
+
+def test_readme_rule_count_matches_the_registry():
+    """0.7.0 delisted a rule and the README kept saying fifteen.
+
+    That release existed to make published claims true. It fixed
+    `detection-rules.md`, the Sigma pack and the whitepaper, and missed the most
+    read document in the repository, where the number sat spelled out as a word
+    and so matched no numeric search.
+    """
+    from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS
+
+    text = _readme().lower()
+    words = {
+        12: "twelve", 13: "thirteen", 14: "fourteen",
+        15: "fifteen", 16: "sixteen", 17: "seventeen",
+    }
+    published = len(BUILTIN_RULE_IDS)
+    correct = words[published]
+
+    for count, word in words.items():
+        if count == published:
+            continue
+        for phrase in (f"{word} built-in rules", f"{word} published rules", f"{count} built-in rules"):
+            assert phrase not in text, (
+                f"README says {phrase!r} but the registry publishes {published}. "
+                f"Use {correct!r}, and remember an experimental rule is not published."
+            )
+
+
+def test_readme_sigma_count_matches_the_pack():
+    """The pack is generated, so its size moves without anyone editing prose."""
+    import re
+
+    sigma_dir = Path(__file__).resolve().parents[3] / "docs" / "integrations" / "sigma"
+    if not sigma_dir.is_dir():
+        pytest.skip("sigma pack not present")
+    shipped = len(list(sigma_dir.glob("*.yml")))
+
+    match = re.search(r"Sigma pack\]\([^)]+\)\s*\((\d+) rules\)", _readme())
+    assert match, "README no longer states a Sigma rule count; update this test or the README"
+    assert int(match.group(1)) == shipped, (
+        f"README claims {match.group(1)} Sigma rules, pack ships {shipped}"
+    )
