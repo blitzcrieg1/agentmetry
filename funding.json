@@ -17,10 +17,12 @@
       "name": "Agentmetry",
       "description": "AI coding agents run shell commands, edit files and call third-party tools hundreds of times an hour, largely unattended. What they actually did is recorded nowhere by default. The agent transcript is a conversation rather than a record of effects, the editor keeps no durable log, and endpoint security sees only that one process spawned another, which is what a coding agent looks like when it is working correctly.\n\nAgentmetry records what an agent did at the tool boundary, correlates sequences into detections, and writes a hash-chained JSONL trail the operator owns, forwarding into whatever SIEM they already run. It is local-first: there is no vendor cloud, and no telemetry reaches the maintainer. Tool arguments are hashed inside the hook process, so plaintext never crosses the wire.\n\nVerifiable as of 2026-09-02: version 0.7.0 on PyPI, Apache-2.0, 1,186 tests, a 54 case detection benchmark at zero misses and zero false positives, MITRE ATT&CK and ATLAS mappings, and four SIEM adapters. Every one of those figures is printed by a command in the README.\n\nFunding would go to making the format underneath it common rather than ours: a standalone agent session record specification, mappings into Elastic Common Schema, OCSF, Splunk CIM and Google SecOps UDM, and a conformance suite so a third party can verify their own mapping without reading our Python. The success condition is other vendors adopting the fields, including ones who compete with us.",
       "webpageUrl": {
-        "url": "https://agentmetry.ai"
+        "url": "https://agentmetry.ai",
+        "wellKnown": "https://agentmetry.ai/.well-known/funding-manifest-urls"
       },
       "repositoryUrl": {
-        "url": "https://github.com/blitzcrieg1/agentmetry"
+        "url": "https://github.com/blitzcrieg1/agentmetry",
+        "wellKnown": "https://github.com/blitzcrieg1/agentmetry/blob/master/.well-known/funding-manifest-urls"
       },
       "licenses": [
         "spdx:Apache-2.0"
