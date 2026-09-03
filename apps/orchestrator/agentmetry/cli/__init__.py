@@ -219,7 +219,8 @@ def cmd_stats(args: argparse.Namespace) -> int:
         return 1
 
     if not data.get("enabled", True):
-        print("Audit export disabled — enable AGENTMETRY_AUDIT_EXPORT to collect stats.")
+        print("Audit export is disabled, so no events are recorded and stats are empty.")
+        print("Set AGENTMETRY_AUDIT_EXPORT_ENABLED=1 and restart.")
         return 1
 
     days = data.get("window_days", args.days)
