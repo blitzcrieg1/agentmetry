@@ -1,10 +1,16 @@
 # Author identity map.
 #
-# Three git identities belong to one maintainer, and one of them is the git
-# default placeholder: 116 commits from July 2026 were authored as
-# `Spiro <your-email@example.com>`. That address links to no GitHub account, so
-# roughly a quarter of this repository's history showed as an unrecognised
-# contributor and counted toward nobody.
+# On `master` the maintainer's commits carry one email address under two name
+# spellings, `Ioannis L.` and `Ioannis Loutsis`. Without this file `git
+# shortlog` reports them as two contributors.
+#
+# The second mapping is historical. 116 commits from July 2026 were authored as
+# `Spiro <your-email@example.com>`, the git default placeholder, which links to
+# no GitHub account and counted toward nobody. A history rewrite later that
+# month fixed the author field, so those commits no longer appear on `master`
+# under that address. The mapping stays because the pre-rewrite commits still
+# exist on the `backup-pre-rewrite` and `refs/original/` refs, and in any clone
+# taken before the rewrite.
 #
 # A mailmap fixes attribution without rewriting history. `git shortlog`,
 # `git blame`, `git log` and GitHub's contributor graph all honour it, and no
