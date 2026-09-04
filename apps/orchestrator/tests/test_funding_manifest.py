@@ -10,9 +10,17 @@ produce, and nothing failed.
 for the version string. This does the same for the manifest, so a figure that
 drifts fails here instead of in front of a funder.
 
-Only the claims that a command can settle are pinned. The download count and
-the test count are stamped with a date in the manifest itself and are left
-alone, because a number that says when it was true does not become false.
+Only claims that move on a *release* are pinned: the version and the licence.
+Anything that moves when somebody contributes is not.
+
+That distinction was learned the expensive way. The first version of this file
+pinned the benchmark case count too, and the next contributor PR to add corpus
+cases went red on `funding.json`, a file they had never touched and had no
+business editing. A guard that taxes contributors for the maintainer's public
+copy is worse than the drift it prevents, so the manifest no longer quotes
+counts at all and this no longer checks them. The README quotes them, and
+`test_readme_claims.py` guards that, where the change and the claim live in the
+same pull request.
 """
 
 from __future__ import annotations
@@ -23,7 +31,6 @@ from pathlib import Path
 
 import pytest
 
-from agentmetry.core.audit.detection.benchmark import load_corpus
 from agentmetry.core.version import __version__
 
 MANIFEST = Path(__file__).resolve().parents[3] / "funding.json"
@@ -64,14 +71,6 @@ def test_quoted_version_matches_the_package():
     )
 
 
-def test_quoted_benchmark_case_count_matches_the_corpus():
-    quoted = re.search(r"(\d+) case detection benchmark", _project_description())
-    assert quoted, "funding.json no longer quotes a case count; update this test or the manifest"
-    assert int(quoted.group(1)) == len(load_corpus()), (
-        "funding.json quotes a different case count than the corpus holds"
-    )
-
-
 def test_declared_licence_matches_the_package_metadata():
     pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"
@@ -82,4 +81,16 @@ def test_declared_licence_matches_the_package_metadata():
     licences = _manifest()["projects"][0]["licenses"]
     assert licences == [f"spdx:{declared.group(1)}"], (
         "funding.json declares a different licence than the package does"
+    )
+
+
+def test_the_manifest_quotes_no_count_that_a_contribution_can_move():
+    """The regression that made this change necessary.
+
+    A number here is a number somebody else's pull request can invalidate.
+    """
+    description = _project_description()
+    assert not re.search(r"\d[\d,]* (?:tests|cases|case )", description), (
+        "funding.json quotes a count that moves when somebody contributes; the "
+        "README is the place for those"
     )
