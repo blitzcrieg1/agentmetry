@@ -187,6 +187,7 @@ class _SchemaFields(NamedTuple):
     server_version: str
     list_changed: bool | None
     tool_digests: dict[str, str]
+    concealed: dict[str, int]
 
 
 def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
@@ -202,6 +203,12 @@ def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
     list_changed = payload.get("list_changed")
     if list_changed is not None and not isinstance(list_changed, bool):
         list_changed = None
+    raw_concealed = payload.get("schema_concealed")
+    concealed = (
+        {str(k): int(v) for k, v in raw_concealed.items() if isinstance(v, int)}
+        if isinstance(raw_concealed, dict)
+        else {}
+    )
     raw_digests = payload.get("schema_tool_digests")
     tool_digests = (
         {str(k): str(v) for k, v in raw_digests.items() if isinstance(v, str)}
@@ -209,7 +216,8 @@ def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
         else {}
     )
     return _SchemaFields(
-        server, fingerprint, tool_count, source, server_version, list_changed, tool_digests
+        server, fingerprint, tool_count, source, server_version, list_changed,
+        tool_digests, concealed,
     )
 
 
@@ -238,16 +246,33 @@ def build_schema_canonical(
     server, fingerprint, tool_count = fields.server, fields.fingerprint, fields.tool_count
     server_version, list_changed = fields.server_version, fields.list_changed
     outcome = "changed" if status == "changed" else "success"
-    reason = (
-        "MCP tool schema changed; config may be unchanged (rug-pull candidate)"
-        if status == "changed"
-        else "MCP tool schema observed"
-    )
+    _REASONS = {
+        "changed": "MCP tool schema changed; config may be unchanged (rug-pull candidate)",
+        # Says what it is and what it is not. A re-baseline adopts whatever the
+        # server serves today without comparing it to anything, so if the server
+        # was already poisoned before our hashing changed, this event is the
+        # moment that state became the trusted one. `new` would have hidden that
+        # behind a word that also means "nothing was ever wrong here" (#146).
+        "rebaselined": (
+            "MCP tool schema re-baselined after a fingerprint change; "
+            "trust-on-first-use, not compared against the previous baseline"
+        ),
+    }
+    reason = _REASONS.get(status, "MCP tool schema observed")
     mcp_schema: dict[str, Any] = {
         "server_id": server_id(server) if server else "",
         "fingerprint": fingerprint,
         "tool_count": tool_count,
         "status": status,
+        # A baseline nobody has verified against a predecessor. Structured
+        # rather than left in the reason string so a SIEM can count them
+        # instead of matching prose.
+        **({"unverified_baseline": True} if status == "rebaselined" else {}),
+        # Concealed characters in strings the model reads. Counts per category,
+        # never the text. Attached on every status including `new`, because
+        # unlike everything else here it does not need a baseline: this is the
+        # one poisoning visible on a first sighting.
+        **({"concealed": dict(fields.concealed)} if fields.concealed else {}),
         # Only a schema that MOVED is the technique. `new` is the first
         # sight of a server and `same` is a quiet reconnect; tagging either
         # as a rug pull would put a Defense Evasion label on installing a

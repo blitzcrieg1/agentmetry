@@ -102,11 +102,82 @@ def test_a_baseline_from_the_old_hashing_re_baselines_instead_of_alerting(tmp_pa
     verdict = classify_observation(
         "postmark", fingerprint_tools(CLEAN), tool_count=1, path=store_file
     )
-    assert verdict == "new", (
+    assert verdict == "rebaselined", (
         "an old-hashing baseline must re-baseline, not report a change. Reporting "
         "`changed` here would alert on every server every user has observed, on "
         "the day they upgrade."
     )
+
+
+def test_a_rebaseline_is_not_reported_as_a_first_sighting(tmp_path):
+    """The correction to the first version of this fix (issue #146).
+
+    Returning `new` swapped a loud false positive for a silent false negative.
+    A server poisoned *before* the upgrade would have its poisoned state adopted
+    as the trusted baseline, under the same word used for a server nobody had
+    ever seen. An operator reading a quiet week could not tell "unchanged since
+    we started watching" from "we started watching again on Tuesday and cannot
+    speak for what came before".
+    """
+    store_file = tmp_path / "mcp-schema-fingerprints.json"
+    store_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "servers": {
+                    "known": {
+                        "fingerprint": "a" * 64,
+                        "tool_count": 3,
+                        "observed_at": "2026-08-01T00:00:00+00:00",
+                        "previous": "",
+                        "source": "mcp_proxy",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    seen_before = classify_observation(
+        "known", fingerprint_tools(CLEAN), tool_count=1, path=store_file
+    )
+    never_seen = classify_observation(
+        "brand-new-server", fingerprint_tools(CLEAN), tool_count=1, path=store_file
+    )
+
+    assert never_seen == "new"
+    assert seen_before != never_seen, (
+        "a re-baseline and a first sighting carry different evidence and must "
+        "not share a status"
+    )
+
+
+def test_the_rebaseline_event_says_it_was_not_compared():
+    """The distinction has to survive into the trail, not just the verdict.
+
+    A SIEM counts `unverified_baseline`; a human reads the reason. Both need to
+    say that nothing was compared, because that is the fact an auditor is
+    entitled to and the one a quiet status would hide.
+    """
+    from agentmetry.core.audit.ingest import build_schema_canonical
+
+    payload = {
+        "source_app": "mcp_proxy",
+        "event_type": "mcp_schema",
+        "schema_fingerprint": fingerprint_tools(CLEAN),
+        "schema_tool_count": len(CLEAN),
+        "tool": {"server": "postmark"},
+    }
+
+    rebaselined = build_schema_canonical(payload, "rebaselined")
+    first_sight = build_schema_canonical(payload, "new")
+
+    assert rebaselined["mcp_schema"]["unverified_baseline"] is True
+    assert "unverified_baseline" not in first_sight["mcp_schema"]
+    assert rebaselined["action"]["reason"] != first_sight["action"]["reason"]
+    assert "not compared" in rebaselined["action"]["reason"]
+    # A re-baseline is not a rug pull, so it must not carry the ATLAS technique.
+    assert "atlas" not in rebaselined["mcp_schema"]
 
 
 def test_a_real_change_after_re_baselining_is_still_caught(tmp_path):

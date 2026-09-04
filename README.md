@@ -552,7 +552,7 @@ Hardening beyond these honesty notes is tracked in
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) · Microsoft AGT audit files (Semantic Kernel, AutoGen, LangGraph via AGT) | LangChain · AutoGen native |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · CloudEvents v1.0 (Knative, EventBridge, Event Grid, Dapr, Kafka) · generic webhook | Datadog · New Relic |
-| **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (4 rules) | STIX/TAXII export |
+| **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (23 rules) | STIX/TAXII export |
 | **Policy engines** | Regex DLP manifest (`agentmetry/policies/dlp/`) · tool allow/deny YAML (`agentmetry/policies/tool/`) | OPA / Rego policy-as-code |
 | **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
 
@@ -570,11 +570,16 @@ Matching is **ordered within a session**, not a threshold on one row.
 `credential-exfil` requires credential access (T1552) *then* network egress
 (TA0011), in that order. Reversed, it does not fire.
 
-Fifteen built-in rules ship today (plus YAML count rules), covering credential exfiltration, guardrail bypass,
+Fourteen published rules ship today, plus one held back as experimental and
+the YAML count rules. They cover credential exfiltration, guardrail bypass,
 download cradles, supply-chain merges, recon-then-collect, and both published
 [Agent Data Injection](https://arxiv.org/abs/2607.05120) chains.
 
 **[Every rule, how ordered matching works, and the research behind it →](docs/detection-rules.md)**
+
+That page also maps this project against the
+[OWASP Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/):
+two risks covered, three partial, and five that are somebody else's job.
 
 ```http
 GET /api/v1/audit/detections/{correlation_id}
@@ -583,7 +588,7 @@ GET /api/v1/audit/detections/{correlation_id}
 ### Triage: what the human decided
 
 A detection nobody answered is an alert, not a control. Every finding carries a
-disposition, set from the Detections tab or over the API:
+disposition, set from the Detections tab, the CLI, or over the API:
 
 | Status | Meaning |
 | ------ | ------- |
@@ -598,6 +603,11 @@ disposition, set from the Detections tab or over the API:
 POST /api/v1/audit/detections/disposition
 {"correlation_id": "...", "rule_id": "credential-exfil",
  "status": "risk_accepted", "note": "known internal test harness"}
+```
+
+```bash
+agentmetry disposition run-42 credential-exfil \
+  --status risk_accepted --note "known internal test harness"
 ```
 
 Three properties make this evidence rather than a checkbox:
@@ -770,6 +780,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry backup` / `restore` | Zip the vault and data stores; restore one (server stopped) |
 | `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
+| `agentmetry disposition <correlation_id> <rule_id>` | Close a detection through the API with `--status resolved\|false_positive\|risk_accepted`; false positives and accepted risks require `--note` |
 | `agentmetry replay <correlation_id>` | ASCII audit timeline for one session (audit trail) |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |

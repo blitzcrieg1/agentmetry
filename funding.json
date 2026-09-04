@@ -1,0 +1,125 @@
+{
+  "version": "v1.1.0",
+  "entity": {
+    "type": "individual",
+    "role": "owner",
+    "name": "Ioannis Loutsis",
+    "email": "g.loutsis95@gmail.com",
+    "description": "Solo maintainer, based in Greece. I build and maintain Agentmetry, a local-first flight recorder for AI coding agents, alongside other work. The project has received no funding to date.\n\nThe thing I care most about here is that every published number comes from a command somebody else can run. The detection ruleset is frozen behind a published hash during evaluation periods, so a claim of four clean weeks cannot quietly mean four different rulesets. The benchmark corpus carries the project's own known false positives as cases that must stay silent. Tests assert that figures quoted in the README still match what the commands print, because they had drifted once already.",
+    "webpageUrl": {
+      "url": "https://agentmetry.ai",
+      "wellKnown": "https://agentmetry.ai/.well-known/funding-manifest-urls"
+    }
+  },
+  "projects": [
+    {
+      "guid": "agentmetry",
+      "name": "Agentmetry",
+      "description": "AI coding agents run shell commands, edit files and call third-party tools hundreds of times an hour, largely unattended. What they actually did is recorded nowhere by default. The agent transcript is a conversation rather than a record of effects, the editor keeps no durable log, and endpoint security sees only that one process spawned another, which is what a coding agent looks like when it is working correctly.\n\nAgentmetry records what an agent did at the tool boundary, correlates sequences into detections, and writes a hash-chained JSONL trail the operator owns, forwarding into whatever SIEM they already run. It is local-first: there is no vendor cloud, and no telemetry reaches the maintainer. Tool arguments are hashed inside the hook process, so plaintext never crosses the wire.\n\nVerifiable as of 2026-09-04: version 0.7.0 on PyPI, Apache-2.0, a detection benchmark that runs at zero misses and zero false positives, MITRE ATT&CK and ATLAS mappings, and four SIEM adapters. Case and test counts are deliberately not quoted here, because they move every time somebody contributes. The README prints the current ones and a test checks that it still prints them correctly.\n\nFunding would go to making the format underneath it common rather than ours: a standalone agent session record specification, mappings into Elastic Common Schema, OCSF, Splunk CIM and Google SecOps UDM, and a conformance suite so a third party can verify their own mapping without reading our Python. The success condition is other vendors adopting the fields, including ones who compete with us.",
+      "webpageUrl": {
+        "url": "https://agentmetry.ai",
+        "wellKnown": "https://agentmetry.ai/.well-known/funding-manifest-urls"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/blitzcrieg1/agentmetry",
+        "wellKnown": "https://raw.githubusercontent.com/blitzcrieg1/agentmetry/master/.well-known/funding-manifest-urls"
+      },
+      "licenses": [
+        "spdx:Apache-2.0"
+      ],
+      "tags": [
+        "security",
+        "privacy",
+        "cryptography",
+        "developer-tools",
+        "devops",
+        "artificial-intelligence",
+        "software-engineering",
+        "data",
+        "analytics"
+      ]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "github-sponsors",
+        "type": "payment-provider",
+        "address": "https://github.com/sponsors/blitzcrieg1",
+        "description": "GitHub Sponsors, the only channel currently open."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "supporter",
+        "status": "active",
+        "name": "Supporter",
+        "description": "Any amount, recurring. Goes to maintenance: triaging false positive reports, dependency review and releases.",
+        "amount": 0,
+        "currency": "EUR",
+        "frequency": "monthly",
+        "channels": [
+          "github-sponsors"
+        ]
+      },
+      {
+        "guid": "mcp-remote-transports",
+        "status": "active",
+        "name": "MCP over HTTP and SSE",
+        "description": "80 hours at 50 EUR per hour. The recorder proxies local stdio MCP servers today, so remote tool servers are outside what it can see. This closes that.",
+        "amount": 4000,
+        "currency": "EUR",
+        "frequency": "one-time",
+        "channels": [
+          "github-sponsors"
+        ]
+      },
+      {
+        "guid": "sensor-runtime",
+        "status": "active",
+        "name": "Sensor-grade runtime",
+        "description": "120 hours at 50 EUR per hour. Watchdog, hook tamper detection, a resource budget and delivery guarantees on the spool. A recorder that can be silently stopped produces a record nobody should rely on.",
+        "amount": 6000,
+        "currency": "EUR",
+        "frequency": "one-time",
+        "channels": [
+          "github-sponsors"
+        ]
+      },
+      {
+        "guid": "conformance-suite",
+        "status": "active",
+        "name": "Conformance suite and validator",
+        "description": "110 hours at 50 EUR per hour. A language-independent validator and test suite for the event format, so a third party can check their mapping is correct without reading our Python. A specification without a test suite is a document. With one, it is something a competitor can adopt on a Friday and verify by Monday.",
+        "amount": 5500,
+        "currency": "EUR",
+        "frequency": "one-time",
+        "channels": [
+          "github-sponsors"
+        ]
+      },
+      {
+        "guid": "open-format-programme",
+        "status": "active",
+        "name": "The full open format programme",
+        "description": "940 hours at 50 EUR per hour over twelve months, which is roughly eighteen hours a week sustained. The three plans above, plus the session record specification, the four SIEM mappings with an upstream class proposal to OCSF, call-time behaviour drift detection, fingerprint hardening, and growing the benchmark corpus beyond one machine. Full task breakdown with hours available on request.",
+        "amount": 50000,
+        "currency": "EUR",
+        "frequency": "one-time",
+        "channels": [
+          "github-sponsors"
+        ]
+      }
+    ],
+    "history": [
+      {
+        "year": 2026,
+        "income": 0,
+        "expenses": 0,
+        "taxes": 0,
+        "currency": "EUR",
+        "description": "No funding received and no revenue. Everything released so far was built unfunded alongside other work."
+      }
+    ]
+  }
+}

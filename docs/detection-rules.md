@@ -127,6 +127,47 @@ here should be read as claiming otherwise.** Prevention requires isolating
 trusted from untrusted data inside the agent, which is the paper's own
 conclusion and is not something a recorder can do. We detect the consequence.
 
+## OWASP Agentic Skills Top 10 coverage
+
+[AST10](https://owasp.org/www-project-agentic-skills-top-10/) v1.0 documents ten
+security risks in agentic AI skills. It is published CC-BY-SA-4.0, and its
+central claim is one this project arrived at separately: a skill is dangerous
+when it simultaneously has **access to private data**, **exposure to untrusted
+content**, and **the ability to communicate externally**. That conjunction is
+why the detection unit here is an ordered session rather than a single call.
+
+The table below says what Agentmetry covers, and it is mostly a list of things
+it does not. Half of agent skill risk is registry scanning, permission
+modelling and sandboxing, and none of those are a recorder's job.
+
+| Risk | Coverage | Where |
+|---|---|---|
+| **AST05** Untrusted External Instructions | **Covered** | `untrusted-input-then-risky-action` is this risk as a rule. MCP schema fingerprinting is the same risk one layer down: a server changing the instructions it hands the model between sessions |
+| **AST09** No Governance | **Covered** | Inventory is the coverage heartbeat, four states per agent surface. Approval workflow is `approval_request` and `approval_response`, with inferred approvals labelled as inferred. Audit logging is the hash-chained trail itself |
+| **AST01** Malicious Skills | Partial | Detected by behaviour at runtime, never by inspecting a registry. A poisoned skill is caught when it reads a credential and then reaches the network, not when it is installed |
+| **AST02** Supply Chain Compromise | Partial | `remote-staging-then-execute` and `encoded-command-download` catch the execution half. The install half, an agent following a documentation file to a package nobody owns, is recorded but not detected |
+| **AST10** Cross-Platform Reuse | Partial | Normalising six agent surfaces into one canonical event is the direct counter to security metadata being lost when work moves between ecosystems. Not a detection, an architectural answer |
+| **AST03** Over-Privileged Skills | **None** | Nothing here evaluates whether a skill asked for more permission than it needs |
+| **AST04** Insecure Metadata | **None** | This risk is manifest deserialization. `mcp_config_digest` notices a config file changing, which is a different question from parsing one unsafely |
+| **AST06** Weak Isolation | **None**, by decision | Agentmetry is not a sandbox. Isolation is in the "not building" list in `ROADMAP.md` and stays there |
+| **AST07** Update Drift | **None** | This risk is patch lag on known vulnerabilities. Detecting that a server changed what it advertises is a different thing, and mapping the rug pull here would be a stretch that flatters us |
+| **AST08** Poor Scanning | **None** | Registry and install-time scanning happens before anything this project can see |
+
+**Two covered, three partial, five not covered.** The five are the reason to
+believe the two. A tool that claimed coverage of all ten would be claiming to be
+a sandbox, a registry scanner and a permission model at once.
+
+### Why this mapping exists
+
+ATT&CK describes what an agent does to a host. ATLAS describes what is done to
+or through a model. Neither has a vocabulary for a *skill* as a distributed,
+installable unit, which is the shape the ClawHub incident took when five of the
+seven most-downloaded skills on that registry were confirmed malware.
+
+AST10 names that layer. It is a third taxonomy rather than a replacement, and it
+is mapped here rather than stamped on events: no detection rule keys on an AST
+id, for the same reason none keys on an ATLAS id.
+
 ## Experimental: not in the published set
 
 `autonomous-unapproved-write` keys on `initiator.actor_type == "autonomous"`.
