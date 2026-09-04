@@ -426,6 +426,138 @@ def test_detections_says_so_when_the_orchestrator_is_down(monkeypatch, capsys):
     assert "Not running" in capsys.readouterr().out
 
 
+def test_disposition_posts_the_closing_decision(monkeypatch, capsys):
+    from agentmetry import cli
+
+    calls = {}
+
+    class Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"disposition": {"status": "resolved"}}
+
+    def post(url, **kwargs):
+        calls["url"] = url
+        calls.update(kwargs)
+        return Resp()
+
+    monkeypatch.delenv("AGENTMETRY_URL", raising=False)
+    monkeypatch.delenv("AGENTMETRY_API_KEY", raising=False)
+    monkeypatch.setattr(cli.httpx, "post", post)
+
+    assert main([
+        "disposition",
+        "sess-1",
+        "credential-exfil",
+        "--status",
+        "resolved",
+    ]) == 0
+
+    assert calls["url"] == "http://127.0.0.1:8000/api/v1/audit/detections/disposition"
+    assert calls["json"] == {
+        "correlation_id": "sess-1",
+        "rule_id": "credential-exfil",
+        "status": "resolved",
+        "note": "",
+        "decided_by": "",
+    }
+    assert calls["headers"] == {}
+    assert "sess-1 credential-exfil -> resolved" in capsys.readouterr().out
+
+
+def test_disposition_uses_configured_url_and_api_key(monkeypatch):
+    from agentmetry import cli
+
+    calls = {}
+
+    class Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"disposition": {"status": "risk_accepted"}}
+
+    monkeypatch.setenv("AGENTMETRY_URL", "http://agentmetry.test/")
+    monkeypatch.setenv("AGENTMETRY_API_KEY", "secret-token")
+    monkeypatch.setattr(
+        cli.httpx,
+        "post",
+        lambda url, **kwargs: calls.update({"url": url, **kwargs}) or Resp(),
+    )
+
+    assert main([
+        "disposition",
+        "sess-1",
+        "session-tool-burst",
+        "--status",
+        "risk_accepted",
+        "--note",
+        "known load test",
+        "--decided-by",
+        "home-lab",
+    ]) == 0
+
+    assert calls["url"] == "http://agentmetry.test/api/v1/audit/detections/disposition"
+    assert calls["headers"] == {"X-API-Key": "secret-token"}
+    assert calls["json"]["note"] == "known load test"
+    assert calls["json"]["decided_by"] == "home-lab"
+
+
+def test_disposition_requires_a_note_for_non_resolved_closures(monkeypatch, capsys):
+    from agentmetry import cli
+
+    def post(*_a, **_kw):
+        raise AssertionError("should validate before POST")
+
+    monkeypatch.setattr(cli.httpx, "post", post)
+
+    assert main([
+        "disposition",
+        "sess-1",
+        "credential-exfil",
+        "--status",
+        "false_positive",
+    ]) == 1
+    assert "--note is required" in capsys.readouterr().out
+
+
+def test_disposition_says_so_when_the_orchestrator_is_down(monkeypatch, capsys):
+    from agentmetry import cli
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(cli.httpx, "post", boom)
+
+    assert main([
+        "disposition",
+        "sess-1",
+        "credential-exfil",
+        "--status",
+        "resolved",
+    ]) == 1
+    assert "Not running" in capsys.readouterr().out
+
+
+def test_disposition_prints_server_errors(monkeypatch, capsys):
+    from agentmetry import cli
+
+    class Resp:
+        status_code = 400
+        text = "bad request"
+
+        @staticmethod
+        def json():
+            return {"detail": "unknown rule_id 'typo'"}
+
+    monkeypatch.setattr(cli.httpx, "post", lambda *_a, **_kw: Resp())
+
+    assert main(["disposition", "sess-1", "typo", "--status", "resolved"]) == 1
+    assert "unknown rule_id" in capsys.readouterr().out
+
+
 # --------------------------------------------------------------------------
 # small surfaces that still have an exit-code contract
 # --------------------------------------------------------------------------

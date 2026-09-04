@@ -34,11 +34,21 @@ _BACKUP_EXCLUDE_DIRS = {"logs"}
 logger = logging.getLogger(__name__)
 
 _BACKUP_EXCLUDE_SUFFIXES = {".pid"}
+_CLOSING_DISPOSITIONS = ("resolved", "false_positive", "risk_accepted")
 
 
 def _base_url(port: int, host: str = "127.0.0.1") -> str:
     display = host if host != "0.0.0.0" else "127.0.0.1"  # noqa: S104
     return f"http://{display}:{port}"
+
+
+def _api_base_url(port: int) -> str:
+    return os.environ.get("AGENTMETRY_URL", "").strip().rstrip("/") or _base_url(port)
+
+
+def _api_headers() -> dict[str, str]:
+    key = os.environ.get("AGENTMETRY_API_KEY", "").strip()
+    return {"X-API-Key": key} if key else {}
 
 
 def _lan_ip() -> str | None:
@@ -271,6 +281,44 @@ def cmd_detections(args: argparse.Namespace) -> int:
             f"{str(detection.get('severity', '')):<{severity_width}}  "
             f"{detection.get('summary', '')}"
         )
+    return 0
+
+
+def cmd_disposition(args: argparse.Namespace) -> int:
+    """Close a detection from the shell, using the same API as the dashboard."""
+    note = args.note.strip()
+    if args.status in {"false_positive", "risk_accepted"} and not note:
+        print(f"--note is required for {args.status}")
+        return 1
+
+    try:
+        resp = httpx.post(
+            f"{_api_base_url(args.port)}/api/v1/audit/detections/disposition",
+            json={
+                "correlation_id": args.correlation_id,
+                "rule_id": args.rule_id,
+                "status": args.status,
+                "note": note,
+                "decided_by": args.decided_by,
+            },
+            headers=_api_headers(),
+            timeout=10.0,
+        )
+    except Exception:
+        print("Not running - start Agentmetry first (disposition writes via the API).")
+        return 1
+
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail")
+        except Exception:
+            detail = None
+        print(f"FAILED — {detail or resp.text or f'HTTP {resp.status_code}'}")
+        return 1
+
+    current = resp.json().get("disposition", {})
+    status = current.get("status", args.status)
+    print(f"Disposition set: {args.correlation_id} {args.rule_id} -> {status}")
     return 0
 
 
@@ -1167,6 +1215,12 @@ def main(argv: list[str] | None = None) -> int:
     stats.add_argument("--days", type=int, default=7)
     detections = sub.add_parser("detections", help="list detections for one session")
     detections.add_argument("correlation_id", help="correlation_id / session id")
+    disposition = sub.add_parser("disposition", help="close an audit detection from the shell")
+    disposition.add_argument("correlation_id", help="session/correlation id that owns the detection")
+    disposition.add_argument("rule_id", help="detection rule id to close")
+    disposition.add_argument("--status", required=True, choices=_CLOSING_DISPOSITIONS)
+    disposition.add_argument("--note", default="")
+    disposition.add_argument("--decided-by", default="")
     logs = sub.add_parser("logs", help="tail the orchestrator log")
     logs.add_argument("-n", "--lines", type=int, default=50)
     logs.add_argument("-f", "--follow", action="store_true")
@@ -1309,6 +1363,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": cmd_status,
         "stats": cmd_stats,
         "detections": cmd_detections,
+        "disposition": cmd_disposition,
         "logs": cmd_logs,
         "backup": cmd_backup,
         "restore": cmd_restore,
