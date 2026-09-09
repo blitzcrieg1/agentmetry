@@ -40,9 +40,15 @@ The clock **restarted on 2026-08-30**, after 0.7.0, and the freeze runs again fr
 there. The previous run reached 3 of 4 green weeks and was ended deliberately:
 four known false positives (#44, #49, #50, #51) were shipping as criticals to
 the first external tester, and a clean gate measured against a ruleset that
-fires critical on `.env.example` is not worth the weeks it took. Earliest close
-is **2026-09-26**, the end of week four. Check it any time, and trust
-this command over this file:
+fires critical on `.env.example` is not worth the weeks it took.
+
+**Week 1 (2026-08-30 to 2026-09-05) closed RED**, on six untriaged critical and
+high detections. The recorder was fine: seven active days, 4,449 events. Only
+the triage failed. So the count is back to 0 of 4 and no end date is fixed.
+
+Do not write an earliest-close date in this file again. It was wrong within a
+week both times. The date is whatever the command prints plus seven days per
+green week still needed, and a red week moves it. Run it rather than quote it:
 
 ```bash
 apps/orchestrator/.venv/Scripts/python.exe -m agentmetry.cli dogfood
@@ -99,9 +105,9 @@ Windows the interpreter is `.venv/Scripts/python.exe`.
 
 ```bash
 cd apps/orchestrator
-.venv/Scripts/python.exe -m pytest -q              # 1120 tests
+.venv/Scripts/python.exe -m pytest -q              # the count moves, read it
 .venv/Scripts/python.exe -m ruff check agentmetry tests
-.venv/Scripts/python.exe -m agentmetry.cli benchmark   # 50 cases, must be 0/0
+.venv/Scripts/python.exe -m agentmetry.cli benchmark   # must be 0 missed, 0 FP
 .venv/Scripts/python.exe -m agentmetry.cli dogfood     # the beta gate
 .venv/Scripts/python.exe -m agentmetry.cli doctor      # install health
 .venv/Scripts/python.exe -m agentmetry.cli stats --days 7
@@ -142,7 +148,7 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-08-22 there are 1120 tests, 81% coverage, zero code
+Not code. As of 2026-09-09 there are 1240 tests, zero open Dependabot and code
 scanning alerts, and a released package on PyPI. There are also **zero external
 users, zero design-partner tenants, and zero sent sales messages** against ten
 researched accounts with drafted openers.
