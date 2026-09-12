@@ -9,6 +9,147 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-12
+
+Contributor release. Three people outside the project sent code, and the most
+valuable thing they sent was the discovery that Agentmetry did not install on a
+clean Windows machine at all. That had been true, undetected, through four
+releases, because the test suite runs in an environment that is already correct.
+
+Also the first detection that fires on a server nobody has ever seen before.
+Everything else in the MCP module compares against a baseline, which is silent
+about a server that arrived hostile.
+
+### Added
+
+- **Concealed Unicode in MCP tool listings is detected on first sighting**
+  ([#152], [#154]). A tool description can carry characters that render as
+  nothing: the Unicode TAG block, zero-width joiners, bidi overrides. The human
+  approving the tool reads one string and the model receives another, which
+  research calls an approval-view fidelity gap.
+
+  This is the exception that justifies its own check. Every other signal in
+  `mcp_schema` answers "did this server change what it advertises", which needs
+  a previous listing to compare against and is therefore blind on the first one.
+  There is no legitimate reason for a tool description to contain a TAG block,
+  so this needs no baseline and no history.
+
+  Counts per category, never the text. A finding that carried the payload would
+  be a poisoned instruction copied into the trail and then forwarded to a SIEM.
+  The private use area is deliberately excluded: icon fonts use it legitimately
+  and a category that cries wolf costs more than the one case it might catch.
+  The scan walks every string in a tool definition rather than a named list of
+  fields, because a property description nested in `inputSchema` is exactly what
+  an allowlist misses.
+
+- **`agentmetry detections <correlation_id>`** ([#100], [#139], thanks
+  [@hossainzarif23]). Lists the detections for one session, so triage does not
+  require the dashboard. It reports a disabled audit export as a distinct state
+  with a non-zero exit rather than as an empty list, because "no findings" and
+  "nothing was ever recorded" are different answers and only one of them is
+  good news.
+
+- **`agentmetry disposition <correlation_id> <rule_id>`** ([#140], thanks
+  [@kkkhs]). Closes a detection as `resolved`, `false_positive` or
+  `risk_accepted`, with a note and a decider. Dispositions are an index over
+  `detection_disposition` events in the trail, which remain the record.
+
+- **`scripts/agentmetry_identity_enrich.py`** ([#167]). Classifies a JSONL
+  stream by email domain and licence context, for operators who need to tell a
+  personal account from a corporate one. It never touches `event` or `trail`,
+  because the trail is hash chained and a field added inside `event` invalidates
+  that record and every record after it.
+
+- **An OWASP Agentic Skills Top 10 coverage mapping** ([#149]), stating which of
+  AST01 to AST10 this project covers, which it partially covers, and which it
+  does not cover at all.
+
+- **`funding.json`** ([#157], [#158], [#162]), a v1.1.0 funding manifest.
+
+### Fixed
+
+- **Agentmetry did not install on a clean Windows machine** ([#133], [#137],
+  [#138], [#141], all three found by [@hossainzarif23]). Three separate bugs,
+  each of which alone would have stopped a new user:
+
+  The documented PowerShell command could not parse `install.ps1`, because the
+  file had no UTF-8 BOM and contained an em-dash, which PowerShell 5.1 reads as
+  a syntax error. Every `.ps1` in `scripts/` now carries a BOM and none contains
+  an em-dash.
+
+  The hook installers invoked the global `python` rather than the project venv,
+  so hook installation failed on any machine where the two differed. They now
+  prefer `apps\orchestrator\.venv\Scripts\python.exe`.
+
+  `install.ps1` ignored the exit code of every hook installer and printed
+  "Install complete" regardless. It now checks `$LASTEXITCODE` after each one.
+  This is the worst of the three: a reported success after a silent failure
+  leaves an operator believing they have a recorder when they have nothing.
+
+  An unconstrained `mcp>=1.2` also resolved to 2.x on a fresh install, which
+  removed the import path the bundled `vault_fs` server uses. Pinned to `<2`
+  until that server is ported.
+
+- **`_meta` was stripped before hashing, so text moved there bypassed the
+  rug-pull digest entirely** ([#142], [#144]). A poisoned tool listing hashed
+  identically to a clean one, both `4b40e8ff9183c727`. `_meta` is model-visible
+  and was exempt from the very check meant to notice it moving. The volatile-key
+  exemption is now empty, and `FINGERPRINT_VERSION` migrates stored baselines so
+  a version bump is not read as a server change.
+
+- **A re-baseline was indistinguishable from a first sighting** ([#146],
+  [#147]). The migration above quietly re-baselined every stored server, which
+  would hide a server that was already poisoned when the baseline was taken.
+  A version mismatch now reports `rebaselined`, not `new`.
+
+  The test shipped with [#144] asserted the wrong outcome, pinning the bug in
+  place. That is worth recording: a test can hold a defect still as easily as it
+  can catch one.
+
+- **`agentmetry stats` told operators to set `AGENTMETRY_AUDIT_EXPORT`**
+  ([#160]), which does not exist. The only alias is
+  `AGENTMETRY_AUDIT_EXPORT_ENABLED`. An operator who hit a disabled export
+  followed the instruction, set something inert, saw the trail stay empty, and
+  had nothing to tell them why. Found only because [#139] added the same message
+  to a second command and named the variable correctly.
+
+  `test_cli_env_var_names.py` now walks every string the CLI prints and asserts
+  each `AGENTMETRY_` name it mentions is one the settings actually declare.
+
+- **`CONTRIBUTORS.md` published numbers its own printed command did not produce**
+  ([#159]). It advertised 382 of 511 commits beside a `git log` invocation that
+  prints neither, because the figures were counted across every ref rather than
+  `master` and included a local backup branch nobody else has. A reviewer
+  running the published command on their own clone got a different answer with
+  nothing to explain the gap. Corrected, with the correction written into the
+  file rather than quietly applied.
+
+- **The README overstated its own rule count** ([#150]) and the site repeated
+  it, both saying fifteen built-in rules where fourteen ship.
+
+### Changed
+
+- The detection freeze dates in `CLAUDE.md` were wrong in both directions within
+  a week ([#132], [#173], [#179]). That file no longer states an earliest close
+  date at all; it states the command that prints one. A week scored red on
+  untriaged detections turns out to be rescuable at any time, because the
+  verdict is recomputed from the disposition store on every run rather than
+  frozen when the week ends, and two documents here asserted the opposite.
+
+- Dashboard moved to Next 16 and vitest 5.
+
+### Known limitations, unchanged
+
+- The MCP proxy is still stdio only. Remote Streamable-HTTP and SSE servers are
+  not seen ([#148]).
+- A server added to a config file but not wrapped with the proxy is invisible
+  ([#169]).
+- Every event still records `operator_id` as `local` unless one is configured
+  ([#168]), so the trail cannot say who ran the agent.
+- An unattended auto-mode session is indistinguishable from a supervised one
+  ([#170]).
+
+
 ## [0.7.0] - 2026-08-27
 
 Honesty release. Two published claims were false on the live path and four
@@ -1071,7 +1212,43 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/blitzcrieg1/agentmetry/releases/tag/v0.2.0
+
+[#100]: https://github.com/blitzcrieg1/agentmetry/issues/100
+[#132]: https://github.com/blitzcrieg1/agentmetry/issues/132
+[#133]: https://github.com/blitzcrieg1/agentmetry/issues/133
+[#137]: https://github.com/blitzcrieg1/agentmetry/issues/137
+[#138]: https://github.com/blitzcrieg1/agentmetry/issues/138
+[#139]: https://github.com/blitzcrieg1/agentmetry/issues/139
+[#140]: https://github.com/blitzcrieg1/agentmetry/issues/140
+[#141]: https://github.com/blitzcrieg1/agentmetry/issues/141
+[#142]: https://github.com/blitzcrieg1/agentmetry/issues/142
+[#144]: https://github.com/blitzcrieg1/agentmetry/issues/144
+[#146]: https://github.com/blitzcrieg1/agentmetry/issues/146
+[#147]: https://github.com/blitzcrieg1/agentmetry/issues/147
+[#148]: https://github.com/blitzcrieg1/agentmetry/issues/148
+[#149]: https://github.com/blitzcrieg1/agentmetry/issues/149
+[#150]: https://github.com/blitzcrieg1/agentmetry/issues/150
+[#152]: https://github.com/blitzcrieg1/agentmetry/issues/152
+[#154]: https://github.com/blitzcrieg1/agentmetry/issues/154
+[#157]: https://github.com/blitzcrieg1/agentmetry/issues/157
+[#158]: https://github.com/blitzcrieg1/agentmetry/issues/158
+[#159]: https://github.com/blitzcrieg1/agentmetry/issues/159
+[#160]: https://github.com/blitzcrieg1/agentmetry/issues/160
+[#162]: https://github.com/blitzcrieg1/agentmetry/issues/162
+[#167]: https://github.com/blitzcrieg1/agentmetry/issues/167
+[#168]: https://github.com/blitzcrieg1/agentmetry/issues/168
+[#169]: https://github.com/blitzcrieg1/agentmetry/issues/169
+[#170]: https://github.com/blitzcrieg1/agentmetry/issues/170
+[#173]: https://github.com/blitzcrieg1/agentmetry/issues/173
+[#179]: https://github.com/blitzcrieg1/agentmetry/issues/179
+[@hossainzarif23]: https://github.com/hossainzarif23
+[@kkkhs]: https://github.com/kkkhs
