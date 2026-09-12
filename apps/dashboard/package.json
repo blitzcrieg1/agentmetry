@@ -45,9 +45,9 @@
     "fast-uri": "^3.1.7"
   },
   "overridesNote": {
-    "reason": "sharp is an optional transitive of next. Its only caller is the image optimizer, which next.config.js disables (images.unoptimized) and which cannot run in a static export anyway, so the libvips advisory is unreachable here. The override closes the alert without taking Next 16, which is what Dependabot's sharp PR actually proposed.",
-    "remove_when": "a 15.x depends on sharp >=0.35 itself, or the Next 16 migration is done on purpose",
+    "reason": "sharp is an optional transitive of next. Its only caller is the image optimizer, which next.config.js disables (images.unoptimized) and which cannot run in a static export anyway, so the libvips advisory is unreachable here. The override originally closed that alert without taking Next 16, which is what Dependabot's sharp PR actually proposed at the time. Next 16 has since been taken and now declares sharp ^0.35.4 as its own optional dependency, so this entry is redundant and resolves to the same 0.35.4 with or without it. It is safe to delete in a change that regenerates the lockfile.",
+    "remove_when": "Met on 2026-09-12: next 16.3.4 depends on sharp ^0.35.4 itself. The entry is kept only until a change that regenerates package-lock.json can drop it.",
     "transitive_advisories": "@hono/node-server, brace-expansion and fast-uri are pinned forward here because each is a transitive dependency whose parent has not cut a release. Dependabot opened one PR per package and each invalidated the others' lockfile on merge, so they are done once, together. Remove an entry when its parent ships a version that satisfies the advisory on its own.",
-    "postcss_not_overridden": "next 15.5.21 pins postcss to exactly 8.4.31 and bundles it. Forcing a different version past a framework's exact pin is how a build breaks subtly, so that advisory stays open until the Next 16 migration. It is build-time tooling in a static export."
+    "postcss_not_overridden": "Resolved. This used to say next 15.5.21 pinned postcss to exactly 8.4.31 and bundled it, so the advisory stayed open rather than force a version past a framework's exact pin. The Next 16 migration named in remove_when has since happened: next is 16.3.4 and postcss resolves to 8.5.28 on its own. No override was ever needed and none is used. Kept as a record because the original note outlived the fact it described and would have told the next reader to leave open something already closed."
   }
 }
