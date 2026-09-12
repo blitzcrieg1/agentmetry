@@ -47,8 +47,9 @@ stuck in the hook spool.
 
 - **Untriaged critical or high detections.** This is the usual cause of a red
   week and it is fixable by the operator in minutes. Say which detections.
-- **Fewer than three active days.** Not fixable retroactively. Say so rather
-  than implying it can be rescued.
+- **Fewer than three active days.** This is the one that genuinely cannot be
+  fixed retroactively, because no disposition creates a day the recorder did not
+  run. Untriaged detections are the opposite: always fixable, at any time.
 - **A moved ruleset fingerprint.** This restarts the clock. Check it against
   the value in `CLAUDE.md`, which is the one place that number is written down,
   and say so loudly if it has moved. This file used to carry its own copy. It
@@ -65,9 +66,15 @@ Check the live spool file, not the expired one, before reporting a spool problem
   freeze has no fixed end date. It runs until four consecutive green weeks have
   closed, so a red week extends it. Editing any of those files restarts the
   clock this skill exists to measure. See `CLAUDE.md`.
-- **A closed red week cannot be rescued.** Dispositioning its detections
-  afterwards is worth doing for the record and changes nothing about the count.
-  Say that plainly rather than implying a late triage helps.
+- **A red week from untriaged detections CAN be rescued, at any time.** Every
+  verdict is recomputed on every run: `build_report` reads the disposition store
+  live (`core/audit/dogfood.py:289`), so nothing is frozen when a week ends.
+  Week 1 of the 2026-08-30 clock scored RED for four days and flipped to GREEN
+  the moment its six detections were dispositioned on 2026-09-09.
+
+  This file previously said the opposite, in bold, and was wrong. The claim came
+  from reading the RED verdict and assuming it was final instead of reading the
+  code. If an operator is looking at a red week, tell them to triage it.
 - Do not disposition detections on the operator's behalf. Triage is a judgement
   about their own machine. Report what needs triage and let them decide.
 - Only update `docs/commercial/outreach-log.md` if the user asks for the week to

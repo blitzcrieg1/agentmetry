@@ -42,9 +42,17 @@ four known false positives (#44, #49, #50, #51) were shipping as criticals to
 the first external tester, and a clean gate measured against a ruleset that
 fires critical on `.env.example` is not worth the weeks it took.
 
-**Week 1 (2026-08-30 to 2026-09-05) closed RED**, on six untriaged critical and
-high detections. The recorder was fine: seven active days, 4,449 events. Only
-the triage failed. So the count is back to 0 of 4 and no end date is fixed.
+**Week 1 (2026-08-30 to 2026-09-05) scored RED for four days**, on six
+untriaged critical and high detections, then flipped to GREEN on 2026-09-09 when
+they were triaged. The recorder was never the problem: seven active days, 4,449
+events. Only the triage was.
+
+That flip is worth knowing about. **A week scored red on untriaged detections
+can be rescued at any time**, because `build_report` reads the disposition store
+on every run (`core/audit/dogfood.py:289`) rather than freezing a verdict when
+the week ends. Too few active days is the only failure that is genuinely
+permanent. Two documents in this repo asserted the opposite for a day, both
+written from the RED verdict rather than the code.
 
 Do not write an earliest-close date in this file again. It was wrong within a
 week both times. The date is whatever the command prints plus seven days per
