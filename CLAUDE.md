@@ -122,7 +122,7 @@ cd apps/orchestrator
 .venv/Scripts/python.exe -m agentmetry.cli verify --trail data/agentmetry-trail.jsonl
 ```
 
-Dashboard is `apps/dashboard` (Next 15, React 19, npm, `output: "export"`).
+Dashboard is `apps/dashboard` (Next 16, React 19, npm, `output: "export"`).
 The marketing site is a **separate repo** at `../ai-audit-watch` and uses
 **bun**, not npm. Running `npm install` there once produced a broken lockfile;
 do not do it.
