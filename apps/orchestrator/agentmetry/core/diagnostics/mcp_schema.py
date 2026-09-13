@@ -135,14 +135,160 @@ def fingerprint_each_tool(tools: list[Any] | None) -> dict[str, str]:
 #: the phrase is exact: the human approving a tool reads one string and the
 #: model receives another.
 #:
+#: **Every one of these ranges has a legitimate use**, which the first version
+#: of this module denied in a comment that said so in as many words. A reader on
+#: r/mcp took it apart within a day of the release being cut:
+#:
+#:   * TAG characters spell the subdivision flags. Scotland, Wales and England
+#:     are emoji tag sequences, a U+1F3F4 base followed by tag letters and a
+#:     U+E007F terminator.
+#:   * U+200D joins every emoji ZWJ sequence, so a family or a profession emoji
+#:     carries one or more.
+#:   * U+200C is required Persian and Arabic orthography and is used across
+#:     Indic scripts. It is spelling, not decoration, so flagging it penalises
+#:     correctly written non-Latin text.
+#:   * Bidi isolates are the modern, recommended way to mix scripts, so any
+#:     description containing Arabic or Hebrew may legitimately carry them.
+#:
+#: So the check is contextual rather than range-based. A character counts only
+#: when nothing in its surroundings explains it, which keeps the detection
+#: (TAG-encoded ASCII is still caught, because it has no flag base in front of
+#: it) and drops the false positives.
+#:
 #: Private Use Area is deliberately absent. It is genuinely used for icon fonts
 #: and would fire on legitimate descriptions, and a category that cries wolf
 #: costs more than the one case it might catch.
-_CONCEALED_RANGES: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
-    ("tag_block", ((0xE0000, 0xE007F),)),
-    ("zero_width", ((0x200B, 0x200D), (0xFEFF, 0xFEFF), (0x00AD, 0x00AD))),
-    ("bidi_control", ((0x202A, 0x202E), (0x2066, 0x2069))),
+
+#: Tag characters, and the two that bracket a legitimate emoji tag sequence.
+_TAG_RANGE = (0xE0000, 0xE007F)
+_TAG_TERMINATOR = 0xE007F
+_TAG_BASE = 0x1F3F4  # waving black flag, the only base an emoji tag sequence uses
+
+#: Zero-width and format characters, split by whether context can explain them.
+_ZWJ = 0x200D
+_ZWNJ = 0x200C
+#: No legitimate use inside a tool description at any position.
+_ALWAYS_ZERO_WIDTH = frozenset({0x200B, 0xFEFF, 0x00AD})
+
+_BIDI_CONTROLS = frozenset(
+    list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A))
 )
+
+#: Rough pictographic ranges. Only used to decide whether a ZWJ sits between two
+#: emoji, so being generous here costs a missed detection in a case that would
+#: need an attacker to hide a payload inside an emoji sequence, and being narrow
+#: costs a false positive on ordinary text. Generous is the right trade.
+_PICTOGRAPHIC = (
+    (0x00A9, 0x00AE),
+    (0x203C, 0x3299),
+    (0x1F000, 0x1FAFF),
+    (0xFE0F, 0xFE0F),  # variation selector 16, sits inside ZWJ sequences
+    (0x1F3FB, 0x1F3FF),  # skin tone modifiers
+)
+
+#: Scripts that use ZWNJ as orthography rather than decoration.
+_ZWNJ_SCRIPTS = (
+    (0x0600, 0x06FF),  # Arabic
+    (0x0750, 0x077F),
+    (0x08A0, 0x08FF),
+    (0xFB50, 0xFDFF),
+    (0xFE70, 0xFEFF),
+    (0x0900, 0x0DFF),  # Devanagari through Sinhala
+    (0x0700, 0x074F),  # Syriac
+)
+
+#: Right-to-left scripts. A bidi control in text with none of these has nothing
+#: to reorder, which is what makes it unexplained.
+_RTL_SCRIPTS = (
+    (0x0590, 0x05FF),  # Hebrew
+    (0x0600, 0x06FF),  # Arabic
+    (0x0700, 0x074F),  # Syriac
+    (0x0780, 0x07BF),  # Thaana
+    (0x07C0, 0x07FF),  # N'Ko
+    (0x0800, 0x085F),
+    (0xFB1D, 0xFDFF),
+    (0xFE70, 0xFEFF),
+)
+
+
+def _in(point: int, ranges: tuple[tuple[int, int], ...]) -> bool:
+    return any(low <= point <= high for low, high in ranges)
+
+
+def _explained_tag_indices(points: list[int]) -> set[int]:
+    """Indices belonging to a well-formed emoji tag sequence.
+
+    The grammar is narrow: a U+1F3F4 base, one or more tag characters, then a
+    U+E007F terminator. Tag characters anywhere else have no other use, so this
+    keeps the detection while letting the subdivision flags through.
+    """
+    explained: set[int] = set()
+    i = 0
+    while i < len(points):
+        if points[i] != _TAG_BASE:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(points) and _TAG_RANGE[0] <= points[j] < _TAG_TERMINATOR:
+            j += 1
+        if j > i + 1 and j < len(points) and points[j] == _TAG_TERMINATOR:
+            explained.update(range(i, j + 1))
+            i = j + 1
+        else:
+            i += 1
+    return explained
+
+
+def _neighbour(points: list[int], index: int, step: int) -> int | None:
+    """The nearest code point either side, skipping variation selectors."""
+    i = index + step
+    while 0 <= i < len(points):
+        if points[i] != 0xFE0F:
+            return points[i]
+        i += step
+    return None
+
+
+def _scan_text(text: str, found: dict[str, int]) -> None:
+    points = [ord(c) for c in text]
+    tag_ok = _explained_tag_indices(points)
+    has_rtl = any(_in(p, _RTL_SCRIPTS) for p in points)
+
+    for i, point in enumerate(points):
+        if _TAG_RANGE[0] <= point <= _TAG_RANGE[1]:
+            if i not in tag_ok:
+                found["tag_block"] = found.get("tag_block", 0) + 1
+            continue
+
+        if point in _ALWAYS_ZERO_WIDTH:
+            found["zero_width"] = found.get("zero_width", 0) + 1
+            continue
+
+        if point == _ZWJ:
+            before = _neighbour(points, i, -1)
+            after = _neighbour(points, i, 1)
+            joins_emoji = (
+                before is not None
+                and after is not None
+                and _in(before, _PICTOGRAPHIC)
+                and _in(after, _PICTOGRAPHIC)
+            )
+            if not joins_emoji:
+                found["zero_width"] = found.get("zero_width", 0) + 1
+            continue
+
+        if point == _ZWNJ:
+            before = _neighbour(points, i, -1)
+            after = _neighbour(points, i, 1)
+            orthographic = (before is not None and _in(before, _ZWNJ_SCRIPTS)) or (
+                after is not None and _in(after, _ZWNJ_SCRIPTS)
+            )
+            if not orthographic:
+                found["zero_width"] = found.get("zero_width", 0) + 1
+            continue
+
+        if point in _BIDI_CONTROLS and not has_rtl:
+            found["bidi_control"] = found.get("bidi_control", 0) + 1
 
 
 def _walk_strings(value: Any):
@@ -165,26 +311,27 @@ def _walk_strings(value: Any):
 
 
 def scan_concealed_text(tools: list[Any] | None) -> dict[str, int]:
-    """Counts of concealed characters per category, or an empty dict if clean.
+    """Counts of unexplained concealed characters, or an empty dict if clean.
 
     Counts only. Never the text, never which tool, never the surrounding
     string. A finding that carries the payload has stored the payload, which is
     the rule the whole module is built on.
 
-    This is the one poisoning check that works on a single observation. The
-    fingerprint answers "did this server change what it advertises" and is
-    silent about a server that was hostile from the first listing anybody ever
-    took. Concealed control characters need no baseline, because there is no
-    legitimate reason for a tool description to contain any.
+    This catches one narrow class of poisoning on a single observation, which
+    the fingerprint cannot do because it needs a previous listing to compare
+    against. It does **not** make a clean first listing trustworthy: an
+    instruction written in ordinary visible text needs none of these characters
+    and is invisible to this check.
+
+    "Unexplained" is doing real work in the first line. Every range here has a
+    legitimate use, so context decides: a tag character inside a subdivision
+    flag, a ZWJ between two emoji, a ZWNJ next to Persian or Devanagari, and a
+    bidi control in text that actually contains a right-to-left script are all
+    silent. See the comment above `_TAG_RANGE` for who found that out and how.
     """
     found: dict[str, int] = {}
     for text in _walk_strings(_canonical_entries(tools)):
-        for char in text:
-            point = ord(char)
-            for label, ranges in _CONCEALED_RANGES:
-                if any(low <= point <= high for low, high in ranges):
-                    found[label] = found.get(label, 0) + 1
-                    break
+        _scan_text(text, found)
     return found
 
 
