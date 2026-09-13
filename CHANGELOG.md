@@ -28,11 +28,26 @@ about a server that arrived hostile.
   approving the tool reads one string and the model receives another, which
   research calls an approval-view fidelity gap.
 
-  This is the exception that justifies its own check. Every other signal in
-  `mcp_schema` answers "did this server change what it advertises", which needs
-  a previous listing to compare against and is therefore blind on the first one.
-  There is no legitimate reason for a tool description to contain a TAG block,
-  so this needs no baseline and no history.
+  This catches one narrow class on a single observation, which the fingerprint
+  cannot do because it needs a previous listing to compare against and is
+  therefore blind on the first one. It does not make a clean first listing
+  trustworthy: an instruction written in ordinary visible text needs none of
+  these characters and is invisible to this check.
+
+  The check is contextual, because every one of these ranges has a legitimate
+  use. An earlier draft of this module said in a comment that they did not, and
+  a reader on r/mcp took that apart within a day of the release being cut. The
+  Scotland and Wales flags are emoji tag sequences. Every family and profession
+  emoji carries a zero-width joiner. ZWNJ is required Persian and Arabic
+  orthography rather than decoration, so flagging it penalises correctly written
+  non-Latin text. All three fired on the first implementation.
+
+  So a tag character inside a well-formed flag sequence, a ZWJ between two
+  emoji, a ZWNJ beside a script that uses it, and a bidi control in text that
+  actually contains a right-to-left script are all silent, while TAG-encoded
+  ASCII with no flag base in front of it is still counted, including when it
+  trails a real flag. Those benign shapes are now fixtures that must stay
+  silent, which is the same rule the detection benchmark already follows.
 
   Counts per category, never the text. A finding that carried the payload would
   be a poisoned instruction copied into the trail and then forwarded to a SIEM.

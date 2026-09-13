@@ -165,3 +165,81 @@ def test_it_fires_on_a_first_sighting():
 @pytest.mark.parametrize("tools", [None, [], ["not a dict"], [{}]])
 def test_degenerate_listings_do_not_raise(tools):
     assert scan_concealed_text(tools) == {}
+
+
+# ---------------------------------------------------------------------------
+# Every range this module flags has a legitimate use, which the first version
+# denied outright. u/izgorodin took it apart on r/mcp within a day of the 0.8.0
+# release being cut, naming three cases, and all three fired. These are those
+# cases, plus the ones the fix implies, as fixtures that must stay silent.
+#
+# They matter more than the attack cases. A detector that fires on a family
+# emoji or on correctly spelled Persian is one an operator turns off, and then
+# the attack cases never fire either.
+# ---------------------------------------------------------------------------
+
+SCOTLAND = "\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F"
+WALES = "\U0001F3F4\U000E0067\U000E0062\U000E0077\U000E006C\U000E0073\U000E007F"
+FAMILY = "\U0001F468\u200D\U0001F469\u200D\U0001F467"
+RAINBOW = "\U0001F3F3\uFE0F\u200D\U0001F308"
+PERSIAN = "\u06A9\u062A\u0627\u0628\u200C\u0647\u0627"
+HEBREW_ISOLATED = "\u2066\u05E9\u05DC\u05D5\u05DD\u2069 hello"
+
+
+@pytest.mark.parametrize(
+    ("label", "text"),
+    [
+        ("scotland flag, an emoji tag sequence", SCOTLAND),
+        ("wales flag", WALES),
+        ("family emoji, joined with ZWJ", FAMILY),
+        ("rainbow flag, ZWJ plus variation selector", RAINBOW),
+        ("persian, where ZWNJ is spelling not decoration", PERSIAN),
+        ("hebrew inside bidi isolates", HEBREW_ISOLATED),
+        ("an emoji in an otherwise ordinary description", "Send mail \U0001F4E7 now"),
+    ],
+)
+def test_legitimate_format_characters_stay_silent(label, text):
+    assert scan_concealed_text([dict(CLEAN[0], description=text)]) == {}, label
+
+
+def test_a_flag_does_not_launder_a_payload_behind_it():
+    """The obvious way round the tag fix.
+
+    A well-formed flag sequence explains its own characters and nothing else,
+    so tag characters trailing after the terminator are still counted.
+    """
+    poisoned = [dict(CLEAN[0], description=SCOTLAND + _tag("evil"))]
+    assert scan_concealed_text(poisoned) == {"tag_block": 4}
+
+
+def test_an_unterminated_tag_run_is_not_explained():
+    """A U+1F3F4 base with no U+E007F terminator is not a flag."""
+    text = "\U0001F3F4" + _tag("payload")
+    assert scan_concealed_text([dict(CLEAN[0], description=text)])["tag_block"] == 7
+
+
+def test_zwj_between_letters_is_still_flagged():
+    """ZWJ joins emoji. Between ordinary letters it explains nothing."""
+    assert scan_concealed_text([dict(CLEAN[0], description="Send\u200Dmail")]) == {
+        "zero_width": 1
+    }
+
+
+def test_zwnj_away_from_a_script_that_uses_it_is_still_flagged():
+    assert scan_concealed_text([dict(CLEAN[0], description="Send\u200Cmail")]) == {
+        "zero_width": 1
+    }
+
+
+def test_a_bidi_control_with_nothing_to_reorder_is_still_flagged():
+    """The trojan-source shape: an override in pure Latin text."""
+    assert scan_concealed_text([dict(CLEAN[0], description="Send mail.\u202E evil")]) == {
+        "bidi_control": 1
+    }
+
+
+def test_zero_width_space_has_no_context_that_excuses_it():
+    """Unlike ZWJ and ZWNJ, these have no orthographic or emoji role."""
+    for char in ("\u200b", "\ufeff", "\u00ad"):
+        found = scan_concealed_text([dict(CLEAN[0], description=f"Send{char}mail")])
+        assert found == {"zero_width": 1}, repr(char)
