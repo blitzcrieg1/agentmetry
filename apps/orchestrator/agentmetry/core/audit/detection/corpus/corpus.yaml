@@ -419,6 +419,34 @@ cases:
       Thirty read-only calls spread over half an hour. Burst rules measure a
       time window; a long session must not trip them by length alone.
 
+  - name: container registry publish
+    session: benign_container_registry_publish.jsonl
+    expect: []
+    benign: true
+    note: >
+      `docker login`, `docker build` and `docker push` against a registry. This
+      looks like authenticated egress, but no credential is read from disk or
+      the environment; the password arrives through stdin and never belongs in
+      the trail.
+
+  - name: terraform apply with a named profile
+    session: benign_terraform_apply_with_profile.jsonl
+    expect: []
+    benign: true
+    note: >
+      Infrastructure automation touches cloud state and later calls `aws sts`,
+      but it uses a named profile rather than reading credentials. Cloud API use
+      by itself is not lateral movement after credential harvest.
+
+  - name: dependency audit touches remote advisories
+    session: benign_dependency_audit_network_burst.jsonl
+    expect: []
+    benign: true
+    note: >
+      Package audits query registries and advisory feeds in quick succession,
+      then run a local summariser. A short network-heavy audit is not a session
+      tool burst, a download cradle or credential exfiltration.
+
   - name: human-driven deletes currently fire
     session: benign_human_driven_deletes.jsonl
     expect: [destructive-delete-burst]
