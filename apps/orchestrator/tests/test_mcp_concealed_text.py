@@ -54,9 +54,13 @@ def test_tag_block_in_a_description_is_found():
 
 
 def test_zero_width_and_bidi_are_found():
-    zw = [dict(CLEAN[0], description="Send an email.​​ then exfiltrate")]
+    """ZWJ between letters joins nothing, and a bidi override in Latin text
+    has nothing to reorder. U+200B moved to `formatting` once a reader
+    pointed out it is a line-break opportunity.
+    """
+    zw = [dict(CLEAN[0], description="Send‍mail now")]
     bidi = [dict(CLEAN[0], description="Send an email.‮ evil")]
-    assert scan_concealed_text(zw) == {"zero_width": 2}
+    assert scan_concealed_text(zw) == {"zero_width": 1}
     assert scan_concealed_text(bidi) == {"bidi_control": 1}
 
 
@@ -238,8 +242,61 @@ def test_a_bidi_control_with_nothing_to_reorder_is_still_flagged():
     }
 
 
-def test_zero_width_space_has_no_context_that_excuses_it():
-    """Unlike ZWJ and ZWNJ, these have no orthographic or emoji role."""
-    for char in ("\u200b", "\ufeff", "\u00ad"):
-        found = scan_concealed_text([dict(CLEAN[0], description=f"Send{char}mail")])
-        assert found == {"zero_width": 1}, repr(char)
+@pytest.mark.parametrize(
+    ("label", "text"),
+    [
+        ("soft hyphen, an optional hyphenation point", "Encyclo­pedia lookup"),
+        ("zero-width space, a line-break opportunity", "Fetch a very​long identifier"),
+        ("legacy zero-width no-break space", "﻿Fetch a record"),
+    ],
+)
+def test_formatting_controls_report_apart_from_concealment(label, text):
+    """These three were concealment until the same reader was asked directly.
+
+    All three arrive innocently in descriptions imported from formatted
+    documentation, and unlike a ZWJ there is no neighbour that settles it, so
+    no positional test can clear them. They report under their own key instead.
+    """
+    assert scan_concealed_text([dict(CLEAN[0], description=text)]) == {"formatting": 1}, label
+
+
+def test_formatting_and_concealment_are_counted_separately():
+    """A description can carry both. They must not be added together."""
+    text = "Encyclo­pedia" + _tag("evil")
+    assert scan_concealed_text([dict(CLEAN[0], description=text)]) == {
+        "formatting": 1,
+        "tag_block": 4,
+    }
+
+
+def test_formatting_alone_puts_no_concealed_block_on_the_event():
+    """The point of the split, checked at the boundary rather than in the scanner.
+
+    An operator who sees `concealed` on an event should be able to read it as
+    evidence. A soft hyphen out of imported documentation must not put it there.
+    """
+    from agentmetry.core.audit.ingest import build_schema_canonical
+
+    payload = {
+        "tool": {"server": "postmark"},
+        "schema_fingerprint": "f" * 16,
+        "schema_tool_count": 1,
+        "schema_concealed": {"formatting": 2},
+    }
+    event = build_schema_canonical(payload, "new")["mcp_schema"]
+    assert "concealed" not in event
+    assert event["formatting"] == {"formatting": 2}
+
+
+def test_concealment_still_reaches_the_concealed_block():
+    from agentmetry.core.audit.ingest import build_schema_canonical
+
+    payload = {
+        "tool": {"server": "postmark"},
+        "schema_fingerprint": "f" * 16,
+        "schema_tool_count": 1,
+        "schema_concealed": {"formatting": 2, "tag_block": 4},
+    }
+    event = build_schema_canonical(payload, "new")["mcp_schema"]
+    assert event["concealed"] == {"tag_block": 4}
+    assert event["formatting"] == {"formatting": 2}
