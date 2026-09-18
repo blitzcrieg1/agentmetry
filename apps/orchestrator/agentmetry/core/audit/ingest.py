@@ -240,7 +240,7 @@ def build_schema_canonical(
     from agentmetry.core.audit.canonical import SCHEMA_VERSION
     from agentmetry.core.audit.identity import identity_fields
     from agentmetry.core.audit.atlas import RUG_PULL
-    from agentmetry.core.diagnostics.mcp_schema import server_id
+    from agentmetry.core.diagnostics.mcp_schema import FORMATTING_CATEGORY, server_id
 
     fields = _schema_payload_fields(payload)
     server, fingerprint, tool_count = fields.server, fields.fingerprint, fields.tool_count
@@ -259,6 +259,8 @@ def build_schema_canonical(
         ),
     }
     reason = _REASONS.get(status, "MCP tool schema observed")
+    _formatting = {k: v for k, v in fields.concealed.items() if k == FORMATTING_CATEGORY}
+    _concealment = {k: v for k, v in fields.concealed.items() if k != FORMATTING_CATEGORY}
     mcp_schema: dict[str, Any] = {
         "server_id": server_id(server) if server else "",
         "fingerprint": fingerprint,
@@ -272,7 +274,13 @@ def build_schema_canonical(
         # never the text. Attached on every status including `new`, because
         # unlike everything else here it does not need a baseline: this is the
         # one poisoning visible on a first sighting.
-        **({"concealed": dict(fields.concealed)} if fields.concealed else {}),
+        **({"concealed": _concealment} if _concealment else {}),
+        # Typography, kept apart from the evidence. A soft hyphen or a
+        # zero-width space arrives in descriptions imported from formatted
+        # documentation, and no neighbouring character can clear it the way one
+        # clears a ZWJ. Reporting it beside real concealment would make an
+        # operator who reads one finding distrust the next.
+        **({"formatting": _formatting} if _formatting else {}),
         # Only a schema that MOVED is the technique. `new` is the first
         # sight of a server and `same` is a quiet reconnect; tagging either
         # as a rug pull would put a Defense Evasion label on installing a

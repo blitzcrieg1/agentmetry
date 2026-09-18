@@ -167,8 +167,25 @@ _TAG_BASE = 0x1F3F4  # waving black flag, the only base an emoji tag sequence us
 #: Zero-width and format characters, split by whether context can explain them.
 _ZWJ = 0x200D
 _ZWNJ = 0x200C
-#: No legitimate use inside a tool description at any position.
-_ALWAYS_ZERO_WIDTH = frozenset({0x200B, 0xFEFF, 0x00AD})
+
+#: The category for characters that are typography rather than evidence.
+#:
+#: These three were counted as concealment until the reader who found the flag
+#: and Persian cases was asked directly whether they had innocent uses. They do,
+#: and descriptions imported from formatted documentation carry them:
+#:
+#:   * U+200B gives a line-break opportunity without a visible space.
+#:   * U+00AD is a soft hyphen, an optional hyphenation point.
+#:   * U+FEFF is legacy zero-width no-break space. U+2060 is preferred for new
+#:     text, and a byte order mark belongs to the input stream rather than to
+#:     every description string in it.
+#:
+#: Unlike ZWJ and ZWNJ there is no neighbouring character that settles the
+#: question, so no positional test can clear them. They are reported under their
+#: own key instead, so an operator can inspect them without a formatting quirk
+#: reading as a poisoned tool. Presence alone is not evidence of anything.
+FORMATTING_CATEGORY = "formatting"
+_FORMATTING_CONTROLS = frozenset({0x200B, 0xFEFF, 0x00AD})
 
 _BIDI_CONTROLS = frozenset(
     list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A))
@@ -260,8 +277,8 @@ def _scan_text(text: str, found: dict[str, int]) -> None:
                 found["tag_block"] = found.get("tag_block", 0) + 1
             continue
 
-        if point in _ALWAYS_ZERO_WIDTH:
-            found["zero_width"] = found.get("zero_width", 0) + 1
+        if point in _FORMATTING_CONTROLS:
+            found[FORMATTING_CATEGORY] = found.get(FORMATTING_CATEGORY, 0) + 1
             continue
 
         if point == _ZWJ:
@@ -318,16 +335,27 @@ def scan_concealed_text(tools: list[Any] | None) -> dict[str, int]:
     the rule the whole module is built on.
 
     This catches one narrow class of poisoning on a single observation, which
-    the fingerprint cannot do because it needs a previous listing to compare
-    against. It does **not** make a clean first listing trustworthy: an
-    instruction written in ordinary visible text needs none of these characters
-    and is invisible to this check.
+    the fingerprint cannot do at all. That limit is worth stating precisely,
+    because "blind on the first listing" understates it: the fingerprint answers
+    "did this move", never "should this have been here". A server hostile at its
+    first release that never changed since has a stable digest forever and is
+    never flagged by it, at listing one or listing one hundred.
+
+    This check does **not** make a clean listing trustworthy either, first or
+    otherwise. An instruction written in ordinary visible text needs none of
+    these characters and is invisible here.
 
     "Unexplained" is doing real work in the first line. Every range here has a
     legitimate use, so context decides: a tag character inside a subdivision
     flag, a ZWJ between two emoji, a ZWNJ next to Persian or Devanagari, and a
     bidi control in text that actually contains a right-to-left script are all
     silent. See the comment above `_TAG_RANGE` for who found that out and how.
+
+    The result carries two grades of finding under different keys. `tag_block`,
+    `zero_width` and `bidi_control` are concealment: something is hidden and
+    nothing around it explains why. `formatting` is typography that no
+    positional test can clear, and on its own it is not evidence of poisoning.
+    `build_schema_canonical` keeps them in separate blocks for that reason.
     """
     found: dict[str, int] = {}
     for text in _walk_strings(_canonical_entries(tools)):
