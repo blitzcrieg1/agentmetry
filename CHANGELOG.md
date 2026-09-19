@@ -9,7 +9,7 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-09-12
+## [0.8.0] - 2026-09-19
 
 Contributor release. Three people outside the project sent code, and the most
 valuable thing they sent was the discovery that Agentmetry did not install on a
@@ -29,10 +29,13 @@ about a server that arrived hostile.
   research calls an approval-view fidelity gap.
 
   This catches one narrow class on a single observation, which the fingerprint
-  cannot do because it needs a previous listing to compare against and is
-  therefore blind on the first one. It does not make a clean first listing
-  trustworthy: an instruction written in ordinary visible text needs none of
-  these characters and is invisible to this check.
+  cannot do at all. That limit is worth stating precisely, because "blind on the
+  first listing" understates it: the fingerprint answers "did this move", never
+  "should this have been here". A server hostile at its first release that never
+  changed has a stable digest forever and is never flagged by it. It does not
+  make a clean listing trustworthy either, first or otherwise: an instruction
+  written in ordinary visible text needs none of these characters and is
+  invisible to this check.
 
   The check is contextual, because every one of these ranges has a legitimate
   use. An earlier draft of this module said in a comment that they did not, and
@@ -48,6 +51,14 @@ about a server that arrived hostile.
   ASCII with no flag base in front of it is still counted, including when it
   trails a real flag. Those benign shapes are now fixtures that must stay
   silent, which is the same rule the detection benchmark already follows.
+
+  Two grades, under separate keys ([#186]). `U+200B`, `U+00AD` and `U+FEFF`
+  were counted as concealment until the same reader was asked whether they had
+  innocent uses too. They do: a line-break opportunity, a soft hyphen and a
+  legacy no-break space, all of which arrive in descriptions imported from
+  formatted documentation. Unlike a ZWJ nothing neighbouring them settles the
+  question, so they report as `formatting` and a listing carrying only those
+  produces no `concealed` field at all.
 
   Counts per category, never the text. A finding that carried the payload would
   be a poisoned instruction copied into the trail and then forwarded to a SIEM.
@@ -1267,3 +1278,4 @@ tamper-evident JSONL trail you own.
 [#179]: https://github.com/blitzcrieg1/agentmetry/issues/179
 [@hossainzarif23]: https://github.com/hossainzarif23
 [@kkkhs]: https://github.com/kkkhs
+[#186]: https://github.com/blitzcrieg1/agentmetry/pull/186
