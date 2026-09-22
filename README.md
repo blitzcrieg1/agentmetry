@@ -205,6 +205,19 @@ scripts\start-dev.bat
 
 `install.ps1` creates the orchestrator venv, installs Python + dashboard deps, copies `.env.example`, wires Claude Code and Cursor hooks, and runs `agentmetry doctor --fix` (creates portable `drivers.json` from the example). Skip hooks with `-SkipHooks`; orchestrator-only with `-SkipDashboard`. Opt-in hook enforcement with `-ToolPolicyBlock` or `-DlpBlock`.
 
+### Linux / macOS one-flow install
+
+From a fresh clone:
+
+```bash
+git clone https://github.com/blitzcrieg1/agentmetry.git
+cd agentmetry
+bash scripts/install.sh
+scripts/start-dev.sh          # stop everything with scripts/stop-dev.sh
+```
+
+`install.sh` mirrors `install.ps1`: venv, Python + dashboard deps, `.env` from the example, IDE hooks, `doctor --fix`. Same flags in POSIX form: `--skip-hooks`, `--skip-dashboard`, `--no-doctor`, `--tool-policy-block`, `--dlp-block`. Hooks are written by `agentmetry hooks install`, the cross-platform installer, which covers every agent it finds on the machine (Claude Code, Cursor, Codex, Qwen, Kimi, Qoder, CodeBuddy); Antigravity still needs `scripts/install_antigravity_hooks.ps1` on Windows.
+
 ### Manual install
 
 ```powershell
@@ -354,6 +367,19 @@ flowchart LR
 | **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
 | **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC, Google SecOps UDM |
 | **Replay** | `core/audit/replay.py` | ASCII timeline from the governed-runtime outbox (`events.db`); hook users use the dashboard or JSONL |
+
+### Claude Code native OTel ingest (prototype)
+
+Claude Code exports its own OpenTelemetry stream — 25+ event types including `tool_result`, `tool_decision`, and `mcp_server_connection` — and its docs state that anomaly detection, correlation, and alerting are the backend's job. `scripts/otel_receiver.py` is a local OTLP/HTTP-JSON receiver that turns that stream into canonical events: the same hashing, trait labels, MITRE/ATLAS enrichment, sequence detection, hash-chained trail, and SIEM sinks apply to vendor-native telemetry, with no hooks installed.
+
+```bash
+python scripts/otel_receiver.py                       # 127.0.0.1:4318 → orchestrator :8000
+# then point Claude Code at it:
+#   CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp
+#   OTEL_EXPORTER_OTLP_PROTOCOL=http/json OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+```
+
+Prototype scope, stated plainly: `tool_result` → `tool_called`/`tool_failed` (full enrichment), `tool_decision` → `approval_response`, and `mcp_server_connection` partially. The remaining documented event types are counted, never dropped silently — `--print-mapping` lists them, and they are the input to canonical schema v1.3. Arguments are hashed in the receiver process; prompts and responses are never forwarded. Hooks remain the richer path (denials, pre-execution policy, approval prompts) — hooks and OTel together cover more than either alone.
 
 ### The canonical event
 
@@ -771,6 +797,8 @@ visibility into agents Agentmetry does not orchestrate.
 | Command | What it does |
 |---------|--------------|
 | `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
+| `scripts/install.sh` | Linux/macOS one-flow: same flow, POSIX flags; hooks via `agentmetry hooks install` |
+| `scripts/otel_receiver.py` | Local OTLP/HTTP-JSON receiver: Claude Code native OTel → canonical events (prototype) |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
 | `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |

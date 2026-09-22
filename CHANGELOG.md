@@ -9,6 +9,31 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Linux/macOS one-flow install**: `scripts/install.sh` mirrors `install.ps1`
+  (venv, Python + dashboard deps, `.env` from the example, IDE hooks,
+  `doctor --fix`) with POSIX flags (`--skip-hooks`, `--skip-dashboard`,
+  `--no-doctor`, `--tool-policy-block`, `--dlp-block`). Hooks are written by
+  `agentmetry hooks install`, the cross-platform installer, so coverage on
+  Linux/macOS is the seven-agent set rather than the two the PowerShell pair
+  writes. `scripts/start-dev.sh` / `scripts/stop-dev.sh` replace
+  `start-dev.bat`; both processes background with logs under
+  `apps/orchestrator/data/logs/`.
+- **Claude Code native OTel ingest (prototype)**: `scripts/otel_receiver.py`,
+  a local OTLP/HTTP-JSON receiver. Claude Code's telemetry docs state that
+  anomaly detection, correlation, and alerting are the backend's
+  responsibility; this receiver is the first cut of that backend for the
+  native stream. `tool_result` maps to `tool_called`/`tool_failed` with the
+  hook path's full enrichment (argument hashing, trait labels, MITRE ATT&CK,
+  ATLAS), `tool_decision` maps to `approval_response`,
+  `mcp_server_connection` partially to `mcp_schema`; the remaining documented
+  event types are counted and listed (`--print-mapping`) as schema v1.3
+  input rather than dropped. Arguments are hashed inside the receiver;
+  prompts and responses are never forwarded. Verified end-to-end: a
+  credential-read-then-egress sequence carried entirely on the native OTel
+  stream fires `credential-exfil` as CRITICAL onto the hash-chained trail.
+
 ## [0.8.0] - 2026-09-19
 
 Contributor release. Three people outside the project sent code, and the most
