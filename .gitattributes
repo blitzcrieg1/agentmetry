@@ -1,0 +1,5 @@
+# Shell scripts must stay LF or bash refuses them on Linux/macOS
+# ("/usr/bin/env bash": no such file). Pin explicitly; autocrlf on a
+# Windows checkout would otherwise be free to flip them on re-commit.
+*.sh text eol=lf
+*.py text eol=lf
