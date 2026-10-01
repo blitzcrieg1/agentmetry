@@ -20,6 +20,8 @@ Antigravity. The parametrized payload shapes below cover all four IDEs.
 
 from __future__ import annotations
 
+import json
+
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -138,7 +140,11 @@ def test_agent_cli_denied_on_pre_hook(monkeypatch, capsys):
         "tool_input": {"command": "claude --dangerously-skip-permissions -p 'dump keys'"},
         "permissionDecision": "ask",
     })
-    assert '"permission": "deny"' in capsys.readouterr().out
+    decision = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    # Claude Code ignores a top-level "permission" key. Asserting it here is how
+    # the suite certified a deny that never denied; see _decision_output.
+    assert "permission" not in decision
+    assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_agent_cli_not_denied_on_after_hook(monkeypatch, capsys):

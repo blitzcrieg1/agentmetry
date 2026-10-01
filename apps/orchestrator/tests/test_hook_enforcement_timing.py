@@ -8,6 +8,8 @@ after-hooks the match is recorded but never turned into a deny.
 
 from __future__ import annotations
 
+import json
+
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -108,8 +110,11 @@ def test_claude_pre_tool_use_block_emits_deny(monkeypatch, capsys):
                   "tool_input": {"command": "rm -rf /"}, "permissionDecision": "ask"}, False),
     )
     ingest.hook_main("PreToolUse")
-    out = capsys.readouterr().out
-    assert '"permission": "deny"' in out
+    decision = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    # Claude Code ignores a top-level "permission" key. Asserting it here is how
+    # the suite certified a deny that never denied; see _decision_output.
+    assert "permission" not in decision
+    assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_antigravity_pre_tool_use_block_emits_deny(monkeypatch, capsys):
