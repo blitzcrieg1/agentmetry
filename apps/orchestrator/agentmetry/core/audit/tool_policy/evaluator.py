@@ -153,27 +153,21 @@ def evaluate(
 
     command = _extract_command(hook_data, tool_qualified)
     deny_hits: list[ToolPolicyRule] = []
+    ask_hits: list[ToolPolicyRule] = []
     allow_hits: list[ToolPolicyRule] = []
 
     for rule in rules:
         if _rule_matches(rule, tool_qualified, server, command):
             if rule.action == "deny":
                 deny_hits.append(rule)
+            elif rule.action == "ask":
+                ask_hits.append(rule)
             else:
                 allow_hits.append(rule)
 
-    if default_action == "allow":
-        if deny_hits:
-            hit = deny_hits[0]
-            return ToolPolicyVerdict(
-                matched=True,
-                blocked=True,
-                mode=mode,
-                match=ToolPolicyMatch(rule_id=hit.id, action="deny"),
-            )
-        return ToolPolicyVerdict(matched=False, blocked=False, mode=mode)
-
-    # default deny — must match an allow rule and not be overridden by deny
+    # Most restrictive wins: deny, then ask, then allow. A specific ask rule
+    # still prompts when a broader allow also matches, which is the point of
+    # writing one.
     if deny_hits:
         hit = deny_hits[0]
         return ToolPolicyVerdict(
@@ -182,6 +176,20 @@ def evaluate(
             mode=mode,
             match=ToolPolicyMatch(rule_id=hit.id, action="deny"),
         )
+    if ask_hits:
+        hit = ask_hits[0]
+        return ToolPolicyVerdict(
+            matched=True,
+            blocked=False,
+            mode=mode,
+            match=ToolPolicyMatch(rule_id=hit.id, action="ask"),
+            ask=True,
+        )
+
+    if default_action == "allow":
+        return ToolPolicyVerdict(matched=False, blocked=False, mode=mode)
+
+    # Default deny: only an allow rule lets the call through.
     if allow_hits:
         hit = allow_hits[0]
         return ToolPolicyVerdict(

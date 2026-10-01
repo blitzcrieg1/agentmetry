@@ -362,7 +362,7 @@ flowchart LR
 | **Hook client** | `scripts/agentmetry_ingest.py` | Maps IDE lifecycle events to canonical payloads; hashes args in-process |
 | **MCP proxy** | `apps/orchestrator/tools/mcp_audit_proxy.py` | Wraps any stdio MCP server; logs every `tools/call` + errors |
 | **Ingest API** | `core/audit/ingest.py` | Normalizes payloads, infers approvals (`inferred:*`), writes sinks |
-| **Tool policy** | `core/audit/tool_policy/` | Allow/deny by tool name (glob) and optional shell regex; runs before DLP |
+| **Tool policy** | `core/audit/tool_policy/` | Allow, deny or ask by tool name (glob) and optional shell regex; runs before DLP. An ask uses the agent's own prompt where that is known to work and is enforced as deny everywhere else (`agentmetry doctor` lists which) |
 | **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); `log` or `block` before execution |
 | **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
 | **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC, Google SecOps UDM |
