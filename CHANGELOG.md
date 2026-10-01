@@ -56,6 +56,26 @@ separately (currently `1.2.0`) and changes additively.
   shipped manifest is unaffected: it is `default: allow` with eight valid `deny`
   rules.
 
+- **Running the test suite repointed your IDE hooks at the checkout you ran it
+  from.** The orchestrator's startup installs Claude Code and Cursor hooks into
+  the home directory on every boot, and three tests boot the app inside its
+  lifespan. `conftest.py` isolated the audit trail but not the home directory,
+  so `pytest` from any clone rewrote the developer's real
+  `~/.claude/settings.json` and `~/.cursor/hooks.json` to point at that clone.
+  Their live Claude Code and Cursor sessions then ran hooks out of whatever the
+  checkout held, including an unmerged feature branch, with nothing to say so.
+
+  It was found from the hook config's modification time, one minute after a
+  test run on the maintainer's machine, where it had been treated as a machine
+  quirk with a manual restore procedure. It was never machine-specific: any
+  contributor who cloned the repo and ran the suite got the same thing.
+
+  A new autouse fixture points `HOME` and `USERPROFILE` at a temp directory and
+  removes `QWEN_HOME`, the one installer override that bypasses `Path.home()`.
+  `test_suite_leaves_real_home_alone.py` boots the real app and checks the hooks
+  land in the temp home. Verified on the affected machine: before the fixture a
+  full run rewrote both configs, after it the same run left them byte-identical.
+
 ### Added
 
 - **A policy rule can ask** (phase A of the ask-gate). `action: ask` joins

@@ -2,7 +2,36 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+#: Captured at import, before any fixture runs, so a test can prove the home it
+#: sees is not this one.
+REAL_HOME = Path.home()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
+    """No test may write to the developer's real home directory.
+
+    The orchestrator's startup calls `bootstrap_tier_b_hooks()`, which rewrites
+    `~/.claude/settings.json` and `~/.cursor/hooks.json` to point at whichever
+    checkout is running. Three tests enter the app's lifespan, so every pytest
+    run from a clone silently repointed the developer's live IDE hooks at that clone.
+    Their Claude Code and Cursor sessions then ran hooks out of a test checkout,
+    possibly a feature branch, until somebody noticed. It was noticed from the
+    hook config's modification time, one minute after a test run.
+
+    It is the argument `_isolate_settings` makes about the audit trail, applied
+    to the IDE. `Path.home()` reads USERPROFILE on Windows and HOME elsewhere, so
+    both point at a temp directory, and `QWEN_HOME`, the one installer override
+    that does not go through `Path.home()`, is removed.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("QWEN_HOME", raising=False)
 
 
 @pytest.fixture(autouse=True)
