@@ -9,6 +9,20 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-02
+
+Enforcement release. A deny on Claude Code, the agent this records most, had
+never denied anything: every agent but one was sent Cursor's reply format, which
+Claude Code ignores, and the trail recorded the call as blocked while it ran.
+Nothing in the suite could see it, because the tests asserted what the hook
+printed, not what the agent did with it.
+
+Also two new ways in. A policy rule can now ask a human, on the hooks where an
+ask is known to reach one and as a deny everywhere else. And Claude Code can be
+recorded with no hooks at all, from its own OpenTelemetry stream.
+
+The detection ruleset is unchanged, so the dogfood clock keeps running.
+
 ### Fixed
 
 - **A deny on Claude Code never denied anything, and the trail said it had.**
@@ -164,6 +178,16 @@ separately (currently `1.2.0`) and changes additively.
   It reports what happened, after it happened, so it enforces nothing. Use it
   or the Claude Code hooks for a given install, not both: each records every
   tool call, so running both records each one twice.
+
+### Changed
+
+- **CI runs the Linux installer on a clean runner.** Nothing in CI ran
+  `scripts/install.sh`, and 0.7.0's Windows installer shipped unparseable by
+  the documented PowerShell, which a contributor found on a clean machine. The
+  new `install-linux` job runs the installer as a new user would, checks
+  `doctor` reports no failure, then installs the Claude Code hook and executes
+  it with no orchestrator running, because the hook must spool and exit 0
+  rather than block the agent.
 
 ## [0.8.0] - 2026-09-19
 
@@ -1394,7 +1418,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.5.0...v0.6.0
