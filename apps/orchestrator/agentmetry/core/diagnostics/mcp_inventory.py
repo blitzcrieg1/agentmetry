@@ -37,6 +37,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 #: Fetch-and-run launchers. These resolve a package over the network on every
 #: invocation, so the bytes executed are decided later than the config was read.
@@ -91,6 +92,48 @@ class McpServer:
             sort_keys=True,
         )
         return hashlib.sha256(material.encode()).hexdigest()
+
+    def finding_codes(self) -> list[str]:
+        """`findings()` as stable codes a SIEM can group on, carrying no values."""
+        codes: list[str] = []
+        if self.transport == "stdio":
+            if not self.command:
+                return ["no_command"]
+            launcher = Path(self.command).stem.lower()
+            spec = self.spec()
+            if _FETCHING_LAUNCHER.match(launcher) and spec and not _PINNED_SPEC.match(spec):
+                codes.append("unpinned_fetch")
+                if _AUTO_YES & set(self.args):
+                    codes.append("auto_confirm")
+        elif self.url.startswith("http://"):
+            codes.append("plaintext_http")
+        return codes
+
+    def wire_entry(self) -> dict[str, Any]:
+        """What a heartbeat may carry about this server, off this machine (#169).
+
+        Enough to inventory a fleet from the SIEM: which agent, which server,
+        how it is launched, whether it is flagged. Nothing that tends to hold a
+        secret. Arguments carry tokens and home-directory paths, so they are
+        left out, and so are env values and env keys. A URL keeps only its host,
+        because query strings carry API keys. The package name is kept only for
+        a fetch-and-run launcher, where it is a public registry name and is the
+        thing worth knowing. The fingerprint commits to all of it, so a changed
+        argument still changes the entry without the argument being shown.
+        """
+        launcher = Path(self.command).stem.lower() if self.command else ""
+        fetching = bool(launcher and _FETCHING_LAUNCHER.match(launcher))
+        return {
+            "agent": self.agent,
+            "name": self.name,
+            "scope": self.scope,
+            "transport": self.transport,
+            "launcher": launcher,
+            "package": self.spec() if fetching else "",
+            "url_host": (urlparse(self.url).hostname or "") if self.url else "",
+            "findings": self.finding_codes(),
+            "fingerprint": self.fingerprint()[:16],
+        }
 
     def findings(self) -> list[str]:
         """Configuration facts worth an operator's attention."""

@@ -200,6 +200,14 @@ class Settings(BaseSettings):
         _policy("detection", "manifest.yaml")
     )
 
+    # The configured MCP servers as an `mcp_inventory` event, for a fleet that
+    # wants them in the SIEM (#169). Off by default: the heartbeat names no
+    # server, and turning this on is the operator's decision, not ours.
+    mcp_inventory_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_MCP_INVENTORY"),
+    )
+
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"
 

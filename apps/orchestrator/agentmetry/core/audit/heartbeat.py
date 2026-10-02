@@ -297,11 +297,14 @@ async def heartbeat_forever(interval: float | None = None) -> None:
     """
     import asyncio
 
+    from agentmetry.core.audit.mcp_inventory_event import InventoryState, maybe_emit_inventory
+
     period = interval if interval is not None else interval_seconds()
     if not period:
         logger.info("Heartbeat disabled (AGENTMETRY_HEARTBEAT_SECONDS=0)")
         return
 
+    inventory_state = InventoryState()
     while True:
         try:
             event = await emit_heartbeat()
@@ -310,4 +313,10 @@ async def heartbeat_forever(interval: float | None = None) -> None:
         except Exception:
             # Never let attestation kill the recorder it attests for.
             logger.exception("Heartbeat failed")
+        try:
+            # Opt-in (#169). Separate from the beat, so the beat stays
+            # name-free, and in its own try, so it cannot stop the beat.
+            await maybe_emit_inventory(inventory_state)
+        except Exception:
+            logger.exception("MCP inventory event failed")
         await asyncio.sleep(period)

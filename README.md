@@ -810,7 +810,11 @@ pattern: every machine records locally and forwards a copy, and the fleet
 questions get answered where your other detections already live. Set
 `AGENTMETRY_FLEET_ID` per deployment (org or customer). Every event records the
 OS account that ran the agent; set `AGENTMETRY_OPERATOR_ID` to override it, with
-an email or a pseudonym.
+an email or a pseudonym. Set `AGENTMETRY_MCP_INVENTORY=1` to send the MCP servers
+each machine's agents are wired to as an `mcp_inventory` event: at startup, when
+the configuration changes, and daily. It carries server names, launchers, package
+names and hosts, and never arguments or env values. It is off by default because
+the heartbeat deliberately names no server.
 It includes the four queries worth alerting on (including detections nobody triaged, and hosts
 that went quiet), measured storage sizing, and a plain statement of the three
 things it does not give you: no central enforcement, no central triage, and no
