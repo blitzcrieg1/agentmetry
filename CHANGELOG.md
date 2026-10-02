@@ -9,6 +9,20 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-02
+
+Two fixes to things every tool call touches. The trail now says who ran the
+agent: every event before this said `local`, including on machines where an
+operator id was configured, because the hook sent `local` and the orchestrator
+kept a client's value over its own. And the hook is
+about 40% faster, because it no longer imports pydantic to read five settings.
+
+Events now carry the OS account, or `AGENTMETRY_OPERATOR_ID` if set, in the
+trail and in anything you forward. Set it to a pseudonym if account names
+should not reach your SIEM.
+
+The detection ruleset is unchanged, so the dogfood clock keeps running.
+
 ### Fixed
 
 - **The hook cost 626 ms on every tool call, and a third of it was pydantic**
@@ -1496,7 +1510,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.6.0...v0.7.0
