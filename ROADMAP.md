@@ -4,9 +4,14 @@
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
-Agentmetry is a **local-first endpoint sensor for AI coding agents**: it records
-what an agent did at the tool boundary, correlates sequences, and forwards into
-the SIEM you already run. Not a console, not a sandbox, not a CASB.
+The open-source project is a **local-first endpoint sensor for AI coding
+agents**: it records what an agent did at the tool boundary, correlates
+sequences, and forwards into the SIEM you already run. Not a sandbox, not a
+CASB, and it never depends on a hosted service.
+
+Agentmetry Enterprise is a separate product, and it may be hosted: a fleet
+console, managed ingest and cross-machine views are in scope for it. Decided
+2026-10-02, replacing "no vendor control plane, in either repo".
 
 Nothing here is a promise with a date attached. It is what is being worked on,
 in what order, and why.
@@ -139,9 +144,9 @@ wants has moved to the bottom of the page.
 ### The dashboard, last on purpose
 
 It is a **local inspection surface for the machine the sensor runs on**, and it
-stays one. The SIEM is the console, which is the claim on every page of the
-site, and a triage queue built here would be the second-best version of a
-feature the customer already bought.
+stays one. Fleet views belong to Agentmetry Enterprise: the Splunk app in the
+enterprise repo today, and possibly a hosted console later. A fleet triage queue
+built here would be the second-best version of either.
 
 It is not being deleted and it is not unmaintained: it builds in CI, and the
 Next 16 migration went in because dependency alerts had to close, not because a
@@ -177,8 +182,10 @@ benchmark a sceptic can run in ten seconds.
 
 Stated so the answer is on record rather than re-argued.
 
-- Multi-tenant cloud SaaS or any vendor control plane. The local-first
-  property is the product, not a stage it grows out of
+- A hosted dependency in the open-source sensor. It records on the machine and
+  forwards only where the operator points it, and that does not change. A
+  hosted Agentmetry Enterprise, if it is built, is a separate product the
+  sensor never needs
 - CASB or shadow-AI discovery. Different sensor, different category, and
   [others do it](https://agentmetry.ai/compare)
 - ML guardrails and prompt firewalls. A recorder does not need a model

@@ -32,11 +32,15 @@ sequence detections, customer-owned SIEM forwarders. This document names what
 | Linux eBPF sidecar (Tetragon/tracee) | Design partner request | Tier-D host truth; **complement**, not replace hooks |
 | Rust/Go rewrite | ≥500-seat paid fleet | Not before revenue |
 
-## What we will not build (12-week commitment)
+## What we will not build
 
-- Vendor multi-tenant cloud control plane
-- Replacing customer SIEM with Agentmetry-hosted ClickHouse
+- A hosted dependency in the open-source sensor
 - Killing the local dashboard (operator persona needs it)
 - Email autopilot / LangGraph skill runtime (removed from repo scope)
+
+Revised 2026-10-02: this list used to rule out a vendor multi-tenant control
+plane and an Agentmetry-hosted backend. Both are now allowed for Enterprise, and
+neither is built. The open-source sensor stays local-first. See
+[open-core split](../commercial/open-core-split.md#hosted-enterprise-is-allowed).
 
 See [ROADMAP.md](../../ROADMAP.md) and [COMMERCIAL.md](../../COMMERCIAL.md).
