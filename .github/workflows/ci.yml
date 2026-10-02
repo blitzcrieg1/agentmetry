@@ -129,6 +129,46 @@ jobs:
           }
           if ($failed) { exit 1 }
 
+  install-linux:
+    # The installer is the first thing a new user runs, and nothing in CI ran it.
+    # 0.7.0's Windows installer could not be parsed by the documented PowerShell,
+    # gave hooks the wrong interpreter, and printed "Install complete" after
+    # failing. A contributor found all three on a clean machine (#133, #137,
+    # #138). This runs install.sh the way a new Linux user would, on a runner
+    # that has never built the repo, then executes the hook it installed.
+    name: install-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Run the installer as a new user would
+        run: bash scripts/install.sh
+      - name: Doctor reports nothing broken on the fresh install
+        run: |
+          out="$(apps/orchestrator/.venv/bin/python -m agentmetry.cli doctor)"
+          echo "$out"
+          if printf '%s\n' "$out" | grep -q '\[FAIL\]'; then
+            echo "::error::doctor reports FAIL on a fresh install"
+            exit 1
+          fi
+      - name: The installed hook runs, and never blocks the agent with no orchestrator
+        # A config naming a command that cannot run is the failure that matters,
+        # and only executing it proves otherwise. No agent is present on a clean
+        # runner, so the installer above wrote no hooks; Claude Code's is
+        # installed explicitly here. No orchestrator is running on purpose: the
+        # hook must spool and exit 0, because an agent must never be blocked by
+        # the recorder being down.
+        run: |
+          apps/orchestrator/.venv/bin/python -m agentmetry.cli hooks install --agent claude
+          cmd="$(python3 -c 'import json,os; s=json.load(open(os.path.expanduser("~/.claude/settings.json"))); print(next(h["command"] for g in s["hooks"]["PreToolUse"] for h in g.get("hooks", []) if "agentmetry" in h.get("command", "")))')"
+          echo "installed hook: $cmd"
+          echo '{"session_id":"ci","tool_name":"Bash","tool_input":{"command":"ls"}}' | bash -c "$cmd"
+
   supply-chain:
     # Nothing here inspects the diff. It asks whether anything the recorder
     # already depends on has since been found vulnerable, which is a question
