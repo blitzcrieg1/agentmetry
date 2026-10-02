@@ -5,7 +5,9 @@ from typing import Any, Dict
 
 from .models import DlpVerdict, DlpMatch
 from .loader import load_dlp_rules
-from ...config import settings
+# Not core.config: that import is pydantic, and the hook paid ~220 ms for it
+# on every tool call to read three values (#171).
+from ..policy_settings import policy_settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +23,10 @@ def reset_rules() -> None:
 def _init_rules() -> None:
     if _COMPILED_RULES:
         return
-    rules = load_dlp_rules(settings.dlp_rules_path)
+    cfg = policy_settings()
+    rules = load_dlp_rules(cfg.dlp_rules_path)
     for r in rules:
-        if not settings.dlp_pii and r.category == "pii":
+        if not cfg.dlp_pii and r.category == "pii":
             continue
         try:
             _COMPILED_RULES.append((re.compile(r.pattern), r))
@@ -59,7 +62,7 @@ def scan(tool_qualified: str, arguments: Dict[str, Any] | str, mode: str | None 
     metadata is returned — never the matched value.
     """
     if mode is None:
-        mode = settings.dlp_mode
+        mode = policy_settings().dlp_mode
     if mode == "disable":
         return DlpVerdict(matched=False, mode=mode)
 

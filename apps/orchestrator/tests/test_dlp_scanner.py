@@ -1,5 +1,4 @@
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -10,13 +9,17 @@ _MANIFEST = Path(__file__).resolve().parents[1] / "agentmetry" / "policies" / "d
 
 
 @pytest.fixture(autouse=True)
-def mock_settings():
+def mock_settings(monkeypatch):
+    # The scanner no longer holds a `settings` attribute to patch: it reads the
+    # loaded Settings object through policy_settings (#171), so patch that.
+    # monkeypatch restores each field afterwards, including ones a test sets.
+    from agentmetry.core.config import settings
+
     dlp_scanner._COMPILED_RULES.clear()
-    with patch("agentmetry.core.audit.dlp.scanner.settings") as mock_settings:
-        mock_settings.dlp_mode = "block"
-        mock_settings.dlp_pii = True
-        mock_settings.dlp_rules_path = _MANIFEST
-        yield mock_settings
+    monkeypatch.setattr(settings, "dlp_mode", "block")
+    monkeypatch.setattr(settings, "dlp_pii", True)
+    monkeypatch.setattr(settings, "dlp_rules_path", _MANIFEST)
+    yield settings
     dlp_scanner._COMPILED_RULES.clear()
 
 

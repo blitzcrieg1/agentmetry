@@ -11,6 +11,41 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **The hook cost 626 ms on every tool call, and a third of it was pydantic**
+  (#171). The hook runs in front of each tool call, and on a blocking hook the
+  agent waits for it. The DLP scanner and the tool-policy evaluator imported
+  `core.config` to read five settings, and that import brought pydantic and
+  pydantic-settings with it: about 220 ms, on every call, to learn two modes,
+  two manifest paths and one boolean.
+
+  They now read those five through `core/audit/policy_settings.py`, which is
+  standard library only. Where `core.config` is already loaded, in the
+  orchestrator and the test suite, it reads the real `settings` object, so
+  nothing there changes. In the hook it resolves them the way `Settings` does:
+  environment first, case-insensitively, then the orchestrator's `.env`, then
+  the same defaults. A test checks the two resolvers agree across environment
+  and `.env` forms. The manifests are also parsed with libyaml where it is
+  installed, which produces the same objects and saved about 16 ms more.
+
+  Measured on the maintainer's machine, seven cold runs each against a stub
+  ingest server: a median of 626 ms before, 376 ms after. Importing the hook
+  went from about 420 ms to about 206 ms. A bare interpreter is about 74 ms of
+  what is left. The figure depends on the machine and is not pinned. What is
+  pinned is the cause: `test_hook_import_cost.py` fails if pydantic or
+  `core.config` lands on the hook's import path again, or if any third-party
+  module beyond YAML does.
+
+  A proposal attributed this to interpreter startup and suggested rewriting the
+  hook in a compiled language. The measurement put the interpreter at under a
+  quarter of it, and the fix is one import.
+
+  Every enforcement test had run the hook in-process, where `core.config` is
+  loaded, so none of them exercised the path a real hook takes.
+  `test_hook_real_process.py` runs the hook as Claude Code does, as a separate
+  process against a stub server, and checks block mode still denies `rm -rf`
+  and an AWS key. With the new resolver made to ignore the environment, two of
+  its four tests fail.
+
 - **The trail could not say who ran the agent, and configuring it did nothing**
   (#168). Every event recorded the operator as `local`. The hook hardcoded
   `"operator_id": "local"` in twenty-four payloads, and the orchestrator keeps
