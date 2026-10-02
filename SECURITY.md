@@ -73,7 +73,7 @@ and on master; none of it is a periodic manual pass.
 | Data flow a linter cannot follow | CodeQL `security-extended`, Python and TypeScript | `codeql.yml` |
 | Vulnerable dependencies | `pip-audit --strict` on the full resolved tree | `ci.yml` |
 | Dependency currency | Dependabot, weekly, including GitHub Actions | `dependabot.yml` |
-| Detection accuracy | 50-case benchmark, fails on any miss or false positive | `ci.yml`, `release.yml` |
+| Detection accuracy | 57-case benchmark, fails on any miss or false positive | `ci.yml`, `release.yml` |
 | Packaging | wheel installed into a clean environment; `doctor` must report no FAIL | `release.yml` |
 | Publication | PyPI Trusted Publishing (OIDC). No API token exists to leak | `release.yml` |
 

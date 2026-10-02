@@ -263,8 +263,8 @@ the firings to the wrong queue.
 This is a security tool, so the interesting question is not what it detects but
 why you should believe the numbers.
 
-**A benchmark anyone can run in about ten seconds.** 54 recorded sessions, 26
-attack and 28 benign. Current result: 26 of 26 expected detections fire, 0
+**A benchmark anyone can run in about ten seconds.** 57 recorded sessions, 26
+attack and 31 benign. Current result: 26 of 26 expected detections fire, 0
 missed, 0 false positives. **13 of the 14 published rules have corpus
 coverage**, and the one that does not is named in the generator with a reason
 rather than rounded up.
