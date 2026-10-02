@@ -577,6 +577,42 @@ def _check_extensions(report: DoctorReport) -> None:
     )
 
 
+def _check_ask_gate(report: DoctorReport) -> None:
+    """Where a policy `ask` really reaches a human, and where it becomes deny.
+
+    An ask the agent ignores is an allow, so every agent and hook not known to
+    honour one enforces it as deny. That is the right failure direction, but an
+    operator who wrote an ask rule should learn it here, not from a tool that was
+    blocked when they expected a prompt.
+    """
+    try:
+        from agentmetry.core.audit.tool_policy.capability import ASK_HONOURED
+        from agentmetry.core.audit.tool_policy.loader import load_tool_policy
+
+        rules, _default = load_tool_policy(Path(settings.tool_policy_path))
+    except Exception as exc:
+        report.warn("ask_gate", f"Could not read ask rules: {exc}")
+        return
+
+    asks = [r.id for r in rules if r.action == "ask"]
+    if not asks:
+        report.ok("ask_gate", "No ask rules in the tool policy")
+        return
+
+    prompts = ", ".join(f"{agent} {hook}" for agent, hook in sorted(ASK_HONOURED))
+    report.ok(
+        "ask_gate",
+        f"{len(asks)} ask rule(s). A real prompt on: {prompts}. "
+        "Everywhere else an ask is enforced as deny, never allowed",
+    )
+    if settings.tool_policy_mode != "block":
+        report.warn(
+            "ask_gate",
+            f"Tool policy mode is {settings.tool_policy_mode}, so ask rules are recorded "
+            "and never prompt. Set AGENTMETRY_TOOL_POLICY_MODE=block to enforce them",
+        )
+
+
 def run_doctor(
     *,
     vault_path: Path | None = None,
@@ -628,6 +664,7 @@ def run_doctor(
         report.fail("data", f"Data directory not writable ({data_dir}): {exc}")
 
     _check_manifests(report)
+    _check_ask_gate(report)
     _check_exposure(report)
     _check_trail(report)
     _check_triage(report)

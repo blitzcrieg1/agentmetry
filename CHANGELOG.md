@@ -48,7 +48,46 @@ separately (currently `1.2.0`) and changes additively.
   `test_hook_decision_format.py` parses each output and asserts the documented
   schema per agent. Against the old emitter, 18 of its 19 tests fail.
 
+- **An unrecognised policy value failed open.** A rule with an action the
+  loader did not know was dropped, so a rule the operator wrote silently did
+  nothing, and an unrecognised `default` became `allow`. Writing `action: ask`
+  before this release did nothing at all, and writing `default: ask` allowed
+  everything. Both now load as `deny` with a warning naming the value. The
+  shipped manifest is unaffected: it is `default: allow` with eight valid `deny`
+  rules.
+
 ### Added
+
+- **A policy rule can ask** (phase A of the ask-gate). `action: ask` joins
+  `allow` and `deny`, and on a pre-execution hook it makes the agent show its own
+  approval prompt. An `approval_request` naming the rule is recorded before the
+  prompt. What the human then decides arrives as it does today, as the call
+  running or not, and is still flagged `inferred:*`, because no agent reports the
+  click. Recording the decision itself is phase B.
+
+  Precedence is most restrictive first: deny, then ask, then allow. A specific
+  ask rule still prompts when a broader allow also matches, which is the point of
+  writing one.
+
+  **An ask is only trusted where it is known to reach a human.** That is Claude
+  Code `PreToolUse` and Cursor `beforeShellExecution` and `beforeMCPExecution`,
+  each checked against the vendor's hook documentation. Everywhere else it is
+  enforced as deny, because an ask the agent does not recognise is read as no
+  decision at all, and the tool runs. Two of those are documented, not guessed:
+  Cursor says an ask on `preToolUse` is "accepted by the schema but not enforced
+  today", and Claude Code's `PermissionRequest` takes allow or deny only. The
+  rest, including Qwen, Qoder, CodeBuddy and Kimi, are unverified. A degraded ask
+  is recorded as `denied` with `ask_unsupported:<agent>/<hook>` in the reason, so
+  it shows in the trail and not only in `doctor`. The matrix lives in
+  `tool_policy/capability.py`, and its import falls back to denying every ask.
+
+  `agentmetry doctor` says where your ask rules will prompt, and warns when tool
+  policy is not in `block` mode, since then they are recorded and never fire.
+
+  Not a global mode. `default: ask`, meaning ask about everything not
+  allowlisted, needs phase B's timeouts to be safe, because an agent that never
+  shows the prompt would otherwise stall every call.
+
 
 - **Linux/macOS one-flow install**: `scripts/install.sh` mirrors `install.ps1`
   (venv, Python + dashboard deps, `.env` from the example, IDE hooks,

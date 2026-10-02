@@ -49,6 +49,15 @@ except ImportError:
     dlp_scan = None
     tool_policy_eval = None
 
+# Separate guard, and the fallback fails closed: without the matrix nothing is
+# known to honour an ask, so every ask is enforced as deny rather than allowed.
+try:
+    from agentmetry.core.audit.tool_policy.capability import ask_honoured
+except ImportError:  # pragma: no cover - the package always ships it
+
+    def ask_honoured(source_app: str, hook_name: str) -> bool:  # noqa: ARG001
+        return False
+
 # Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
 # trait/MITRE tagging, which only needs the stdlib.
 try:
@@ -1527,6 +1536,38 @@ def hook_main(hook_name: str) -> int:
                         # still see the executed call; note it was not enforced.
                         payload["reason"] = (
                             f"{payload.get('reason', '')};tool_policy_block_observed:{rule_id}"
+                        ).strip(";")
+                    elif getattr(tp_verdict, "ask", False) and tp_verdict.mode == "block":
+                        rule_id = tp_verdict.match.rule_id if tp_verdict.match else "policy"
+                        reason = f"tool_policy:{rule_id}"
+                        if blocking and ask_honoured(_source_app(), hook_name):
+                            # The agent shows its own prompt. The request is
+                            # recorded before it, and whatever the human decides
+                            # arrives afterwards as the call running or not,
+                            # recorded as today and still flagged inferred: no
+                            # agent reports the click itself.
+                            payload["event_type"] = "approval_request"
+                            payload["outcome"] = "pending"
+                            payload["reason"] = reason
+                            post_ingest(payload, quiet=True)
+                            print(json.dumps(_decision_output(hook_name, "ask", reason)))
+                            return 0
+                        if blocking:
+                            # This agent or hook is not known to honour an ask, and
+                            # one it ignores is an allow. Enforce it as deny, and say
+                            # so in the trail rather than only in `doctor`.
+                            payload["outcome"] = "denied"
+                            payload["event_type"] = "tool_called"
+                            payload["reason"] = (
+                                f"{reason};ask_unsupported:{_source_app()}/{hook_name}"
+                            )
+                            post_ingest(payload, quiet=True)
+                            _emit_block_decision(hook_name, payload["reason"])
+                            return 0
+                        # After-hook: the tool already ran, so there was nothing to
+                        # ask about. Record that the rule matched, claim nothing.
+                        payload["reason"] = (
+                            f"{payload.get('reason', '')};tool_policy_ask_observed:{rule_id}"
                         ).strip(";")
 
             if dlp_scan:

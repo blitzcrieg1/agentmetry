@@ -1,11 +1,47 @@
-import yaml
+import logging
 from pathlib import Path
+
+import yaml
 
 from .models import ToolPolicyRule
 
+logger = logging.getLogger(__name__)
+
+ACTIONS = ("allow", "deny", "ask")
+
+#: `ask` is not a valid default yet. "Ask about everything not allowlisted" is
+#: zero-trust mode, and it needs the ask-gate's timeouts to be safe: an IDE
+#: that never shows the prompt would otherwise stall every tool call forever.
+DEFAULTS = ("allow", "deny")
+
+
+def _normalise_default(raw: object) -> str:
+    """A default the evaluator understands, failing closed on anything else.
+
+    This used to fall back to `allow`, so a typo, or a reasonable guess like
+    `default: ask`, silently turned the whole policy into allow-everything.
+    For a security control a value nobody recognises has to deny.
+    """
+    value = str("allow" if raw is None else raw).strip().lower()
+    if value in DEFAULTS:
+        return value
+    if value == "ask":
+        logger.warning(
+            "[tool_policy] default: ask is not supported until the ask-gate's "
+            "timeouts land; treating it as deny"
+        )
+    else:
+        logger.warning("[tool_policy] unrecognised default %r; treating it as deny", value)
+    return "deny"
+
 
 def load_tool_policy(manifest_path: Path | str) -> tuple[list[ToolPolicyRule], str]:
-    """Load tool policy rules and default action (allow | deny) from YAML."""
+    """Load tool policy rules and the default action from YAML.
+
+    Rules take `allow`, `deny` or `ask`. Anything unrecognised is loaded as
+    `deny` with a warning rather than dropped: a dropped rule is one the
+    operator wrote that silently does nothing, which fails open.
+    """
     path = Path(manifest_path)
     if not path.exists():
         return [], "allow"
@@ -14,17 +50,20 @@ def load_tool_policy(manifest_path: Path | str) -> tuple[list[ToolPolicyRule], s
         data = yaml.safe_load(fh)
 
     if not data or "rules" not in data:
-        return [], str(data.get("default", "allow") if data else "allow")
+        return [], _normalise_default(data.get("default") if data else None)
 
-    default = str(data.get("default", "allow")).lower()
-    if default not in ("allow", "deny"):
-        default = "allow"
+    default = _normalise_default(data.get("default"))
 
     rules: list[ToolPolicyRule] = []
     for raw in data["rules"]:
-        action = str(raw.get("action", "deny")).lower()
-        if action not in ("allow", "deny"):
-            continue
+        action = str(raw.get("action", "deny")).strip().lower()
+        if action not in ACTIONS:
+            logger.warning(
+                "[tool_policy] rule %r has unrecognised action %r; treating it as deny",
+                raw.get("id", ""),
+                action,
+            )
+            action = "deny"
         tools = raw.get("tools") or []
         if isinstance(tools, str):
             tools = [tools]
