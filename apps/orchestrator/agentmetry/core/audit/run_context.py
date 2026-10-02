@@ -49,7 +49,7 @@ def resolve_operator(client_id: object = "", client_source: object = "") -> tupl
     source = str(client_source or "")
     if claimed and source == oid.CONFIGURED:
         return claimed, oid.HOOK_CONFIGURED
-    configured = settings.operator_id.strip()
+    configured = oid.stated(settings.operator_id)
     if configured:
         return configured, oid.ORCHESTRATOR_CONFIGURED
     if claimed:

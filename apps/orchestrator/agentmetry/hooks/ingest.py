@@ -61,9 +61,13 @@ except ImportError:  # pragma: no cover - the package always ships it
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
 try:
-    from agentmetry.core.operator_identity import os_operator
+    from agentmetry.core.operator_identity import os_operator, stated
 except ImportError:  # pragma: no cover - the package always ships it
     os_operator = None
+
+    def stated(value: object) -> str:
+        text = str(value or "").strip()
+        return "" if text == "local" else text
 
 # Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
 # trait/MITRE tagging, which only needs the stdlib.
@@ -547,9 +551,10 @@ def _operator() -> dict[str, str]:
     """
     global _OPERATOR
     if _OPERATOR is None:
-        configured = (
-            os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip()
-            or _read_repo_env("AGENTMETRY_OPERATOR_ID").strip()
+        # `local` is the placeholder .env.example used to ship, not a choice.
+        configured = stated(
+            os.environ.get("AGENTMETRY_OPERATOR_ID", "")
+            or _read_repo_env("AGENTMETRY_OPERATOR_ID")
         )
         if configured:
             _OPERATOR = {"id": configured, "source": "configured"}

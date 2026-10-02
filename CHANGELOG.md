@@ -37,6 +37,21 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **An installed machine still recorded every operator as `local`.** Both
+  `.env.example` files shipped `AGENTMETRY_OPERATOR_ID=local`, and
+  `install.ps1` and `install.sh` copy the example to `.env`. Since 0.9.1 a
+  configured id overrides the OS account, so on any machine set up by an
+  installer the placeholder won and the attribution fix in 0.9.1 did nothing:
+  the hook sent `local` as configured, and the orchestrator's own setting
+  pinned it again.
+
+  The examples now ship it empty, with a comment saying what empty means. A
+  configured `local` is read as not set, by the hook, the orchestrator and the
+  `disposition` CLI alike, so machines that already copied the old example are
+  fixed without anyone editing their `.env`. A real configured id still wins.
+  The regression test builds that installed state, `local` in both places, and
+  checks the event names the OS account.
+
 - **The README described commands that did not work and a product that has
   moved on.** An audit of the README against the code on 2026-10-02 found:
   `python -m cli benchmark`, the documented way to check the detection claims,
