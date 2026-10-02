@@ -835,7 +835,10 @@ visibility into agents Agentmetry does not orchestrate.
 Agentmetry's own trail is anchored publicly at
 [blitzcrieg1/agentmetry-anchors](https://github.com/blitzcrieg1/agentmetry-anchors),
 on a branch where force-push and deletion are blocked, by
-`scripts\publish_anchor.ps1` every four hours. The roots are there to be checked.
+`scripts\publish_anchor.ps1`. A scheduled task runs it every four hours while the
+maintainer's machine is on, and a run with no new records publishes nothing, so
+the commits follow when the machine is in use rather than the clock. The roots
+are there to be checked.
 
 ---
 
