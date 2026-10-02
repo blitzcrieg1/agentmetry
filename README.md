@@ -368,18 +368,25 @@ flowchart LR
 | **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC, Google SecOps UDM |
 | **Replay** | `core/audit/replay.py` | ASCII timeline from the governed-runtime outbox (`events.db`); hook users use the dashboard or JSONL |
 
-### Claude Code native OTel ingest (prototype)
+### Claude Code native OTel ingest
 
-Claude Code exports its own OpenTelemetry stream — 25+ event types including `tool_result`, `tool_decision`, and `mcp_server_connection` — and its docs state that anomaly detection, correlation, and alerting are the backend's job. `scripts/otel_receiver.py` is a local OTLP/HTTP-JSON receiver that turns that stream into canonical events: the same hashing, trait labels, MITRE/ATLAS enrichment, sequence detection, hash-chained trail, and SIEM sinks apply to vendor-native telemetry, with no hooks installed.
+Claude Code exports its own OpenTelemetry stream, and its docs leave anomaly detection, correlation and alerting to the backend. `agentmetry otel` is a loopback OTLP/HTTP JSON receiver that turns that stream into canonical events. Each event goes through the hook client's own code, so it gets the same argument hash, trait labels, MITRE and ATLAS enrichment, sequence detection, hash-chained trail and SIEM sinks, and the same on-disk spool when the orchestrator is down. No hooks need to be installed.
 
 ```bash
-python scripts/otel_receiver.py                       # 127.0.0.1:4318 → orchestrator :8000
-# then point Claude Code at it:
-#   CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp
-#   OTEL_EXPORTER_OTLP_PROTOCOL=http/json OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+agentmetry otel                 # listens on 127.0.0.1:4318, forwards to the orchestrator
+agentmetry otel --print-env     # the environment to start Claude Code with
+agentmetry otel --print-mapping # what is mapped, what is counted, and why
 ```
 
-Prototype scope, stated plainly: `tool_result` → `tool_called`/`tool_failed` (full enrichment), `tool_decision` → `approval_response`, and `mcp_server_connection` partially. The remaining documented event types are counted, never dropped silently — `--print-mapping` lists them, and they are the input to canonical schema v1.3. Arguments are hashed in the receiver process; prompts and responses are never forwarded. Hooks remain the richer path (denials, pre-execution policy, approval prompts) — hooks and OTel together cover more than either alone.
+What is mapped:
+
+- `tool_result` becomes `tool_called` or `tool_failed`. Arguments come from `tool_input`, which Claude Code only exports with `OTEL_LOG_TOOL_DETAILS=1`. Without it there is nothing to hash or label, and the event says so by carrying no hash. Claude Code truncates argument values at 512 characters, so a long argument hashes differently here than on the hook path.
+- `tool_decision` becomes an `approval_response` only when a person said yes at a prompt. A decision made by a settings rule or a hook is not a human approval and is counted, not recorded as one. A person's no is counted too, for now: the rule that catches a denied action being run anyway binds the denial to the later call by argument hash, and this event carries no arguments, so it would match every later call of the same tool.
+- `mcp_server_connection` becomes `mcp_schema` only if it carries a fingerprint, which Claude Code's documented event does not. In practice it is counted.
+
+Everything else is counted by name and never dropped silently; there are 23 documented types with no canonical home yet, the input to schema v1.3. Prompts, responses and error text are never forwarded.
+
+This path reports what happened, after it happened. It cannot deny or ask, so tool policy is enforced by hooks only. Use one path or the other for a given Claude Code install: both record every tool call, so running both records each one twice. `scripts/otel_receiver.py` still works and calls the same code.
 
 ### The canonical event
 
@@ -798,7 +805,7 @@ visibility into agents Agentmetry does not orchestrate.
 |---------|--------------|
 | `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
 | `scripts/install.sh` | Linux/macOS one-flow: same flow, POSIX flags; hooks via `agentmetry hooks install` |
-| `scripts/otel_receiver.py` | Local OTLP/HTTP-JSON receiver: Claude Code native OTel → canonical events (prototype) |
+| `scripts/otel_receiver.py` | Shim for `agentmetry otel`, kept so the prototype's flags still work |
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
 | `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
@@ -815,6 +822,7 @@ visibility into agents Agentmetry does not orchestrate.
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
 | `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
+| `agentmetry otel [--listen-port N] [--keep-command]` | Receive Claude Code's native OpenTelemetry stream and record it, with no hooks installed. `--print-env` prints what Claude Code needs |
 | `agentmetry mcp [--digest]` | List the MCP servers the agents on this machine are wired to, and flag entries that resolve code at launch |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
