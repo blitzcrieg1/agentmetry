@@ -9,6 +9,32 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **The MCP inventory can reach the SIEM** (#169, part 1). `agentmetry mcp`
+  answered "what are the agents wired to" only for whoever ran it, on that
+  machine. With `AGENTMETRY_MCP_INVENTORY=1`, the recorder emits an
+  `mcp_inventory` event at startup, whenever the configured surface changes
+  (`outcome: changed`), and once a day (`outcome: snapshot`), so a fleet view
+  over 24 hours sees every host.
+
+  Off by default, and deliberately not part of the heartbeat. The heartbeat goes
+  to every sink on every install and commits to the MCP surface by digest alone,
+  and two tests say why: recording your own laptop should not ship your tool
+  inventory to a SOC. They still pass, with the inventory turned on.
+
+  Each server goes out as agent, name, scope, transport, launcher, the package
+  name for a fetch-and-run launcher (`npx`, `uvx`), the URL's host (`url_host`, so it never collides with a SIEM's own `host`), its findings
+  as codes (`unpinned_fetch`, `auto_confirm`, `plaintext_http`, `no_command`),
+  and a fingerprint. Arguments, env keys and values, and the rest of the URL
+  are withheld: they are where tokens and home paths live. The fingerprint
+  commits to all of it, so a changed argument still changes the entry. A test
+  plants a token, a home path, an env key and value, and a URL query key, and
+  checks none of them leaves.
+
+  Part 2 of #169, fingerprinting `tools/list` for servers nobody wrapped with
+  the proxy, is separate.
+
 ### Fixed
 
 - **The README described commands that did not work and a product that has
