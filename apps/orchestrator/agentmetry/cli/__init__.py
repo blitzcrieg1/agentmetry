@@ -896,6 +896,35 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_otel(args: argparse.Namespace) -> int:
+    """Receive Claude Code's native OpenTelemetry stream and record it.
+
+    The other way in for Claude Code, with no hooks installed. It sees what ran,
+    after it ran, so it records and detects but enforces nothing.
+    """
+    from agentmetry.core.audit import otel_ingest
+
+    port = args.listen_port or otel_ingest.default_port()
+    if args.print_mapping:
+        for line in otel_ingest.mapping_lines():
+            print(line)
+        return 0
+    if args.print_env:
+        for line in otel_ingest.claude_env_lines(port):
+            print(line)
+        return 0
+
+    # The receiver forwards through the hook client, which reads its target and
+    # its command-text setting from the environment. Setting them here, in this
+    # process only, is what makes --port and --keep-command mean the same thing
+    # they mean everywhere else.
+    orchestrator = _api_base_url(args.port)
+    os.environ["AGENTMETRY_URL"] = orchestrator
+    if args.keep_command:
+        os.environ["AGENTMETRY_LOG_COMMANDS"] = "1"
+    return otel_ingest.serve(port, orchestrator)
+
+
 def cmd_anchor(args: argparse.Namespace) -> int:
     """Publish, list, or check the checkpoints that commit the trail externally.
 
@@ -1308,6 +1337,25 @@ def main(argv: list[str] | None = None) -> int:
         "--digest", action="store_true",
         help="also print the config digest, which names no server and is safe to publish",
     )
+    otel = sub.add_parser(
+        "otel", help="receive Claude Code's native OpenTelemetry stream (no hooks needed)"
+    )
+    otel.add_argument(
+        "--listen-port", type=int, default=None,
+        help="port on 127.0.0.1 to receive OTLP on (default AGENTMETRY_OTEL_PORT or 4318)",
+    )
+    otel.add_argument(
+        "--keep-command", action="store_true",
+        help="keep scrubbed command text, as AGENTMETRY_LOG_COMMANDS=1 does for hooks",
+    )
+    otel.add_argument(
+        "--print-mapping", action="store_true",
+        help="list which events are mapped, counted, or unmapped, and exit",
+    )
+    otel.add_argument(
+        "--print-env", action="store_true",
+        help="print the environment Claude Code needs to send here, and exit",
+    )
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -1374,6 +1422,7 @@ def main(argv: list[str] | None = None) -> int:
         "prove": cmd_prove,
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,
+        "otel": cmd_otel,
         "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,
         "benchmark": cmd_benchmark,

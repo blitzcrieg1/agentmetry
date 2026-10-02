@@ -118,19 +118,52 @@ separately (currently `1.2.0`) and changes additively.
   writes. `scripts/start-dev.sh` / `scripts/stop-dev.sh` replace
   `start-dev.bat`; both processes background with logs under
   `apps/orchestrator/data/logs/`.
-- **Claude Code native OTel ingest (prototype)**: `scripts/otel_receiver.py`,
-  a local OTLP/HTTP-JSON receiver. Claude Code's telemetry docs state that
-  anomaly detection, correlation, and alerting are the backend's
-  responsibility; this receiver is the first cut of that backend for the
-  native stream. `tool_result` maps to `tool_called`/`tool_failed` with the
-  hook path's full enrichment (argument hashing, trait labels, MITRE ATT&CK,
-  ATLAS), `tool_decision` maps to `approval_response`,
-  `mcp_server_connection` partially to `mcp_schema`; the remaining documented
-  event types are counted and listed (`--print-mapping`) as schema v1.3
-  input rather than dropped. Arguments are hashed inside the receiver;
-  prompts and responses are never forwarded. Verified end-to-end: a
-  credential-read-then-egress sequence carried entirely on the native OTel
-  stream fires `credential-exfil` as CRITICAL onto the hash-chained trail.
+- **`agentmetry otel`: Claude Code's native OpenTelemetry stream, recorded
+  with no hooks installed.** A loopback OTLP/HTTP JSON receiver, now in the
+  package (`core/audit/otel_ingest.py`). Claude Code's telemetry docs leave
+  anomaly detection, correlation and alerting to the backend, and this is that
+  backend's front door. Each event goes through the hook client's own
+  enrichment and `post_ingest`, so it gets the same argument hash, traits, MITRE
+  and ATLAS labels, and the same spool when the orchestrator is down. A test
+  checks that one Bash call produces the same tool fields on both paths.
+  `--print-env` prints what to start Claude Code with, `--print-mapping` what is
+  mapped and why, and `AGENTMETRY_OTEL_PORT` sets the port. It binds 127.0.0.1
+  only. `scripts/otel_receiver.py` is now a shim that keeps the prototype's
+  flags working.
+
+  **The prototype did not work on the stream Claude Code sends.** It landed
+  after 0.8.0 and was never released. Its entry here said a
+  credential-read-then-egress sequence fired `credential-exfil` end to end. That
+  was true of the test payloads, which carried arguments as objects and
+  `success` as a boolean. Claude Code documents both as strings. Replayed on a
+  session in the documented format, the prototype recorded a failed call as a
+  success (`bool("false")` is true), labelled no traits, gave every call the
+  same hash (of `{}`), and fired nothing. The new fixture is in that format, and
+  `credential-exfil` fires on it, through the CLI, as critical.
+
+  What is mapped, and what is held back on purpose:
+
+  - `tool_result` becomes `tool_called` or `tool_failed`. Arguments are read
+    from `tool_input`, which needs `OTEL_LOG_TOOL_DETAILS=1`. Without it the
+    event carries no hash rather than a hash of nothing.
+  - `tool_decision` becomes an `approval_response` only when a person said yes.
+    A `config` or `hook` decision is not a human approval and is counted, not
+    recorded as one. A person's no is also counted, not forwarded:
+    `approval-denied-then-executed` binds a denial to the later call by
+    argument hash, and this event has no arguments, so it would match every
+    later call of the same tool, the false positive 0.7.0 removed. Binding on
+    `tool_use_id` is a rule change and waits for the detection freeze to end.
+  - `mcp_server_connection` maps to `mcp_schema` only with a fingerprint, which
+    Claude Code's documented event does not carry. In practice it is counted.
+
+  The 23 documented types with no canonical home are counted by name, the
+  input to schema v1.3. An undocumented type is counted separately. Prompts,
+  responses and error text are never forwarded. A protobuf export gets a 415
+  that says to switch to `http/json`, and gzip is accepted.
+
+  It reports what happened, after it happened, so it enforces nothing. Use it
+  or the Claude Code hooks for a given install, not both: each records every
+  tool call, so running both records each one twice.
 
 ## [0.8.0] - 2026-09-19
 
