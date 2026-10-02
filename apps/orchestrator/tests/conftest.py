@@ -51,6 +51,14 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     from agentmetry.core.config import settings
 
     data = tmp_path_factory.mktemp("agentmetry-data")
+    # Attribution (#168): a developer's AGENTMETRY_OPERATOR_ID must not change
+    # what a test sees, and the hook's once-per-process cache must not carry one
+    # test's operator into the next.
+    monkeypatch.setattr(settings, "operator_id", "")
+    monkeypatch.delenv("AGENTMETRY_OPERATOR_ID", raising=False)
+    from agentmetry.hooks import ingest as _hook_ingest
+
+    monkeypatch.setattr(_hook_ingest, "_OPERATOR", None)
     monkeypatch.setattr(settings, "audit_export_path", data / "audit-forward.jsonl")
     monkeypatch.setattr(settings, "audit_db_path", data / "audit.db")
     monkeypatch.setattr(settings, "detection_live_db_path", data / "detection_live.db")

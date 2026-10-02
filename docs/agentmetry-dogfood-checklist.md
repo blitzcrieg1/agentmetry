@@ -10,7 +10,7 @@ Time budget: ~20 minutes.
 
 ## 0. Preflight
 
-- ☐ `.env` has `AGENTMETRY_OPERATOR_ID` set (becomes `actor.id` in every event)
+- ☐ `actor.id` names you: your OS account by default, or `AGENTMETRY_OPERATOR_ID` if set
 - ☐ `.env` has `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` and `AGENTMETRY_AUDIT_SINK=file`
 - ☐ `scripts\agentmetry.bat doctor` — all green
 - ☐ `scripts\agentmetry.bat start` then hard-refresh dashboard at `http://127.0.0.1:8000`

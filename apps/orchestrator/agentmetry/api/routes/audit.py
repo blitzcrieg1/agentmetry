@@ -70,6 +70,19 @@ class IngestInitiatorBody(BaseModel):
         return v if v in _ACTOR_TYPES else "agent"
 
 
+class IngestOperatorBody(BaseModel):
+    """Which account the capture process ran as, and how it knew.
+
+    Separate from `initiator`, which says what kind of actor acted. A claim,
+    like everything a client sends: `run_context.resolve_operator` decides what
+    is recorded, and an orchestrator-side AGENTMETRY_OPERATOR_ID overrides an
+    id the hook only read from the operating system.
+    """
+
+    id: str = ""
+    source: str = ""
+
+
 class ExternalIngestBody(BaseModel):
     """Adapter payload — normalized to canonical v1.2 on ingest.
 
@@ -113,6 +126,8 @@ class ExternalIngestBody(BaseModel):
     tool_policy: dict[str, Any] | None = None
     # Who the capture surface says triggered this. Honoured by external.py.
     initiator: IngestInitiatorBody | None = None
+    # Which account ran the agent, resolved by the hook as the developer.
+    operator: IngestOperatorBody | None = None
     # Compact `tools/list` fingerprint from mcp_audit_proxy. Hash only: the
     # description never leaves the proxy process.
     schema_fingerprint: str = ""

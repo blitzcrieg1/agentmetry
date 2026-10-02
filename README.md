@@ -494,11 +494,20 @@ non-modification of what was written. It does not prove who wrote it.
 Be precise about the shape of that, because an earlier version of this paragraph
 was not. It said a key holder could post events "claiming any `host_id`, any
 `fleet_id`, and any user identity", which is not what the code does and made the
-weakness sound like identity spoofing. Ingest takes no identity from the caller:
-`ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id` or
-`fleet_id` field, and `agentmetry/core/audit/identity.py` stamps every canonical
-event with the *receiving* orchestrator's own hostname plus its configured
-`fleet_id`. A client cannot claim to be another machine.
+weakness sound like identity spoofing. Ingest takes no machine identity from the
+caller: `ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id`
+or `fleet_id` field, and `agentmetry/core/audit/identity.py` stamps every
+canonical event with the *receiving* orchestrator's own hostname plus its
+configured `fleet_id`. A client cannot claim to be another machine.
+
+It does take one claim about the person. The hook reports which account ran the
+agent, because the hook runs as the developer and the orchestrator, under a fleet
+service, may not. Every event records who resolved it in
+`initiator.operator_source`: `hook_os`, `hook_configured` and `client` are what
+the caller said, and `orchestrator_configured` and `orchestrator_os` the recorder
+worked out itself. `AGENTMETRY_OPERATOR_ID` on the orchestrator overrides what a
+hook read from the operating system. So a client can claim to be another user,
+and the label says that is the kind of record it is.
 
 What one shared key does buy an attacker is **injection**. Anyone holding
 `AGENTMETRY_API_KEY` can post to that orchestrator, and the events arrive stamped

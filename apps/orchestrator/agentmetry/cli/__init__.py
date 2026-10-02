@@ -284,6 +284,15 @@ def cmd_detections(args: argparse.Namespace) -> int:
     return 0
 
 
+def _triage_operator() -> str:
+    configured = os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip()
+    if configured:
+        return configured
+    from agentmetry.core.operator_identity import os_operator
+
+    return os_operator()
+
+
 def cmd_disposition(args: argparse.Namespace) -> int:
     """Close a detection from the shell, using the same API as the dashboard."""
     note = args.note.strip()
@@ -299,7 +308,8 @@ def cmd_disposition(args: argparse.Namespace) -> int:
                 "rule_id": args.rule_id,
                 "status": args.status,
                 "note": note,
-                "decided_by": args.decided_by,
+                # The CLI runs as the person triaging; the orchestrator may not.
+                "decided_by": args.decided_by or _triage_operator(),
             },
             headers=_api_headers(),
             timeout=10.0,

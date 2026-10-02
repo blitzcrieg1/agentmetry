@@ -10,7 +10,11 @@ from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 from agentmetry.core.audit.hashing import arguments_sha256
 from agentmetry.core.audit.redaction import scrub_arg_values, scrub_secrets
-from agentmetry.core.audit.run_context import actor_from_initiator, build_initiator
+from agentmetry.core.audit.run_context import (
+    actor_from_initiator,
+    build_initiator,
+    operator_from_payload,
+)
 from agentmetry.core.config import settings
 
 ExternalApp = Literal[
@@ -32,10 +36,6 @@ _ACTION_MAP = {
     "approval_request": ("approval_request", "pending"),
     "approval_response": ("approval_response", "success"),
 }
-
-
-def _operator_id() -> str:
-    return settings.operator_id.strip() or "local"
 
 
 def _utc_now() -> str:
@@ -63,16 +63,18 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     correlation_id = str(payload.get("correlation_id") or payload.get("thread_id") or "")
     session_id = str(payload.get("session_id") or "")
 
+    operator = operator_from_payload(payload)
     initiator_raw = payload.get("initiator")
     if isinstance(initiator_raw, dict) and initiator_raw.get("actor_type"):
         initiator = {
             "actor_type": str(initiator_raw.get("actor_type") or "human"),
             "trigger": str(initiator_raw.get("trigger") or "manual"),
-            "operator_id": str(initiator_raw.get("operator_id") or _operator_id()),
+            "operator_id": operator[0],
+            "operator_source": operator[1],
         }
     else:
         trigger = str(payload.get("triggered_by") or "manual")
-        initiator = build_initiator(trigger)
+        initiator = build_initiator(trigger, operator)
 
     tool_block = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
     tool_qualified = str(

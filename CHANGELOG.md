@@ -9,6 +9,49 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The trail could not say who ran the agent, and configuring it did nothing**
+  (#168). Every event recorded the operator as `local`. The hook hardcoded
+  `"operator_id": "local"` in twenty-four payloads, and the orchestrator keeps
+  any value a client sends, so `AGENTMETRY_OPERATOR_ID` never reached a single
+  hook event even when it was set. On the maintainer's machine, with it set,
+  2,620 of the last 3,761 hook events said `local`. A hash-chained, anchorable
+  trail could prove a record was not altered and could not say who it was
+  about.
+
+  The hook now resolves the account itself, because it runs as the developer
+  and the orchestrator, under a fleet service, may not: `AGENTMETRY_OPERATOR_ID`
+  if set, else the OS account, domain-qualified on Windows (`CORP\jdoe`, not
+  `jdoe`; a local account's machine name is dropped). It is stamped at capture,
+  so a spooled event keeps the account that captured it. On the orchestrator,
+  `AGENTMETRY_OPERATOR_ID` overrides what a hook read from the OS, and its own
+  account is the last fallback before `local`. Hooks up to 0.9.0 still send
+  `local`, which now counts as not stated.
+
+  Every event says who resolved the id in `initiator.operator_source`
+  (additive; schema stays 1.2.0). `hook_os`, `hook_configured` and `client` are
+  what the capture surface claimed, `orchestrator_configured` and
+  `orchestrator_os` what the recorder worked out. The README's identity
+  paragraph said ingest takes no identity from the caller. It takes no machine
+  identity, which is unchanged, and now says it takes one claim about the
+  person, labelled as one. A client could already set `initiator.operator_id`;
+  the guard test only checked top-level field names.
+
+  Triage records had the same hole: `decided_by` was an empty string with
+  nothing configured. The `disposition` CLI now sends the account running it,
+  and the event falls back to the resolved operator.
+
+  **This puts account names in the trail and in forwarded events**, where
+  before there was a constant. That is the point of the change, and it is new
+  data leaving the machine for anyone who forwards. To keep account names out
+  of a SIEM, set `AGENTMETRY_OPERATOR_ID` to a pseudonym. Nothing reads another vendor's
+  credential store to find an email: an earlier proposal did, and #168 explains
+  why not.
+
+  This is attribution by claim. Making it a fact on a fleet is per-host
+  signing, which is separate work.
+
 ## [0.9.0] - 2026-10-02
 
 Enforcement release. A deny on Claude Code, the agent this records most, had

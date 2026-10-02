@@ -57,7 +57,8 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 
 | Field | When present | Purpose |
 |-------|--------------|---------|
-| `initiator` | All audited run events | Server-derived run origin: `{actor_type, trigger, operator_id}` |
+| `initiator` | All audited run events | Run origin: `{actor_type, trigger, operator_id, operator_source}` |
+| `initiator.operator_source` | Events recorded after 0.9.0 (additive; schema stays 1.2.0) | Who resolved `operator_id`. `hook_configured`, `hook_os` and `client` are what the capture surface claimed; `orchestrator_configured` and `orchestrator_os` the recorder resolved itself; `default` means nothing resolved and the id is `local` |
 | `fleet_id` | All canonical events | Org or deployment tag from `AGENTMETRY_FLEET_ID`; empty when unset |
 | `gated_action` | `approval_request` | Binds the gate to `{tool, server, input_hash}` |
 | `dlp` | `tool_called` (when `outcome` is `denied` or `mode` is `log`) | Records DLP scanner matches: `{rule_id, mode, pattern_type}` |
@@ -310,7 +311,7 @@ what catches renumbering. Two examples that a from-memory mapping gets wrong:
 | Tool arguments | **HASH** | `arguments_sha256` on bus; `tool.input_hash` in canonical |
 | Tool outputs | Not logged on bus v1 | Roadmap |
 | Prompts / drafts | Not on tool events | Approval payloads may contain draft text in outbox only |
-| `actor.id` | PLAIN | From `AGENTMETRY_OPERATOR_ID` or `local` |
+| `actor.id` | PLAIN | The account that ran the agent: `AGENTMETRY_OPERATOR_ID` if configured, else the OS account (`DOMAIN\user` on a domain or Entra Windows account). Set `AGENTMETRY_OPERATOR_ID` to a pseudonym to keep account names out of forwarded events |
 
 ## CLI
 

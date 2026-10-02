@@ -58,6 +58,13 @@ except ImportError:  # pragma: no cover - the package always ships it
     def ask_honoured(source_app: str, hook_name: str) -> bool:  # noqa: ARG001
         return False
 
+# Standard library only, so it costs the hook nothing. Guarded anyway: an
+# unresolvable operator must leave the event unattributed, not unrecorded.
+try:
+    from agentmetry.core.operator_identity import os_operator
+except ImportError:  # pragma: no cover - the package always ships it
+    os_operator = None
+
 # Separate try: a DLP import failure (missing yaml/pydantic) must not also kill
 # trait/MITRE tagging, which only needs the stdlib.
 try:
@@ -527,6 +534,31 @@ def spool_payload(payload: dict[str, Any]) -> bool:
         return False
 
 
+_OPERATOR: dict[str, str] | None = None
+
+
+def _operator() -> dict[str, str]:
+    """Who is running this agent: configured if somebody said, else the OS account.
+
+    Resolved here, in the hook, because the hook runs as the developer. The
+    orchestrator may be a service running as somebody else entirely, so asking
+    it would attribute every developer's work to the service account. Once per
+    process: the account does not change under a running hook.
+    """
+    global _OPERATOR
+    if _OPERATOR is None:
+        configured = (
+            os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip()
+            or _read_repo_env("AGENTMETRY_OPERATOR_ID").strip()
+        )
+        if configured:
+            _OPERATOR = {"id": configured, "source": "configured"}
+        else:
+            found = os_operator() if os_operator else ""
+            _OPERATOR = {"id": found, "source": "os"} if found else {}
+    return _OPERATOR
+
+
 def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
     # Stamp when the tool call happened, here, at capture. The orchestrator falls
     # back to its own clock when this is absent, which is accurate to the
@@ -537,6 +569,12 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = T
     # unrelated events, and misstated when things happened in a record whose
     # whole purpose is to say when things happened.
     payload.setdefault("timestamp_utc", _utc_now())
+    # Who, stamped at capture for the same reason as when: a spooled event
+    # replayed later must carry the account that ran the agent, not whoever is
+    # logged in at replay.
+    operator = _operator()
+    if operator and "operator" not in payload:
+        payload["operator"] = dict(operator)
     # S310 is suppressed on the Request/urlopen pair below because the scheme
     # is pinned in `_base_url`, which is the check the rule is asking for.
     url = f"{_base_url()}/api/v1/audit/ingest"
@@ -690,7 +728,7 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "event_type": "session_start",
             "correlation_id": correlation or session_id,
             "session_id": session_id,
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
 
     if hook_name in ("sessionEnd", "stop"):
@@ -700,7 +738,7 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "event_type": "session_end",
             "correlation_id": correlation or session_id,
             "session_id": session_id,
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
         }
 
     if hook_name in CURSOR_BEFORE:
@@ -715,7 +753,7 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "reason": f"decision:{decision};hook:{hook_name}",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
             "tool": {"qualified": qualified, "server": server, "arguments": clean},
         }
 
@@ -730,7 +768,7 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "reason": reason,
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
             "tool": {"qualified": qualified, "server": server, "arguments": clean},
         }
 
@@ -745,7 +783,7 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "correlation_id": correlation,
             "session_id": session_id,
             "tool_qualified": f"cursor.{tool_name}",
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
         }
 
     return None
@@ -767,7 +805,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "event_type": "session_start",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
 
     # Interrupt fires in place of Stop when the human aborts a turn (Kimi/Claude
@@ -782,7 +820,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "correlation_id": correlation,
             "session_id": session_id,
             "reason": "interrupted" if hook_name == "Interrupt" else "",
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
         }
 
     # A SubagentStop is NOT a parent session_end. Mapping it to one made ingest
@@ -804,7 +842,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "reason": f"decision:{decision};hook:{hook_name}",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
             "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
         }
 
@@ -829,7 +867,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "reason": reason,
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
             "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
         }
 
@@ -841,7 +879,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "correlation_id": correlation,
             "session_id": session_id,
             "reason": "user_prompt",
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
 
     return None
@@ -878,7 +916,7 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
     base: dict[str, Any] = {
         "correlation_id": correlation,
         "session_id": session_id,
-        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
     }
     if model_id:
         base["model"] = {"id": model_id, "provider": "openai"}
@@ -889,7 +927,7 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
             "source_app": "codex",
             "adapter": "codex_hook",
             "event_type": "session_start",
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
             "reason": str(_pick(data, "source", default="startup")),
         }
 
@@ -908,7 +946,7 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
             "adapter": "codex_hook",
             "event_type": "session_start",
             "reason": "user_prompt",
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
 
     qualified, server, clean = _codex_tool_context(tool_name, tool_input)
@@ -974,7 +1012,7 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
             "event_type": "session_start",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
 
     if hook_name == "Stop":
@@ -984,7 +1022,7 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
             "event_type": "session_end",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": ""},
         }
 
     if hook_name == "PreToolUse" and has_tool:
@@ -997,7 +1035,7 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
             "reason": f"hook:{hook_name};hitl:{is_hitl}",
             "correlation_id": correlation,
             "session_id": session_id,
-            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": ""},
             "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
         }
 
@@ -1013,7 +1051,7 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
                 "reason": reason,
                 "correlation_id": correlation,
                 "session_id": session_id,
-                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": ""},
                 "tool": {"qualified": f"antigravity.{tool_name}", "server": "antigravity", "arguments": clean},
             }
         if hook_name == "PostToolUse" and correlation:
@@ -1025,7 +1063,7 @@ def map_antigravity_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any]
                 "reason": f"step:{step};{reason}".strip(";"),
                 "correlation_id": correlation,
                 "session_id": session_id,
-                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "local"},
+                "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": ""},
             }
 
     return None
@@ -1070,7 +1108,7 @@ def _map_post_tool_use_failure(
         "reason": str(_pick(data, "error", "message", "reason", default="tool_failed")),
         "correlation_id": correlation,
         "session_id": correlation,
-        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": "local"},
+        "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
         "tool": {
             "qualified": tool_name,
             "server": source_app,
@@ -1104,7 +1142,7 @@ def _subagent_stop_payload(
         "reason": f"subagent_stop:{agent_type}",
         "correlation_id": correlation,
         "session_id": correlation,
-        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": ""},
         "tool": {
             "qualified": f"{source_app}.subagent_stop.{slug}",
             "server": server,
@@ -1132,7 +1170,7 @@ def _map_claude_family_hook(
             "event_type": "session_end",
             "correlation_id": correlation,
             "session_id": correlation,
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         }
     if hook_name == "SubagentStart":
         correlation = str(_pick(data, "session_id", default=""))
@@ -1148,7 +1186,7 @@ def _map_claude_family_hook(
             "reason": f"subagent_start:{agent_type}",
             "correlation_id": correlation,
             "session_id": correlation,
-            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+            "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": ""},
             "tool": {
                 "qualified": f"{source_app}.subagent.{slug}",
                 "server": source_app,
@@ -1198,7 +1236,7 @@ def map_kimi_stream_json_line(
         "adapter": "kimi_stream_json",
         "correlation_id": correlation,
         "session_id": correlation,
-        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": ""},
     }
 
     if role != "assistant":
@@ -1342,7 +1380,7 @@ def stream_json_main(source_app: str = "kimi") -> int:
         "correlation_id": session_id,
         "session_id": session_id,
         "reason": "stream_json:session_end",
-        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": "local"},
+        "initiator": {"actor_type": "autonomous", "trigger": "ingress", "operator_id": ""},
     })
     return 0
 
