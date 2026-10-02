@@ -9,6 +9,26 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The README described commands that did not work and a product that has
+  moved on.** An audit of the README against the code on 2026-10-02 found:
+  `python -m cli benchmark`, the documented way to check the detection claims,
+  fails with "No module named cli" since the package became `agentmetry`; the
+  dashboard needs Node 20.9 or newer, not 18; `agentmetry replay` was listed as
+  an audit-trail timeline while it reads only the removed runtime's outbox, so it
+  shows nothing for a hook or OTel session ([#209]); the example event was a
+  runtime-era `vault_fs.read_file` call, now a real Claude Code event generated
+  from the code; the tool-policy section still said a deny returns
+  `permission: deny`, which Claude Code ignores; and the approvals paragraph
+  said no agent reports the human's click, which Claude Code's OTel stream now
+  does. The agent list, capture paths, SIEM lists and contributing paths are
+  brought in line with what ships. `ROADMAP.md` is refreshed from commands: it
+  still listed 0.7.0, a dogfood gate at 0 of 4 with an earliest-close date, four
+  false-positive fixes that shipped in 0.7.0, and OTel ingest as future work.
+
+[#209]: https://github.com/blitzcrieg1/agentmetry/issues/209
+
 ## [0.9.1] - 2026-10-02
 
 Two fixes to things every tool call touches. The trail now says who ran the

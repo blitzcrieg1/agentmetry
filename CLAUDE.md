@@ -47,6 +47,12 @@ untriaged critical and high detections, then flipped to GREEN on 2026-09-09 when
 they were triaged. The recorder was never the problem: seven active days, 4,449
 events. Only the triage was.
 
+**The gate passed on 2026-10-02: 4 of 4, weeks 1 to 4.** Weeks 2 and 4 had
+also scored RED, on one and three untriaged `session-tool-burst` detections, and
+turned GREEN when those were triaged that day. The fingerprint did not move
+during the run. Whether the freeze now ends, so #55 and #172 can land, is the
+maintainer's decision; until it is made, the list above stays frozen.
+
 That flip is worth knowing about. **A week scored red on untriaged detections
 can be rescued at any time**, because `build_report` reads the disposition store
 on every run (`core/audit/dogfood.py:289`) rather than freezing a verdict when
@@ -156,10 +162,13 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-09-09 there are 1240 tests, zero open Dependabot and code
-scanning alerts, and a released package on PyPI. There are also **zero external
-users, zero design-partner tenants, and zero sent sales messages** against ten
-researched accounts with drafted openers.
+Not code. As of 2026-10-02 there are 1404 tests, zero open code scanning alerts,
+a passed dogfood gate, and 0.9.1 on PyPI. Dependabot is not at zero: 20 open
+alerts, all in `apps/dashboard/package-lock.json`, one of them critical (`next`).
+Check with `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open`
+rather than trusting this line. There are also **zero external users, zero
+design-partner tenants, and zero sent sales messages** against ten researched
+accounts with drafted openers.
 
 When asked "what next", the honest answer is almost always the commercial one,
 and the queue is in `docs/commercial/outreach-log.md`. Say so plainly rather
