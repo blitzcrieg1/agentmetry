@@ -149,9 +149,28 @@ def test_ingest_body_takes_no_identity_from_the_caller():
     fields = set(ExternalIngestBody.model_fields)
     assert "host_id" not in fields
     assert "fleet_id" not in fields
-    # Nothing user-shaped either. If an identity field is ever added to this
-    # body, the README paragraph becomes false in the direction that matters.
-    assert not [f for f in fields if "user" in f or "operator" in f], sorted(fields)
+    # One user-shaped field, on purpose: the hook reports which account ran the
+    # agent (#168). The README says so, and says it is a labelled claim. A second
+    # one appearing means somebody widened what a caller can assert.
+    user_shaped = sorted(f for f in fields if "user" in f or "operator" in f)
+    assert user_shaped == ["operator"], user_shaped
+
+
+@pytest.mark.parametrize("source", ["orchestrator_os", "orchestrator_configured", "default", "os", ""])
+def test_a_callers_operator_claim_is_never_labelled_as_the_recorders(source):
+    """The README's line: `hook_*` and `client` are what the caller said. A client
+    that sends `orchestrator_os` must not get its claim recorded as one."""
+    from agentmetry.api.routes.audit import ExternalIngestBody
+    from agentmetry.core.audit.external import build_external_canonical
+
+    body = ExternalIngestBody(
+        source_app="claude", event_type="tool_called",
+        operator={"id": "someone-else", "source": source},
+    ).model_dump(exclude_none=True)
+    initiator = build_external_canonical(body)["initiator"]
+
+    assert initiator["operator_id"] == "someone-else"
+    assert initiator["operator_source"] in ("hook_os", "client"), initiator
 
 
 def test_identity_is_stamped_from_the_receiving_host():

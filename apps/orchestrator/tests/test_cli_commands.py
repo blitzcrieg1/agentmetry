@@ -455,14 +455,19 @@ def test_disposition_posts_the_closing_decision(monkeypatch, capsys):
         "resolved",
     ]) == 0
 
+    from agentmetry.core.operator_identity import os_operator
+
     assert calls["url"] == "http://127.0.0.1:8000/api/v1/audit/detections/disposition"
+    # With no --decided-by, the account running the CLI triaged it (#168). It
+    # used to post an empty string, and the record could not say who closed it.
     assert calls["json"] == {
         "correlation_id": "sess-1",
         "rule_id": "credential-exfil",
         "status": "resolved",
         "note": "",
-        "decided_by": "",
+        "decided_by": os_operator(),
     }
+    assert calls["json"]["decided_by"]
     assert calls["headers"] == {}
     assert "sess-1 credential-exfil -> resolved" in capsys.readouterr().out
 

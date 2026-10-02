@@ -276,7 +276,7 @@ def _map_tool_decision(attrs: dict[str, Any], ts_iso: str) -> tuple[dict[str, An
             "outcome": "success",
             "reason": f"otel_decision:{source}",
             "tool_qualified": str(attrs.get("tool_name") or ""),
-            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": "local"},
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
         })
         return payload, ""
     if decision == "reject" and source in _HUMAN_REJECT:

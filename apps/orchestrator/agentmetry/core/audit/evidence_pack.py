@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from agentmetry.core.audit.detection.disposition import extract_dispositions
+from agentmetry.core.audit.run_context import resolve_operator
 from agentmetry.core.config import settings
 from agentmetry.core.version import __version__
 
@@ -290,7 +291,7 @@ def _controls_snapshot() -> dict[str, Any]:
         "detection": {
             "off_hours_enabled": settings.detect_off_hours,
         },
-        "operator_id": settings.operator_id.strip() or "local",
+        "operator_id": resolve_operator()[0],
     }
 
 

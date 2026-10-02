@@ -431,8 +431,14 @@ def build_disposition_event(
     `action.type:detection_disposition AND action.outcome:risk_accepted`
     without understanding Agentmetry's vocabulary. The note is operator-written
     text, never captured command content, so it is safe to forward.
+
+    Who decided falls back to the resolved operator, not to the raw setting:
+    with AGENTMETRY_OPERATOR_ID unset that was an empty string, so a triage
+    record could not say who triaged.
     """
-    from agentmetry.core.config import settings
+    from agentmetry.core.audit.run_context import resolve_operator
+
+    decided_by = decided_by or resolve_operator()[0]
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -443,8 +449,8 @@ def build_disposition_event(
         **identity_fields(),
         "source_topic": f"disposition/{rule_id}",
         "source": {"tier": "detection", "app": "agentmetry"},
-        "actor": {"id": decided_by or settings.operator_id, "type": "human"},
-        "initiator": {"type": "human", "id": decided_by or settings.operator_id},
+        "actor": {"id": decided_by, "type": "human"},
+        "initiator": {"type": "human", "id": decided_by},
         "action": {
             "type": DISPOSITION_EVENT_TYPE,
             "outcome": status,
@@ -459,7 +465,7 @@ def build_disposition_event(
             "previous_status": previous_status,
             "assignee": assignee,
             "note": note,
-            "decided_by": decided_by or settings.operator_id,
+            "decided_by": decided_by,
         },
     }
 
