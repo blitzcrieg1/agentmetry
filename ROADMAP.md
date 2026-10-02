@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-08-23.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-02.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -30,17 +30,17 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-08-23
+## Where this actually is, on 2026-10-02
 
 | | |
 |---|---|
-| Version | 0.7.0 on PyPI, released 2026-08-27 |
+| Version | 0.9.1 on PyPI, released 2026-10-02 |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1148 passing, 81% coverage, floor enforced in CI |
-| Dogfood gate | **0 of 4.** Clock restarted 2026-08-30, after 0.7.0, deliberately, to fix four shipping false positives |
-| Own trail | 27,504 hash-chained lines, 24 external anchors |
+| Tests | 1404 passing, 82% coverage, a 78% floor enforced in CI |
+| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. Weeks 2 and 4 were red only on untriaged detections, and turned green when they were triaged, which is how the gate is designed to work |
+| Own trail | 50,704 hash-chained lines, 170 external checkpoints |
 | Adoption | Public alpha. No design partner tenant yet, no reference customer |
 
 The last row is the one that matters. Engineering is further along than
@@ -69,14 +69,14 @@ signature is not gated on it.
 
 ## Beta gates
 
-Declare beta when all four are true. Two are.
+Declare beta when all four are true. Three are.
 
 | Gate | Status |
 |---|---|
-| Four consecutive green dogfood weeks | **0 of 4.** Restarted 2026-08-30. Earliest close **2026-09-26** |
+| Four consecutive green dogfood weeks | **Passed 2026-10-02**, weeks 1 to 4 of the run that started 2026-08-30 |
 | `agentmetry verify --trail` demonstrated in the README | Done |
 | `agentmetry doctor` green on three distinct Windows 11 setups | **1 of 3.** Needs two machines that are not the maintainer's |
-| Public claims match shipped behaviour | Done. `/compare`, the limitations section and the benchmark all state numbers the reader can reproduce |
+| Public claims match shipped behaviour | Done, and it had drifted. A README audit on 2026-10-02 found a documented command that no longer ran (`python -m cli benchmark`), a `replay` that cannot show a hook session ([#209](https://github.com/blitzcrieg1/agentmetry/issues/209)), and a stale Node requirement. Fixed in the same refresh as this file |
 
 The third gate is the one with no plan attached, and it is a real gap: every
 `doctor` result on record comes from one machine. A pilot tenant closes it as a
@@ -84,24 +84,24 @@ side effect, which is another argument for the ordering below.
 
 ---
 
-## Now (through 2026-09-26)
+## Now
 
 Ordered by what unblocks the most. Only the first item is not code, and it is
 the most important one on the page.
 
 | Item | Issue | Why now |
 |---|---|---|
-| **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. Nothing else on this list matters as much |
-| Detection precision pass | [#44](https://github.com/blitzcrieg1/agentmetry/issues/44) [#49](https://github.com/blitzcrieg1/agentmetry/issues/49) [#50](https://github.com/blitzcrieg1/agentmetry/issues/50) [#51](https://github.com/blitzcrieg1/agentmetry/issues/51) [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Five false-positive sources in frozen files. Land as one pass with #55 first, after the dogfood gate closes, so the ruleset fingerprint moves once |
+| **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. The dogfood gate passing is the checkable fact the openers were missing. Nothing else on this list matters as much |
+| The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has now passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass |
+| `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Every detection that held a week at red in the run was this rule, on intended work. A rule change, so it belongs in the same pass as #55 |
 | Evidence pack integrity covers `meta` | [#75](https://github.com/blitzcrieg1/agentmetry/issues/75) | The date range on an evidence pack can currently be rewritten without breaking the hash. Needs a schema bump so existing packs keep verifying |
+| The removed runtime out of the boot path, `replay` on the trail | [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) | The orchestrator still mounts the old runtime's MCP host on every boot, `replay` reads only its outbox, and it holds `mcp` below 2 |
 
-**Held deliberately until 2026-09-26:** anything that edits
-`detection/rules.py`, `detection/traits.py`, `detection/engine.py` or
-`audit/mitre.py`, and anything that edits the detection manifest those four are
-hashed alongside. Together they are the ruleset fingerprint, and moving it
-restarts the dogfood clock. Four green weeks measured against four different
-rulesets is not a number worth quoting, which is why the freeze is checkable
-rather than promised.
+**The freeze held for the run that passed.** The ruleset fingerprint covers
+`detection/rules.py`, `detection/traits.py`, `detection/engine.py`,
+`audit/mitre.py` and the detection manifest, and none of them moved between
+2026-08-30 and the pass. Moving it now restarts nothing that is running; it
+matters again only when a new run starts.
 
 ---
 
@@ -116,9 +116,10 @@ wants has moved to the bottom of the page.
 |---|---|---|
 | **Splunk TA through AppInspect and a Splunkbase listing** | [enterprise #8](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/8) | The TA works and has tests. It is a directory you copy onto a search head, which is a different conversation from a listing a security team can find. No public copy claims certification until it exists |
 | **Per-host identity on a fleet trail** | [enterprise #1](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/1) | A fleet trail is tamper-evident and not yet attributable. Ed25519 per host, so a forwarded event says which machine signed it |
-| **Ingest Claude Code OpenTelemetry as a third capture tier** | [#56](https://github.com/blitzcrieg1/agentmetry/issues/56) | Anthropic ships observed approval decisions we currently infer. Ingesting beats competing, and it closes [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) for free. Reasoning in [the notes](https://agentmetry.ai/blog/why-not-just-opentelemetry) |
-| OTLP **export** | none yet | Distinct from #56, which is ingest. Table stakes for teams standardised on a collector |
-| Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump |
+| OTLP **export** | none yet | The other direction from `agentmetry otel`, which shipped in 0.9.0 as ingest. Table stakes for teams standardised on a collector |
+| Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump. Claude Code's OTel stream carries `tool_result_size_bytes`, which the receiver does not map yet |
+| MCP server inventory as an event | [#169](https://github.com/blitzcrieg1/agentmetry/issues/169) | `agentmetry mcp` lists what the agents are wired to, but the SIEM never sees it |
+| Unattended sessions distinguishable from supervised ones | [#170](https://github.com/blitzcrieg1/agentmetry/issues/170) | An auto-mode session reads the same as one a person is watching |
 | Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
 | Benchmark coverage for the six uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | 13 of 15 rules have corpus coverage. Benign sessions harvested from the real trail beat invented ones |
 | Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
@@ -162,7 +163,8 @@ the rows where each alternative wins. Not duplicated here, because a
 competitive section in a roadmap is exactly what went stale last time.
 
 The short version: Claude Code's native OpenTelemetry is the most important
-alternative and is being ingested rather than argued with. MintMCP is the
+alternative, and it is ingested rather than argued with (`agentmetry otel`,
+0.9.0). MintMCP is the
 closest peer on capture and is ahead on everything procurement measures.
 Prompt Security, inside SentinelOne, covers the unmanaged-agent gap this
 project refuses to claim. What nobody else on that page offers is a local
