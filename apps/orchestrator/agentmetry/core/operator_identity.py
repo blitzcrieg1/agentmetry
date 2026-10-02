@@ -75,6 +75,13 @@ def windows_account(environ: Mapping[str, str]) -> str:
 
 
 def stated(value: object) -> str:
-    """A client-supplied id, or empty when it said nothing or the legacy constant."""
+    """An id somebody actually stated, or empty.
+
+    Empty for nothing, and for `local`, whether a hook sent it or a `.env` says
+    it. Both `.env.example` files shipped `AGENTMETRY_OPERATOR_ID=local` up to
+    0.9.1 and both installers copied it, so on an installed machine `local` in
+    the config is the old placeholder, not a choice. Read as configured, it
+    overrode the OS account and every event said `local` again.
+    """
     text = str(value or "").strip()
     return "" if text == LEGACY_PLACEHOLDER else text

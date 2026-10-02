@@ -285,12 +285,9 @@ def cmd_detections(args: argparse.Namespace) -> int:
 
 
 def _triage_operator() -> str:
-    configured = os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip()
-    if configured:
-        return configured
-    from agentmetry.core.operator_identity import os_operator
+    from agentmetry.core.operator_identity import os_operator, stated
 
-    return os_operator()
+    return stated(os.environ.get("AGENTMETRY_OPERATOR_ID", "")) or os_operator()
 
 
 def cmd_disposition(args: argparse.Namespace) -> int:

@@ -229,3 +229,52 @@ def test_a_triage_record_says_who_triaged():
                                     status="resolved")
     assert event["disposition"]["decided_by"]
     assert event["actor"]["id"] == event["disposition"]["decided_by"]
+
+
+# ---------------------------------------- the placeholder the examples shipped
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.mark.parametrize("example", [".env.example", "apps/orchestrator/.env.example"])
+def test_the_env_examples_ship_no_operator(example):
+    """Both shipped `AGENTMETRY_OPERATOR_ID=local` up to 0.9.1, and both
+    installers copy the example to `.env`, which pinned every installed
+    machine's events to `local` and undid #168."""
+    lines = (REPO_ROOT / example).read_text(encoding="utf-8").splitlines()
+    values = [ln.split("=", 1)[1].strip() for ln in lines if ln.startswith("AGENTMETRY_OPERATOR_ID=")]
+    assert values == [""], values
+
+
+def test_an_installed_machine_with_the_old_placeholder_records_the_os_account(monkeypatch):
+    """The state every installer-built machine is already in: `local` in the
+    `.env` the hook reads and in the orchestrator's setting."""
+    monkeypatch.setattr(ingest, "_read_repo_env",
+                        lambda key: "local" if key == "AGENTMETRY_OPERATOR_ID" else "")
+    monkeypatch.setattr(settings, "operator_id", "local")
+    recorded = _recorded(_captured(_claude_pre_tool_use()))
+    assert recorded["actor"]["id"] == oid.os_operator()
+    assert recorded["initiator"]["operator_source"] == "hook_os"
+
+
+def test_local_in_the_environment_is_not_a_configured_id(monkeypatch):
+    monkeypatch.setenv("AGENTMETRY_OPERATOR_ID", "local")
+    assert ingest._operator() == {"id": oid.os_operator(), "source": "os"}
+
+
+def test_the_orchestrators_local_is_not_an_override(monkeypatch):
+    monkeypatch.setattr(settings, "operator_id", "local")
+    assert run_context.resolve_operator("CORP\\jdoe", "os") == ("CORP\\jdoe", "hook_os")
+
+
+def test_a_real_configured_id_still_wins(monkeypatch):
+    monkeypatch.setattr(settings, "operator_id", "svc-build")
+    assert run_context.resolve_operator("CORP\\jdoe", "os") == ("svc-build", "orchestrator_configured")
+
+
+def test_the_triage_cli_ignores_the_placeholder_too(monkeypatch):
+    from agentmetry.cli import _triage_operator
+
+    monkeypatch.setenv("AGENTMETRY_OPERATOR_ID", "local")
+    assert _triage_operator() == oid.os_operator()
