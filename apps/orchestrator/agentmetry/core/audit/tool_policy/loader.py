@@ -7,6 +7,12 @@ from .models import ToolPolicyRule
 
 logger = logging.getLogger(__name__)
 
+#: libyaml where it is installed. The pure-Python parser was most of the hook's
+#: runtime: the DLP and tool manifests are re-read by every hook process, and
+#: parsing them took ~55 ms of an ~85 ms tool call (#171). Same SafeConstructor,
+#: so the same Python objects, which `test_hook_import_cost.py` checks.
+SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 ACTIONS = ("allow", "deny", "ask")
 
 #: `ask` is not a valid default yet. "Ask about everything not allowlisted" is
@@ -47,7 +53,7 @@ def load_tool_policy(manifest_path: Path | str) -> tuple[list[ToolPolicyRule], s
         return [], "allow"
 
     with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
+        data = yaml.load(fh, Loader=SAFE_LOADER)  # noqa: S506 - a safe loader
 
     if not data or "rules" not in data:
         return [], _normalise_default(data.get("default") if data else None)

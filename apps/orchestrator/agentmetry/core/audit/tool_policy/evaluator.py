@@ -6,7 +6,8 @@ from typing import Any
 
 from .loader import load_tool_policy
 from .models import ToolPolicyMatch, ToolPolicyRule, ToolPolicyVerdict
-from ...config import settings
+# Not core.config, for the same reason as the DLP scanner (#171).
+from ..policy_settings import policy_settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def reset_policy() -> None:
 def _init_policy() -> tuple[list[ToolPolicyRule], str]:
     global _POLICY
     if _POLICY is None:
-        _POLICY = load_tool_policy(settings.tool_policy_path)
+        _POLICY = load_tool_policy(policy_settings().tool_policy_path)
     return _POLICY
 
 
@@ -143,7 +144,7 @@ def evaluate(
 ) -> ToolPolicyVerdict:
     """Evaluate tool allow/deny policy. Runs on plaintext hook data before hashing."""
     if mode is None:
-        mode = settings.tool_policy_mode
+        mode = policy_settings().tool_policy_mode
     if mode == "disable":
         return ToolPolicyVerdict(matched=False, blocked=False, mode=mode)
 
