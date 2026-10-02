@@ -12,10 +12,16 @@ A **local-first endpoint sensor for AI coding agents**. It records what an agent
 did at the tool boundary, correlates sequences into detections, and forwards
 into the SIEM the customer already runs.
 
-It is **not** an agent OS, not a console, not a sandbox, not a CASB. An earlier
-incarnation of this repo was an agent runtime; that was removed deliberately and
-is not coming back. If a change starts to look like "Agentmetry runs your
-agents", it is the wrong change.
+It is **not** an agent OS, not a sandbox, not a CASB. An earlier incarnation of
+this repo was an agent runtime; that was removed deliberately and is not coming
+back. If a change starts to look like "Agentmetry runs your agents", it is the
+wrong change.
+
+**This repo stays local-first; Agentmetry Enterprise may be hosted.** Decided
+2026-10-02. The open-source sensor records on the machine and never depends on a
+hosted service. Enterprise (`agentmetry-enterprise`) can be a hosted fleet
+console with managed ingest and cross-machine views. Do not argue Enterprise out
+of the cloud on "never a vendor cloud" grounds; that line was withdrawn.
 
 The public framing lives on [agentmetry.ai](https://agentmetry.ai) and in
 `README.md`. Use "Agentic OS" only in the README, GitHub description, or

@@ -59,10 +59,26 @@ open source. Analysts can ship detections in YAML without a commercial license.
 enterprise. That is the "500 rules without Python PRs" unlock for SOC teams who
 already standardize on Sigma syntax.
 
+## Hosted Enterprise is allowed
+
+Revised 2026-10-02. This section used to say neither repo would build a vendor
+cloud control plane or an Agentmetry-hosted SIEM. That is withdrawn for
+Enterprise:
+
+- **Agentmetry Enterprise may run as a hosted service**: a fleet console,
+  managed ingest and cross-machine views, run multi-tenant for many customers
+  or in one customer's own cloud. None of it is built yet.
+- **Customers who keep their own SIEM as the console keep that option.** The
+  Splunk app (`agentmetry_app`, in the enterprise repo) ships either way.
+- **The open-source sensor stays local-first.** It records on the machine,
+  forwards only where the operator points it, and never needs a hosted service
+  to work. What it sends is structure, not content: arguments are hashed in the
+  hook process and prompts never leave the machine, which is what a hosted
+  Enterprise would receive too.
+
 ## What we will not build (either repo)
 
-- Vendor multi-tenant cloud control plane
-- Agentmetry-hosted SIEM replacing customer Splunk/Elastic
+- A hosted dependency in the open-source sensor
 - Replacing IDE hooks with eBPF as the primary capture layer
 - Full Rust/Go rewrite before paid fleet demand (≥500 seats)
 
