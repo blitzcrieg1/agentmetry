@@ -1391,7 +1391,7 @@ def _emit_hook_stdout(hook_name: str) -> None:
         hook_name in CURSOR_BLOCKING
         or hook_name in ("PreToolUse", "PermissionRequest")
     ):
-        print(json.dumps({"permission": enforce}))
+        print(json.dumps(_decision_output(hook_name, enforce, f"AGENTMETRY_ENFORCE={enforce}")))
 
 
 def _hook_debug_path() -> Path:
@@ -1422,12 +1422,59 @@ def _is_blocking_hook(hook_name: str, data: dict[str, Any]) -> bool:
     return effective in _PRE_EXECUTION_HOOKS
 
 
-def _emit_block_decision() -> None:
-    """Print the deny decision in the shape the current source app expects."""
-    if _source_app() == "antigravity":
-        print(json.dumps({"decision": "deny"}))
-    else:
-        print(json.dumps({"permission": "deny"}))
+#: Agents that speak Claude Code's hook protocol. Their decisions go in
+#: `hookSpecificOutput`, and a top-level `"permission"` key, which is Cursor's
+#: format, is not recognised by any of them. `hook_bootstrap.py` installs every
+#: one of these with Claude's settings.json shape and calls the wire protocol
+#: Claude-compatible in its own comment. Only `claude` has been checked against
+#: the vendor's published schema; the rest inherit it.
+_CLAUDE_PROTOCOL = frozenset({"claude", "qwen", "qoder", "codebuddy", "kimi"})
+
+
+def _decision_output(hook_name: str, decision: str, reason: str = "") -> dict[str, Any]:
+    """A hook decision in the exact shape the calling agent honours.
+
+    Getting this wrong fails open, and fails silently. Until 0.9.0 every agent
+    except Antigravity was sent Cursor's `{"permission": "deny"}`. Claude Code
+    does not recognise that key, so it read the exit-0 hook as success and ran
+    the tool, while this same process had already written the call to the trail
+    as `outcome: denied`. A control that does nothing is bad. A control that does
+    nothing while the tamper-evident record says it worked is the worst failure
+    this file can produce, and three tests asserted the wrong format, so the
+    suite certified it.
+
+    Formats, from each vendor's hook documentation:
+
+      * Claude Code `PreToolUse`: `hookSpecificOutput.permissionDecision`,
+        allow|deny|ask, with `permissionDecisionReason`.
+      * Claude Code `PermissionRequest`: `hookSpecificOutput.decision.behavior`,
+        allow|deny only. There is no ask on this event, so ask becomes deny.
+        The safe direction, never the other way.
+      * Cursor: top-level `permission`. Unchanged, because it already worked.
+      * Antigravity: top-level `decision`.
+    """
+    source = _source_app()
+    if source == "antigravity":
+        return {"decision": decision}
+    if source in _CLAUDE_PROTOCOL:
+        if hook_name == "PermissionRequest":
+            behaviour = "allow" if decision == "allow" else "deny"
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": hook_name,
+                    "decision": {"behavior": behaviour},
+                }
+            }
+        out: dict[str, Any] = {"hookEventName": hook_name, "permissionDecision": decision}
+        if reason:
+            out["permissionDecisionReason"] = reason
+        return {"hookSpecificOutput": out}
+    return {"permission": decision}
+
+
+def _emit_block_decision(hook_name: str, reason: str = "") -> None:
+    """Print a deny the current agent will actually enforce."""
+    print(json.dumps(_decision_output(hook_name, "deny", reason)))
 
 
 def hook_main(hook_name: str) -> int:
@@ -1474,7 +1521,7 @@ def hook_main(hook_name: str) -> int:
                             payload["reason"] = f"tool_policy:{rule_id}"
                             payload["event_type"] = "tool_called"
                             post_ingest(payload, quiet=True)
-                            _emit_block_decision()
+                            _emit_block_decision(hook_name, payload["reason"])
                             return 0
                         # After-hook: keep the real outcome so detection rules
                         # still see the executed call; note it was not enforced.
@@ -1502,7 +1549,7 @@ def hook_main(hook_name: str) -> int:
                         payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
                         payload["event_type"] = "tool_called"
                         post_ingest(payload, quiet=True)
-                        _emit_block_decision()
+                        _emit_block_decision(hook_name, payload["reason"])
                         return 0
                     # After-hook: already executed — record, do not claim a block.
                     payload["reason"] = (

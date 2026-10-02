@@ -9,6 +9,45 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deny on Claude Code never denied anything, and the trail said it had.**
+  Every agent except Antigravity was sent Cursor's hook format,
+  `{"permission": "deny"}`. Claude Code does not recognise a top-level
+  `permission` key; its `PreToolUse` decisions live under
+  `hookSpecificOutput.permissionDecision`. So it read the exit-0 hook as
+  success and ran the tool. The hook had already written that same call to the
+  trail as `outcome: denied`.
+
+  That covers both enforcement paths: DLP `block` mode and tool-policy `block`
+  mode, plus the `AGENTMETRY_ENFORCE` override. On Claude Code, every block any
+  release has reported was a tool that ran. It is the failure `policy.py`
+  describes as the worst one possible, a lie in the tamper-evident record, and it
+  shipped because three tests ran as `claude` and asserted the Cursor string. A
+  substring match cannot tell a format the agent honours from one it ignores, so
+  the suite certified it.
+
+  The hook now encodes each decision in the shape the calling agent enforces,
+  per its vendor documentation: `hookSpecificOutput.permissionDecision` for
+  Claude Code `PreToolUse`, `hookSpecificOutput.decision.behavior` for
+  `PermissionRequest`, unchanged top-level `permission` for Cursor, and
+  unchanged `decision` for Antigravity. The reason that fired, such as
+  `dlp:aws_key` or `tool_policy:block_shell_rm`, now reaches the agent with the
+  deny.
+
+  `PermissionRequest` has no `ask` outcome, so an ask there becomes deny. That
+  is the only safe direction for a control, never the other way.
+
+  Qwen, Qoder, CodeBuddy and Kimi get the same encoding, because the installer
+  sets them up with Claude's hook protocol. Only Claude Code has been checked
+  against its vendor's published schema; the others inherit it unverified.
+  Codex is not in that set and still gets the Cursor format. It registers
+  Claude-style event names, so it may have had the same bug, and that needs
+  checking against Codex's own docs before anyone relies on a deny there.
+
+  `test_hook_decision_format.py` parses each output and asserts the documented
+  schema per agent. Against the old emitter, 18 of its 19 tests fail.
+
 ### Added
 
 - **Linux/macOS one-flow install**: `scripts/install.sh` mirrors `install.ps1`
