@@ -25,7 +25,6 @@ Environment:
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import hmac
 import json
@@ -597,6 +596,38 @@ def _operator() -> dict[str, str]:
     return _OPERATOR
 
 
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+_LOOPBACK_OPENER: urllib.request.OpenerDirector | None = None
+
+
+def _urlopen(req: urllib.request.Request, timeout: float):
+    """`urlopen`, minus what a loopback POST never needs (pilot hardening item 23).
+
+    The default opener builds an HTTPS context on first use, which on Windows
+    enumerates the system certificate stores: about 28 ms, on every hook
+    invocation, for a plain-http request to 127.0.0.1. It also consults proxy
+    settings, and a loopback request has no business going through a proxy.
+    So plain http to a loopback host goes through a minimal opener; anything
+    else (https, a collector on the LAN) gets the standard one. Not installed
+    globally: this module is imported inside the orchestrator too.
+    """
+    global _LOOPBACK_OPENER
+    parsed = urllib.parse.urlparse(req.full_url)
+    if parsed.scheme != "http" or parsed.hostname not in _LOOPBACK_HOSTS:
+        return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - scheme pinned in _base_url
+    if _LOOPBACK_OPENER is None:
+        opener = urllib.request.OpenerDirector()
+        for handler in (
+            urllib.request.UnknownHandler(),
+            urllib.request.HTTPHandler(),
+            urllib.request.HTTPDefaultErrorHandler(),
+            urllib.request.HTTPErrorProcessor(),
+        ):
+            opener.add_handler(handler)
+        _LOOPBACK_OPENER = opener
+    return _LOOPBACK_OPENER.open(req, timeout=timeout)
+
+
 def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
     # Stamp when the tool call happened, here, at capture. The orchestrator falls
     # back to its own clock when this is absent, which is accurate to the
@@ -623,7 +654,7 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = T
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=_INGEST_TIMEOUT_SECONDS) as response:  # noqa: S310
+        with _urlopen(req, _INGEST_TIMEOUT_SECONDS) as response:
             res_body = response.read().decode("utf-8")
             if response.status != 200:
                 print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
@@ -655,7 +686,7 @@ def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
     if api_key:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310
-    with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310
+    with _urlopen(req, 3) as resp:
         return json.loads(resp.read())
 
 
@@ -1682,6 +1713,8 @@ def hook_main(hook_name: str) -> int:
 
 
 def cli_main(argv: list[str] | None = None) -> int:
+    import argparse
+
     parser = argparse.ArgumentParser(description="Agentmetry external ingest client")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

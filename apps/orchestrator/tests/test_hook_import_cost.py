@@ -177,3 +177,88 @@ def test_the_fast_loader_is_a_safe_one():
     assert SAFE_LOADER in (getattr(yaml, "CSafeLoader", None), yaml.SafeLoader)
     with pytest.raises(yaml.YAMLError):
         yaml.load("!!python/object/apply:os.system ['echo no']", Loader=SAFE_LOADER)  # noqa: S506
+
+
+# --------------------------------------- pilot hardening item 23: hook latency
+#
+# Measured with scripts/bench_hook.py (one real hook process per run, against a
+# stub ingest server): p50 366 ms before, 254 ms after, on the maintainer's
+# Windows machine. Two of the wins are pinned here so they cannot drift back.
+
+
+def test_the_hook_does_not_import_argparse_or_subprocess():
+    """argparse is for the non-hook CLI; subprocess only for token ACL work."""
+    added = set(_modules_the_hook_adds())
+    assert "argparse" not in added
+    assert "subprocess" not in added
+
+
+def _stub_server():
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _Ok(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("content-length") or 0))
+            self.send_response(200)
+            self.send_header("content-length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *_a):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Ok)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_a_loopback_post_builds_no_tls_context_and_reads_no_proxy(monkeypatch):
+    """The default opener enumerated the certificate stores on every hook call."""
+    import ssl
+    import urllib.request
+
+    from agentmetry.hooks import ingest
+
+    def forbidden(*_a, **_k):
+        raise AssertionError("a plain-http loopback POST must not touch TLS or proxy settings")
+
+    monkeypatch.setattr(ssl, "create_default_context", forbidden)
+    monkeypatch.setattr(urllib.request, "getproxies", forbidden)
+    monkeypatch.setattr(ingest, "_LOOPBACK_OPENER", None)
+    server = _stub_server()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}/api/v1/audit/ingest"
+        req = urllib.request.Request(url, data=b"{}", method="POST")
+        with ingest._urlopen(req, 2.0) as response:
+            assert response.status == 200
+    finally:
+        server.shutdown()
+
+
+def test_anything_else_gets_the_standard_opener(monkeypatch):
+    import urllib.request
+
+    from agentmetry.hooks import ingest
+
+    seen = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: seen.append(req.full_url) or "ok")
+    for url in ("https://collector.example/api/v1/audit/ingest", "http://10.0.0.5:8000/api/v1/audit/ingest"):
+        assert ingest._urlopen(urllib.request.Request(url, data=b"{}"), 1.0) == "ok"  # noqa: S310 - fixed test URLs
+    assert len(seen) == 2
+
+
+def test_a_refused_loopback_post_still_raises_a_urlerror():
+    """The spool path catches URLError; the new opener must raise the same thing."""
+    import socket
+    import urllib.error
+    import urllib.request
+
+    from agentmetry.hooks import ingest
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/v1/audit/ingest", data=b"{}")
+    with pytest.raises(urllib.error.URLError):
+        ingest._urlopen(req, 0.5)

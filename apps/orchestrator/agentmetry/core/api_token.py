@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import subprocess
 from pathlib import Path
 
 from agentmetry.core.paths import data_dir
@@ -63,6 +62,7 @@ def read_token(path: Path | None = None) -> str:
 
 def _restrict(path: Path) -> None:
     """Owner-only, best effort. A failure here is reported by `doctor`."""
+    import subprocess  # ACL work only; the hook reads tokens on every call
     if os.environ.get("AGENTMETRY_TOKEN_SHARED", "").strip().lower() in _TRUTHY:
         return
     if os.name != "nt":
@@ -84,6 +84,7 @@ _BROAD_PRINCIPALS = ("everyone", "builtin\\users", "authenticated users")
 
 def is_private(path: Path) -> bool | None:
     """Owner-only? None when it cannot be told (or the install shares it on purpose)."""
+    import subprocess  # ACL work only; the hook reads tokens on every call
     if os.environ.get("AGENTMETRY_TOKEN_SHARED", "").strip().lower() in _TRUTHY:
         return None
     try:
@@ -101,6 +102,7 @@ def is_private(path: Path) -> bool | None:
 
 def ensure_token(path: Path | None = None) -> str:
     """The token, creating it once if it does not exist yet."""
+    import subprocess  # ACL work only; the hook reads tokens on every call
     target = path or token_path()
     existing = read_token(target)
     if existing:
@@ -129,6 +131,7 @@ def write_ingest_token(token: str, path: Path | None = None) -> Path:
     Otherwise it is owner-only like the full token. Replaced atomically, so a
     hook never reads half a token.
     """
+    import subprocess  # ACL work only; the hook reads tokens on every call
     target = path or ingest_token_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(target.name + ".tmp")

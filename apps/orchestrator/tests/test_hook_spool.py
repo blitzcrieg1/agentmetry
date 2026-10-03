@@ -67,7 +67,7 @@ def test_unreachable_orchestrator_spools_instead_of_dropping(tmp_path, monkeypat
     def _boom(*_a, **_k):
         raise URLError("connection refused")
 
-    monkeypatch.setattr(ingest.urllib.request, "urlopen", _boom)
+    monkeypatch.setattr(ingest, "_urlopen", _boom)
 
     assert ingest.post_ingest(_payload(), quiet=True) is False
     assert spool.is_file(), "payload must be spooled, not dropped"
@@ -83,7 +83,7 @@ def test_selftest_probe_is_never_spooled(tmp_path, monkeypatch):
     spool = tmp_path / "hook-spool.jsonl"
     monkeypatch.setattr(ingest, "_spool_path", lambda: spool)
     monkeypatch.setattr(
-        ingest.urllib.request, "urlopen",
+        ingest, "_urlopen",
         lambda *_a, **_k: (_ for _ in ()).throw(URLError("down")),
     )
 
@@ -352,6 +352,6 @@ def test_a_refused_ingest_is_spooled_not_dropped(tmp_path, monkeypatch, status):
     def refuse(*_a, **_k):
         raise HTTPError("http://127.0.0.1:8000/api/v1/audit/ingest", status, "refused", {}, io.BytesIO(b"{}"))
 
-    monkeypatch.setattr(ingest.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(ingest, "_urlopen", refuse)
     assert ingest.post_ingest({"source_app": "claude", "event_type": "tool_called"}, quiet=True) is False
     assert spool_depth(tmp_path / "hook-spool.jsonl") == 1
