@@ -95,8 +95,15 @@ class WebhookAuditSink(AuditSink):
 
     async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
         if self._batch:
+            # Signed by an extension when one registered a signer (Enterprise:
+            # the host's Ed25519 key). The event inside is unchanged.
+            from agentmetry.core.audit.signing import wrap_for_batch
+
             raise_for(
-                await client.post(self._url, json={"events": events}, headers=self._headers("application/json")),
+                await client.post(
+                    self._url, json={"events": [wrap_for_batch(e) for e in events]},
+                    headers=self._headers("application/json"),
+                ),
                 self._url,
             )
             return
