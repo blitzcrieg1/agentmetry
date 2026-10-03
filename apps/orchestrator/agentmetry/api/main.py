@@ -120,16 +120,25 @@ async def lifespan(app: FastAPI):
 
     mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
 
-    from agentmetry.core.audit.hook_bootstrap import bootstrap_tier_b_hooks
+    # Opt-in (AGENTMETRY_AUTO_INSTALL_HOOKS=1). Unconditional, this rewrote the
+    # developer's global IDE hook configs to point at whichever checkout booted,
+    # which is how a test clone or demo instance took over live hooks.
+    if settings.auto_install_hooks:
+        from agentmetry.core.audit.hook_bootstrap import bootstrap_tier_b_hooks
 
-    try:
-        hook_paths = bootstrap_tier_b_hooks()
-        if hook_paths.get("cursor"):
-            logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
-        if hook_paths.get("claude"):
-            logger.info("Global Claude hooks ready: %s", hook_paths["claude"])
-    except Exception as exc:
-        logger.warning("Tier B hook bootstrap failed: %s", exc)
+        try:
+            hook_paths = bootstrap_tier_b_hooks()
+            if hook_paths.get("cursor"):
+                logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
+            if hook_paths.get("claude"):
+                logger.info("Global Claude hooks ready: %s", hook_paths["claude"])
+        except Exception as exc:
+            logger.warning("Tier B hook bootstrap failed: %s", exc)
+    else:
+        logger.info(
+            "IDE hooks are not rewritten at boot. Install or repair them with "
+            "`agentmetry hooks install`, or set AGENTMETRY_AUTO_INSTALL_HOOKS=1."
+        )
 
     # Launch transcript watcher for Antigravity in the background
     import subprocess

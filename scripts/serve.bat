@@ -13,7 +13,11 @@ if errorlevel 1 (
 )
 
 echo.
-echo Starting Agentmetry (single process) on http://localhost:8000
+rem Loopback only. This used to bind 0.0.0.0, which put the API on every
+rem network the machine joined. For phone or LAN access use mobile.bat, or set
+rem AGENTMETRY_BIND explicitly.
+if "%AGENTMETRY_BIND%"=="" set AGENTMETRY_BIND=127.0.0.1
+echo Starting Agentmetry (single process) on http://%AGENTMETRY_BIND%:8000
 cd /d "%~dp0..\apps\orchestrator"
-start "" http://localhost:8000
-.venv\Scripts\uvicorn agentmetry.api.main:app --host 0.0.0.0 --port 8000
+start "" http://127.0.0.1:8000
+.venv\Scripts\uvicorn agentmetry.api.main:app --host %AGENTMETRY_BIND% --port 8000

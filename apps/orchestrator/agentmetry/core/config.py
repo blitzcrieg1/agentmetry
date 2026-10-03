@@ -215,6 +215,16 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_MCP_INVENTORY"),
     )
 
+    # Rewrite ~/.claude/settings.json and ~/.cursor/hooks.json on every boot to
+    # point at this checkout. Off by default: it used to always run, so booting
+    # any second checkout (a test clone, a feature branch, a demo instance)
+    # silently repointed the developer's live IDE hooks at it. Hooks are
+    # installed on purpose with `agentmetry hooks install`.
+    auto_install_hooks: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_AUTO_INSTALL_HOOKS"),
+    )
+
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"
 

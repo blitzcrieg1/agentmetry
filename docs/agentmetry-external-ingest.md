@@ -48,7 +48,7 @@ Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool
 
 ## Quick start — Cursor (global hooks)
 
-Hooks install to **`~/.cursor/hooks.json`** — every workspace, not just this repo. The orchestrator rewrites them on boot; you can also run:
+Hooks install to **`~/.cursor/hooks.json`** — every workspace, not just this repo. `agentmetry hooks install` writes them (the orchestrator rewrites them on boot only with `AGENTMETRY_AUTO_INSTALL_HOOKS=1`); on Windows you can also run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1

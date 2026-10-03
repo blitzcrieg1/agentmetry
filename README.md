@@ -595,7 +595,7 @@ scored as tools removed, is fixed.
 | 🔁 **Evidence** | Tamper-evident evidence pack export and a compliance digest for control review |
 | 🧾 **Inclusion proofs** | RFC 6962 Merkle proof for a single event (`agentmetry prove`): prove one tool call without disclosing the trail |
 | 🔌 **Reads other recorders** | Ingests [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) audit files, verifying their chain first (`agentmetry import-agt`) |
-| 👥 **Multi-IDE support** | `agentmetry hooks install` writes hook configs for every supported agent on the machine; Antigravity uses `scripts/install_antigravity_hooks.ps1` on Windows. Claude Code and Cursor also self-install on orchestrator boot. Codex installs the same way and additionally needs its `/hooks` trust prompt approved, since it skips untrusted hooks silently ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
+| 👥 **Multi-IDE support** | `agentmetry hooks install` writes hook configs for every supported agent on the machine; Antigravity uses `scripts/install_antigravity_hooks.ps1` on Windows. Booting the orchestrator does not touch your hook configs unless `AGENTMETRY_AUTO_INSTALL_HOOKS=1`. Codex installs the same way and additionally needs its `/hooks` trust prompt approved, since it skips untrusted hooks silently ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
 
 ### Integrations
 
