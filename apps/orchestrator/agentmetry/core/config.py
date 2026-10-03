@@ -262,6 +262,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_HASH_KEY"),
     )
 
+    # The trail is the queue (pilot hardening item 19): producers append to it
+    # and one task per network sink forwards from a persisted cursor, in
+    # batches, retrying with backoff. 0 restores the old inline,
+    # one-request-per-event sinks, which drop events while a SIEM is down.
+    audit_forwarder: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AGENTMETRY_AUDIT_FORWARDER"),
+    )
+
     auth_disabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),

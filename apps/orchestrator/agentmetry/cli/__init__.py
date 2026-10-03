@@ -1145,14 +1145,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 def cmd_replay(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(_ORCH_ROOT))
-    from agentmetry.core.audit.replay import format_timeline
-    from agentmetry.core.bus.outbox import get_outbox
+    from agentmetry.core.audit.replay import format_timeline, read_trail_events
+    from agentmetry.core.config import settings
 
     thread_id = args.thread_id.strip()
     if not thread_id:
         print("thread_id is required")
         return 1
-    rows = get_outbox().read_by_thread_id(thread_id)
+    trail = Path(getattr(args, "trail", "") or settings.audit_export_path)
+    rows = read_trail_events(trail, thread_id)
+    if not rows:
+        from agentmetry.core.bus.outbox import get_outbox
+
+        rows = get_outbox().read_by_thread_id(thread_id)
     print(format_timeline(rows, thread_id=thread_id))
     return 0 if rows else 1
 
@@ -1446,6 +1451,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
     replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
+    replay.add_argument("--trail", default="", help="trail to read (default: the configured trail)")
 
     args = parser.parse_args(argv)
     handlers = {

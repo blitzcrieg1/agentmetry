@@ -61,6 +61,21 @@ _setup_logging()
 
 
 
+def _start_forwarders() -> list[asyncio.Task]:
+    """One task per network sink, tailing the trail (pilot hardening item 19)."""
+    if not (settings.audit_export_enabled and settings.audit_forwarder):
+        return []
+    from agentmetry.core.audit.forwarder import Forwarder
+    from agentmetry.core.audit.sinks import forward_destinations
+
+    tasks = []
+    for destination in forward_destinations(settings):
+        forwarder = Forwarder(destination, settings.audit_export_path)
+        tasks.append(asyncio.create_task(forwarder.run(), name=f"forward-{destination.name}"))
+        logger.info("Forwarding the trail to %s from its cursor", destination.name)
+    return tasks
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from agentmetry.core.audit.migrate import backfill_db_from_jsonl
@@ -118,6 +133,7 @@ async def lifespan(app: FastAPI):
         # if presence was being asserted.
         asyncio.create_task(heartbeat_forever(), name="heartbeat"),
     ]
+    bridge_tasks += _start_forwarders()
 
     # The removed agent runtime's MCP driver host. Off unless
     # AGENTMETRY_LEGACY_DRIVERS=1 (#209): it spawned tools/vault_fs_server.py on

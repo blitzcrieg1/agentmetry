@@ -350,6 +350,12 @@ class DispositionBody(BaseModel):
     severity: str = ""
 
 
+def _forward_status() -> dict:
+    from agentmetry.core.audit.forwarder import forward_status
+
+    return forward_status()
+
+
 def _decider(request: Request, claimed: str) -> str:
     """Who made this decision, as far as the server can tell.
 
@@ -471,6 +477,8 @@ async def audit_status():
         "by_source": status_data["by_source"],
         "path": str(path),
         "spool_pending": spool_depth(),
+        # Per SIEM: the last seq it accepted, and how long it has been failing.
+        "forwarding": _forward_status(),
         "spool_oldest_age_seconds": spool_oldest_age_seconds(),
     }
 

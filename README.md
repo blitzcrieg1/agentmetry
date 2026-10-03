@@ -789,12 +789,15 @@ Dark mode supported with theme toggle. Logo and panels adapt automatically.
 
 ## Forwarding to a SIEM
 
-For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries. Forwarders are best-effort.
+For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries.
+
+The trail is also the queue. Every network sink below is fed by its own forwarder that tails the trail from a cursor kept in `forward-cursors/` beside it, sends in batches, and retries with exponential backoff (capped at five minutes) while the SIEM is down. The cursor moves only after the SIEM accepts a batch, so an outage delays events rather than losing them; delivery is at-least-once. An event a SIEM rejects as malformed goes to `forward-cursors/<sink>.deadletter.jsonl` instead of blocking the rest. `GET /api/v1/audit/status` reports each sink's last forwarded `seq` and how long it has been failing. `AGENTMETRY_AUDIT_FORWARDER=0` restores the old inline, one-request-per-event sinks.
 
 | Sink | Env |
 |------|-----|
 | **File (default)** | `AGENTMETRY_AUDIT_SINK=file`: hash-chained JSONL (`agentmetry verify --trail`) |
 | **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...`; optional `AGENTMETRY_AUDIT_WEBHOOK_TOKEN=...` sends `Authorization: Bearer <token>` on every POST (hosted-ingest auth) |
+| **Agentmetry Enterprise console** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=batch`: one POST of `{"events": [...]}` per batch, which the console dedupes on `event_id` |
 | **CloudEvents** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`: CloudEvents v1.0 structured envelopes (`application/cloudevents+json`) for Knative, EventBridge, Event Grid, Dapr or Kafka. The canonical event still travels whole in `data` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
