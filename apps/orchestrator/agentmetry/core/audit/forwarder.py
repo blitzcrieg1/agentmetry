@@ -124,12 +124,9 @@ class CursorStore:
 
 def trail_segments(trail_path: Path) -> list[Path]:
     """Every file of the trail, oldest first; the active file last."""
-    try:
-        from agentmetry.core.audit.trail_rotation import segments
+    from agentmetry.core.audit.trail_rotation import segments
 
-        return segments(trail_path)
-    except ImportError:
-        return [trail_path]
+    return segments(trail_path)
 
 
 class CursorMismatch(Exception):

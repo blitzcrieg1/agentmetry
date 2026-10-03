@@ -1041,11 +1041,40 @@ def cmd_anchor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trail(args: argparse.Namespace) -> int:
+    """`agentmetry trail rotate|segments`: archive the active trail file, or list segments."""
+    from agentmetry.core.audit import trail_rotation
+    from agentmetry.core.config import settings
+
+    trail = Path(args.path or settings.audit_export_path)
+    if args.trail_command == "rotate":
+        target = trail_rotation.rotate(trail)
+        if target is None:
+            print(f"Nothing to rotate: {trail} is empty or has no chained records.")
+            return 0
+        print(f"Archived {trail.name} -> {target}")
+        print("The chain continues in a new active file; `agentmetry verify --trail` covers both.")
+        return 0
+    entries = {entry["name"]: entry for entry in trail_rotation.manifest(trail)}
+    for segment in trail_rotation.segments(trail):
+        if not segment.is_file():
+            print(f"  {segment.name:46} (active, not created yet)")
+            continue
+        entry = entries.get(segment.name)
+        span = f"seq {entry['first_seq']}-{entry['last_seq']}" if entry else "active"
+        print(f"  {segment.name:46} {segment.stat().st_size:>12,} bytes  {span}")
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     import json
 
     path = Path(args.path)
-    if not path.exists():
+    from agentmetry.core.audit.trail_rotation import exists as _trail_exists
+
+    # Right after a rotation the active file does not exist yet, and the trail
+    # is only its archived segments.
+    if not path.exists() and not (getattr(args, "trail", False) and _trail_exists(path)):
         print(f"No such file: {path}")
         return 1
 
@@ -1407,6 +1436,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     dashboard.add_argument("--next", default="", help="land here after sign-in (this origin or a loopback dev server)")
     dashboard.add_argument("--no-browser", action="store_true", help="print the one-time link instead of opening it")
+    trail = sub.add_parser("trail", help="rotate the hash-chained trail, or list its segments")
+    trail.add_argument("trail_command", choices=("rotate", "segments"))
+    trail.add_argument("--path", default="", help="trail to act on (default: the configured trail)")
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -1471,6 +1503,7 @@ def main(argv: list[str] | None = None) -> int:
         "uninstall": cmd_uninstall,
         "export": cmd_export,
         "verify": cmd_verify,
+        "trail": cmd_trail,
         "prove": cmd_prove,
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,

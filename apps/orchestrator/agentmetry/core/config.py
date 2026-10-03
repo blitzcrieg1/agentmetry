@@ -271,6 +271,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_AUDIT_FORWARDER"),
     )
 
+    # Rotate the trail into <stem>.archive/ once the active file reaches this
+    # many bytes (pilot hardening item 20, #101). 0 = never. Nothing is ever
+    # deleted; see docs/trail-retention.md. 268435456 (256 MiB) is a sensible
+    # value for a fleet host.
+    trail_rotate_bytes: int = Field(
+        default=0,
+        validation_alias=AliasChoices("AGENTMETRY_TRAIL_ROTATE_BYTES"),
+    )
+
     auth_disabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),

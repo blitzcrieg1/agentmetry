@@ -30,7 +30,9 @@ def backfill_db_from_jsonl() -> int:
     the rest of the trail was never queryable.
     """
     jsonl_path = Path(settings.audit_export_path)
-    if not jsonl_path.is_file():
+    from agentmetry.core.audit.trail_rotation import exists, iter_lines
+
+    if not exists(jsonl_path):
         return 0
 
     try:
@@ -42,26 +44,26 @@ def backfill_db_from_jsonl() -> int:
     total = 0
     batch: list[dict] = []
     try:
-        with jsonl_path.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    raw = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(raw, dict):
-                    continue
-                from agentmetry.core.audit.trail_chain import unwrap_trail_record
+        # Archived segments too, or a rebuilt index forgets them.
+        for _segment, _line_no, line in iter_lines(jsonl_path):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(raw, dict):
+                continue
+            from agentmetry.core.audit.trail_chain import unwrap_trail_record
 
-                event = unwrap_trail_record(raw)
-                batch.append(event)
-                if len(batch) >= _BATCH:
-                    total += db.insert_batch(batch)
-                    batch.clear()
-            if batch:
+            event = unwrap_trail_record(raw)
+            batch.append(event)
+            if len(batch) >= _BATCH:
                 total += db.insert_batch(batch)
+                batch.clear()
+        if batch:
+            total += db.insert_batch(batch)
     except Exception as exc:
         logger.warning(
             "Audit trail backfill stopped early (%s); the JSONL trail is unaffected", exc

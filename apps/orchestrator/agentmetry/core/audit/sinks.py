@@ -35,14 +35,15 @@ class AuditSink(ABC):
 
 
 class FileAuditSink(AuditSink):
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, rotate_bytes: int = 0) -> None:
         self._path = path
+        self._rotate_bytes = rotate_bytes
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         from agentmetry.core.audit.trail_chain import append_chained_line
 
         with _file_lock:
-            append_chained_line(self._path, canonical)
+            append_chained_line(self._path, canonical, rotate_bytes=self._rotate_bytes)
 
 
 class WebhookAuditSink(AuditSink):
@@ -551,6 +552,7 @@ def build_production_sink(settings: Any) -> AuditSink | None:
     AGENTMETRY_AUDIT_FORWARDER=0, the old inline sinks.
     """
     modes = parse_sink_modes(settings.audit_sink)
+    rotate_bytes = int(getattr(settings, "trail_rotate_bytes", 0) or 0)
     if getattr(settings, "audit_forwarder", True):
-        return FileAuditSink(settings.audit_export_path)
+        return FileAuditSink(settings.audit_export_path, rotate_bytes=rotate_bytes)
     return build_audit_sinks(**_settings_kwargs(settings, modes))

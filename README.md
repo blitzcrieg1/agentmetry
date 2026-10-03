@@ -793,6 +793,8 @@ For agents captured via IDE hooks (the common case), the canonical JSONL trail i
 
 The trail is also the queue. Every network sink below is fed by its own forwarder that tails the trail from a cursor kept in `forward-cursors/` beside it, sends in batches, and retries with exponential backoff (capped at five minutes) while the SIEM is down. The cursor moves only after the SIEM accepts a batch, so an outage delays events rather than losing them; delivery is at-least-once. An event a SIEM rejects as malformed goes to `forward-cursors/<sink>.deadletter.jsonl` instead of blocking the rest. `GET /api/v1/audit/status` reports each sink's last forwarded `seq` and how long it has been failing. `AGENTMETRY_AUDIT_FORWARDER=0` restores the old inline, one-request-per-event sinks.
 
+The trail can rotate into segments (`agentmetry trail rotate`, or `AGENTMETRY_TRAIL_ROTATE_BYTES`) without breaking the chain, anchors or verification; nothing is ever deleted automatically. See [docs/trail-retention.md](docs/trail-retention.md).
+
 | Sink | Env |
 |------|-----|
 | **File (default)** | `AGENTMETRY_AUDIT_SINK=file`: hash-chained JSONL (`agentmetry verify --trail`) |
