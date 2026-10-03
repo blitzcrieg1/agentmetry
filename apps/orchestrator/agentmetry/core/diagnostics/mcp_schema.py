@@ -703,8 +703,8 @@ def schema_summary_lines(store: SchemaStore | None = None) -> list[str]:
     store = store if store is not None else load_store()
     if not store.servers:
         return [
-            "  schema digest: (none observed; wrap a server with mcp_audit_proxy "
-            "to capture tools/list)"
+            "  schema digest: (none observed; wrap a server with "
+            "`agentmetry mcp-proxy -- <server command>` to capture tools/list)"
         ]
     lines = [
         f"  schema digest: {store.digest()[:16]} ({len(store.servers)} server(s) observed)"

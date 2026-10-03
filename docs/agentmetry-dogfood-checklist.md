@@ -23,13 +23,13 @@ $before = (Get-Content apps\orchestrator\data\audit-forward.jsonl -ErrorAction S
 
 ---
 
-## 1. Tier A — MCP proxy (`mcp_audit_proxy.py`)
+## 1. Tier A: MCP proxy (`agentmetry mcp-proxy`)
 
 Wrap any stdio MCP server with the audit proxy — every `tools/call` is recorded with a stable session correlation id and an in-proxy argument hash. Simplest check uses the bundled `vault_fs` server:
 
 ```powershell
 # Point an MCP client (e.g. Cursor's MCP config) at the proxy instead of the raw server:
-python apps/orchestrator/tools/mcp_audit_proxy.py --server vault_fs -- `
+agentmetry mcp-proxy --server vault_fs -- `
   python apps/orchestrator/tools/vault_fs_server.py .\vault
 ```
 

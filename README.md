@@ -854,18 +854,21 @@ visibility into agents Agentmetry does not hook.
 | `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
 | `agentmetry hooks install` | Write IDE hook configs for every supported agent present on this machine. `--agent X` to pick, `--all` to force. This is what a per-user deployment step runs at first logon, when nobody knows in advance which IDEs that developer uses. `agentmetry hooks status` reports coverage as an exit code for deployment tooling: 0 compliant, 1 needs remediation, 2 undeterminable |
 | `agentmetry hook <app> <event>` | Forward one IDE hook event to ingest. Hook configs should name the `agentmetry-hook` console script instead, which skips the CLI's imports on a path that runs once per tool call |
+| `agentmetry dashboard` | Open the dashboard signed in: a one-time link sets an HttpOnly session cookie, so the browser never holds the API token. `--no-browser` prints the link |
 | `agentmetry logs -n 50 -f` | Tail the orchestrator log |
 | `agentmetry backup` / `restore` | Zip the data stores and the demo MCP vault; restore one (server stopped) |
 | `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
 | `agentmetry disposition <correlation_id> <rule_id>` | Close a detection through the API with `--status resolved\|false_positive\|risk_accepted`; false positives and accepted risks require `--note` |
-| `agentmetry replay <correlation_id>` | ASCII timeline from the removed runtime's outbox. Nothing current writes there, so it is empty for hook and OTel sessions ([#209](https://github.com/blitzcrieg1/agentmetry/issues/209)) |
+| `agentmetry replay <correlation_id>` | ASCII timeline of one session from the trail, every segment of it (hook, MCP and OTel events), falling back to the removed runtime's outbox for older runs |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
+| `agentmetry trail rotate` / `segments` | Archive the active trail file into `<trail>.archive/` with the chain intact, or list the segments ([retention](docs/trail-retention.md)) |
 | `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
 | `agentmetry otel [--listen-port N] [--keep-command]` | Receive Claude Code's native OpenTelemetry stream and record it, with no hooks installed. `--print-env` prints what Claude Code needs |
+| `agentmetry mcp-proxy [--server NAME] -- <server command>` | Run a stdio MCP server behind Agentmetry: every `tools/call` is recorded with hashed arguments and `tools/list` is fingerprinted. Use it as the command in an MCP client's config |
 | `agentmetry mcp [--digest]` | List the MCP servers the agents on this machine are wired to, and flag entries that resolve code at launch |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |

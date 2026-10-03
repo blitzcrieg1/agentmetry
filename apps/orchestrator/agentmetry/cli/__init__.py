@@ -1266,6 +1266,14 @@ def main(argv: list[str] | None = None) -> int:
         # the call.
         pass
 
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "mcp-proxy":
+        # Dispatched before argparse: everything after `--` is the server's
+        # own command line and must reach it untouched.
+        from agentmetry.hooks.mcp_proxy import main as proxy_main
+
+        return proxy_main(raw[1:])
+
     parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1436,6 +1444,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     dashboard.add_argument("--next", default="", help="land here after sign-in (this origin or a loopback dev server)")
     dashboard.add_argument("--no-browser", action="store_true", help="print the one-time link instead of opening it")
+    # Listed for --help; `main` hands it to the proxy before parsing.
+    sub.add_parser("mcp-proxy", help="run an MCP server behind Agentmetry: agentmetry mcp-proxy -- <server command>")
     trail = sub.add_parser("trail", help="rotate the hash-chained trail, or list its segments")
     trail.add_argument("trail_command", choices=("rotate", "segments"))
     trail.add_argument("--path", default="", help="trail to act on (default: the configured trail)")

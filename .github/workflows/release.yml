@@ -100,6 +100,8 @@ jobs:
           /tmp/fresh/bin/pip install --quiet dist/*.whl
           /tmp/fresh/bin/agentmetry doctor
           /tmp/fresh/bin/agentmetry benchmark
+          # MCP capture from the wheel alone, no checkout (pilot hardening item 21).
+          /tmp/fresh/bin/agentmetry mcp-proxy --help
 
       - name: Fail if doctor reports anything broken
         working-directory: apps/orchestrator

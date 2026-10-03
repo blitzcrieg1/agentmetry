@@ -6,7 +6,7 @@ Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents y
 
 ```
 Claude Code / Cursor / Codex / Antigravity / Qwen Code / Kimi Code / MCP clients
-        ↓ hooks or mcp_audit_proxy.py
+        ↓ hooks or agentmetry mcp-proxy
   scripts/agentmetry_ingest.py
         ↓ POST /api/v1/audit/ingest
   audit-forward.jsonl + SIEM sinks
@@ -174,9 +174,15 @@ Agentmetry's external hooks are **observe-only by default** — they record, the
 Wrap MCP server stdio with audit logging:
 
 ```powershell
-python apps/orchestrator/tools/mcp_audit_proxy.py --server vault_fs -- `
+agentmetry mcp-proxy --server vault_fs -- `
   python apps/orchestrator/tools/vault_fs_server.py C:\path\to\vault
 ```
+
+The proxy ships in the package, so this works on a `pip install` or an MSI
+host as well as a checkout. `--server` defaults to a name taken from the
+command (`npx -y @scope/server-filesystem` becomes `server-filesystem`).
+Existing configs that name `apps/orchestrator/tools/mcp_audit_proxy.py` keep
+working; that file is now an alias.
 
 Point Claude / Cursor MCP config at the proxy command instead of the raw server.
 
