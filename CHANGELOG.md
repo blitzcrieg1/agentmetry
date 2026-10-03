@@ -11,6 +11,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **The webhook sink can authenticate** (`AGENTMETRY_AUDIT_WEBHOOK_TOKEN`). When
+  set, every webhook POST carries `Authorization: Bearer <token>`, in canonical
+  and CloudEvents shapes alike. This is the sensor-side piece of hosted ingest:
+  a cloud that binds tenant and host to a token needs the header to exist.
+  Unset stays unset — an existing webhook keeps receiving unauthenticated
+  requests, byte for byte.
+
 - **Herdr is a verified capture environment** ([#216]). [Herdr](https://herdr.dev)
   hosts coding-agent terminals in a persistent runtime, and because it runs the
   agent CLIs unchanged, the existing hook path captures what runs inside it.

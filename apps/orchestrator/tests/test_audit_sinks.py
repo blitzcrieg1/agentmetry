@@ -54,6 +54,71 @@ async def test_webhook_sink_posts_json():
 
 
 @pytest.mark.asyncio
+async def test_webhook_sink_sends_bearer_token_when_configured():
+    """A hosted ingest binds tenant and host to the token, so the header must
+    arrive on every POST — canonical and CloudEvents shapes alike."""
+    sink = WebhookAuditSink(
+        "http://collector.test/ingest", timeout_seconds=2.0, token="agm-test-token"
+    )
+    payload = {"action": {"type": "tool_called", "outcome": "success"}}
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = lambda: None
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("agentmetry.core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
+        await sink.emit(payload)
+
+    headers = mock_client.post.await_args.kwargs["headers"]
+    assert headers["Authorization"] == "Bearer agm-test-token"
+
+
+@pytest.mark.asyncio
+async def test_webhook_sink_omits_authorization_without_token():
+    """Existing webhooks that never asked for auth must keep receiving
+    unauthenticated requests: no token configured, no header sent."""
+    sink = WebhookAuditSink("http://collector.test/ingest", timeout_seconds=2.0)
+    payload = {"action": {"type": "tool_called", "outcome": "success"}}
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = lambda: None
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("agentmetry.core.audit.sinks.httpx.AsyncClient", return_value=mock_client):
+        await sink.emit(payload)
+
+    assert "Authorization" not in mock_client.post.await_args.kwargs["headers"]
+
+
+def test_build_audit_sinks_plumbs_webhook_token():
+    sink = build_audit_sinks(
+        modes={"webhook"},
+        file_path=Path("unused.jsonl"),
+        webhook_url="http://collector.test/ingest",
+        webhook_timeout_seconds=2.0,
+        webhook_format="canonical",
+        webhook_token="agm-plumbed",
+        elastic_url="",
+        elastic_index="",
+        elastic_api_key="",
+        elastic_verify_tls=True,
+        splunk_hec_url="",
+        splunk_hec_token="",
+        splunk_index="",
+        splunk_sourcetype="",
+        splunk_verify_tls=True,
+    )
+    assert isinstance(sink, WebhookAuditSink)
+    assert sink._token == "agm-plumbed"
+
+
+@pytest.mark.asyncio
 async def test_elastic_sink_posts_ecs_document():
     canonical = {
         "event_id": "e1",
