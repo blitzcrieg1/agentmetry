@@ -61,9 +61,11 @@ export function AnalyticsPanel() {
         const [tailRes, statsRes] = await Promise.all([
           fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?limit=500&scope=all`, {
             headers: apiHeaders(),
+            credentials: "include",
           }),
           fetch(`${ORCHESTRATOR_URL}/api/v1/audit/stats?days=7`, {
             headers: apiHeaders(),
+            credentials: "include",
           }),
         ]);
         if (!tailRes.ok) throw new Error(`tail HTTP ${tailRes.status}`);

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -350,8 +350,26 @@ class DispositionBody(BaseModel):
     severity: str = ""
 
 
+def _decider(request: Request, claimed: str) -> str:
+    """Who made this decision, as far as the server can tell.
+
+    A dashboard session and an extension principal are server-side facts, so
+    they win over anything the body claims. A token-authenticated caller (the
+    CLI, on this machine) states who it is; with nothing stated, the resolved
+    operator is recorded rather than an empty string.
+    """
+    kind, who = getattr(request.state, "auth", ("", ""))
+    if kind in ("session", "extension") and who:
+        return who
+    if claimed.strip():
+        return claimed.strip()
+    from agentmetry.core.audit.run_context import resolve_operator
+
+    return resolve_operator()[0]
+
+
 @router.post("/detections/disposition", dependencies=[Depends(require_api_key)])
-async def audit_set_disposition(body: DispositionBody):
+async def audit_set_disposition(body: DispositionBody, request: Request):
     """Record what a human decided about a detection.
 
     The decision is appended to the trail as a `detection_disposition` event
@@ -369,7 +387,7 @@ async def audit_set_disposition(body: DispositionBody):
             status=body.status,
             assignee=body.assignee,
             note=body.note,
-            decided_by=body.decided_by,
+            decided_by=_decider(request, body.decided_by),
             severity=body.severity,
         )
     except DispositionError as exc:

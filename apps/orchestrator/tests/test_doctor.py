@@ -83,23 +83,24 @@ def test_a_dispositioned_finding_turns_the_check_green(tmp_path: Path):
 
 # --- exposure: the combination that shipped in the MSI ------------------------
 #
-# `require_api_key` is a no-op when no key is set (core/auth.py). That is the
-# right default on loopback and an open door on 0.0.0.0, and the enterprise MSI
-# reached the second by setting AGENTMETRY_HOST without setting a key. Anyone
-# who could reach the host could read the trail, export the evidence pack,
-# inject forged events, and close findings as accepted risk.
+# The API used to skip authentication when no key was set, and the enterprise
+# MSI reached an open door by setting AGENTMETRY_HOST=0.0.0.0 without one. The
+# per-install token is now on by default; conftest turns it off for the suite,
+# so these tests run as an install with AGENTMETRY_AUTH_DISABLED=1 would.
+# test_auth_default.py covers the default.
 
 def _finding(report, code):
     return next(f for f in report.findings if f.code == code)
 
 
-def test_loopback_without_a_key_is_fine(tmp_path: Path, monkeypatch):
+def test_loopback_with_auth_disabled_warns_rather_than_fails(tmp_path: Path, monkeypatch):
+    """It used to be "[OK] (no API key needed)". Loopback is not a boundary."""
     monkeypatch.delenv("AGENTMETRY_HOST", raising=False)
     from agentmetry.core.config import settings
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
-    assert _finding(report, "exposure").severity == "ok"
+    assert _finding(report, "exposure").severity == "warn"
 
 
 def test_open_bind_without_a_key_fails_the_doctor(tmp_path: Path, monkeypatch):
@@ -138,7 +139,7 @@ def test_ipv6_loopback_is_not_exposed(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(settings, "api_key", "")
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
-    assert _finding(report, "exposure").severity == "ok"
+    assert _finding(report, "exposure").severity == "warn", "loopback, but authentication is off"
 
 
 def test_doctor_output_is_ascii_safe():

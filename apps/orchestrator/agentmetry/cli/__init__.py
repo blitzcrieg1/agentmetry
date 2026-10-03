@@ -49,8 +49,40 @@ def _api_base_url(port: int) -> str:
 
 
 def _api_headers() -> dict[str, str]:
-    key = os.environ.get("AGENTMETRY_API_KEY", "").strip()
+    from agentmetry.core.api_token import client_token
+
+    key = client_token()
     return {"X-API-Key": key} if key else {}
+
+
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """Sign the browser in to the local dashboard without giving it the key."""
+    from agentmetry.core.operator_identity import os_operator
+
+    base = _api_base_url(args.port)
+    try:
+        resp = httpx.post(
+            f"{base}/api/v1/auth/dashboard-link",
+            json={"operator": os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip() or os_operator()},
+            headers=_api_headers(), timeout=10.0,
+        )
+    except Exception:
+        print(f"Not running at {base}; start Agentmetry first.")
+        return 1
+    if resp.status_code != 200:
+        print(f"Could not get a sign-in link (HTTP {resp.status_code}): {resp.text}")
+        return 1
+    url = base + resp.json()["url"]
+    if args.next:
+        from urllib.parse import quote
+
+        url += "&next=" + quote(args.next, safe="")
+    print(url)
+    if not args.no_browser:
+        import webbrowser
+
+        webbrowser.open(url)
+    return 0
 
 
 def _lan_ip() -> str | None:
@@ -1365,6 +1397,11 @@ def main(argv: list[str] | None = None) -> int:
         "--print-env", action="store_true",
         help="print the environment Claude Code needs to send here, and exit",
     )
+    dashboard = sub.add_parser(
+        "dashboard", help="open the dashboard signed in (the browser never gets the API key)"
+    )
+    dashboard.add_argument("--next", default="", help="land here after sign-in (this origin or a loopback dev server)")
+    dashboard.add_argument("--no-browser", action="store_true", help="print the one-time link instead of opening it")
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -1431,6 +1468,7 @@ def main(argv: list[str] | None = None) -> int:
         "prove": cmd_prove,
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,
+        "dashboard": cmd_dashboard,
         "otel": cmd_otel,
         "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,

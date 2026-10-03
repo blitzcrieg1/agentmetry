@@ -58,6 +58,10 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     # TestClient sends `Host: testserver`; the DNS-rebinding guard refuses
     # unknown hosts, so the test host is trusted explicitly.
     monkeypatch.setattr(settings, "trusted_hosts", "testserver")
+    # The per-install token is on by default (pilot hardening item 8). Tests
+    # keep the previous semantics, an explicitly set api_key still enforced,
+    # unless they turn it on; test_auth_default.py does.
+    monkeypatch.setattr(settings, "auth_disabled", True)
     monkeypatch.delenv("AGENTMETRY_OPERATOR_ID", raising=False)
     from agentmetry.hooks import ingest as _hook_ingest
 

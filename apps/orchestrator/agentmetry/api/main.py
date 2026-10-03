@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from agentmetry.api.routes.auth import router as auth_router
 from agentmetry.api.trusted_host import TrustedHostMiddleware
 
 from agentmetry.api.routes.audit import router as audit_router
@@ -128,6 +129,17 @@ async def lifespan(app: FastAPI):
         # Mount in the background: a slow npx download must not delay boot.
         mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
 
+    # Create the per-install API token now, before the first hook asks for it.
+    from agentmetry.core.auth import effective_key
+
+    try:
+        if effective_key():
+            logger.info("API authentication on; local clients read the token from the data directory")
+        else:
+            logger.warning("API authentication is OFF (AGENTMETRY_AUTH_DISABLED); development only")
+    except OSError as exc:
+        logger.error("Could not create the API token (%s); every request will be refused", exc)
+
     # Opt-in (AGENTMETRY_AUTO_INSTALL_HOOKS=1). Unconditional, this rewrote the
     # developer's global IDE hook configs to point at whichever checkout booted,
     # which is how a test clone or demo instance took over live hooks.
@@ -202,6 +214,7 @@ app.add_middleware(
 app.add_middleware(TrustedHostMiddleware)
 
 app.include_router(audit_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 load_extensions(app, settings=settings)
 

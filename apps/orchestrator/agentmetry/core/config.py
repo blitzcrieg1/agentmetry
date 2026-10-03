@@ -247,6 +247,14 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_LEGACY_DRIVERS"),
     )
 
+    # Development only: do not create or require the per-install API token.
+    # An explicitly set AGENTMETRY_API_KEY is still enforced. `doctor` warns
+    # while this is on, and fails if the API is bound beyond loopback.
+    auth_disabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),
+    )
+
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"
 

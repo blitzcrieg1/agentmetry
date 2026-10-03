@@ -78,18 +78,21 @@ _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1", ""})
 def _check_exposure(report: DoctorReport) -> None:
     """Is the API reachable by anyone who cannot already read the trail?
 
-    `require_api_key` is deliberately a no-op when no key is set, which is the
-    right default for a recorder bound to loopback. Combined with a non-loopback
-    bind it is not a weak default, it is an open door: the ingest route accepts
-    forged events into the tamper-evident trail, the export route hands over the
-    whole evidence pack, and the disposition route lets a stranger close a
-    finding as accepted risk - a decision that is then written into the trail as
-    a legitimate human action.
+    Authentication is on by default (a per-install token, `core/api_token.py`).
+    Turned off with AGENTMETRY_AUTH_DISABLED and combined with a non-loopback
+    bind it is an open door: the ingest route accepts forged events into the
+    tamper-evident trail, the export route hands over the whole evidence pack,
+    and the disposition route lets a stranger close a finding as accepted risk,
+    a decision that is then written into the trail as a legitimate human action.
 
-    The enterprise MSI reached exactly that combination by setting
-    AGENTMETRY_HOST=0.0.0.0 without setting a key, so this check fails rather
-    than warns. Any future packaging that repeats the mistake trips it here.
+    The enterprise MSI once reached that combination by setting
+    AGENTMETRY_HOST=0.0.0.0 without a key, so this check fails rather than
+    warns. Disabled on loopback it warns: every local process, and any web page
+    that gets a request through, can still read the trail.
     """
+    from agentmetry.core import api_token
+    from agentmetry.core.auth import auth_is_disabled
+
     if not settings.fleet_id.strip():
         report.warn(
             "fleet_id",
@@ -100,23 +103,46 @@ def _check_exposure(report: DoctorReport) -> None:
         report.ok("fleet_id", f"Fleet id: {settings.fleet_id.strip()}")
 
     host = os.environ.get("AGENTMETRY_HOST", "127.0.0.1").strip()
+    shown = host or "127.0.0.1"
+    loopback = host in _LOOPBACK
     has_key = bool(settings.api_key.strip())
 
-    if host in _LOOPBACK:
-        detail = "loopback only" if has_key else "loopback only (no API key needed)"
-        report.ok("exposure", f"API bound to {host or '127.0.0.1'} - {detail}")
-        return
-
     if has_key:
-        report.ok("exposure", f"API bound to {host} with an API key set")
+        report.ok("exposure", f"API bound to {shown} - AGENTMETRY_API_KEY required")
         return
 
-    report.fail(
-        "exposure",
-        f"API bound to {host} with NO API key. Anyone who can reach this host "
-        "can read the trail, export evidence, inject events, and close "
-        "detections. Set AGENTMETRY_API_KEY, or bind 127.0.0.1.",
-    )
+    if auth_is_disabled():
+        if loopback:
+            report.warn(
+                "exposure",
+                f"API bound to {shown} with authentication DISABLED "
+                "(AGENTMETRY_AUTH_DISABLED). Any local process can read the trail "
+                "and close detections. Development only.",
+            )
+            return
+        report.fail(
+            "exposure",
+            f"API bound to {shown} with NO API key and authentication disabled. "
+            "Anyone who can reach this host can read the trail, export evidence, "
+            "inject events, and close detections. Unset AGENTMETRY_AUTH_DISABLED, "
+            "or bind 127.0.0.1.",
+        )
+        return
+
+    report.ok("exposure", f"API bound to {shown} - per-install token required")
+    path = api_token.token_path()
+    if not api_token.read_token(path):
+        report.ok("api_token", f"Token not created yet; the first start writes {path}")
+        return
+    private = api_token.is_private(path)
+    if private is False:
+        report.warn(
+            "api_token",
+            f"Token at {path} is readable by other users. Restrict it to the owner, "
+            "or delete it and restart to have it recreated owner-only.",
+        )
+    else:
+        report.ok("api_token", f"Token at {path}")
 
 
 def _check_hooks_installed(report: DoctorReport) -> None:
@@ -662,7 +688,7 @@ def run_doctor(
         # relocating evidence silently is not the recorder's call.
         report.warn(
             "data_location",
-            f"A trail from before 0.9.3 is still at {legacy}, inside site-packages, "
+            f"A trail written by an earlier release is still at {legacy}, inside site-packages, "
             f"where pip uninstall or a venv rebuild deletes it. Move it to {data_dir} "
             "with the orchestrator stopped.",
         )

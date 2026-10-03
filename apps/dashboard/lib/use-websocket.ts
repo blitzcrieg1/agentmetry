@@ -13,13 +13,10 @@ function schedulePipelineClear() {
   }, PIPELINE_CLEAR_MS);
 }
 
+// No token in the URL: the browser sends the dashboard session cookie with
+// the WebSocket handshake, and the API checks it came from a loopback page.
 function wsUrl(sessionId: string): string {
-  const base = `${WS_URL}/ws/${sessionId}`;
-  const apiKey = process.env.NEXT_PUBLIC_AGENTMETRY_API_KEY;
-  if (apiKey) {
-    return `${base}?token=${encodeURIComponent(apiKey)}`;
-  }
-  return base;
+  return `${WS_URL}/ws/${sessionId}`;
 }
 
 const RECONNECT_DELAY_MS = 3000;

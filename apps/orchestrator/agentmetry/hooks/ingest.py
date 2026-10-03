@@ -60,6 +60,7 @@ except ImportError:  # pragma: no cover - the package always ships it
 
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
+from agentmetry.core.api_token import read_token
 from agentmetry.core.paths import data_dir, env_file
 
 try:
@@ -142,9 +143,12 @@ def _base_url() -> str:
 
 
 def _api_key() -> str:
+    """The key, the `.env`, or the per-install token the orchestrator wrote."""
     return (
         os.environ.get("AGENTMETRY_API_KEY", "").strip()
         or os.environ.get("BLACKBOX_API_KEY", "").strip()  # pre-rename fallback
+        or _read_repo_env("AGENTMETRY_API_KEY").strip()
+        or read_token()
     )
 
 

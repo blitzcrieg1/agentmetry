@@ -104,8 +104,14 @@ pip install agentmetry
 agentmetry doctor
 ```
 
-No server, no API key, no config. The DLP rules, tool policy and detection
+No server and no config. The DLP rules, tool policy and detection
 manifests ship inside the package, so `doctor` should come back clean.
+
+The API needs a token on every route but health. The first start writes one,
+readable only by you, to the data directory below; the hooks and the CLI read
+it from there, so there is nothing to configure. To open the dashboard signed
+in, run `agentmetry dashboard`: it hands the browser a one-time link, and the
+browser never holds the token.
 
 An installed package keeps its trail, indexes and `.env` in your user data
 directory (`%LOCALAPPDATA%\Agentmetry` on Windows,
@@ -898,7 +904,7 @@ Agentmetry is designed for security-sensitive environments:
 
 - **Local-first**: audit data stays on your machine unless you configure forwarders
 - **Argument hashing by default**: plaintext tool args never leave the hook process
-- **Optional API key**: protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
+- **Authenticated by default**: every route but health needs the per-install token (owner-only, in the data directory) or `AGENTMETRY_API_KEY` when you set your own. The dashboard signs in with a one-time link and an HttpOnly session cookie; `AGENTMETRY_AUTH_DISABLED=1` is for development and `doctor` flags it
 - **Hook enforcement (opt-in)**: DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
 - **Tamper-evident exports**: evidence packs include SHA-256 integrity hashes
 

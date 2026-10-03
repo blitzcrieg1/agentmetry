@@ -70,6 +70,7 @@ export function DogfoodStatsStrip() {
       try {
         const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/stats?days=7`, {
           headers: apiHeaders(),
+          credentials: "include",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setStats(await res.json());
