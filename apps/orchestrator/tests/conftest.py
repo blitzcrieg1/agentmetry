@@ -55,6 +55,9 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     # what a test sees, and the hook's once-per-process cache must not carry one
     # test's operator into the next.
     monkeypatch.setattr(settings, "operator_id", "")
+    # TestClient sends `Host: testserver`; the DNS-rebinding guard refuses
+    # unknown hosts, so the test host is trusted explicitly.
+    monkeypatch.setattr(settings, "trusted_hosts", "testserver")
     monkeypatch.delenv("AGENTMETRY_OPERATOR_ID", raising=False)
     from agentmetry.hooks import ingest as _hook_ingest
 

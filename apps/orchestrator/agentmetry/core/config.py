@@ -225,6 +225,14 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_AUTO_INSTALL_HOOKS"),
     )
 
+    # Host names the API answers to besides loopback (comma-separated; `*`
+    # disables the check). Everything else gets 400, which is what stops a DNS
+    # rebinding page reading the local API. See api/trusted_host.py.
+    trusted_hosts: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_TRUSTED_HOSTS"),
+    )
+
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"
 

@@ -20,6 +20,9 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
 :found_ip
 set _IP=%_IP: =%
 if defined _IP (
+    rem The API refuses Host names it does not know (DNS rebinding guard).
+    rem The phone reaches it by this address, so this address is trusted.
+    set AGENTMETRY_TRUSTED_HOSTS=%_IP%
     echo.
     echo  Phone URL:  http://%_IP%:8000
     echo  ^(Same Wi-Fi as this PC. Allow port 8000 in Windows Firewall if needed.^)

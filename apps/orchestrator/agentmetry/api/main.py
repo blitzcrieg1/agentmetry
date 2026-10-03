@@ -9,6 +9,8 @@ from pathlib import Path
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from agentmetry.api.trusted_host import TrustedHostMiddleware
+
 from agentmetry.api.routes.audit import router as audit_router
 from agentmetry.api.websocket import ws_manager
 from agentmetry.api.ws_bridge import ws_event_bridge
@@ -186,6 +188,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Outermost, so a request with a foreign Host header is refused before CORS or
+# any route sees it (DNS rebinding; pilot hardening item 9).
+app.add_middleware(TrustedHostMiddleware)
 
 app.include_router(audit_router, prefix="/api/v1")
 
