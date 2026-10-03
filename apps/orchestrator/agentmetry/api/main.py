@@ -117,10 +117,15 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(heartbeat_forever(), name="heartbeat"),
     ]
 
-    # Drivers mount in the background: a slow npx download must not delay boot.
-    from agentmetry.core.drivers.host import get_mcp_host
+    # The removed agent runtime's MCP driver host. Off unless
+    # AGENTMETRY_LEGACY_DRIVERS=1 (#209): it spawned tools/vault_fs_server.py on
+    # every boot of a recorder that has no use for it.
+    mount_task = None
+    if settings.legacy_drivers:
+        from agentmetry.core.drivers.host import get_mcp_host
 
-    mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
+        # Mount in the background: a slow npx download must not delay boot.
+        mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
 
     # Opt-in (AGENTMETRY_AUTO_INSTALL_HOOKS=1). Unconditional, this rewrote the
     # developer's global IDE hook configs to point at whichever checkout booted,
@@ -159,8 +164,11 @@ async def lifespan(app: FastAPI):
         logger.warning("Failed to start Antigravity transcript watcher: %s", exc)
 
     yield
-    mount_task.cancel()
-    await get_mcp_host().unmount_all()
+    if mount_task is not None:
+        from agentmetry.core.drivers.host import get_mcp_host
+
+        mount_task.cancel()
+        await get_mcp_host().unmount_all()
     for task in bridge_tasks:
         task.cancel()
     if watcher_process:

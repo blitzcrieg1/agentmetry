@@ -1,0 +1,13 @@
+# Build context is the repository root (docker-compose.yml). Keep secrets,
+# local data and build output out of it.
+**/.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.env
+**/data
+**/.next
+**/out
+apps/orchestrator/dist
+vault/.system/drivers.json

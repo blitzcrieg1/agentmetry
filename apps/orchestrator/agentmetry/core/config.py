@@ -233,6 +233,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_TRUSTED_HOSTS"),
     )
 
+    # Mount the removed agent runtime's MCP "drivers" (vault/.system/drivers.json,
+    # which spawns tools/vault_fs_server.py) at boot. Off by default: the
+    # recorder does not need them, and they kept a subprocess and an `mcp<2`
+    # pin in every install (#209).
+    legacy_drivers: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_LEGACY_DRIVERS"),
+    )
+
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"
 
