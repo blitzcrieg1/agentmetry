@@ -11,6 +11,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Herdr is a verified capture environment** ([#216]). [Herdr](https://herdr.dev)
+  hosts coding-agent terminals in a persistent runtime, and because it runs the
+  agent CLIs unchanged, the existing hook path captures what runs inside it.
+  Verified end to end on Windows: a Herdr pane process carries
+  `HERDR_ENV=1` with pane, tab and workspace ids, and the production hook
+  client executed from that pane posted to the orchestrator and landed on the
+  hash-chained trail. Role/workspace tagging and a cross-agent orchestration
+  adapter (agent prompts agent, a sequence no current rule can see) are scoped
+  in the same issue.
+
 - **The MCP inventory can reach the SIEM** (#169, part 1). `agentmetry mcp`
   answered "what are the agents wired to" only for whoever ran it, on that
   machine. With `AGENTMETRY_MCP_INVENTORY=1`, the recorder emits an
