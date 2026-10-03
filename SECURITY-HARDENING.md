@@ -226,4 +226,7 @@ and heartbeats arrived).
 | 24 signing | Core hook only here | See the Enterprise document (keystore, hook leg) |
 | Dashboard | Signed-out state handled | A sign-in page in the dashboard itself, rather than relying on `agentmetry dashboard` |
 
-Branches are not pushed and no release was published.
+Merged as [#220](https://github.com/blitzcrieg1/agentmetry/pull/220) on
+2026-10-03, after the two CodeQL findings it raised were fixed (`6497b58`,
+`8930740`). It ships in 0.9.3; 0.9.2 was tagged on the release commit before
+it, so no published version carries these changes yet.

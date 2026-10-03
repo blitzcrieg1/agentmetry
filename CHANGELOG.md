@@ -9,6 +9,142 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+The release that makes the sensor safe to install on a machine somebody else
+manages. The API is authenticated out of the box, forwarding survives a SIEM
+outage instead of losing it, the trail can rotate without breaking its chain,
+and a machine-wide install has a place for hooks to write and a credential they
+can use. Also Microsoft Sentinel as an output, and hooks written to the
+vendors' admin-managed locations for an Intune rollout. The full record, item
+by item with files and tests, is in `SECURITY-HARDENING.md` ([#220]).
+
+The detection ruleset is unchanged (fingerprint `15846a0915769d4a`). No event
+field was removed and the hash-chain record format is unchanged.
+
+### Upgrading from 0.9.2
+
+- **Authentication is on.** Scripts calling the API need the token from
+  `<data dir>/api-token`, or `AGENTMETRY_API_KEY` if you set one. The hook, the
+  OTel receiver and the CLI read the token file themselves, so they need no
+  configuration.
+- **Open the dashboard with `agentmetry dashboard`.** It prints a one-time
+  sign-in link; the dashboard no longer carries an API key.
+- **Hooks are no longer installed at boot.** Run `agentmetry hooks install`
+  once, or set `AGENTMETRY_AUTO_INSTALL_HOOKS=1` for the old behaviour.
+- **An installed wheel keeps its data in the per-user directory**, not inside
+  `site-packages`. `agentmetry doctor` says where any older data is; nothing is
+  moved for you.
+- **The trail is always written when a network sink is configured,** because
+  it is what the forwarder reads.
+- **`docker compose up` starts one service.** The agent-runtime services from
+  before the pivot are gone.
+
+### Added
+
+- **Forwarding from a cursor.** Each network sink used to be called inline,
+  once per event, with no retry, so a SIEM outage lost every event it spanned.
+  Now the trail is the queue: one forwarder per sink tails it from
+  `forward-cursors/<sink>.json`, sends batches (HEC, Elastic `_bulk` keyed on
+  `event_id`, Chronicle, the console's batch shape), backs off with jitter up to
+  five minutes, and moves its cursor only once the destination accepts. A
+  replaced trail is detected and resynced, and a malformed event is set aside
+  rather than wedging the feed. `/api/v1/audit/status` shows each sink's
+  position and how long it has been failing. `agentmetry replay` now reads the
+  trail instead of the removed runtime's empty outbox ([#209]).
+
+- **Trail rotation** ([#101]). `agentmetry trail rotate`, or
+  `AGENTMETRY_TRAIL_ROTATE_BYTES`, archives the active file into
+  `<trail>.archive/` with a manifest. Records are untouched and the chain runs
+  on across segments: `verify`, Merkle anchors taken before a rotation, the
+  forwarder and replay all read every segment. Off by default, and nothing is
+  ever deleted; why pruning is not in this release is in
+  `docs/trail-retention.md`.
+
+- **Microsoft Sentinel** (`AGENTMETRY_AUDIT_SINK=sentinel`), through the Logs
+  Ingestion API with an Entra client-credentials token. The data collection
+  rule is generated from the code's own column list, and every recorder rule
+  has a KQL analytics rule (`docs/integrations/sentinel.md`,
+  `docs/integrations/detections-sentinel.md`). Tested against the API
+  reference; not yet run against a live workspace.
+
+- **Hooks in the admin-managed locations.** `agentmetry hooks install
+  --managed`, run as administrator, writes Claude Code's `managed-settings.d`
+  drop-in, Cursor's enterprise `hooks.json` and Codex's `requirements.toml`,
+  merging shared files and parsing every document before writing it. `--lock`
+  also sets the vendors' managed-hooks-only switch. The paths follow the
+  vendors' documentation as of 2026-10 and have not yet been confirmed on a
+  real Intune device.
+
+- **The MCP proxy ships in the package** as `agentmetry mcp-proxy [--server
+  NAME] -- <server command>`. It used to exist only in a checkout, so a wheel or
+  MSI install could not capture MCP at all. `tools/mcp_audit_proxy.py` stays as
+  an alias for existing configs.
+
+- **Keyed argument fingerprints.** A plain SHA-256 of a guessable argument can
+  be confirmed by anyone with read access to the SIEM. With
+  `AGENTMETRY_HASH_KEY` set (one value per fleet), the hook and the orchestrator
+  use HMAC-SHA256 instead and say so in `input_redaction` (`hmac`,
+  `hmac+command`). Unset, nothing changes. `doctor` warns on a fleet install
+  without a key.
+
+- **Machine-wide installs.** `AGENTMETRY_HOOK_SPOOL_PATH` gives user-context
+  hooks a spool they may write to, and an `ingest-token` file, which the hook
+  prefers, holds a credential that can send events and nothing else.
+  Agentmetry Enterprise's installer provisions both.
+
+- **Extension points for Agentmetry Enterprise:** who an event is recorded as,
+  and signing forwarded events (`register_event_signer()`; with a signer, the
+  forwarder sends `{"event", "signature"}` items and the trail is unchanged).
+
+### Changed
+
+- **The hook is about 30 percent faster.** Measured with `scripts/bench_hook.py`,
+  one real hook process per sample on the maintainer's Windows machine: p50 366
+  ms before, 254 ms after. The cost was an unused HTTPS context and proxy lookup
+  on every loopback POST, plus imports the hook path did not need. The 100 ms
+  target is not met; what it would take is in `SECURITY-HARDENING.md`.
+
+- **One container that boots.** The image runs a single `agentmetry` service on
+  127.0.0.1:8000 as a non-root user, with no qdrant, postgres, ollama or Gemini.
+  Mounting the legacy MCP drivers at boot is opt-in
+  (`AGENTMETRY_LEGACY_DRIVERS=1`).
+
+### Security
+
+- **The API required no authentication unless you configured it,** and
+  `doctor` reported that as OK. Any local process, or a web page that got a
+  request through, could read the trail, export evidence, inject events and
+  close detections. The first start now writes a random token to
+  `<data dir>/api-token`, readable by its owner only, and every route except
+  `/api/v1/health` requires it. A test walks every route in the OpenAPI schema,
+  so a route added later without auth fails CI. A disposition records who
+  decided from how the request authenticated, never only from its body.
+  `AGENTMETRY_AUTH_DISABLED=1` is the development override, and `doctor` fails
+  if it is on while the API listens beyond loopback.
+
+- **The dashboard compiled its API key into its JavaScript**
+  (`NEXT_PUBLIC_AGENTMETRY_API_KEY`). It now signs in through a one-time link
+  (120 seconds, single use) that sets an HttpOnly, SameSite=Strict session
+  cookie; writes on that session need a custom header, and a WebSocket needs a
+  loopback origin.
+
+- **A DNS-rebinding page could read the API.** Requests whose `Host` is not
+  localhost, 127.0.0.1, ::1 or a name in `AGENTMETRY_TRUSTED_HOSTS` are now
+  refused.
+
+- **`serve.bat` listened on every interface.** It binds loopback unless
+  `AGENTMETRY_BIND` says otherwise.
+
+- **Data lived inside `site-packages`,** where `pip uninstall` or a rebuilt
+  venv deletes the evidence. It now resolves to `AGENTMETRY_DATA_DIR`, the
+  installer's data root, the checkout, or the per-user data directory, in that
+  order.
+
+- **The orchestrator rewrote your IDE hook files at every start.** It no longer
+  touches `~/.cursor/hooks.json` or Claude settings unless asked (see Upgrading).
+
+[#101]: https://github.com/blitzcrieg1/agentmetry/issues/101
+[#220]: https://github.com/blitzcrieg1/agentmetry/pull/220
+
 ## [0.9.2] - 2026-10-03
 
 The release that lets a fleet send its record somewhere other than its own SIEM.
@@ -25,7 +161,7 @@ The detection ruleset is unchanged.
   set, every webhook POST carries `Authorization: Bearer <token>`, in canonical
   and CloudEvents shapes alike. This is the sensor-side piece of hosted ingest:
   a cloud that binds tenant and host to a token needs the header to exist.
-  Unset stays unset — an existing webhook keeps receiving unauthenticated
+  Unset stays unset: an existing webhook keeps receiving unauthenticated
   requests, byte for byte.
 
 - **Herdr is a verified capture environment** ([#216]). [Herdr](https://herdr.dev)
