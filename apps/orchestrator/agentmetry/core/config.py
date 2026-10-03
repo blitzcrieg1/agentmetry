@@ -280,6 +280,20 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_TRAIL_ROTATE_BYTES"),
     )
 
+    # Microsoft Sentinel via the Azure Monitor Logs Ingestion API (pilot
+    # hardening item 25). AGENTMETRY_AUDIT_SINK must include `sentinel`.
+    # Setup: docs/integrations/sentinel.md.
+    audit_sentinel_endpoint: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_ENDPOINT"))
+    audit_sentinel_dcr_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_DCR_ID"))
+    audit_sentinel_stream: str = Field(
+        default="Custom-Agentmetry_CL", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_STREAM")
+    )
+    audit_sentinel_tenant_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_TENANT_ID"))
+    audit_sentinel_client_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_CLIENT_ID"))
+    audit_sentinel_client_secret: str = Field(
+        default="", repr=False, validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_CLIENT_SECRET")
+    )
+
     auth_disabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),

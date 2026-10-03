@@ -21,6 +21,7 @@ import httpx
 from agentmetry.core.audit.forwarder import ForwardError, raise_for
 from agentmetry.core.audit.adapters.ecs import canonical_to_ecs
 from agentmetry.core.audit.adapters.chronicle import canonical_to_udm_batch
+from agentmetry.core.audit.adapters.sentinel import canonical_to_sentinel_record
 from agentmetry.core.audit.adapters.splunk import canonical_to_hec_event
 
 logger = logging.getLogger(__name__)
@@ -401,6 +402,87 @@ class ChronicleUdmSink(AuditSink):
             logger.exception("Chronicle UDM POST failed -> %s", self._url)
 
 
+class SentinelLogsIngestionSink(AuditSink):
+    """Microsoft Sentinel, through the Azure Monitor Logs Ingestion API.
+
+    POSTs JSON arrays of `canonical_to_sentinel_record` rows to
+    `{endpoint}/dataCollectionRules/{dcr}/streams/{stream}`, authenticated with
+    an Entra app registration (client credentials) holding Monitoring Metrics
+    Publisher on the DCR. Setup and the analytics rules:
+    docs/integrations/sentinel.md and detections-sentinel.md.
+
+    Forwarder-only: the inline `emit` path is not offered, because a token
+    exchange per event against Entra would be its own outage generator.
+    """
+
+    name = "sentinel"
+    #: The API caps a call at 1 MB; the forwarder's byte cap keeps under it.
+    max_batch = 500
+    API_VERSION = "2023-01-01"
+    _AUTHORITY = "https://login.microsoftonline.com"
+    _SCOPE = "https://monitor.azure.com/.default"
+
+    def __init__(
+        self,
+        endpoint: str,
+        dcr_immutable_id: str,
+        *,
+        stream: str = "Custom-Agentmetry_CL",
+        tenant_id: str,
+        client_id: str,
+        client_secret: str,
+        timeout_seconds: float = 10.0,
+    ) -> None:
+        self._url = (
+            f"{endpoint.rstrip('/')}/dataCollectionRules/{dcr_immutable_id}"
+            f"/streams/{stream}?api-version={self.API_VERSION}"
+        )
+        self._token_url = f"{self._AUTHORITY}/{tenant_id}/oauth2/v2.0/token"
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._timeout = timeout_seconds
+        self._token = ""
+        self._token_expires = 0.0
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout)
+
+    async def _bearer(self, client: httpx.AsyncClient) -> str:
+        import time
+
+        if self._token and time.time() < self._token_expires - 120:
+            return self._token
+        response = await client.post(self._token_url, data={
+            "grant_type": "client_credentials",
+            "client_id": self._client_id,
+            "client_secret": self._client_secret,
+            "scope": self._SCOPE,
+        })
+        if response.status_code != 200:
+            # A bad secret is a 400/401 from Entra; it will not fix itself on
+            # retry, but the events are not malformed either, so they wait.
+            raise ForwardError(f"sentinel: token request answered HTTP {response.status_code}", retryable=True)
+        body = response.json()
+        self._token = str(body.get("access_token") or "")
+        self._token_expires = time.time() + float(body.get("expires_in") or 3600)
+        return self._token
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        token = await self._bearer(client)
+        response = await client.post(
+            self._url,
+            json=[canonical_to_sentinel_record(e) for e in events],
+            headers={"Authorization": f"Bearer {token}", "User-Agent": "Agentmetry/1.0"},
+        )
+        if response.status_code in (401, 403):
+            self._token = ""  # expired or revoked mid-life: fetch a new one next try
+            raise ForwardError(f"sentinel: ingestion answered HTTP {response.status_code}", retryable=True)
+        raise_for(response, "sentinel")
+
+    async def emit(self, canonical: dict[str, Any]) -> None:  # pragma: no cover - forwarder-only
+        logger.warning("Sentinel is forwarder-only; set AGENTMETRY_AUDIT_FORWARDER=1")
+
+
 class MultiAuditSink(AuditSink):
     def __init__(self, sinks: list[AuditSink]) -> None:
         self._sinks = sinks
@@ -417,7 +499,7 @@ def parse_sink_modes(raw: str) -> set[str]:
     if text == "both":
         return {"file", "webhook"}
     if text == "all":
-        return {"file", "webhook", "elastic", "splunk", "chronicle"}
+        return {"file", "webhook", "elastic", "splunk", "chronicle", "sentinel"}
     return {part.strip() for part in text.split(",") if part.strip()}
 
 
@@ -443,6 +525,12 @@ def build_audit_sinks(
     chronicle_service_account: str = "",
     chronicle_bearer_token: str = "",
     chronicle_verify_tls: bool = True,
+    sentinel_endpoint: str = "",
+    sentinel_dcr_id: str = "",
+    sentinel_stream: str = "Custom-Agentmetry_CL",
+    sentinel_tenant_id: str = "",
+    sentinel_client_id: str = "",
+    sentinel_client_secret: str = "",
 ) -> AuditSink | None:
     sinks: list[AuditSink] = []
 
@@ -496,6 +584,22 @@ def build_audit_sinks(
             )
         )
 
+    sentinel_ready = all(v.strip() for v in (
+        sentinel_endpoint, sentinel_dcr_id, sentinel_tenant_id, sentinel_client_id, sentinel_client_secret,
+    ))
+    if "sentinel" in modes and sentinel_ready:
+        sinks.append(
+            SentinelLogsIngestionSink(
+                sentinel_endpoint.strip(),
+                sentinel_dcr_id.strip(),
+                stream=sentinel_stream.strip() or "Custom-Agentmetry_CL",
+                tenant_id=sentinel_tenant_id.strip(),
+                client_id=sentinel_client_id.strip(),
+                client_secret=sentinel_client_secret.strip(),
+                timeout_seconds=max(webhook_timeout_seconds, 10.0),
+            )
+        )
+
     if not sinks:
         return None
     if len(sinks) == 1:
@@ -525,10 +629,16 @@ def _settings_kwargs(settings: Any, modes: set[str]) -> dict[str, Any]:
         chronicle_service_account=settings.audit_chronicle_service_account,
         chronicle_bearer_token=settings.audit_chronicle_bearer_token,
         chronicle_verify_tls=settings.audit_chronicle_verify_tls,
+        sentinel_endpoint=getattr(settings, "audit_sentinel_endpoint", ""),
+        sentinel_dcr_id=getattr(settings, "audit_sentinel_dcr_id", ""),
+        sentinel_stream=getattr(settings, "audit_sentinel_stream", "Custom-Agentmetry_CL"),
+        sentinel_tenant_id=getattr(settings, "audit_sentinel_tenant_id", ""),
+        sentinel_client_id=getattr(settings, "audit_sentinel_client_id", ""),
+        sentinel_client_secret=getattr(settings, "audit_sentinel_client_secret", ""),
     )
 
 
-_NETWORK_SINKS = (WebhookAuditSink, ElasticEcsSink, SplunkHecSink, ChronicleUdmSink)
+_NETWORK_SINKS = (WebhookAuditSink, ElasticEcsSink, SplunkHecSink, ChronicleUdmSink, SentinelLogsIngestionSink)
 
 
 def forward_destinations(settings: Any) -> list[AuditSink]:

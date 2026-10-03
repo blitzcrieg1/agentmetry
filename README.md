@@ -803,6 +803,7 @@ The trail can rotate into segments (`agentmetry trail rotate`, or `AGENTMETRY_TR
 | **CloudEvents** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`: CloudEvents v1.0 structured envelopes (`application/cloudevents+json`) for Knative, EventBridge, Event Grid, Dapr or Kafka. The canonical event still travels whole in `data` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
+| **Microsoft Sentinel** | `AGENTMETRY_AUDIT_SINK=sentinel` + `AGENTMETRY_AUDIT_SENTINEL_*` (Logs Ingestion API, custom table `Agentmetry_CL`). [Setup](docs/integrations/sentinel.md) and [KQL analytics rules](docs/integrations/detections-sentinel.md); not yet run against a live workspace |
 | **Google SecOps (Chronicle)** | `AGENTMETRY_AUDIT_SINK=chronicle` + `AGENTMETRY_CHRONICLE_CUSTOMER_ID` + a service account. Posts UDM directly to `udmevents`, so there is no CBN parser to maintain in your tenant ([setup](docs/integrations/google-secops.md)) |
 | **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
 
