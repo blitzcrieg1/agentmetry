@@ -67,7 +67,9 @@ _drain_lock = asyncio.Lock()
 
 
 def spool_path() -> Path:
-    return Path(settings.audit_export_path).parent / "hook-spool.jsonl"
+    from agentmetry.core.paths import hook_spool_path
+
+    return hook_spool_path(Path(settings.audit_export_path).parent)
 
 
 def expired_path(path: Path | None = None) -> Path:

@@ -108,7 +108,9 @@ def _spool_depth() -> int:
     try:
         from agentmetry.core.config import settings
 
-        spool = Path(settings.audit_export_path).with_name("hook-spool.jsonl")
+        from agentmetry.core.paths import hook_spool_path
+
+        spool = hook_spool_path(Path(settings.audit_export_path).parent)
         if not spool.is_file():
             return 0
         with spool.open("r", encoding="utf-8", errors="replace") as fh:

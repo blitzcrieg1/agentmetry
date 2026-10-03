@@ -74,6 +74,17 @@ def env_file() -> Path:
     return data_dir() / ".env"
 
 
+def hook_spool_path(default_dir: Path) -> Path:
+    """Where hooks append events the API could not accept, and the drain reads.
+
+    Beside the trail by default. A machine-wide install sets
+    AGENTMETRY_HOOK_SPOOL_PATH to a directory user-context hooks may write to,
+    because they run as each developer and cannot write the trail's directory.
+    """
+    explicit = os.environ.get("AGENTMETRY_HOOK_SPOOL_PATH", "").strip()
+    return Path(explicit).expanduser() if explicit else default_dir / "hook-spool.jsonl"
+
+
 def legacy_site_packages_data() -> Path | None:
     """Where an installed wheel before this change kept its data, if it exists.
 

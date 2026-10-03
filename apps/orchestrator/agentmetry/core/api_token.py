@@ -31,12 +31,26 @@ from pathlib import Path
 from agentmetry.core.paths import data_dir
 
 TOKEN_FILE = "api-token"  # noqa: S105 (a file name, not a secret)
+INGEST_TOKEN_FILE = "ingest-token"  # noqa: S105 (a file name, not a secret)
+#: BUILTIN\Users, by SID so it resolves on any display language.
+_USERS_SID = "*S-1-5-32-545"
 _TRUTHY = ("1", "true", "yes", "on")
 
 
 def token_path() -> Path:
     explicit = os.environ.get("AGENTMETRY_API_TOKEN_FILE", "").strip()
     return Path(explicit) if explicit else data_dir() / TOKEN_FILE
+
+
+def ingest_token_path() -> Path:
+    """An ingest-only credential for hooks, when an extension provisions one.
+
+    The core does not mint it. Agentmetry Enterprise writes a host-bound,
+    ingest-scoped token here on a machine-wide install, so a developer's hook
+    can send events without being able to read the trail or close detections.
+    """
+    explicit = os.environ.get("AGENTMETRY_INGEST_TOKEN_FILE", "").strip()
+    return Path(explicit) if explicit else data_dir() / INGEST_TOKEN_FILE
 
 
 def read_token(path: Path | None = None) -> str:
@@ -105,6 +119,34 @@ def ensure_token(path: Path | None = None) -> str:
     except (OSError, subprocess.SubprocessError):
         pass
     return token
+
+
+def write_ingest_token(token: str, path: Path | None = None) -> Path:
+    """Write the ingest-only token where hooks look for it.
+
+    On a shared (machine-wide) install every local user's hook must read it,
+    so it is granted read to the local Users group; it can only send events.
+    Otherwise it is owner-only like the full token. Replaced atomically, so a
+    hook never reads half a token.
+    """
+    target = path or ingest_token_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(token, encoding="utf-8")
+    os.replace(tmp, target)
+    try:
+        if os.environ.get("AGENTMETRY_TOKEN_SHARED", "").strip().lower() not in _TRUTHY:
+            _restrict(target)
+        elif os.name == "nt":
+            subprocess.run(
+                ["icacls", str(target), "/grant", f"{_USERS_SID}:R"],
+                capture_output=True, check=False, timeout=15,
+            )
+        else:
+            os.chmod(target, 0o644)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return target
 
 
 def auth_disabled() -> bool:

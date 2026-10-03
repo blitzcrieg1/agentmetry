@@ -61,8 +61,8 @@ except ImportError:  # pragma: no cover - the package always ships it
 
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
-from agentmetry.core.api_token import read_token
-from agentmetry.core.paths import data_dir, env_file
+from agentmetry.core.api_token import ingest_token_path, read_token
+from agentmetry.core.paths import data_dir, env_file, hook_spool_path
 
 try:
     from agentmetry.core.operator_identity import os_operator, stated
@@ -144,11 +144,18 @@ def _base_url() -> str:
 
 
 def _api_key() -> str:
-    """The key, the `.env`, or the per-install token the orchestrator wrote."""
+    """The key, the `.env`, an ingest-only token, or the per-install token.
+
+    The ingest-only token comes first among the files: where one is
+    provisioned (a machine-wide install, `api_token.write_ingest_token`), it is
+    the credential this machine's hooks are meant to use, and the full token
+    is readable only by administrators and the service.
+    """
     return (
         os.environ.get("AGENTMETRY_API_KEY", "").strip()
         or os.environ.get("BLACKBOX_API_KEY", "").strip()  # pre-rename fallback
         or _read_repo_env("AGENTMETRY_API_KEY").strip()
+        or read_token(ingest_token_path())
         or read_token()
     )
 
@@ -531,7 +538,7 @@ def _after_outcome(data: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def _spool_path() -> Path:
-    return _data_dir() / "hook-spool.jsonl"
+    return hook_spool_path(_data_dir())
 
 
 # A spooled hook payload older than this is dropped rather than replayed. A
