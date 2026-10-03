@@ -603,6 +603,7 @@ scored as tools removed, is fixed.
 | -------- | --------------- | ------- |
 | **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi · Qoder · CodeBuddy](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot |
 | **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) · Microsoft AGT audit files (Semantic Kernel, AutoGen, LangGraph via AGT) | LangChain · AutoGen native |
+| **Agent runtimes** | [Herdr](https://herdr.dev) — agents run unchanged under its persistent terminal runtime; hook capture verified from a Herdr pane ([#216](https://github.com/blitzcrieg1/agentmetry/issues/216)) | Role/workspace tagging + cross-agent orchestration adapter ([#216](https://github.com/blitzcrieg1/agentmetry/issues/216)) |
 | **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
 | **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · Google SecOps (UDM) · CloudEvents v1.0 (Knative, EventBridge, Event Grid, Dapr, Kafka) · generic webhook | Datadog · New Relic |
 | **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (23 rules) | STIX/TAXII export |
