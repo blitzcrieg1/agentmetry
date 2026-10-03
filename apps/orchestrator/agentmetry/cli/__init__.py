@@ -583,6 +583,8 @@ def cmd_hooks(args: argparse.Namespace) -> int:
     from agentmetry.core.audit import hook_bootstrap
     from agentmetry.core.diagnostics import hook_coverage
 
+    if getattr(args, "managed", False):
+        return _hooks_managed(args)
     if args.action == "status":
         return _hooks_status()
 
@@ -633,6 +635,41 @@ def cmd_hooks(args: argparse.Namespace) -> int:
         print("")
         print("codex: open Codex, run /hooks and approve the entries, or it")
         print("skips them silently and records nothing.")
+    return 1 if failures else 0
+
+
+def _hooks_managed(args: argparse.Namespace) -> int:
+    """`hooks install|status --managed`: the vendors' admin-managed locations.
+
+    Needs administrator rights to install (they are machine-wide files), which
+    is the point: a developer cannot edit them. Run it as SYSTEM from Intune
+    (deploy/intune in Agentmetry Enterprise) or from an elevated shell.
+    """
+    from agentmetry.core.audit import managed_hooks
+
+    wanted = args.agent or list(managed_hooks.MANAGED_AGENTS)
+    unknown = sorted(set(wanted) - set(managed_hooks.MANAGED_AGENTS))
+    if unknown:
+        print(f"No managed location for: {', '.join(unknown)} (supported: claude, cursor, codex)", file=sys.stderr)
+        return 2
+    if args.action == "status":
+        states = {agent: managed_hooks.status(agent) for agent in wanted}
+        for agent, state in states.items():
+            print(f"  {agent:7} {state:8} {managed_hooks.managed_paths()[agent]}")
+        return 0 if all(state == "managed" for state in states.values()) else 1
+    failures = 0
+    for agent in wanted:
+        try:
+            path = managed_hooks.install(agent, lock=args.lock)
+        except PermissionError:
+            print(f"  {agent}: needs administrator rights ({managed_hooks.managed_paths()[agent]})", file=sys.stderr)
+            failures += 1
+            continue
+        except (OSError, ValueError, RuntimeError) as exc:
+            print(f"  {agent}: FAILED, nothing written ({exc})", file=sys.stderr)
+            failures += 1
+            continue
+        print(f"  {agent}: {path}" + ("  (managed hooks only)" if args.lock else ""))
     return 1 if failures else 0
 
 
@@ -1302,6 +1339,17 @@ def main(argv: list[str] | None = None) -> int:
             "install writes hook configs; status reports coverage and exits "
             "0 compliant, 1 needs remediation, 2 undeterminable"
         ),
+    )
+    hooks.add_argument(
+        "--managed",
+        action="store_true",
+        help="use each vendor's admin-managed, machine-wide location (claude, cursor, codex); needs admin",
+    )
+    hooks.add_argument(
+        "--lock",
+        action="store_true",
+        help="with --managed: also allow only managed hooks (Claude allowManagedHooksOnly, "
+             "Codex allow_managed_hooks_only); user and project hooks stop running",
     )
     hooks.add_argument(
         "--agent",
