@@ -12,6 +12,21 @@ REAL_HOME = Path.home()
 
 
 @pytest.fixture(autouse=True)
+def _no_real_orchestrator(monkeypatch: pytest.MonkeyPatch):
+    """No test may post to a real orchestrator.
+
+    The hook's default ingest URL is http://127.0.0.1:8000, which on a
+    maintainer's machine is the live dogfood recorder. A test that relied on a
+    mock of the transport, and a change that routed around that mock, once
+    sent a synthetic event into the real hash-chained trail, where it cannot
+    be removed. Port 9 (discard) has nothing listening. A test that needs a
+    specific URL sets its own.
+    """
+    monkeypatch.setenv("AGENTMETRY_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("AGENTMETRY_AUDIT_INGEST_URL", "http://127.0.0.1:9")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     """No test may write to the developer's real home directory.
 
@@ -55,6 +70,13 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     # what a test sees, and the hook's once-per-process cache must not carry one
     # test's operator into the next.
     monkeypatch.setattr(settings, "operator_id", "")
+    # TestClient sends `Host: testserver`; the DNS-rebinding guard refuses
+    # unknown hosts, so the test host is trusted explicitly.
+    monkeypatch.setattr(settings, "trusted_hosts", "testserver")
+    # The per-install token is on by default (pilot hardening item 8). Tests
+    # keep the previous semantics, an explicitly set api_key still enforced,
+    # unless they turn it on; test_auth_default.py does.
+    monkeypatch.setattr(settings, "auth_disabled", True)
     monkeypatch.delenv("AGENTMETRY_OPERATOR_ID", raising=False)
     from agentmetry.hooks import ingest as _hook_ingest
 

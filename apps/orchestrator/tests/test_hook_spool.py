@@ -67,7 +67,7 @@ def test_unreachable_orchestrator_spools_instead_of_dropping(tmp_path, monkeypat
     def _boom(*_a, **_k):
         raise URLError("connection refused")
 
-    monkeypatch.setattr(ingest.urllib.request, "urlopen", _boom)
+    monkeypatch.setattr(ingest, "_urlopen", _boom)
 
     assert ingest.post_ingest(_payload(), quiet=True) is False
     assert spool.is_file(), "payload must be spooled, not dropped"
@@ -83,7 +83,7 @@ def test_selftest_probe_is_never_spooled(tmp_path, monkeypatch):
     spool = tmp_path / "hook-spool.jsonl"
     monkeypatch.setattr(ingest, "_spool_path", lambda: spool)
     monkeypatch.setattr(
-        ingest.urllib.request, "urlopen",
+        ingest, "_urlopen",
         lambda *_a, **_k: (_ for _ in ()).throw(URLError("down")),
     )
 
@@ -332,3 +332,26 @@ def test_oldest_age_is_the_countdown_to_unreplayable(tmp_path):
 
 def test_oldest_age_is_none_when_nothing_is_pending(tmp_path):
     assert spool_oldest_age_seconds(tmp_path / "absent.jsonl") is None
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
+def test_a_refused_ingest_is_spooled_not_dropped(tmp_path, monkeypatch, status):
+    """An orchestrator that refuses the hook must not cost the event.
+
+    This is what lets an auth layer fail closed (Agentmetry Enterprise refuses
+    every request until a token exists): the hook keeps the event for replay
+    instead of treating the refusal as delivery. urllib raises HTTPError, a
+    URLError subclass, for every 4xx and 5xx, which is why the URLError branch
+    catches it. A future change to that branch must keep this true.
+    """
+    import io
+    from urllib.error import HTTPError
+
+    monkeypatch.setattr(ingest, "_spool_path", lambda: tmp_path / "hook-spool.jsonl")
+
+    def refuse(*_a, **_k):
+        raise HTTPError("http://127.0.0.1:8000/api/v1/audit/ingest", status, "refused", {}, io.BytesIO(b"{}"))
+
+    monkeypatch.setattr(ingest, "_urlopen", refuse)
+    assert ingest.post_ingest({"source_app": "claude", "event_type": "tool_called"}, quiet=True) is False
+    assert spool_depth(tmp_path / "hook-spool.jsonl") == 1

@@ -63,6 +63,7 @@ export function needsAttention(report: DogfoodReport): boolean {
 export async function fetchDogfood(): Promise<DogfoodReport> {
   const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/dogfood`, {
     headers: apiHeaders(),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as DogfoodReport;

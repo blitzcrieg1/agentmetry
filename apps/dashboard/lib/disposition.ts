@@ -124,6 +124,7 @@ export function countUntriaged(
 export async function fetchDispositions(): Promise<Record<string, Disposition>> {
   const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/detections/dispositions/all`, {
     headers: apiHeaders(),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -145,6 +146,7 @@ export async function saveDisposition(input: {
   const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/detections/disposition`, {
     method: "POST",
     headers: { ...apiHeaders(), "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       correlation_id: input.correlationId,
       rule_id: input.ruleId,

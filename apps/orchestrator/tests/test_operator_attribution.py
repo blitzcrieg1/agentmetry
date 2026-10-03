@@ -44,12 +44,12 @@ def _captured(payload: dict) -> dict:
     def refuse(*_a, **_k):
         raise urllib.error.URLError("offline")
 
-    original = ingest.urllib.request.urlopen
-    ingest.urllib.request.urlopen = refuse
+    original = ingest._urlopen
+    ingest._urlopen = refuse
     try:
         ingest.post_ingest(payload, quiet=True, spool=False)
     finally:
-        ingest.urllib.request.urlopen = original
+        ingest._urlopen = original
     return payload
 
 
@@ -176,7 +176,7 @@ def test_a_spooled_event_keeps_the_account_that_captured_it(monkeypatch, tmp_pat
     def refuse(*_a, **_k):
         raise urllib.error.URLError("offline")
 
-    monkeypatch.setattr(ingest.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(ingest, "_urlopen", refuse)
     ingest.post_ingest(_claude_pre_tool_use(), quiet=True)
     spooled = json.loads((tmp_path / "hook-spool.jsonl").read_text(encoding="utf-8"))
     assert spooled["payload"]["operator"]["id"] == oid.os_operator()

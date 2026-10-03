@@ -138,6 +138,9 @@ def main() -> int:
         "AGENTMETRY_STARTUP_VAULT_INDEX": "0",
         # --live needs ingest ON to accept the synthetic stream; static demo keeps it off.
         "AGENTMETRY_AUDIT_INGEST_ENABLED": "1" if live else "0",
+        # A throwaway demo trail on loopback, opened in a browser with no sign-in
+        # step. Never set this on a real install; `doctor` warns when it is.
+        "AGENTMETRY_AUTH_DISABLED": "1",
     }
 
     print(f"\n  Dashboard  ->  {_BASE}/")
@@ -149,7 +152,7 @@ def main() -> int:
     print("  Ctrl-C to stop.\n")
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "api.main:app", "--port", _PORT, "--log-level", "warning"],
+        [sys.executable, "-m", "uvicorn", "agentmetry.api.main:app", "--port", _PORT, "--log-level", "warning"],
         cwd=_ORCH, env=env,
     )
     stop = threading.Event()

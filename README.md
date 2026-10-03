@@ -104,8 +104,20 @@ pip install agentmetry
 agentmetry doctor
 ```
 
-No server, no API key, no config. The DLP rules, tool policy and detection
+No server and no config. The DLP rules, tool policy and detection
 manifests ship inside the package, so `doctor` should come back clean.
+
+The API needs a token on every route but health. The first start writes one,
+readable only by you, to the data directory below; the hooks and the CLI read
+it from there, so there is nothing to configure. To open the dashboard signed
+in, run `agentmetry dashboard`: it hands the browser a one-time link, and the
+browser never holds the token.
+
+An installed package keeps its trail, indexes and `.env` in your user data
+directory (`%LOCALAPPDATA%\Agentmetry` on Windows,
+`~/.local/share/agentmetry` on Linux, `~/Library/Application Support/Agentmetry`
+on macOS); a clone keeps `apps/orchestrator/data`. `AGENTMETRY_DATA_DIR`
+overrides both, and `agentmetry doctor` prints the one in use.
 
 ### Check the detection claims before you trust them
 
@@ -595,7 +607,7 @@ scored as tools removed, is fixed.
 | 🔁 **Evidence** | Tamper-evident evidence pack export and a compliance digest for control review |
 | 🧾 **Inclusion proofs** | RFC 6962 Merkle proof for a single event (`agentmetry prove`): prove one tool call without disclosing the trail |
 | 🔌 **Reads other recorders** | Ingests [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) audit files, verifying their chain first (`agentmetry import-agt`) |
-| 👥 **Multi-IDE support** | `agentmetry hooks install` writes hook configs for every supported agent on the machine; Antigravity uses `scripts/install_antigravity_hooks.ps1` on Windows. Claude Code and Cursor also self-install on orchestrator boot. Codex installs the same way and additionally needs its `/hooks` trust prompt approved, since it skips untrusted hooks silently ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
+| 👥 **Multi-IDE support** | `agentmetry hooks install` writes hook configs for every supported agent on the machine; Antigravity uses `scripts/install_antigravity_hooks.ps1` on Windows. Booting the orchestrator does not touch your hook configs unless `AGENTMETRY_AUTO_INSTALL_HOOKS=1`. Codex installs the same way and additionally needs its `/hooks` trust prompt approved, since it skips untrusted hooks silently ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
 
 ### Integrations
 
@@ -777,15 +789,21 @@ Dark mode supported with theme toggle. Logo and panels adapt automatically.
 
 ## Forwarding to a SIEM
 
-For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries. Forwarders are best-effort.
+For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries.
+
+The trail is also the queue. Every network sink below is fed by its own forwarder that tails the trail from a cursor kept in `forward-cursors/` beside it, sends in batches, and retries with exponential backoff (capped at five minutes) while the SIEM is down. The cursor moves only after the SIEM accepts a batch, so an outage delays events rather than losing them; delivery is at-least-once. An event a SIEM rejects as malformed goes to `forward-cursors/<sink>.deadletter.jsonl` instead of blocking the rest. `GET /api/v1/audit/status` reports each sink's last forwarded `seq` and how long it has been failing. `AGENTMETRY_AUDIT_FORWARDER=0` restores the old inline, one-request-per-event sinks.
+
+The trail can rotate into segments (`agentmetry trail rotate`, or `AGENTMETRY_TRAIL_ROTATE_BYTES`) without breaking the chain, anchors or verification; nothing is ever deleted automatically. See [docs/trail-retention.md](docs/trail-retention.md).
 
 | Sink | Env |
 |------|-----|
 | **File (default)** | `AGENTMETRY_AUDIT_SINK=file`: hash-chained JSONL (`agentmetry verify --trail`) |
 | **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...`; optional `AGENTMETRY_AUDIT_WEBHOOK_TOKEN=...` sends `Authorization: Bearer <token>` on every POST (hosted-ingest auth) |
+| **Agentmetry Enterprise console** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=batch`: one POST of `{"events": [...]}` per batch, which the console dedupes on `event_id` |
 | **CloudEvents** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`: CloudEvents v1.0 structured envelopes (`application/cloudevents+json`) for Knative, EventBridge, Event Grid, Dapr or Kafka. The canonical event still travels whole in `data` |
 | **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
 | **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
+| **Microsoft Sentinel** | `AGENTMETRY_AUDIT_SINK=sentinel` + `AGENTMETRY_AUDIT_SENTINEL_*` (Logs Ingestion API, custom table `Agentmetry_CL`). [Setup](docs/integrations/sentinel.md) and [KQL analytics rules](docs/integrations/detections-sentinel.md); not yet run against a live workspace |
 | **Google SecOps (Chronicle)** | `AGENTMETRY_AUDIT_SINK=chronicle` + `AGENTMETRY_CHRONICLE_CUSTOMER_ID` + a service account. Posts UDM directly to `udmevents`, so there is no CBN parser to maintain in your tenant ([setup](docs/integrations/google-secops.md)) |
 | **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
 
@@ -835,20 +853,23 @@ visibility into agents Agentmetry does not hook.
 | `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
 | `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
 | `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
-| `agentmetry hooks install` | Write IDE hook configs for every supported agent present on this machine. `--agent X` to pick, `--all` to force. This is what a per-user deployment step runs at first logon, when nobody knows in advance which IDEs that developer uses. `agentmetry hooks status` reports coverage as an exit code for deployment tooling: 0 compliant, 1 needs remediation, 2 undeterminable |
+| `agentmetry hooks install` | Write IDE hook configs for every supported agent present on this machine. `--agent X` to pick, `--all` to force. This is what a per-user deployment step runs at first logon, when nobody knows in advance which IDEs that developer uses. `agentmetry hooks status` reports coverage as an exit code for deployment tooling: 0 compliant, 1 needs remediation, 2 undeterminable. `--managed` (as administrator) writes Claude Code, Cursor and Codex hooks into each vendor's machine-wide, admin-only location instead, where a developer cannot remove them; `--lock` also stops user and project hooks running |
 | `agentmetry hook <app> <event>` | Forward one IDE hook event to ingest. Hook configs should name the `agentmetry-hook` console script instead, which skips the CLI's imports on a path that runs once per tool call |
+| `agentmetry dashboard` | Open the dashboard signed in: a one-time link sets an HttpOnly session cookie, so the browser never holds the API token. `--no-browser` prints the link |
 | `agentmetry logs -n 50 -f` | Tail the orchestrator log |
 | `agentmetry backup` / `restore` | Zip the data stores and the demo MCP vault; restore one (server stopped) |
 | `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
 | `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
 | `agentmetry disposition <correlation_id> <rule_id>` | Close a detection through the API with `--status resolved\|false_positive\|risk_accepted`; false positives and accepted risks require `--note` |
-| `agentmetry replay <correlation_id>` | ASCII timeline from the removed runtime's outbox. Nothing current writes there, so it is empty for hook and OTel sessions ([#209](https://github.com/blitzcrieg1/agentmetry/issues/209)) |
+| `agentmetry replay <correlation_id>` | ASCII timeline of one session from the trail, every segment of it (hook, MCP and OTel events), falling back to the removed runtime's outbox for older runs |
 | `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
 | `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
 | `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
 | `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
+| `agentmetry trail rotate` / `segments` | Archive the active trail file into `<trail>.archive/` with the chain intact, or list the segments ([retention](docs/trail-retention.md)) |
 | `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
 | `agentmetry otel [--listen-port N] [--keep-command]` | Receive Claude Code's native OpenTelemetry stream and record it, with no hooks installed. `--print-env` prints what Claude Code needs |
+| `agentmetry mcp-proxy [--server NAME] -- <server command>` | Run a stdio MCP server behind Agentmetry: every `tools/call` is recorded with hashed arguments and `tools/list` is fingerprinted. Use it as the command in an MCP client's config |
 | `agentmetry mcp [--digest]` | List the MCP servers the agents on this machine are wired to, and flag entries that resolve code at launch |
 | `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
 | `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
@@ -891,8 +912,8 @@ Run tests before opening a PR; see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs
 Agentmetry is designed for security-sensitive environments:
 
 - **Local-first**: audit data stays on your machine unless you configure forwarders
-- **Argument hashing by default**: plaintext tool args never leave the hook process
-- **Optional API key**: protect ingest/tail/export endpoints with `AGENTMETRY_API_KEY`
+- **Argument hashing by default**: plaintext tool args never leave the hook process. Set `AGENTMETRY_HASH_KEY` (one value per fleet) and the fingerprints are HMAC-SHA256 instead of plain SHA-256: pseudonymised, still matchable across the fleet, and not confirmable by hashing a guess without the key
+- **Authenticated by default**: every route but health needs the per-install token (owner-only, in the data directory) or `AGENTMETRY_API_KEY` when you set your own. The dashboard signs in with a one-time link and an HttpOnly session cookie; `AGENTMETRY_AUTH_DISABLED=1` is for development and `doctor` flags it
 - **Hook enforcement (opt-in)**: DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
 - **Tamper-evident exports**: evidence packs include SHA-256 integrity hashes
 

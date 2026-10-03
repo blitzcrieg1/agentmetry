@@ -111,6 +111,12 @@ jobs:
         # The one check that proves capture works end to end on Windows: the
         # hook posts a real event and the orchestrator accepts it.
         run: python scripts/agentmetry_ingest.py selftest
+      - name: Hook latency
+        # What one hook invocation costs the agent, against a stub ingest
+        # server. Informational: hosted-runner timing varies too much to gate
+        # on, but a regression shows up here in the log next to the last run.
+        continue-on-error: true
+        run: python scripts/bench_hook.py --runs 20
       - name: Doctor
         working-directory: apps/orchestrator
         run: python -m agentmetry.cli doctor

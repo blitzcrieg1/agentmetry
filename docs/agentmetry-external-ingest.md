@@ -6,7 +6,7 @@ Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents y
 
 ```
 Claude Code / Cursor / Codex / Antigravity / Qwen Code / Kimi Code / MCP clients
-        ↓ hooks or mcp_audit_proxy.py
+        ↓ hooks or agentmetry mcp-proxy
   scripts/agentmetry_ingest.py
         ↓ POST /api/v1/audit/ingest
   audit-forward.jsonl + SIEM sinks
@@ -48,7 +48,7 @@ Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool
 
 ## Quick start — Cursor (global hooks)
 
-Hooks install to **`~/.cursor/hooks.json`** — every workspace, not just this repo. The orchestrator rewrites them on boot; you can also run:
+Hooks install to **`~/.cursor/hooks.json`** — every workspace, not just this repo. `agentmetry hooks install` writes them (the orchestrator rewrites them on boot only with `AGENTMETRY_AUTO_INSTALL_HOOKS=1`); on Windows you can also run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install_cursor_hooks.ps1
@@ -174,9 +174,15 @@ Agentmetry's external hooks are **observe-only by default** — they record, the
 Wrap MCP server stdio with audit logging:
 
 ```powershell
-python apps/orchestrator/tools/mcp_audit_proxy.py --server vault_fs -- `
+agentmetry mcp-proxy --server vault_fs -- `
   python apps/orchestrator/tools/vault_fs_server.py C:\path\to\vault
 ```
+
+The proxy ships in the package, so this works on a `pip install` or an MSI
+host as well as a checkout. `--server` defaults to a name taken from the
+command (`npx -y @scope/server-filesystem` becomes `server-filesystem`).
+Existing configs that name `apps/orchestrator/tools/mcp_audit_proxy.py` keep
+working; that file is now an alias.
 
 Point Claude / Cursor MCP config at the proxy command instead of the raw server.
 

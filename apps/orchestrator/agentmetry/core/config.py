@@ -3,7 +3,12 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentmetry.core.paths import data_dir, env_file
+
 _ORCHESTRATOR_ROOT = Path(__file__).resolve().parents[2]
+# Data and .env no longer live beside the package in an installed wheel
+# (they were in site-packages). See core/paths.py.
+_DATA_DIR = data_dir()
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -27,7 +32,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="AGENTMETRY_",
-        env_file=_ORCHESTRATOR_ROOT / ".env",
+        env_file=env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -57,13 +62,13 @@ class Settings(BaseSettings):
             "AGENTMETRY_AUDIT_EXPORT_ENABLED",
         ),
     )
-    audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
-    audit_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit.db"
-    detection_live_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "detection_live.db"
+    audit_export_path: Path = _DATA_DIR / "audit-forward.jsonl"
+    audit_db_path: Path = _DATA_DIR / "audit.db"
+    detection_live_db_path: Path = _DATA_DIR / "detection_live.db"
     # Triage state. An index over the `detection_disposition` events in the
     # trail, which remain the record — see core/audit/detection/disposition.py.
     detection_disposition_db_path: Path = (
-        _ORCHESTRATOR_ROOT / "data" / "detection_disposition.db"
+        _DATA_DIR / "detection_disposition.db"
     )
     # Where the trail's anchor log lives, when it is not the sibling default.
     # Anchoring is only worth anything if the log sits somewhere this host
@@ -213,6 +218,85 @@ class Settings(BaseSettings):
     mcp_inventory_enabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_MCP_INVENTORY"),
+    )
+
+    # Rewrite ~/.claude/settings.json and ~/.cursor/hooks.json on every boot to
+    # point at this checkout. Off by default: it used to always run, so booting
+    # any second checkout (a test clone, a feature branch, a demo instance)
+    # silently repointed the developer's live IDE hooks at it. Hooks are
+    # installed on purpose with `agentmetry hooks install`.
+    auto_install_hooks: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_AUTO_INSTALL_HOOKS"),
+    )
+
+    # Host names the API answers to besides loopback (comma-separated; `*`
+    # disables the check). Everything else gets 400, which is what stops a DNS
+    # rebinding page reading the local API. See api/trusted_host.py.
+    trusted_hosts: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_TRUSTED_HOSTS"),
+    )
+
+    # Mount the removed agent runtime's MCP "drivers" (vault/.system/drivers.json,
+    # which spawns tools/vault_fs_server.py) at boot. Off by default: the
+    # recorder does not need them, and they kept a subprocess and an `mcp<2`
+    # pin in every install (#209).
+    legacy_drivers: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_LEGACY_DRIVERS"),
+    )
+
+    # Development only: do not create or require the per-install API token.
+    # An explicitly set AGENTMETRY_API_KEY is still enforced. `doctor` warns
+    # while this is on, and fails if the API is bound beyond loopback.
+    # Per-fleet secret for argument hashing (pilot hardening item 11). Unset,
+    # tool arguments are fingerprinted with plain SHA-256, which anyone can
+    # recompute for a guessable argument (`git status`, a known file path).
+    # Set, they are HMAC-SHA256 under this key and `input_redaction` says
+    # "hmac": pseudonymised, matchable within the fleet, not reversible by a
+    # dictionary without the key. The hooks read the same variable.
+    hash_key: str = Field(
+        default="",
+        repr=False,
+        validation_alias=AliasChoices("AGENTMETRY_HASH_KEY"),
+    )
+
+    # The trail is the queue (pilot hardening item 19): producers append to it
+    # and one task per network sink forwards from a persisted cursor, in
+    # batches, retrying with backoff. 0 restores the old inline,
+    # one-request-per-event sinks, which drop events while a SIEM is down.
+    audit_forwarder: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AGENTMETRY_AUDIT_FORWARDER"),
+    )
+
+    # Rotate the trail into <stem>.archive/ once the active file reaches this
+    # many bytes (pilot hardening item 20, #101). 0 = never. Nothing is ever
+    # deleted; see docs/trail-retention.md. 268435456 (256 MiB) is a sensible
+    # value for a fleet host.
+    trail_rotate_bytes: int = Field(
+        default=0,
+        validation_alias=AliasChoices("AGENTMETRY_TRAIL_ROTATE_BYTES"),
+    )
+
+    # Microsoft Sentinel via the Azure Monitor Logs Ingestion API (pilot
+    # hardening item 25). AGENTMETRY_AUDIT_SINK must include `sentinel`.
+    # Setup: docs/integrations/sentinel.md.
+    audit_sentinel_endpoint: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_ENDPOINT"))
+    audit_sentinel_dcr_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_DCR_ID"))
+    audit_sentinel_stream: str = Field(
+        default="Custom-Agentmetry_CL", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_STREAM")
+    )
+    audit_sentinel_tenant_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_TENANT_ID"))
+    audit_sentinel_client_id: str = Field(default="", validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_CLIENT_ID"))
+    audit_sentinel_client_secret: str = Field(
+        default="", repr=False, validation_alias=AliasChoices("AGENTMETRY_AUDIT_SENTINEL_CLIENT_SECRET")
+    )
+
+    auth_disabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),
     )
 
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).

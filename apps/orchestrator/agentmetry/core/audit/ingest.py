@@ -13,7 +13,6 @@ from agentmetry.core.audit.detection.live import (
     observe_host,
 )
 from agentmetry.core.audit.external import build_external_canonical
-from agentmetry.core.audit.sinks import build_audit_sinks, parse_sink_modes
 from agentmetry.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -137,29 +136,9 @@ def _get_sink():
         return _sink
     if not settings.audit_export_enabled:
         return None
-    modes = parse_sink_modes(settings.audit_sink)
-    _sink = build_audit_sinks(
-        modes=modes,
-        file_path=settings.audit_export_path,
-        webhook_url=settings.audit_webhook_url,
-        webhook_timeout_seconds=settings.audit_webhook_timeout_seconds,
-        webhook_format=settings.audit_webhook_format,
-        webhook_token=settings.audit_webhook_token,
-        elastic_url=settings.audit_elastic_url,
-        elastic_index=settings.audit_elastic_index,
-        elastic_api_key=settings.audit_elastic_api_key,
-        elastic_verify_tls=settings.audit_elastic_verify_tls,
-        splunk_hec_url=settings.audit_splunk_hec_url,
-        splunk_hec_token=settings.audit_splunk_hec_token,
-        splunk_index=settings.audit_splunk_index,
-        splunk_sourcetype=settings.audit_splunk_sourcetype,
-        splunk_verify_tls=settings.audit_splunk_verify_tls,
-        chronicle_endpoint=settings.audit_chronicle_endpoint,
-        chronicle_customer_id=settings.audit_chronicle_customer_id,
-        chronicle_service_account=settings.audit_chronicle_service_account,
-        chronicle_bearer_token=settings.audit_chronicle_bearer_token,
-        chronicle_verify_tls=settings.audit_chronicle_verify_tls,
-    )
+    from agentmetry.core.audit.sinks import build_production_sink
+
+    _sink = build_production_sink(settings)
     from agentmetry.core.audit.alerts import AlertWebhookSink
     from agentmetry.core.audit.sinks import MultiAuditSink
 

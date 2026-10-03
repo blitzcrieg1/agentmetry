@@ -262,10 +262,18 @@ def load_chain_head(trail_path: Path) -> ChainHead:
     recovered = _head_from_trail_file(trail_path)
     if recovered is not None:
         return recovered
+    # Rotated with the sidecar lost: the head is the end of the newest
+    # archived segment, not genesis. Restarting at seq 1 would fork the chain.
+    from agentmetry.core.audit.trail_rotation import archived
+
+    for segment in reversed(archived(trail_path)):
+        recovered = _head_from_trail_file(segment)
+        if recovered is not None:
+            return recovered
     return ChainHead(seq=0, last_sha256=GENESIS_SHA256)
 
 
-def append_chained_line(trail_path: Path, event: dict[str, Any]) -> ChainHead:
+def append_chained_line(trail_path: Path, event: dict[str, Any], *, rotate_bytes: int = 0) -> ChainHead:
     """Append one chained envelope line and persist the sidecar head.
 
     The whole read-modify-write runs under a cross-process lock, because this is
@@ -300,6 +308,12 @@ def append_chained_line(trail_path: Path, event: dict[str, Any]) -> ChainHead:
             os.fsync(fh.fileno())
         new_head = ChainHead(seq=next_seq, last_sha256=envelope["trail"]["record_sha256"])
         _save_sidecar(chain_sidecar_path(trail_path), new_head)
+        if rotate_bytes > 0 and trail_path.stat().st_size >= rotate_bytes:
+            # Inside the lock: no other writer can append between the size
+            # check and the move, so no record lands in the archived file late.
+            from agentmetry.core.audit.trail_rotation import rotate_locked
+
+            rotate_locked(trail_path)
     return new_head
 
 
@@ -319,7 +333,15 @@ class TrailVerifyResult:
 
 
 def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
-    if not trail_path.is_file():
+    """Verify the chain from genesis through every segment of the trail.
+
+    A rotated trail is several files (`trail_rotation.py`); the chain runs
+    across them unchanged, so they are verified as one sequence. Line numbers
+    in a failure count within the named segment.
+    """
+    from agentmetry.core.audit.trail_rotation import exists, iter_lines
+
+    if not exists(trail_path):
         return TrailVerifyResult(False, f"no such file: {trail_path}")
 
     prev = GENESIS_SHA256
@@ -328,87 +350,87 @@ def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
     first_bad: int | None = None
 
     try:
-        with trail_path.open("r", encoding="utf-8", errors="replace") as fh:
-            for line_no, raw in enumerate(fh, start=1):
-                line = raw.strip()
-                if not line:
-                    continue
-                total += 1
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
+        for segment, line_no, raw in iter_lines(trail_path):
+            where = f"line {line_no}" if segment == trail_path else f"line {line_no} of {segment.name}"
+            line = raw.strip()
+            if not line:
+                continue
+            total += 1
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                return TrailVerifyResult(
+                    False,
+                    f"invalid JSON at {where}",
+                    total,
+                    chained,
+                    legacy,
+                    line_no,
+                )
+            if not isinstance(record, dict):
+                return TrailVerifyResult(
+                    False,
+                    f"expected object at {where}",
+                    total,
+                    chained,
+                    legacy,
+                    line_no,
+                )
+            if not is_chained_record(record):
+                # Legacy lines are only legitimate as a prefix from before
+                # chaining was enabled. An unchained line AFTER chained
+                # records is exactly what a forged append looks like, and
+                # readers would render it as a real event.
+                if chained > 0:
                     return TrailVerifyResult(
                         False,
-                        f"invalid JSON at line {line_no}",
+                        f"unchained line after chained records at {where} (forged append?)",
                         total,
                         chained,
                         legacy,
                         line_no,
                     )
-                if not isinstance(record, dict):
-                    return TrailVerifyResult(
-                        False,
-                        f"expected object at line {line_no}",
-                        total,
-                        chained,
-                        legacy,
-                        line_no,
-                    )
-                if not is_chained_record(record):
-                    # Legacy lines are only legitimate as a prefix from before
-                    # chaining was enabled. An unchained line AFTER chained
-                    # records is exactly what a forged append looks like, and
-                    # readers would render it as a real event.
-                    if chained > 0:
-                        return TrailVerifyResult(
-                            False,
-                            f"unchained line after chained records at line {line_no} (forged append?)",
-                            total,
-                            chained,
-                            legacy,
-                            line_no,
-                        )
-                    legacy += 1
-                    continue
+                legacy += 1
+                continue
 
-                trail = record["trail"]
-                event = record["event"]
-                seq = int(trail.get("seq", -1))
-                prev_sha = str(trail.get("prev_sha256", ""))
-                record_sha = str(trail.get("record_sha256", ""))
+            trail = record["trail"]
+            event = record["event"]
+            seq = int(trail.get("seq", -1))
+            prev_sha = str(trail.get("prev_sha256", ""))
+            record_sha = str(trail.get("record_sha256", ""))
 
-                if seq != expected_seq + 1:
-                    return TrailVerifyResult(
-                        False,
-                        f"sequence break at line {line_no}: expected seq {expected_seq + 1}, got {seq}",
-                        total,
-                        chained,
-                        legacy,
-                        line_no,
-                    )
-                if prev_sha != prev:
-                    return TrailVerifyResult(
-                        False,
-                        f"prev_sha256 mismatch at line {line_no}",
-                        total,
-                        chained,
-                        legacy,
-                        line_no,
-                    )
-                expected = compute_record_sha256(prev_sha, event)
-                if record_sha != expected:
-                    return TrailVerifyResult(
-                        False,
-                        f"record_sha256 mismatch at line {line_no} (tampered?)",
-                        total,
-                        chained,
-                        legacy,
-                        line_no,
-                    )
+            if seq != expected_seq + 1:
+                return TrailVerifyResult(
+                    False,
+                    f"sequence break at {where}: expected seq {expected_seq + 1}, got {seq}",
+                    total,
+                    chained,
+                    legacy,
+                    line_no,
+                )
+            if prev_sha != prev:
+                return TrailVerifyResult(
+                    False,
+                    f"prev_sha256 mismatch at {where}",
+                    total,
+                    chained,
+                    legacy,
+                    line_no,
+                )
+            expected = compute_record_sha256(prev_sha, event)
+            if record_sha != expected:
+                return TrailVerifyResult(
+                    False,
+                    f"record_sha256 mismatch at {where} (tampered?)",
+                    total,
+                    chained,
+                    legacy,
+                    line_no,
+                )
 
-                chained += 1
-                expected_seq = seq
-                prev = record_sha
+            chained += 1
+            expected_seq = seq
+            prev = record_sha
     except OSError as exc:
         return TrailVerifyResult(False, f"read failed: {exc}")
 

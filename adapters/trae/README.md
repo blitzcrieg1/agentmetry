@@ -5,11 +5,12 @@
 
 ## Today
 
-Wrap MCP servers with `tools/mcp_audit_proxy.py` and set:
+Wrap MCP servers with `agentmetry mcp-proxy` (in the package, no checkout
+needed) and set:
 
 ```powershell
 $env:AGENTMETRY_SOURCE_APP="trae"
-python tools/mcp_audit_proxy.py --server "your-mcp-command"
+agentmetry mcp-proxy -- your-mcp-server-command --its --arguments
 ```
 
 Events arrive as `source.app: trae` via the MCP proxy adapter.

@@ -239,7 +239,7 @@ def test_parse_sink_modes():
     assert parse_sink_modes("file,elastic,splunk") == {"file", "elastic", "splunk"}
     # "all" means all of them. A sink added to the product and not to this set
     # is one an operator who wrote `all` silently does not get.
-    assert parse_sink_modes("all") == {"file", "webhook", "elastic", "splunk", "chronicle"}
+    assert parse_sink_modes("all") == {"file", "webhook", "elastic", "splunk", "chronicle", "sentinel"}
 
 
 def test_build_audit_sinks_elastic_and_splunk(tmp_path: Path):

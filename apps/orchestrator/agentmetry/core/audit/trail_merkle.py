@@ -163,28 +163,30 @@ def read_leaves(trail_path: Path) -> TrailLeaves:
     hashes: list[str] = []
     seqs: list[int] = []
     skipped = 0
-    if not trail_path.is_file():
+    from agentmetry.core.audit.trail_rotation import exists, iter_lines
+
+    if not exists(trail_path):
         return TrailLeaves([], [], 0)
-    with trail_path.open("r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                skipped += 1
-                continue
-            if not is_chained_record(record):
-                skipped += 1
-                continue
-            trail = record["trail"]
-            digest = str(trail.get("record_sha256") or "")
-            if len(digest) != 64:
-                skipped += 1
-                continue
-            hashes.append(digest)
-            seqs.append(int(trail.get("seq") or 0))
+    # Every segment, in order: a rotation must not change any root.
+    for _segment, _line_no, line in iter_lines(trail_path):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            skipped += 1
+            continue
+        if not is_chained_record(record):
+            skipped += 1
+            continue
+        trail = record["trail"]
+        digest = str(trail.get("record_sha256") or "")
+        if len(digest) != 64:
+            skipped += 1
+            continue
+        hashes.append(digest)
+        seqs.append(int(trail.get("seq") or 0))
     return TrailLeaves(hashes, seqs, skipped)
 
 

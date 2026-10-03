@@ -81,6 +81,7 @@ export function DetectionsPanel() {
       });
       const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
         headers: apiHeaders(),
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -526,6 +527,7 @@ function DetectionDetail({
     setError(null);
     fetch(`${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(det.correlation_id)}`, {
       headers: apiHeaders(),
+      credentials: "include",
     })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

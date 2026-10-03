@@ -28,7 +28,13 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve()
 _PACKAGE_ROOT = _HERE.parents[2]       # agentmetry/, as config._PACKAGE_ROOT
-_ORCHESTRATOR_ROOT = _HERE.parents[3]  # where Settings reads .env, as config._ORCHESTRATOR_ROOT
+
+
+def env_path() -> Path:
+    """The `.env` Settings reads (core/paths.py)."""
+    from agentmetry.core.paths import env_file
+
+    return env_file()
 
 #: pydantic's own boolean vocabulary, so `AGENTMETRY_DLP_PII=off` means the same
 #: thing to the hook as to the orchestrator.
@@ -85,7 +91,7 @@ def _parse_dotenv(text: str) -> dict[str, str]:
 def _dotenv() -> dict[str, str]:
     """The orchestrator's `.env`, parsed once per change to the file."""
     global _DOTENV_CACHE
-    path = _ORCHESTRATOR_ROOT / ".env"
+    path = env_path()
     try:
         stat = path.stat()
     except OSError:

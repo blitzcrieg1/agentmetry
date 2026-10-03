@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
-from agentmetry.core.audit.hashing import arguments_sha256
+from agentmetry.core.audit.hashing import arguments_fingerprint
 from agentmetry.core.audit.redaction import scrub_arg_values, scrub_secrets
 from agentmetry.core.audit.run_context import (
     actor_from_initiator,
@@ -86,10 +86,15 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     driver_name, tool_name = _split_tool(tool_qualified)
 
     args = tool_block.get("arguments")
-    if isinstance(args, dict):
-        input_hash = str(tool_block.get("input_hash") or arguments_sha256(args))
+    # A hook that hashed client-side says how; a digest computed here uses the
+    # orchestrator's key. Either way the label below records which it was.
+    hash_kind = "hmac" if str(tool_block.get("input_hash_alg") or "") == "hmac-sha256" else "hash"
+    if tool_block.get("input_hash"):
+        input_hash = str(tool_block.get("input_hash"))
+    elif isinstance(args, dict):
+        input_hash, hash_kind = arguments_fingerprint(args)
     else:
-        input_hash = str(tool_block.get("input_hash") or payload.get("input_hash") or "")
+        input_hash = str(payload.get("input_hash") or "")
 
     skill_id = str(payload.get("skill_id") or payload.get("skill") or "")
 
@@ -129,7 +134,7 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     if tool_qualified:
         server = str(tool_block.get("server") or driver_name or source_app)
         command = str(tool_block.get("command") or "").strip()
-        redaction = "hash+command" if command else "hash"
+        redaction = f"{hash_kind}+command" if command else hash_kind
         event["tool"] = {
             "name": tool_name or tool_qualified,
             "qualified": tool_qualified,

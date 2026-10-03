@@ -9,6 +9,9 @@ from pathlib import Path
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from agentmetry.api.routes.auth import router as auth_router
+from agentmetry.api.trusted_host import TrustedHostMiddleware
+
 from agentmetry.api.routes.audit import router as audit_router
 from agentmetry.api.websocket import ws_manager
 from agentmetry.api.ws_bridge import ws_event_bridge
@@ -18,13 +21,14 @@ from agentmetry.core.bus.bridges import outbox_persister
 from agentmetry.core.bus.bus import bus
 from agentmetry.core.bus.outbox import get_outbox
 from agentmetry.core.config import settings
+from agentmetry.core.paths import data_dir
 from agentmetry.core.extensions import load_extensions
 from agentmetry.core.health import get_system_health
 from agentmetry.core.version import __version__
 
 logger = logging.getLogger(__name__)
 
-_LOG_DIR = Path(__file__).resolve().parents[2] / "data" / "logs"
+_LOG_DIR = data_dir() / "logs"
 
 
 def _setup_logging() -> None:
@@ -55,6 +59,21 @@ def _setup_logging() -> None:
 _setup_logging()
 
 
+
+
+def _start_forwarders() -> list[asyncio.Task]:
+    """One task per network sink, tailing the trail (pilot hardening item 19)."""
+    if not (settings.audit_export_enabled and settings.audit_forwarder):
+        return []
+    from agentmetry.core.audit.forwarder import Forwarder
+    from agentmetry.core.audit.sinks import forward_destinations
+
+    tasks = []
+    for destination in forward_destinations(settings):
+        forwarder = Forwarder(destination, settings.audit_export_path)
+        tasks.append(asyncio.create_task(forwarder.run(), name=f"forward-{destination.name}"))
+        logger.info("Forwarding the trail to %s from its cursor", destination.name)
+    return tasks
 
 
 @asynccontextmanager
@@ -114,22 +133,48 @@ async def lifespan(app: FastAPI):
         # if presence was being asserted.
         asyncio.create_task(heartbeat_forever(), name="heartbeat"),
     ]
+    bridge_tasks += _start_forwarders()
 
-    # Drivers mount in the background: a slow npx download must not delay boot.
-    from agentmetry.core.drivers.host import get_mcp_host
+    # The removed agent runtime's MCP driver host. Off unless
+    # AGENTMETRY_LEGACY_DRIVERS=1 (#209): it spawned tools/vault_fs_server.py on
+    # every boot of a recorder that has no use for it.
+    mount_task = None
+    if settings.legacy_drivers:
+        from agentmetry.core.drivers.host import get_mcp_host
 
-    mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
+        # Mount in the background: a slow npx download must not delay boot.
+        mount_task = asyncio.create_task(get_mcp_host().mount_all(), name="driver-mounts")
 
-    from agentmetry.core.audit.hook_bootstrap import bootstrap_tier_b_hooks
+    # Create the per-install API token now, before the first hook asks for it.
+    from agentmetry.core.auth import effective_key
 
     try:
-        hook_paths = bootstrap_tier_b_hooks()
-        if hook_paths.get("cursor"):
-            logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
-        if hook_paths.get("claude"):
-            logger.info("Global Claude hooks ready: %s", hook_paths["claude"])
-    except Exception as exc:
-        logger.warning("Tier B hook bootstrap failed: %s", exc)
+        if effective_key():
+            logger.info("API authentication on; local clients read the token from the data directory")
+        else:
+            logger.warning("API authentication is OFF (AGENTMETRY_AUTH_DISABLED); development only")
+    except OSError as exc:
+        logger.error("Could not create the API token (%s); every request will be refused", exc)
+
+    # Opt-in (AGENTMETRY_AUTO_INSTALL_HOOKS=1). Unconditional, this rewrote the
+    # developer's global IDE hook configs to point at whichever checkout booted,
+    # which is how a test clone or demo instance took over live hooks.
+    if settings.auto_install_hooks:
+        from agentmetry.core.audit.hook_bootstrap import bootstrap_tier_b_hooks
+
+        try:
+            hook_paths = bootstrap_tier_b_hooks()
+            if hook_paths.get("cursor"):
+                logger.info("Global Cursor hooks ready: %s", hook_paths["cursor"])
+            if hook_paths.get("claude"):
+                logger.info("Global Claude hooks ready: %s", hook_paths["claude"])
+        except Exception as exc:
+            logger.warning("Tier B hook bootstrap failed: %s", exc)
+    else:
+        logger.info(
+            "IDE hooks are not rewritten at boot. Install or repair them with "
+            "`agentmetry hooks install`, or set AGENTMETRY_AUTO_INSTALL_HOOKS=1."
+        )
 
     # Launch transcript watcher for Antigravity in the background
     import subprocess
@@ -148,8 +193,11 @@ async def lifespan(app: FastAPI):
         logger.warning("Failed to start Antigravity transcript watcher: %s", exc)
 
     yield
-    mount_task.cancel()
-    await get_mcp_host().unmount_all()
+    if mount_task is not None:
+        from agentmetry.core.drivers.host import get_mcp_host
+
+        mount_task.cancel()
+        await get_mcp_host().unmount_all()
     for task in bridge_tasks:
         task.cancel()
     if watcher_process:
@@ -177,8 +225,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Outermost, so a request with a foreign Host header is refused before CORS or
+# any route sees it (DNS rebinding; pilot hardening item 9).
+app.add_middleware(TrustedHostMiddleware)
 
 app.include_router(audit_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 load_extensions(app, settings=settings)
 

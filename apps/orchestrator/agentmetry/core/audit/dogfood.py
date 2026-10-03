@@ -349,7 +349,9 @@ def _attach_health(report: DogfoodReport) -> None:
     from agentmetry.core.config import settings
 
     trail = Path(settings.audit_export_path)
-    if trail.is_file():
+    from agentmetry.core.audit.trail_rotation import exists as _trail_exists
+
+    if _trail_exists(trail):
         from agentmetry.core.audit.trail_chain import verify_trail_file
 
         result = verify_trail_file(trail)

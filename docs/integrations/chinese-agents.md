@@ -21,7 +21,7 @@ Both products adopted the **Claude hook wire protocol** (JSON on stdin,
 Templates: `adapters/qwen/settings.agentmetry.json`, `adapters/qoder/settings.agentmetry.json`.
 Kimi uses a managed TOML block from the installer.
 
-**Also works without new code:** wrap MCP servers with `tools/mcp_audit_proxy.py` for
+**Also works without new code:** wrap MCP servers with `agentmetry mcp-proxy` for
 any MCP-capable host (Trae, etc.) — see
 [external ingest](../agentmetry-external-ingest.md).
 
@@ -142,7 +142,7 @@ Partial coverage today:
 
 ```powershell
 $env:AGENTMETRY_SOURCE_APP="trae"
-python tools/mcp_audit_proxy.py --server "your-mcp-server-command"
+agentmetry mcp-proxy -- your-mcp-server-command --its --arguments
 ```
 
 See [`adapters/trae/README.md`](../../adapters/trae/README.md). Full hook adapter

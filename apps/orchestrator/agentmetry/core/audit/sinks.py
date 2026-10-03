@@ -1,7 +1,15 @@
-"""Agentmetry forward sinks — file, webhook, Elastic ECS, Splunk HEC."""
+"""Agentmetry forward sinks: file, webhook, Elastic ECS, Splunk HEC, Chronicle.
+
+The network sinks have two entry points. `send_batch` is what the trail
+forwarder (`forwarder.py`) calls: one long-lived client, many events per
+request, and a `ForwardError` that says whether a failure is worth retrying.
+`emit` is the old inline path, kept for AGENTMETRY_AUDIT_FORWARDER=0 and for
+callers outside the orchestrator; it logs and drops on failure.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -10,8 +18,10 @@ from typing import Any
 
 import httpx
 
+from agentmetry.core.audit.forwarder import ForwardError, raise_for
 from agentmetry.core.audit.adapters.ecs import canonical_to_ecs
 from agentmetry.core.audit.adapters.chronicle import canonical_to_udm_batch
+from agentmetry.core.audit.adapters.sentinel import canonical_to_sentinel_record
 from agentmetry.core.audit.adapters.splunk import canonical_to_hec_event
 
 logger = logging.getLogger(__name__)
@@ -26,14 +36,15 @@ class AuditSink(ABC):
 
 
 class FileAuditSink(AuditSink):
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, rotate_bytes: int = 0) -> None:
         self._path = path
+        self._rotate_bytes = rotate_bytes
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         from agentmetry.core.audit.trail_chain import append_chained_line
 
         with _file_lock:
-            append_chained_line(self._path, canonical)
+            append_chained_line(self._path, canonical, rotate_bytes=self._rotate_bytes)
 
 
 class WebhookAuditSink(AuditSink):
@@ -59,8 +70,52 @@ class WebhookAuditSink(AuditSink):
     ) -> None:
         self._url = url
         self._timeout = timeout_seconds
-        self._cloudevents = (format or "").strip().lower() in ("cloudevents", "cloudevent", "ce")
+        fmt = (format or "").strip().lower()
+        self._cloudevents = fmt in ("cloudevents", "cloudevent", "ce")
+        # `batch`: one POST of {"events": [...]} canonical records, which is
+        # what the Agentmetry Enterprise console ingests (and dedupes on
+        # event_id). Opt-in, for the same reason as above.
+        self._batch = fmt == "batch"
         self._token = (token or "").strip()
+
+    name = "webhook"
+
+    @property
+    def max_batch(self) -> int:
+        return 500 if self._batch else 50
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout)
+
+    def _headers(self, content_type: str) -> dict[str, str]:
+        headers = {"Content-Type": content_type, "User-Agent": "Agentmetry/1.0"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        if self._batch:
+            # Signed by an extension when one registered a signer (Enterprise:
+            # the host's Ed25519 key). The event inside is unchanged.
+            from agentmetry.core.audit.signing import wrap_for_batch
+
+            raise_for(
+                await client.post(
+                    self._url, json={"events": [wrap_for_batch(e) for e in events]},
+                    headers=self._headers("application/json"),
+                ),
+                self._url,
+            )
+            return
+        # One request per event keeps the shape every existing consumer gets.
+        for event in events:
+            payload, content_type = event, "application/json"
+            if self._cloudevents:
+                from agentmetry.core.audit.adapters.cloudevents import canonical_to_cloudevent
+
+                payload = canonical_to_cloudevent(event)
+                content_type = "application/cloudevents+json; charset=utf-8"
+            raise_for(await client.post(self._url, json=payload, headers=self._headers(content_type)), self._url)
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         payload = canonical
@@ -99,10 +154,51 @@ class ElasticEcsSink(AuditSink):
         timeout_seconds: float = 5.0,
         verify_tls: bool = True,
     ) -> None:
-        self._url = base_url.rstrip("/") + f"/{index}/_doc"
+        self._base = base_url.rstrip("/")
+        self._index = index
+        self._url = self._base + f"/{index}/_doc"
         self._api_key = api_key
         self._timeout = timeout_seconds
         self._verify = verify_tls
+
+    name = "elastic"
+    max_batch = 500
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout, verify=self._verify)
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        """`_bulk`, with `_id` = event_id, so a resent batch overwrites rather than duplicates."""
+        lines: list[str] = []
+        for event in events:
+            action: dict[str, Any] = {"_index": self._index}
+            if event.get("event_id"):
+                action["_id"] = str(event["event_id"])
+            lines.append(json.dumps({"index": action}))
+            lines.append(json.dumps(canonical_to_ecs(event), default=str))
+        response = await client.post(
+            self._base + "/_bulk",
+            content=("\n".join(lines) + "\n").encode("utf-8"),
+            headers={
+                "Content-Type": "application/x-ndjson",
+                "Authorization": f"ApiKey {self._api_key}",
+                "User-Agent": "Agentmetry/1.0",
+            },
+        )
+        raise_for(response, self._base)
+        try:
+            body = response.json()
+        except ValueError:
+            return
+        if not body.get("errors"):
+            return
+        statuses = [
+            int((item.get("index") or {}).get("status") or 0)
+            for item in body.get("items") or []
+            if "error" in (item.get("index") or {})
+        ]
+        retryable = any(code in (408, 429) or code >= 500 for code in statuses)
+        raise ForwardError(f"elastic bulk: {len(statuses)} item(s) failed {sorted(set(statuses))}", retryable=retryable)
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         doc = canonical_to_ecs(canonical)
@@ -144,6 +240,29 @@ class SplunkHecSink(AuditSink):
         self._sourcetype = sourcetype
         self._timeout = timeout_seconds
         self._verify = verify_tls
+
+    name = "splunk"
+    max_batch = 500
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout, verify=self._verify)
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        """HEC takes many events in one body, concatenated."""
+        body = "".join(
+            json.dumps(canonical_to_hec_event(e, index=self._index, sourcetype=self._sourcetype), default=str)
+            for e in events
+        )
+        response = await client.post(
+            self._url,
+            content=body.encode("utf-8"),
+            headers={
+                "Authorization": f"Splunk {self._token}",
+                "Content-Type": "application/json",
+                "User-Agent": "Agentmetry/1.0",
+            },
+        )
+        raise_for(response, self._url)
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         payload = canonical_to_hec_event(
@@ -247,6 +366,29 @@ class ChronicleUdmSink(AuditSink):
                 return None
         return f"Bearer {self._bearer}" if self._bearer else None
 
+    name = "chronicle"
+    max_batch = 100
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout, verify=self._verify)
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        authorization = self._authorization()
+        if not authorization:
+            # No token yet (a service-account exchange failed): retry later
+            # rather than dropping the batch.
+            raise ForwardError("chronicle: no authorization available", retryable=True)
+        response = await client.post(
+            self._url,
+            json=canonical_to_udm_batch(events, customer_id=self._customer_id),
+            headers={
+                "Authorization": authorization,
+                "Content-Type": "application/json",
+                "User-Agent": "Agentmetry/1.0",
+            },
+        )
+        raise_for(response, self._url)
+
     async def emit(self, canonical: dict[str, Any]) -> None:
         authorization = self._authorization()
         if not authorization:
@@ -267,6 +409,87 @@ class ChronicleUdmSink(AuditSink):
             logger.exception("Chronicle UDM POST failed -> %s", self._url)
 
 
+class SentinelLogsIngestionSink(AuditSink):
+    """Microsoft Sentinel, through the Azure Monitor Logs Ingestion API.
+
+    POSTs JSON arrays of `canonical_to_sentinel_record` rows to
+    `{endpoint}/dataCollectionRules/{dcr}/streams/{stream}`, authenticated with
+    an Entra app registration (client credentials) holding Monitoring Metrics
+    Publisher on the DCR. Setup and the analytics rules:
+    docs/integrations/sentinel.md and detections-sentinel.md.
+
+    Forwarder-only: the inline `emit` path is not offered, because a token
+    exchange per event against Entra would be its own outage generator.
+    """
+
+    name = "sentinel"
+    #: The API caps a call at 1 MB; the forwarder's byte cap keeps under it.
+    max_batch = 500
+    API_VERSION = "2023-01-01"
+    _AUTHORITY = "https://login.microsoftonline.com"
+    _SCOPE = "https://monitor.azure.com/.default"
+
+    def __init__(
+        self,
+        endpoint: str,
+        dcr_immutable_id: str,
+        *,
+        stream: str = "Custom-Agentmetry_CL",
+        tenant_id: str,
+        client_id: str,
+        client_secret: str,
+        timeout_seconds: float = 10.0,
+    ) -> None:
+        self._url = (
+            f"{endpoint.rstrip('/')}/dataCollectionRules/{dcr_immutable_id}"
+            f"/streams/{stream}?api-version={self.API_VERSION}"
+        )
+        self._token_url = f"{self._AUTHORITY}/{tenant_id}/oauth2/v2.0/token"
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._timeout = timeout_seconds
+        self._token = ""
+        self._token_expires = 0.0
+
+    def make_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout)
+
+    async def _bearer(self, client: httpx.AsyncClient) -> str:
+        import time
+
+        if self._token and time.time() < self._token_expires - 120:
+            return self._token
+        response = await client.post(self._token_url, data={
+            "grant_type": "client_credentials",
+            "client_id": self._client_id,
+            "client_secret": self._client_secret,
+            "scope": self._SCOPE,
+        })
+        if response.status_code != 200:
+            # A bad secret is a 400/401 from Entra; it will not fix itself on
+            # retry, but the events are not malformed either, so they wait.
+            raise ForwardError(f"sentinel: token request answered HTTP {response.status_code}", retryable=True)
+        body = response.json()
+        self._token = str(body.get("access_token") or "")
+        self._token_expires = time.time() + float(body.get("expires_in") or 3600)
+        return self._token
+
+    async def send_batch(self, client: httpx.AsyncClient, events: list[dict[str, Any]]) -> None:
+        token = await self._bearer(client)
+        response = await client.post(
+            self._url,
+            json=[canonical_to_sentinel_record(e) for e in events],
+            headers={"Authorization": f"Bearer {token}", "User-Agent": "Agentmetry/1.0"},
+        )
+        if response.status_code in (401, 403):
+            self._token = ""  # expired or revoked mid-life: fetch a new one next try
+            raise ForwardError(f"sentinel: ingestion answered HTTP {response.status_code}", retryable=True)
+        raise_for(response, "sentinel")
+
+    async def emit(self, canonical: dict[str, Any]) -> None:  # pragma: no cover - forwarder-only
+        logger.warning("Sentinel is forwarder-only; set AGENTMETRY_AUDIT_FORWARDER=1")
+
+
 class MultiAuditSink(AuditSink):
     def __init__(self, sinks: list[AuditSink]) -> None:
         self._sinks = sinks
@@ -283,7 +506,7 @@ def parse_sink_modes(raw: str) -> set[str]:
     if text == "both":
         return {"file", "webhook"}
     if text == "all":
-        return {"file", "webhook", "elastic", "splunk", "chronicle"}
+        return {"file", "webhook", "elastic", "splunk", "chronicle", "sentinel"}
     return {part.strip() for part in text.split(",") if part.strip()}
 
 
@@ -309,6 +532,12 @@ def build_audit_sinks(
     chronicle_service_account: str = "",
     chronicle_bearer_token: str = "",
     chronicle_verify_tls: bool = True,
+    sentinel_endpoint: str = "",
+    sentinel_dcr_id: str = "",
+    sentinel_stream: str = "Custom-Agentmetry_CL",
+    sentinel_tenant_id: str = "",
+    sentinel_client_id: str = "",
+    sentinel_client_secret: str = "",
 ) -> AuditSink | None:
     sinks: list[AuditSink] = []
 
@@ -362,8 +591,85 @@ def build_audit_sinks(
             )
         )
 
+    sentinel_ready = all(v.strip() for v in (
+        sentinel_endpoint, sentinel_dcr_id, sentinel_tenant_id, sentinel_client_id, sentinel_client_secret,
+    ))
+    if "sentinel" in modes and sentinel_ready:
+        sinks.append(
+            SentinelLogsIngestionSink(
+                sentinel_endpoint.strip(),
+                sentinel_dcr_id.strip(),
+                stream=sentinel_stream.strip() or "Custom-Agentmetry_CL",
+                tenant_id=sentinel_tenant_id.strip(),
+                client_id=sentinel_client_id.strip(),
+                client_secret=sentinel_client_secret.strip(),
+                timeout_seconds=max(webhook_timeout_seconds, 10.0),
+            )
+        )
+
     if not sinks:
         return None
     if len(sinks) == 1:
         return sinks[0]
     return MultiAuditSink(sinks)
+
+
+def _settings_kwargs(settings: Any, modes: set[str]) -> dict[str, Any]:
+    return dict(
+        modes=modes,
+        file_path=settings.audit_export_path,
+        webhook_url=settings.audit_webhook_url,
+        webhook_timeout_seconds=settings.audit_webhook_timeout_seconds,
+        webhook_format=settings.audit_webhook_format,
+        webhook_token=settings.audit_webhook_token,
+        elastic_url=settings.audit_elastic_url,
+        elastic_index=settings.audit_elastic_index,
+        elastic_api_key=settings.audit_elastic_api_key,
+        elastic_verify_tls=settings.audit_elastic_verify_tls,
+        splunk_hec_url=settings.audit_splunk_hec_url,
+        splunk_hec_token=settings.audit_splunk_hec_token,
+        splunk_index=settings.audit_splunk_index,
+        splunk_sourcetype=settings.audit_splunk_sourcetype,
+        splunk_verify_tls=settings.audit_splunk_verify_tls,
+        chronicle_endpoint=settings.audit_chronicle_endpoint,
+        chronicle_customer_id=settings.audit_chronicle_customer_id,
+        chronicle_service_account=settings.audit_chronicle_service_account,
+        chronicle_bearer_token=settings.audit_chronicle_bearer_token,
+        chronicle_verify_tls=settings.audit_chronicle_verify_tls,
+        sentinel_endpoint=getattr(settings, "audit_sentinel_endpoint", ""),
+        sentinel_dcr_id=getattr(settings, "audit_sentinel_dcr_id", ""),
+        sentinel_stream=getattr(settings, "audit_sentinel_stream", "Custom-Agentmetry_CL"),
+        sentinel_tenant_id=getattr(settings, "audit_sentinel_tenant_id", ""),
+        sentinel_client_id=getattr(settings, "audit_sentinel_client_id", ""),
+        sentinel_client_secret=getattr(settings, "audit_sentinel_client_secret", ""),
+    )
+
+
+_NETWORK_SINKS = (WebhookAuditSink, ElasticEcsSink, SplunkHecSink, ChronicleUdmSink, SentinelLogsIngestionSink)
+
+
+def forward_destinations(settings: Any) -> list[AuditSink]:
+    """The network sinks the trail forwarder should run, from settings."""
+    modes = parse_sink_modes(settings.audit_sink) - {"file"}
+    if not modes:
+        return []
+    built = build_audit_sinks(**_settings_kwargs(settings, modes))
+    if built is None:
+        return []
+    sinks = built._sinks if isinstance(built, MultiAuditSink) else [built]
+    return [sink for sink in sinks if isinstance(sink, _NETWORK_SINKS)]
+
+
+def build_production_sink(settings: Any) -> AuditSink | None:
+    """What producers write to.
+
+    With the forwarder on (the default), that is the trail alone, even when
+    only a network mode is configured: the trail is the queue the forwarder
+    reads, so it has to be written for anything to be forwarded. With
+    AGENTMETRY_AUDIT_FORWARDER=0, the old inline sinks.
+    """
+    modes = parse_sink_modes(settings.audit_sink)
+    rotate_bytes = int(getattr(settings, "trail_rotate_bytes", 0) or 0)
+    if getattr(settings, "audit_forwarder", True):
+        return FileAuditSink(settings.audit_export_path, rotate_bytes=rotate_bytes)
+    return build_audit_sinks(**_settings_kwargs(settings, modes))

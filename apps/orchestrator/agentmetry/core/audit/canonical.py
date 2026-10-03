@@ -6,7 +6,6 @@ import uuid
 from typing import Any
 
 from agentmetry.core.audit.atlas import attach_atlas
-from agentmetry.core.audit.hashing import arguments_sha256
 from agentmetry.core.audit.identity import identity_fields
 from agentmetry.core.audit.mitre import get_mitre_mapping
 from agentmetry.core.audit.run_context import actor_from_initiator, resolve_initiator
@@ -156,5 +155,7 @@ def normalize_outbox_row(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def normalize_arguments_for_audit(arguments: dict[str, Any]) -> str:
-    """SHA-256 hex digest of tool arguments (for host publish payloads)."""
-    return arguments_sha256(arguments)
+    """Digest of tool arguments for host publish payloads (keyed when a fleet key is set)."""
+    from agentmetry.core.audit.hashing import arguments_fingerprint
+
+    return arguments_fingerprint(arguments)[0]

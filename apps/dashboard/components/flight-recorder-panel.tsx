@@ -534,6 +534,7 @@ export function FlightRecorderPanel() {
 
       const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
         headers: apiHeaders(),
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -618,9 +619,11 @@ export function FlightRecorderPanel() {
       const [sessionRes, detRes] = await Promise.all([
         fetch(`${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(corrId)}`, {
           headers: apiHeaders(),
+          credentials: "include",
         }),
         fetch(`${ORCHESTRATOR_URL}/api/v1/audit/detections/${encodeURIComponent(corrId)}`, {
           headers: apiHeaders(),
+          credentials: "include",
         }),
       ]);
       if (!sessionRes.ok) throw new Error(`HTTP ${sessionRes.status}`);

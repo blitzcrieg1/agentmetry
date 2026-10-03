@@ -22,9 +22,11 @@ from pathlib import Path
 
 import httpx
 
+from agentmetry.core.paths import data_dir
+
 _ORCH_ROOT = Path(__file__).resolve().parents[2]          # apps/orchestrator
 _REPO_ROOT = _ORCH_ROOT.parents[1]                        # repo root
-_DATA_DIR = _ORCH_ROOT / "data"
+_DATA_DIR = data_dir()
 _PID_FILE = _DATA_DIR / "agentmetry.pid"
 _TASK_NAME = "Agentmetry Orchestrator"
 
@@ -47,8 +49,38 @@ def _api_base_url(port: int) -> str:
 
 
 def _api_headers() -> dict[str, str]:
-    key = os.environ.get("AGENTMETRY_API_KEY", "").strip()
+    from agentmetry.core.api_token import client_token
+
+    key = client_token()
     return {"X-API-Key": key} if key else {}
+
+
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """Sign the browser in to the local dashboard without giving it the key."""
+    from agentmetry.core.operator_identity import os_operator
+
+    base = _api_base_url(args.port)
+    try:
+        resp = httpx.post(
+            f"{base}/api/v1/auth/dashboard-link",
+            json={"operator": os.environ.get("AGENTMETRY_OPERATOR_ID", "").strip() or os_operator()},
+            headers=_api_headers(), timeout=10.0,
+        )
+    except Exception:
+        print(f"Not running at {base}; start Agentmetry first.")
+        return 1
+    if resp.status_code != 200:
+        print(f"Could not get a sign-in link (HTTP {resp.status_code}): {resp.text}")
+        return 1
+    url = base + resp.json()["url"]
+    if args.dev_server:
+        url += "&next=dev"
+    print(url)
+    if not args.no_browser:
+        import webbrowser
+
+        webbrowser.open(url)
+    return 0
 
 
 def _lan_ip() -> str | None:
@@ -549,6 +581,8 @@ def cmd_hooks(args: argparse.Namespace) -> int:
     from agentmetry.core.audit import hook_bootstrap
     from agentmetry.core.diagnostics import hook_coverage
 
+    if getattr(args, "managed", False):
+        return _hooks_managed(args)
     if args.action == "status":
         return _hooks_status()
 
@@ -599,6 +633,41 @@ def cmd_hooks(args: argparse.Namespace) -> int:
         print("")
         print("codex: open Codex, run /hooks and approve the entries, or it")
         print("skips them silently and records nothing.")
+    return 1 if failures else 0
+
+
+def _hooks_managed(args: argparse.Namespace) -> int:
+    """`hooks install|status --managed`: the vendors' admin-managed locations.
+
+    Needs administrator rights to install (they are machine-wide files), which
+    is the point: a developer cannot edit them. Run it as SYSTEM from Intune
+    (deploy/intune in Agentmetry Enterprise) or from an elevated shell.
+    """
+    from agentmetry.core.audit import managed_hooks
+
+    wanted = args.agent or list(managed_hooks.MANAGED_AGENTS)
+    unknown = sorted(set(wanted) - set(managed_hooks.MANAGED_AGENTS))
+    if unknown:
+        print(f"No managed location for: {', '.join(unknown)} (supported: claude, cursor, codex)", file=sys.stderr)
+        return 2
+    if args.action == "status":
+        states = {agent: managed_hooks.status(agent) for agent in wanted}
+        for agent, state in states.items():
+            print(f"  {agent:7} {state:8} {managed_hooks.managed_paths()[agent]}")
+        return 0 if all(state == "managed" for state in states.values()) else 1
+    failures = 0
+    for agent in wanted:
+        try:
+            path = managed_hooks.install(agent, lock=args.lock)
+        except PermissionError:
+            print(f"  {agent}: needs administrator rights ({managed_hooks.managed_paths()[agent]})", file=sys.stderr)
+            failures += 1
+            continue
+        except (OSError, ValueError, RuntimeError) as exc:
+            print(f"  {agent}: FAILED, nothing written ({exc})", file=sys.stderr)
+            failures += 1
+            continue
+        print(f"  {agent}: {path}" + ("  (managed hooks only)" if args.lock else ""))
     return 1 if failures else 0
 
 
@@ -1007,11 +1076,40 @@ def cmd_anchor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trail(args: argparse.Namespace) -> int:
+    """`agentmetry trail rotate|segments`: archive the active trail file, or list segments."""
+    from agentmetry.core.audit import trail_rotation
+    from agentmetry.core.config import settings
+
+    trail = Path(args.path or settings.audit_export_path)
+    if args.trail_command == "rotate":
+        target = trail_rotation.rotate(trail)
+        if target is None:
+            print(f"Nothing to rotate: {trail} is empty or has no chained records.")
+            return 0
+        print(f"Archived {trail.name} -> {target}")
+        print("The chain continues in a new active file; `agentmetry verify --trail` covers both.")
+        return 0
+    entries = {entry["name"]: entry for entry in trail_rotation.manifest(trail)}
+    for segment in trail_rotation.segments(trail):
+        if not segment.is_file():
+            print(f"  {segment.name:46} (active, not created yet)")
+            continue
+        entry = entries.get(segment.name)
+        span = f"seq {entry['first_seq']}-{entry['last_seq']}" if entry else "active"
+        print(f"  {segment.name:46} {segment.stat().st_size:>12,} bytes  {span}")
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     import json
 
     path = Path(args.path)
-    if not path.exists():
+    from agentmetry.core.audit.trail_rotation import exists as _trail_exists
+
+    # Right after a rotation the active file does not exist yet, and the trail
+    # is only its archived segments.
+    if not path.exists() and not (getattr(args, "trail", False) and _trail_exists(path)):
         print(f"No such file: {path}")
         return 1
 
@@ -1111,14 +1209,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 def cmd_replay(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(_ORCH_ROOT))
-    from agentmetry.core.audit.replay import format_timeline
-    from agentmetry.core.bus.outbox import get_outbox
+    from agentmetry.core.audit.replay import format_timeline, read_trail_events
+    from agentmetry.core.config import settings
 
     thread_id = args.thread_id.strip()
     if not thread_id:
         print("thread_id is required")
         return 1
-    rows = get_outbox().read_by_thread_id(thread_id)
+    trail = Path(getattr(args, "trail", "") or settings.audit_export_path)
+    rows = read_trail_events(trail, thread_id)
+    if not rows:
+        from agentmetry.core.bus.outbox import get_outbox
+
+        rows = get_outbox().read_by_thread_id(thread_id)
     print(format_timeline(rows, thread_id=thread_id))
     return 0 if rows else 1
 
@@ -1198,6 +1301,14 @@ def main(argv: list[str] | None = None) -> int:
         # the call.
         pass
 
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "mcp-proxy":
+        # Dispatched before argparse: everything after `--` is the server's
+        # own command line and must reach it untouched.
+        from agentmetry.hooks.mcp_proxy import main as proxy_main
+
+        return proxy_main(raw[1:])
+
     parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1226,6 +1337,17 @@ def main(argv: list[str] | None = None) -> int:
             "install writes hook configs; status reports coverage and exits "
             "0 compliant, 1 needs remediation, 2 undeterminable"
         ),
+    )
+    hooks.add_argument(
+        "--managed",
+        action="store_true",
+        help="use each vendor's admin-managed, machine-wide location (claude, cursor, codex); needs admin",
+    )
+    hooks.add_argument(
+        "--lock",
+        action="store_true",
+        help="with --managed: also allow only managed hooks (Claude allowManagedHooksOnly, "
+             "Codex allow_managed_hooks_only); user and project hooks stop running",
     )
     hooks.add_argument(
         "--agent",
@@ -1363,6 +1485,19 @@ def main(argv: list[str] | None = None) -> int:
         "--print-env", action="store_true",
         help="print the environment Claude Code needs to send here, and exit",
     )
+    dashboard = sub.add_parser(
+        "dashboard", help="open the dashboard signed in (the browser never gets the API key)"
+    )
+    dashboard.add_argument(
+        "--dev-server", action="store_true",
+        help="land on the Next dev server (http://localhost:3000) instead of the served dashboard",
+    )
+    dashboard.add_argument("--no-browser", action="store_true", help="print the one-time link instead of opening it")
+    # Listed for --help; `main` hands it to the proxy before parsing.
+    sub.add_parser("mcp-proxy", help="run an MCP server behind Agentmetry: agentmetry mcp-proxy -- <server command>")
+    trail = sub.add_parser("trail", help="rotate the hash-chained trail, or list its segments")
+    trail.add_argument("trail_command", choices=("rotate", "segments"))
+    trail.add_argument("--path", default="", help="trail to act on (default: the configured trail)")
     verify = sub.add_parser("verify", help="verify evidence pack or JSONL trail chain")
     verify.add_argument(
         "path",
@@ -1407,6 +1542,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
     replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
+    replay.add_argument("--trail", default="", help="trail to read (default: the configured trail)")
 
     args = parser.parse_args(argv)
     handlers = {
@@ -1426,9 +1562,11 @@ def main(argv: list[str] | None = None) -> int:
         "uninstall": cmd_uninstall,
         "export": cmd_export,
         "verify": cmd_verify,
+        "trail": cmd_trail,
         "prove": cmd_prove,
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,
+        "dashboard": cmd_dashboard,
         "otel": cmd_otel,
         "import-agt": cmd_import_agt,
         "doctor": cmd_doctor,

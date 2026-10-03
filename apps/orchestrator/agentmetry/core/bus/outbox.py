@@ -13,8 +13,9 @@ from threading import Lock
 from typing import Any
 
 from agentmetry.core.bus.events import Event
+from agentmetry.core.paths import data_dir
 
-_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+_DATA_DIR = data_dir()
 
 
 class EventOutbox:

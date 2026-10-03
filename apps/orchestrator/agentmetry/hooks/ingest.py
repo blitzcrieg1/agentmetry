@@ -25,8 +25,8 @@ Environment:
 
 from __future__ import annotations
 
-import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -60,6 +60,9 @@ except ImportError:  # pragma: no cover - the package always ships it
 
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
+from agentmetry.core.api_token import ingest_token_path, read_token
+from agentmetry.core.paths import data_dir, env_file, hook_spool_path
+
 try:
     from agentmetry.core.operator_identity import os_operator, stated
 except ImportError:  # pragma: no cover - the package always ships it
@@ -140,9 +143,19 @@ def _base_url() -> str:
 
 
 def _api_key() -> str:
+    """The key, the `.env`, an ingest-only token, or the per-install token.
+
+    The ingest-only token comes first among the files: where one is
+    provisioned (a machine-wide install, `api_token.write_ingest_token`), it is
+    the credential this machine's hooks are meant to use, and the full token
+    is readable only by administrators and the service.
+    """
     return (
         os.environ.get("AGENTMETRY_API_KEY", "").strip()
         or os.environ.get("BLACKBOX_API_KEY", "").strip()  # pre-rename fallback
+        or _read_repo_env("AGENTMETRY_API_KEY").strip()
+        or read_token(ingest_token_path())
+        or read_token()
     )
 
 
@@ -236,7 +249,9 @@ def read_hook_stdin() -> tuple[dict[str, Any], bool]:
 #: measured across 200 tool calls, for a value that is constant.
 _ORCH_ROOT = Path(__file__).resolve().parents[2]
 
-_REPO_ENV_PATH = _ORCH_ROOT / ".env"
+# The same `.env` the orchestrator reads: the checkout's, or the install's
+# data directory, never site-packages (core/paths.py).
+_REPO_ENV_PATH = env_file()
 
 
 def _repo_env_path() -> Path:
@@ -268,10 +283,9 @@ def _data_dir() -> Path:
     trail = os.environ.get("AGENTMETRY_AUDIT_EXPORT_PATH", "").strip()
     if trail:
         return Path(trail).expanduser().parent
-    root = os.environ.get("AGENTMETRY_INSTALL_ROOT", "").strip()
-    if root:
-        return Path(root).expanduser() / "data"
-    return _ORCH_ROOT / "data"
+    # AGENTMETRY_DATA_DIR, the MSI's AGENTMETRY_INSTALL_ROOT, the checkout, or
+    # the per-user data directory: the same answer the orchestrator gets.
+    return data_dir()
 
 
 #: How long a hook will wait for the orchestrator before giving up on the POST.
@@ -427,10 +441,26 @@ def scrub_arg_values(args: Any) -> Any:
     return {k: (scrub_command(v) if isinstance(v, str) else v) for k, v in args.items()}
 
 
+def _hash_key() -> bytes:
+    """The per-fleet hashing secret (pilot hardening item 11), or empty."""
+    key = os.environ.get("AGENTMETRY_HASH_KEY", "").strip() or _read_repo_env("AGENTMETRY_HASH_KEY").strip()
+    return key.encode("utf-8")
+
+
 def hash_arguments(args: Any) -> str:
+    """64 hex: HMAC-SHA256 under the fleet key when one is set, else SHA-256.
+
+    Unkeyed, the digest of a guessable argument is a lookup away: anyone with
+    the trail can hash `git push --force` and find every event that ran it.
+    Keyed, the same argument still matches across the fleet, which is what
+    the detections need, but confirming a guess needs the key.
+    """
     clean = redact_arguments(args if isinstance(args, dict) else {"value": args})
-    blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    key = _hash_key()
+    if key:
+        return hmac.new(key, blob, hashlib.sha256).hexdigest()
+    return hashlib.sha256(blob).hexdigest()
 
 
 def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -449,6 +479,8 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         qualified = str(tool.get("qualified") or "")
         if not tool.get("input_hash"):
             tool["input_hash"] = hash_arguments(args)
+            if _hash_key():
+                tool["input_hash_alg"] = "hmac-sha256"
 
         cmd = extract_command(args, qualified)
 
@@ -505,7 +537,7 @@ def _after_outcome(data: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def _spool_path() -> Path:
-    return _data_dir() / "hook-spool.jsonl"
+    return hook_spool_path(_data_dir())
 
 
 # A spooled hook payload older than this is dropped rather than replayed. A
@@ -564,6 +596,38 @@ def _operator() -> dict[str, str]:
     return _OPERATOR
 
 
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+_LOOPBACK_OPENER: urllib.request.OpenerDirector | None = None
+
+
+def _urlopen(req: urllib.request.Request, timeout: float):
+    """`urlopen`, minus what a loopback POST never needs (pilot hardening item 23).
+
+    The default opener builds an HTTPS context on first use, which on Windows
+    enumerates the system certificate stores: about 28 ms, on every hook
+    invocation, for a plain-http request to 127.0.0.1. It also consults proxy
+    settings, and a loopback request has no business going through a proxy.
+    So plain http to a loopback host goes through a minimal opener; anything
+    else (https, a collector on the LAN) gets the standard one. Not installed
+    globally: this module is imported inside the orchestrator too.
+    """
+    global _LOOPBACK_OPENER
+    parsed = urllib.parse.urlparse(req.full_url)
+    if parsed.scheme != "http" or parsed.hostname not in _LOOPBACK_HOSTS:
+        return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - scheme pinned in _base_url
+    if _LOOPBACK_OPENER is None:
+        opener = urllib.request.OpenerDirector()
+        for handler in (
+            urllib.request.UnknownHandler(),
+            urllib.request.HTTPHandler(),
+            urllib.request.HTTPDefaultErrorHandler(),
+            urllib.request.HTTPErrorProcessor(),
+        ):
+            opener.add_handler(handler)
+        _LOOPBACK_OPENER = opener
+    return _LOOPBACK_OPENER.open(req, timeout=timeout)
+
+
 def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = True) -> bool:
     # Stamp when the tool call happened, here, at capture. The orchestrator falls
     # back to its own clock when this is absent, which is accurate to the
@@ -590,7 +654,7 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = T
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=_INGEST_TIMEOUT_SECONDS) as response:  # noqa: S310
+        with _urlopen(req, _INGEST_TIMEOUT_SECONDS) as response:
             res_body = response.read().decode("utf-8")
             if response.status != 200:
                 print(f"Agentmetry ingest HTTP {response.status}: {res_body}")
@@ -622,7 +686,7 @@ def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
     if api_key:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310
-    with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310
+    with _urlopen(req, 3) as resp:
         return json.loads(resp.read())
 
 
@@ -1649,6 +1713,8 @@ def hook_main(hook_name: str) -> int:
 
 
 def cli_main(argv: list[str] | None = None) -> int:
+    import argparse
+
     parser = argparse.ArgumentParser(description="Agentmetry external ingest client")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

@@ -44,11 +44,14 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
   // must not render as "Ingest off".
   const [unreachable, setUnreachable] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // 401 is a third diagnosis: the API is up, this browser is not signed in.
+  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     const load = () => {
-      fetch(`${ORCHESTRATOR_URL}/api/v1/audit/status`, { headers: apiHeaders() })
+      fetch(`${ORCHESTRATOR_URL}/api/v1/audit/status`, { headers: apiHeaders(), credentials: "include" })
         .then((r) => {
+          setSignedOut(r.status === 401);
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.json();
         })
@@ -72,6 +75,15 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
       <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
         Checking feed…
+      </div>
+    );
+  }
+
+  if (signedOut) {
+    return (
+      <div className="flex items-center gap-2 font-mono text-xs text-amber-600 dark:text-amber-400" title="The dashboard holds no API key; a one-time link signs it in">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+        Signed out: run <code>agentmetry dashboard</code>
       </div>
     );
   }
