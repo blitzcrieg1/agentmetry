@@ -146,7 +146,9 @@ def write_ingest_token(token: str, path: Path | None = None) -> Path:
                 capture_output=True, check=False, timeout=15,
             )
         else:
-            os.chmod(target, 0o644)
+            # Owner and group: a POSIX fleet install puts the developers who run
+            # agents in the data directory's group. Not world-readable.
+            os.chmod(target, 0o640)
     except (OSError, subprocess.SubprocessError):
         pass
     return target

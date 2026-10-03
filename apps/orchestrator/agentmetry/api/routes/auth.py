@@ -8,7 +8,8 @@ holding the key.
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
+import re
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -31,19 +32,39 @@ class DashboardLinkBody(BaseModel):
     operator: str = ""
 
 
+#: A same-origin path: no backslash, no second leading slash, no percent
+#: escapes. Browsers read `/\evil.example` as `//evil.example`, which is why a
+#: "starts with one slash" check was an open redirect.
+_SAFE_PATH = re.compile(r"/(?:[A-Za-z0-9._~-][A-Za-z0-9._~/-]*)?")
+_SAFE_QUERY = re.compile(r"[A-Za-z0-9._~=&+-]*")
+
+
 def _safe_next(target: str) -> str:
     """Where to land after sign-in: this origin, or a loopback dev server.
 
-    Anything else would turn the sign-in link into an open redirect.
+    Anything else would turn the sign-in link into an open redirect. The
+    result is rebuilt from validated parts, never passed through: the host
+    comes from this module's own loopback list and the port is an integer.
     """
-    if not target:
+    try:
+        parsed = urlsplit(target or "")
+        port = parsed.port
+    except ValueError:
         return "/"
-    if target.startswith("/") and not target.startswith("//"):
-        return target
-    parsed = urlparse(target)
-    if parsed.scheme in ("http", "https") and parsed.hostname in _LOOPBACK:
-        return target
-    return "/"
+    path = parsed.path or "/"
+    if not _SAFE_PATH.fullmatch(path) or not _SAFE_QUERY.fullmatch(parsed.query) or parsed.fragment:
+        return "/"
+    suffix = path + (f"?{parsed.query}" if parsed.query else "")
+    if not parsed.scheme and not parsed.netloc:
+        return suffix
+    host = next((h for h in _LOOPBACK if h == parsed.hostname), None)
+    if parsed.scheme not in ("http", "https") or host is None or parsed.username or parsed.password:
+        return "/"
+    scheme = "https" if parsed.scheme == "https" else "http"
+    authority = f"[{host}]" if ":" in host else host
+    if port is not None:
+        authority += f":{int(port)}"
+    return f"{scheme}://{authority}{suffix}"
 
 
 @router.post("/dashboard-link")

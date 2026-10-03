@@ -270,6 +270,16 @@ def test_logout_ends_the_session(client: TestClient, token_file: Path):
         ("https://evil.example/", "/"),
         ("//evil.example/", "/"),
         ("javascript:alert(1)", "/"),
+        # Browsers treat a backslash as a slash: `/\evil.example` is `//evil.example`.
+        ("/\\evil.example", "/"),
+        ("/\t/evil.example", "/"),
+        ("/%2F%2Fevil.example", "/"),
+        ("http://user@localhost:3000/", "/"),
+        ("http://localhost:99999/", "/"),
+        ("http://localhost.evil.example/", "/"),
+        ("http://127.0.0.1:3000/detections?tab=open", "http://127.0.0.1:3000/detections?tab=open"),
+        ("http://[::1]:3000/", "http://[::1]:3000/"),
+        ("/detections#frag", "/"),
     ],
 )
 def test_the_landing_page_cannot_be_an_open_redirect(target: str, expected: str):
