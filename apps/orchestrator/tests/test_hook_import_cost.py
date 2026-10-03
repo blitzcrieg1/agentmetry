@@ -84,7 +84,7 @@ def isolated(monkeypatch, tmp_path):
     for key in list(os.environ):
         if key.upper() in _ENV_NAMES:
             monkeypatch.delenv(key)
-    monkeypatch.setattr(ps, "_ORCHESTRATOR_ROOT", tmp_path)
+    monkeypatch.setattr(ps, "env_path", lambda: tmp_path / ".env")
     monkeypatch.setattr(ps, "_DOTENV_CACHE", (None, {}))
     return tmp_path
 

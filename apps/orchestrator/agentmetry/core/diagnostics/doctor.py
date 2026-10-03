@@ -647,13 +647,25 @@ def run_doctor(
     else:
         report.warn("python", f"Python not found at {py} - run pip install -e '.[dev]'")
 
-    env_file = orch / ".env"
+    from agentmetry.core import paths
+
+    env_file = paths.env_file()
     if env_file.is_file():
-        report.ok("env", f"Found {env_file.name} (secrets stay gitignored)")
+        report.ok("env", f"Found {env_file} (secrets stay gitignored)")
     else:
         report.warn("env", f"No {env_file} - copy from .env.example if needed")
 
-    data_dir = orch / "data"
+    data_dir = paths.data_dir()
+    legacy = paths.legacy_site_packages_data()
+    if legacy is not None:
+        # Not moved automatically: a hash-chained trail is evidence, and
+        # relocating evidence silently is not the recorder's call.
+        report.warn(
+            "data_location",
+            f"A trail from before 0.9.3 is still at {legacy}, inside site-packages, "
+            f"where pip uninstall or a venv rebuild deletes it. Move it to {data_dir} "
+            "with the orchestrator stopped.",
+        )
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         probe = data_dir / ".doctor-probe"

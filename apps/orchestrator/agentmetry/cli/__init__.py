@@ -22,9 +22,11 @@ from pathlib import Path
 
 import httpx
 
+from agentmetry.core.paths import data_dir
+
 _ORCH_ROOT = Path(__file__).resolve().parents[2]          # apps/orchestrator
 _REPO_ROOT = _ORCH_ROOT.parents[1]                        # repo root
-_DATA_DIR = _ORCH_ROOT / "data"
+_DATA_DIR = data_dir()
 _PID_FILE = _DATA_DIR / "agentmetry.pid"
 _TASK_NAME = "Agentmetry Orchestrator"
 

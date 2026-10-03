@@ -60,6 +60,8 @@ except ImportError:  # pragma: no cover - the package always ships it
 
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
+from agentmetry.core.paths import data_dir, env_file
+
 try:
     from agentmetry.core.operator_identity import os_operator, stated
 except ImportError:  # pragma: no cover - the package always ships it
@@ -236,7 +238,9 @@ def read_hook_stdin() -> tuple[dict[str, Any], bool]:
 #: measured across 200 tool calls, for a value that is constant.
 _ORCH_ROOT = Path(__file__).resolve().parents[2]
 
-_REPO_ENV_PATH = _ORCH_ROOT / ".env"
+# The same `.env` the orchestrator reads: the checkout's, or the install's
+# data directory, never site-packages (core/paths.py).
+_REPO_ENV_PATH = env_file()
 
 
 def _repo_env_path() -> Path:
@@ -268,10 +272,9 @@ def _data_dir() -> Path:
     trail = os.environ.get("AGENTMETRY_AUDIT_EXPORT_PATH", "").strip()
     if trail:
         return Path(trail).expanduser().parent
-    root = os.environ.get("AGENTMETRY_INSTALL_ROOT", "").strip()
-    if root:
-        return Path(root).expanduser() / "data"
-    return _ORCH_ROOT / "data"
+    # AGENTMETRY_DATA_DIR, the MSI's AGENTMETRY_INSTALL_ROOT, the checkout, or
+    # the per-user data directory: the same answer the orchestrator gets.
+    return data_dir()
 
 
 #: How long a hook will wait for the orchestrator before giving up on the POST.

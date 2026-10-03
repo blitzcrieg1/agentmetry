@@ -107,6 +107,12 @@ agentmetry doctor
 No server, no API key, no config. The DLP rules, tool policy and detection
 manifests ship inside the package, so `doctor` should come back clean.
 
+An installed package keeps its trail, indexes and `.env` in your user data
+directory (`%LOCALAPPDATA%\Agentmetry` on Windows,
+`~/.local/share/agentmetry` on Linux, `~/Library/Application Support/Agentmetry`
+on macOS); a clone keeps `apps/orchestrator/data`. `AGENTMETRY_DATA_DIR`
+overrides both, and `agentmetry doctor` prints the one in use.
+
 ### Check the detection claims before you trust them
 
 The corpus ships in the package too, so this works from a fresh install with no

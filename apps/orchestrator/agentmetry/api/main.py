@@ -20,13 +20,14 @@ from agentmetry.core.bus.bridges import outbox_persister
 from agentmetry.core.bus.bus import bus
 from agentmetry.core.bus.outbox import get_outbox
 from agentmetry.core.config import settings
+from agentmetry.core.paths import data_dir
 from agentmetry.core.extensions import load_extensions
 from agentmetry.core.health import get_system_health
 from agentmetry.core.version import __version__
 
 logger = logging.getLogger(__name__)
 
-_LOG_DIR = Path(__file__).resolve().parents[2] / "data" / "logs"
+_LOG_DIR = data_dir() / "logs"
 
 
 def _setup_logging() -> None:

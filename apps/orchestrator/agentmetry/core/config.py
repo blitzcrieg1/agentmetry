@@ -3,7 +3,12 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentmetry.core.paths import data_dir, env_file
+
 _ORCHESTRATOR_ROOT = Path(__file__).resolve().parents[2]
+# Data and .env no longer live beside the package in an installed wheel
+# (they were in site-packages). See core/paths.py.
+_DATA_DIR = data_dir()
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -27,7 +32,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="AGENTMETRY_",
-        env_file=_ORCHESTRATOR_ROOT / ".env",
+        env_file=env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -57,13 +62,13 @@ class Settings(BaseSettings):
             "AGENTMETRY_AUDIT_EXPORT_ENABLED",
         ),
     )
-    audit_export_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit-forward.jsonl"
-    audit_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "audit.db"
-    detection_live_db_path: Path = _ORCHESTRATOR_ROOT / "data" / "detection_live.db"
+    audit_export_path: Path = _DATA_DIR / "audit-forward.jsonl"
+    audit_db_path: Path = _DATA_DIR / "audit.db"
+    detection_live_db_path: Path = _DATA_DIR / "detection_live.db"
     # Triage state. An index over the `detection_disposition` events in the
     # trail, which remain the record — see core/audit/detection/disposition.py.
     detection_disposition_db_path: Path = (
-        _ORCHESTRATOR_ROOT / "data" / "detection_disposition.db"
+        _DATA_DIR / "detection_disposition.db"
     )
     # Where the trail's anchor log lives, when it is not the sibling default.
     # Anchoring is only worth anything if the log sits somewhere this host
