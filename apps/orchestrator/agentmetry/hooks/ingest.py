@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -434,10 +435,26 @@ def scrub_arg_values(args: Any) -> Any:
     return {k: (scrub_command(v) if isinstance(v, str) else v) for k, v in args.items()}
 
 
+def _hash_key() -> bytes:
+    """The per-fleet hashing secret (pilot hardening item 11), or empty."""
+    key = os.environ.get("AGENTMETRY_HASH_KEY", "").strip() or _read_repo_env("AGENTMETRY_HASH_KEY").strip()
+    return key.encode("utf-8")
+
+
 def hash_arguments(args: Any) -> str:
+    """64 hex: HMAC-SHA256 under the fleet key when one is set, else SHA-256.
+
+    Unkeyed, the digest of a guessable argument is a lookup away: anyone with
+    the trail can hash `git push --force` and find every event that ran it.
+    Keyed, the same argument still matches across the fleet, which is what
+    the detections need, but confirming a guess needs the key.
+    """
     clean = redact_arguments(args if isinstance(args, dict) else {"value": args})
-    blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    blob = json.dumps(clean, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    key = _hash_key()
+    if key:
+        return hmac.new(key, blob, hashlib.sha256).hexdigest()
+    return hashlib.sha256(blob).hexdigest()
 
 
 def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -456,6 +473,8 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         qualified = str(tool.get("qualified") or "")
         if not tool.get("input_hash"):
             tool["input_hash"] = hash_arguments(args)
+            if _hash_key():
+                tool["input_hash_alg"] = "hmac-sha256"
 
         cmd = extract_command(args, qualified)
 

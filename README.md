@@ -903,7 +903,7 @@ Run tests before opening a PR; see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs
 Agentmetry is designed for security-sensitive environments:
 
 - **Local-first**: audit data stays on your machine unless you configure forwarders
-- **Argument hashing by default**: plaintext tool args never leave the hook process
+- **Argument hashing by default**: plaintext tool args never leave the hook process. Set `AGENTMETRY_HASH_KEY` (one value per fleet) and the fingerprints are HMAC-SHA256 instead of plain SHA-256: pseudonymised, still matchable across the fleet, and not confirmable by hashing a guess without the key
 - **Authenticated by default**: every route but health needs the per-install token (owner-only, in the data directory) or `AGENTMETRY_API_KEY` when you set your own. The dashboard signs in with a one-time link and an HttpOnly session cookie; `AGENTMETRY_AUTH_DISABLED=1` is for development and `doctor` flags it
 - **Hook enforcement (opt-in)**: DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
 - **Tamper-evident exports**: evidence packs include SHA-256 integrity hashes

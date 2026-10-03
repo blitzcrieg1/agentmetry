@@ -308,7 +308,7 @@ what catches renumbering. Two examples that a from-memory mapping gets wrong:
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| Tool arguments | **HASH** | `arguments_sha256` on bus; `tool.input_hash` in canonical |
+| Tool arguments | **HASH** | `tool.input_hash`, 64 hex. Plain SHA-256 by default (`input_redaction: "hash"`). With `AGENTMETRY_HASH_KEY` set, HMAC-SHA256 under that per-fleet key (`input_redaction: "hmac"`): pseudonymised, matchable within the fleet, not confirmable by hashing a guess. `+command` is appended when command logging is on |
 | Tool outputs | Not logged on bus v1 | Roadmap |
 | Prompts / drafts | Not on tool events | Approval payloads may contain draft text in outbox only |
 | `actor.id` | PLAIN | The account that ran the agent: `AGENTMETRY_OPERATOR_ID` if configured, else the OS account (`DOMAIN\user` on a domain or Entra Windows account). Set `AGENTMETRY_OPERATOR_ID` to a pseudonym to keep account names out of forwarded events |

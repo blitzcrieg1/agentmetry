@@ -250,6 +250,18 @@ class Settings(BaseSettings):
     # Development only: do not create or require the per-install API token.
     # An explicitly set AGENTMETRY_API_KEY is still enforced. `doctor` warns
     # while this is on, and fails if the API is bound beyond loopback.
+    # Per-fleet secret for argument hashing (pilot hardening item 11). Unset,
+    # tool arguments are fingerprinted with plain SHA-256, which anyone can
+    # recompute for a guessable argument (`git status`, a known file path).
+    # Set, they are HMAC-SHA256 under this key and `input_redaction` says
+    # "hmac": pseudonymised, matchable within the fleet, not reversible by a
+    # dictionary without the key. The hooks read the same variable.
+    hash_key: str = Field(
+        default="",
+        repr=False,
+        validation_alias=AliasChoices("AGENTMETRY_HASH_KEY"),
+    )
+
     auth_disabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),

@@ -145,6 +145,29 @@ def _check_exposure(report: DoctorReport) -> None:
         report.ok("api_token", f"Token at {path}")
 
 
+def _check_hashing(report: DoctorReport) -> None:
+    """Keyed or plain argument fingerprints (pilot hardening item 11).
+
+    Plain SHA-256 of a guessable argument is a lookup away for anyone holding
+    the trail or the SIEM index. On one laptop that is the same person; across
+    a fleet it is everyone with SIEM read access, so it warns there.
+    """
+    import os as _os
+
+    keyed = bool(settings.hash_key.strip() or _os.environ.get("AGENTMETRY_HASH_KEY", "").strip())
+    if keyed:
+        report.ok("hashing", "Tool arguments: HMAC-SHA256 under the fleet key (pseudonymised)")
+    elif settings.fleet_id.strip():
+        report.warn(
+            "hashing",
+            "Tool arguments are plain SHA-256 on a fleet install: a guessable argument "
+            "can be confirmed by hashing it. Set AGENTMETRY_HASH_KEY (same value on every "
+            "host in the fleet) to key them.",
+        )
+    else:
+        report.ok("hashing", "Tool arguments: plain SHA-256 (set AGENTMETRY_HASH_KEY to key them)")
+
+
 def _check_hooks_installed(report: DoctorReport) -> None:
     """Report coverage per agent surface, from the same registry the beat uses.
 
@@ -704,6 +727,7 @@ def run_doctor(
     _check_manifests(report)
     _check_ask_gate(report)
     _check_exposure(report)
+    _check_hashing(report)
     _check_trail(report)
     _check_triage(report)
     _check_spool(report)

@@ -242,8 +242,10 @@ def agt_to_canonical(
     }
     if command:
         tool["command"] = command
-        tool["input_hash"] = hashlib.sha256(command.encode()).hexdigest()
-        tool["input_redaction"] = "hash+command"
+        from agentmetry.core.audit.hashing import fingerprint
+
+        tool["input_hash"], kind = fingerprint(command)
+        tool["input_redaction"] = f"{kind}+command"
         traits = classify_command(command)
         if traits:
             tool["traits"] = traits
