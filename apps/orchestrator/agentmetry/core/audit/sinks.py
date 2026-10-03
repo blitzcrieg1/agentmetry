@@ -50,11 +50,17 @@ class WebhookAuditSink(AuditSink):
     """
 
     def __init__(
-        self, url: str, *, timeout_seconds: float = 5.0, format: str = "canonical"
+        self,
+        url: str,
+        *,
+        timeout_seconds: float = 5.0,
+        format: str = "canonical",
+        token: str = "",
     ) -> None:
         self._url = url
         self._timeout = timeout_seconds
         self._cloudevents = (format or "").strip().lower() in ("cloudevents", "cloudevent", "ce")
+        self._token = (token or "").strip()
 
     async def emit(self, canonical: dict[str, Any]) -> None:
         payload = canonical
@@ -66,12 +72,15 @@ class WebhookAuditSink(AuditSink):
 
             payload = canonical_to_cloudevent(canonical)
             content_type = "application/cloudevents+json; charset=utf-8"
+        headers = {"Content-Type": content_type, "User-Agent": "Agentmetry/1.0"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
                     self._url,
                     json=payload,
-                    headers={"Content-Type": content_type, "User-Agent": "Agentmetry/1.0"},
+                    headers=headers,
                 )
                 response.raise_for_status()
         except Exception:
@@ -285,6 +294,7 @@ def build_audit_sinks(
     webhook_url: str,
     webhook_timeout_seconds: float,
     webhook_format: str = "canonical",
+    webhook_token: str = "",
     elastic_url: str,
     elastic_index: str,
     elastic_api_key: str,
@@ -311,6 +321,7 @@ def build_audit_sinks(
                 webhook_url.strip(),
                 timeout_seconds=webhook_timeout_seconds,
                 format=webhook_format,
+                token=webhook_token,
             )
         )
 

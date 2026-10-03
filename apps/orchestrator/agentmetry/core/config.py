@@ -100,6 +100,13 @@ class Settings(BaseSettings):
         default="canonical",
         validation_alias=AliasChoices("AGENTMETRY_AUDIT_WEBHOOK_FORMAT"),
     )
+    # Optional bearer token on every webhook POST. A hosted ingest that binds
+    # tenant and host to the token needs this header; an existing webhook that
+    # never asked for auth keeps receiving unauthenticated requests, unchanged.
+    audit_webhook_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("AGENTMETRY_AUDIT_WEBHOOK_TOKEN"),
+    )
     audit_elastic_url: str = Field(
         default="",
         validation_alias=AliasChoices(
