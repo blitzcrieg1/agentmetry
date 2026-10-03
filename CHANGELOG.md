@@ -9,6 +9,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-03
+
+The release that lets a fleet send its record somewhere other than its own SIEM.
+The webhook sink can authenticate, so a hosted collector can tell one machine's
+events from another's, and the MCP servers each machine's agents are wired to
+can be sent as an opt-in inventory event. Also the fix for installed machines
+that still recorded every operator as `local`.
+
+The detection ruleset is unchanged.
+
 ### Added
 
 - **The webhook sink can authenticate** (`AGENTMETRY_AUDIT_WEBHOOK_TOKEN`). When
@@ -86,6 +96,16 @@ separately (currently `1.2.0`) and changes additively.
   false-positive fixes that shipped in 0.7.0, and OTel ingest as future work.
 
 [#209]: https://github.com/blitzcrieg1/agentmetry/issues/209
+
+### Changed
+
+- **Dashboard dependencies: all 20 open Dependabot alerts cleared** (#211),
+  including a critical in `next` (16.3.4 to 16.3.6) and five high in `undici`
+  and `brace-expansion`. The patch-and-minor group plus `npm audit fix` without
+  `--force`; `npm audit` reports 0 vulnerabilities.
+- **The open-source sensor stays local-first; Agentmetry Enterprise may be
+  hosted** (#215). ROADMAP and the open-core split no longer rule out a vendor
+  console for Enterprise. The sensor never depends on a hosted service.
 
 ## [0.9.1] - 2026-10-02
 
@@ -1588,7 +1608,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.7.0...v0.8.0
