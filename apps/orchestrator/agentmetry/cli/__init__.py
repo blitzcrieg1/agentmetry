@@ -73,10 +73,8 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
         print(f"Could not get a sign-in link (HTTP {resp.status_code}): {resp.text}")
         return 1
     url = base + resp.json()["url"]
-    if args.next:
-        from urllib.parse import quote
-
-        url += "&next=" + quote(args.next, safe="")
+    if args.dev_server:
+        url += "&next=dev"
     print(url)
     if not args.no_browser:
         import webbrowser
@@ -1490,7 +1488,10 @@ def main(argv: list[str] | None = None) -> int:
     dashboard = sub.add_parser(
         "dashboard", help="open the dashboard signed in (the browser never gets the API key)"
     )
-    dashboard.add_argument("--next", default="", help="land here after sign-in (this origin or a loopback dev server)")
+    dashboard.add_argument(
+        "--dev-server", action="store_true",
+        help="land on the Next dev server (http://localhost:3000) instead of the served dashboard",
+    )
     dashboard.add_argument("--no-browser", action="store_true", help="print the one-time link instead of opening it")
     # Listed for --help; `main` hands it to the proxy before parsing.
     sub.add_parser("mcp-proxy", help="run an MCP server behind Agentmetry: agentmetry mcp-proxy -- <server command>")

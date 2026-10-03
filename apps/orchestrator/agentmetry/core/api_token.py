@@ -146,9 +146,10 @@ def write_ingest_token(token: str, path: Path | None = None) -> Path:
                 capture_output=True, check=False, timeout=15,
             )
         else:
-            # Owner and group: a POSIX fleet install puts the developers who run
-            # agents in the data directory's group. Not world-readable.
-            os.chmod(target, 0o640)
+            # The shared case is the Windows MSI. A POSIX machine-wide install
+            # has no packaging here yet, so the token stays owner-only and a
+            # hook running as another user falls back to AGENTMETRY_API_KEY.
+            os.chmod(target, 0o600)
     except (OSError, subprocess.SubprocessError):
         pass
     return target

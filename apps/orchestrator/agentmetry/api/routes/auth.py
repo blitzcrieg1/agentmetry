@@ -8,8 +8,6 @@ holding the key.
 
 from __future__ import annotations
 
-import re
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -25,46 +23,28 @@ from agentmetry.core.dashboard_session import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 
 class DashboardLinkBody(BaseModel):
     operator: str = ""
 
 
-#: A same-origin path: no backslash, no second leading slash, no percent
-#: escapes. Browsers read `/\evil.example` as `//evil.example`, which is why a
-#: "starts with one slash" check was an open redirect.
-_SAFE_PATH = re.compile(r"/(?:[A-Za-z0-9._~-][A-Za-z0-9._~/-]*)?")
-_SAFE_QUERY = re.compile(r"[A-Za-z0-9._~=&+-]*")
+#: Where a sign-in may land. A lookup, not validation: the Location header is
+#: always one of these constants, never anything taken from the request. The
+#: dashboard is one page, so `/` is the only real destination; `dev` is the
+#: Next dev server on its default port, for working on the dashboard itself.
+#: (The previous "starts with one slash" check let `/\evil.example` through,
+#: which browsers read as `//evil.example`.)
+_LANDINGS = {
+    "": "/",
+    "/": "/",
+    "dev": "http://localhost:3000/",
+}
 
 
 def _safe_next(target: str) -> str:
-    """Where to land after sign-in: this origin, or a loopback dev server.
-
-    Anything else would turn the sign-in link into an open redirect. The
-    result is rebuilt from validated parts, never passed through: the host
-    comes from this module's own loopback list and the port is an integer.
-    """
-    try:
-        parsed = urlsplit(target or "")
-        port = parsed.port
-    except ValueError:
-        return "/"
-    path = parsed.path or "/"
-    if not _SAFE_PATH.fullmatch(path) or not _SAFE_QUERY.fullmatch(parsed.query) or parsed.fragment:
-        return "/"
-    suffix = path + (f"?{parsed.query}" if parsed.query else "")
-    if not parsed.scheme and not parsed.netloc:
-        return suffix
-    host = next((h for h in _LOOPBACK if h == parsed.hostname), None)
-    if parsed.scheme not in ("http", "https") or host is None or parsed.username or parsed.password:
-        return "/"
-    scheme = "https" if parsed.scheme == "https" else "http"
-    authority = f"[{host}]" if ":" in host else host
-    if port is not None:
-        authority += f":{int(port)}"
-    return f"{scheme}://{authority}{suffix}"
+    """Where to land after sign-in. Anything not in the table lands on `/`."""
+    return _LANDINGS.get(target or "", "/")
 
 
 @router.post("/dashboard-link")
