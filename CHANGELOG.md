@@ -9,6 +9,8 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-10-04
+
 The release that makes the sensor safe to install on a machine somebody else
 manages. The API is authenticated out of the box, forwarding survives a SIEM
 outage instead of losing it, the trail can rotate without breaking its chain,
@@ -1744,7 +1746,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.8.0...v0.9.0

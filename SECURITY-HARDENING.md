@@ -228,5 +228,5 @@ and heartbeats arrived).
 
 Merged as [#220](https://github.com/blitzcrieg1/agentmetry/pull/220) on
 2026-10-03, after the two CodeQL findings it raised were fixed (`6497b58`,
-`8930740`). It ships in 0.9.3; 0.9.2 was tagged on the release commit before
-it, so no published version carries these changes yet.
+`8930740`). Released in 0.9.3 on 2026-10-04; 0.9.2 was tagged on the release
+commit before it and carries none of these changes.
