@@ -43,3 +43,22 @@ curl -sL https://github.com/<owner>/<repo>/blob/<branch>/README.md | grep -o '<v
 
 A `<video ... controls="controls" ...>` match means the player is live. Text
 extraction tools show only the filename, so they cannot confirm this.
+
+## The 90-second demo video
+
+`scripts/make_demo_video.py` renders `docs/assets/agentmetry-demo-90s.mp4`
+(1080p30, silent) and `agentmetry-demo-poster.png` frame by frame with Pillow
+and ffmpeg. Every terminal line in it is real output from `agentmetry demo` and
+`agentmetry benchmark`, typed into the script as literals, so re-run both
+commands and update those lines whenever their output changes.
+
+```bash
+python scripts/make_demo_video.py --stills   # ten PNGs to check the look
+python scripts/make_demo_video.py            # the full render, about a minute
+```
+
+It needs Pillow, ffmpeg on `PATH`, and the IBM Plex fonts the marketing site
+bundles (`../ai-audit-watch/node_modules/@fontsource`, or set
+`AGENTMETRY_PLEX_DIR`). The rendered files are not committed. The copy
+agentmetry.ai serves lives in that repo under `public/video/`, so copy a new
+render there and open a site PR.
