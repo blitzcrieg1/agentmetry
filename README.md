@@ -101,6 +101,7 @@ Agentmetry runs fully locally. The audit trail never leaves your machine unless 
 
 ```bash
 pip install agentmetry
+agentmetry demo
 agentmetry doctor
 ```
 
@@ -133,25 +134,27 @@ any missed rule or any false positive. The benign half is the number that
 matters, and what it covers and does not cover is set out in
 [Behavioral Detection Engine](#behavioral-detection-engine).
 
-### See it catch something (needs the repo)
-
-The demo scripts and the dashboard are not part of the package, so this half
-needs a clone:
+### See it catch something
 
 ```bash
-git clone https://github.com/blitzcrieg1/agentmetry.git && cd agentmetry
-pip install -e apps/orchestrator
-python scripts/demo.py
-python scripts/demo.py --scenario hf   # HF July 2026 agentic intrusion patterns
+agentmetry demo
+agentmetry demo --scenario hf   # HF July 2026 agentic intrusion patterns
 ```
 
-No single one of those events is an alert. The sequence is. That is the whole
-product in one screen.
+It replays an agent session through the real ingest path, in-process, into a
+temp directory it deletes on the way out: no server, no token, nothing kept.
+No single one of those events is an alert. The sequence is. Then it verifies
+the hash chain, downgrades the CRITICAL to low the way someone covering their
+tracks would, and shows `verify` fail. It also shows the limit: re-hash every
+line after the edit and the chain verifies again, and only a head kept off the
+machine (`agentmetry anchor`) tells the two apart. From a clone,
+`python scripts/demo.py` runs the same thing.
 
 ### The artifact: JSONL trail vs dashboard
 
 Before you install hooks, here is what you get. The demo above writes a few lines
-to a local JSONL file (`data/audit-forward.jsonl`). Each line is one canonical
+to a throwaway JSONL trail, the same format as `audit-forward.jsonl` in your data
+directory. Each line is one canonical
 event. None of the tool calls alone is an alert; the detection engine emits a
 **fourth line** when the sequence completes:
 
@@ -847,6 +850,7 @@ visibility into agents Agentmetry does not hook.
 
 | Command | What it does |
 |---------|--------------|
+| `agentmetry demo` / `demo --scenario all` | Replay an attack session in-process, then tamper with the trail and watch `verify` catch it. Nothing is kept |
 | `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
 | `scripts/install.sh` | Linux/macOS one-flow: same flow, POSIX flags; hooks via `agentmetry hooks install` |
 | `scripts/otel_receiver.py` | Shim for `agentmetry otel`, kept so the prototype's flags still work |

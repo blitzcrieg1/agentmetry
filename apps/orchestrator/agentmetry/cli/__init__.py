@@ -1273,6 +1273,13 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Replay an attack session through the real ingest path, then tamper with it."""
+    from agentmetry.demo import run
+
+    return run(args.scenario, fast=args.fast)
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """SIEM preflight: manifests, trail chain, orchestrator health, hooks."""
     sys.path.insert(0, str(_ORCH_ROOT))
@@ -1290,7 +1297,7 @@ def main(argv: list[str] | None = None) -> int:
     # A Windows console defaults to cp1252 and cannot encode the dashes this CLI
     # prints, so `verify --trail` rendered as "OK ? 422 chained line(s)". That is
     # the flagship trust command; it must not look broken on the primary dogfood
-    # platform. Same guard as scripts/demo.py.
+    # platform. Same guard as agentmetry/demo.py.
     try:
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     except Exception:  # noqa: S110  # pragma: no cover - host console dependent
@@ -1309,9 +1316,21 @@ def main(argv: list[str] | None = None) -> int:
 
         return proxy_main(raw[1:])
 
-    parser = argparse.ArgumentParser(prog="agentmetry", description="Agentmetry local ops")
+    parser = argparse.ArgumentParser(
+        prog="agentmetry",
+        description="Agentmetry local ops. New here? Start with `agentmetry demo`.",
+    )
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
+    # First, so it heads the help: it is the one command that needs nothing set up.
+    from agentmetry.demo import add_arguments as _demo_arguments
+
+    _demo_arguments(
+        sub.add_parser(
+            "demo",
+            help="watch an agent get caught and the record refuse a rewrite (in-process, nothing kept)",
+        )
+    )
 
     sub.add_parser("stop", help="stop the orchestrator")
     start = sub.add_parser("start", help="start the orchestrator (detached)")
@@ -1546,6 +1565,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     handlers = {
+        "demo": cmd_demo,
         "start": cmd_start,
         "serve": cmd_serve,
         "stop": cmd_stop,

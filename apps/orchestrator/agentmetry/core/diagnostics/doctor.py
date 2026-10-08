@@ -221,7 +221,8 @@ def _check_trail(report: DoctorReport) -> None:
     if not trail.is_file():
         report.warn(
             "trail",
-            f"No trail yet at {trail.name} - run `python scripts/demo.py` or capture a session",
+            f"No trail yet at {trail.name} - `agentmetry hooks install` records the next "
+            "agent session, and `agentmetry demo` shows one without touching this machine",
         )
         return
     from agentmetry.core.audit.trail_chain import verify_trail_file
@@ -702,7 +703,17 @@ def run_doctor(
     if env_file.is_file():
         report.ok("env", f"Found {env_file} (secrets stay gitignored)")
     else:
-        report.warn("env", f"No {env_file} - copy from .env.example if needed")
+        example = paths.PACKAGE_PARENT / ".env.example"
+        if paths.is_checkout() and example.is_file():
+            report.warn("env", f"No {env_file} - copy {example} to change a default")
+        else:
+            # An installed package ships no .env.example and needs no .env: every
+            # setting has a default. Telling a pip user to copy a file they do not
+            # have was the first thing a fresh install got wrong.
+            report.ok(
+                "env",
+                f"No .env, so defaults are in use. Any AGENTMETRY_* setting can go in {env_file}",
+            )
 
     data_dir = paths.data_dir()
     legacy = paths.legacy_site_packages_data()
