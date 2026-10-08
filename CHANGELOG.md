@@ -9,6 +9,17 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-08
+
+The release that lets someone who only ran `pip install` see what the product
+does. `agentmetry demo` replays an attack session, fires the CRITICAL, then
+tampers with the trail and shows `verify` catch it, all in a temp directory it
+deletes. The demo it replaces had been broken since 0.9.3 and wrote to the
+user's real data stores. `doctor` stops naming files a wheel does not ship.
+
+The detection ruleset is unchanged (fingerprint `15846a0915769d4a`), as are the
+event schema and the hash-chain record format.
+
 ### Added
 
 - **`agentmetry demo`.** The demo is in the package now, so `pip install
@@ -1775,7 +1786,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.0...v0.9.1
