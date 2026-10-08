@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-10-02.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-08.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -35,18 +35,18 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-10-02
+## Where this actually is, on 2026-10-08
 
 | | |
 |---|---|
-| Version | 0.9.1 on PyPI, released 2026-10-02 |
+| Version | 0.9.4 on PyPI, released 2026-10-08. `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1404 passing, 82% coverage, a 78% floor enforced in CI |
+| Tests | 1628 passing in CI on the 0.9.4 release commit, 82% coverage, a 78% floor enforced in CI |
 | Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. Weeks 2 and 4 were red only on untriaged detections, and turned green when they were triaged, which is how the gate is designed to work |
-| Own trail | 50,704 hash-chained lines, 170 external checkpoints |
-| Adoption | Public alpha. No design partner tenant yet, no reference customer |
+| Own trail | 56,038 hash-chained lines, 197 external checkpoints |
+| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 10 GitHub stars, the newest from 2026-08-23 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
@@ -81,7 +81,7 @@ Declare beta when all four are true. Three are.
 | Four consecutive green dogfood weeks | **Passed 2026-10-02**, weeks 1 to 4 of the run that started 2026-08-30 |
 | `agentmetry verify --trail` demonstrated in the README | Done |
 | `agentmetry doctor` green on three distinct Windows 11 setups | **1 of 3.** Needs two machines that are not the maintainer's |
-| Public claims match shipped behaviour | Done, and it had drifted. A README audit on 2026-10-02 found a documented command that no longer ran (`python -m cli benchmark`), a `replay` that cannot show a hook session ([#209](https://github.com/blitzcrieg1/agentmetry/issues/209)), and a stale Node requirement. Fixed in the same refresh as this file |
+| Public claims match shipped behaviour | Done, and it had drifted. A README audit on 2026-10-02 found a documented command that no longer ran (`python -m cli benchmark`), a `replay` that cannot show a hook session ([#209](https://github.com/blitzcrieg1/agentmetry/issues/209)), and a stale Node requirement. Fixed in the same refresh as this file. It drifted again: on 2026-10-08 the README's demo had been broken since 0.9.3 and was not in the wheel at all. Fixed in 0.9.4 ([#225](https://github.com/blitzcrieg1/agentmetry/pull/225)) |
 
 The third gate is the one with no plan attached, and it is a real gap: every
 `doctor` result on record comes from one machine. A pilot tenant closes it as a
@@ -123,7 +123,7 @@ wants has moved to the bottom of the page.
 | **Per-host identity on a fleet trail** | [enterprise #1](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/1) | A fleet trail is tamper-evident and not yet attributable. Ed25519 per host, so a forwarded event says which machine signed it |
 | OTLP **export** | none yet | The other direction from `agentmetry otel`, which shipped in 0.9.0 as ingest. Table stakes for teams standardised on a collector |
 | Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump. Claude Code's OTel stream carries `tool_result_size_bytes`, which the receiver does not map yet |
-| MCP server inventory as an event | [#169](https://github.com/blitzcrieg1/agentmetry/issues/169) | `agentmetry mcp` lists what the agents are wired to, but the SIEM never sees it |
+| Unwrapped MCP servers have no fingerprint | [#169](https://github.com/blitzcrieg1/agentmetry/issues/169) | Part 1 shipped in 0.9.2: the inventory reaches the SIEM as an opt-in `mcp_inventory` event. A server in a config file but not behind the proxy is still listed and not fingerprinted |
 | Unattended sessions distinguishable from supervised ones | [#170](https://github.com/blitzcrieg1/agentmetry/issues/170) | An auto-mode session reads the same as one a person is watching |
 | Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
 | Benchmark coverage for the six uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | 13 of 15 rules have corpus coverage. Benign sessions harvested from the real trail beat invented ones |
@@ -175,6 +175,20 @@ Prompt Security, inside SentinelOne, covers the unmanaged-agent gap this
 project refuses to claim. What nobody else on that page offers is a local
 hash-chained trail the customer owns, cross-agent correlation, and a detection
 benchmark a sceptic can run in ten seconds.
+
+**That page predates September 2026, and the field moved under it.** Hook-based
+control of coding agents is now a feature of the large endpoint vendors
+(CrowdStrike Falcon, Microsoft Defender in preview, Palo Alto Networks through
+Koi) and of Noma, Zenity, Pillar and Straiker, per
+[Pillar's own roundup](https://www.pillar.security/blog/best-ai-coding-agent-security-tools-for-the-enterprise-2026).
+In the open, Perplexity's [Numbat](https://github.com/perplexityai/numbat)
+(Apache-2.0, a single Go binary) reads the same hooks and session files and
+fires on the same kind of sequence, and is now the closest peer on capture.
+They sell blocking and inventory inside a sensor the customer already pays
+for, which is a race this project does not enter. What still none of them
+publishes is a record a third party can check: the chain, Merkle inclusion
+proofs, external anchors, Sigma generated from the engine, and the benchmark.
+The compare page needs these rows, honestly, including where they win.
 
 ---
 
