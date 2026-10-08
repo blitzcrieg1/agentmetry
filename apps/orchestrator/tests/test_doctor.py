@@ -287,3 +287,45 @@ def test_an_unpinned_server_warns_and_never_fails(tmp_path, monkeypatch):
     )
     assert [f.severity for f in report.findings] == ["warn"]
     assert report.exit_code == 0
+
+
+# ---------------------------------------------------------------- first-run hints
+#
+# A fresh `pip install agentmetry` was told to run `python scripts/demo.py` and
+# to "copy from .env.example". Neither file ships in the wheel, so the first two
+# instructions a stranger read were ones they could not follow.
+
+
+def test_a_pip_install_is_not_told_to_copy_a_file_it_does_not_have(tmp_path: Path, monkeypatch):
+    from agentmetry.core import paths
+
+    monkeypatch.setattr(paths, "is_checkout", lambda: False)
+    monkeypatch.setattr(paths, "env_file", lambda: tmp_path / ".env")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    env = [f for f in report.findings if f.code == "env"]
+    assert env and env[0].severity == "ok"
+    assert ".env.example" not in env[0].message
+    assert "defaults" in env[0].message
+
+
+def test_a_checkout_without_a_env_is_pointed_at_its_example(tmp_path: Path, monkeypatch):
+    from agentmetry.core import paths
+
+    monkeypatch.setattr(paths, "is_checkout", lambda: True)
+    monkeypatch.setattr(paths, "env_file", lambda: tmp_path / ".env")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    env = [f for f in report.findings if f.code == "env"]
+    assert env and env[0].severity == "warn"
+    assert str(paths.PACKAGE_PARENT / ".env.example") in env[0].message
+
+
+def test_no_trail_names_commands_an_install_actually_has(tmp_path: Path, monkeypatch):
+    from agentmetry.core.config import settings
+
+    monkeypatch.setattr(settings, "audit_export_path", tmp_path / "audit-forward.jsonl")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    trail = [f for f in report.findings if f.code == "trail"]
+    assert trail and trail[0].severity == "warn"
+    assert "agentmetry demo" in trail[0].message
+    assert "agentmetry hooks install" in trail[0].message
+    assert "scripts/" not in trail[0].message

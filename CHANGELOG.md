@@ -9,6 +9,35 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **`agentmetry demo`.** The demo is in the package now, so `pip install
+  agentmetry && agentmetry demo` shows what the product does without a clone.
+  It used to be `scripts/demo.py`, which the wheel does not ship, so the one
+  command that shows a stranger the point was the one they could not run. It
+  now ends by tampering with the trail: it downgrades the CRITICAL to low and
+  shows `verify --trail` fail, then re-hashes every line after the edit to
+  show the chain verifying again and the head being the only thing that
+  differs, which is what `agentmetry anchor` is for. `scripts/demo.py` stays
+  as a wrapper, so a clone and `make_demo_gif.py` still work.
+
+### Fixed
+
+- **The demo had stopped working, and it wrote to the real data directory.**
+  Since 0.9.3 the per-install token and the host guard refused its in-process
+  client, and it ignored the refusal, so it died three steps later on a
+  missing file. It also only ever redirected the trail: the audit,
+  live-detection and disposition databases it wrote, and the live store it
+  cleared on start, were the user's own. Every store now points into a temp
+  directory for the run, settings are restored afterwards, and a refused
+  ingest says so.
+- **`doctor` told a pip install to use files it does not have.** With no trail
+  it said to run `python scripts/demo.py`; with no `.env` it said to copy
+  `.env.example`. Neither ships in the wheel. It now names `agentmetry hooks
+  install` and `agentmetry demo`, and an install with no `.env` is reported as
+  running on defaults, which is correct, rather than as a warning. A checkout
+  is still pointed at its `.env.example`.
+
 ## [0.9.3] - 2026-10-04
 
 The release that makes the sensor safe to install on a machine somebody else

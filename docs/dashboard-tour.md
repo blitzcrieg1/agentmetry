@@ -25,9 +25,10 @@ streams clearly-synthetic agent activity through the real ingest API every few
 seconds, so MITRE tags and detections appear in real time. Roughly every third
 scene is an attack, so red detection rows show up on their own.
 
-Prefer the terminal? `python scripts/demo.py` replays the flagship
-credential-exfil session through the real ingest API with no server at all
-(~30s, doubles as a self-test).
+Prefer the terminal? `agentmetry demo` replays the flagship
+credential-exfil session through the real ingest API with no server at all,
+then tampers with the trail and shows `verify` catch it (~30s, doubles as a
+self-test).
 
 ## What the demo trail contains
 

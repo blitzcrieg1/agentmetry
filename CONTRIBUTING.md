@@ -28,7 +28,7 @@ pip install -e ".[dev]"
 Run the demo to confirm the pipeline works end-to-end (no server needed):
 
 ```bash
-python scripts/demo.py
+agentmetry demo     # or, without installing: python scripts/demo.py
 ```
 
 ## Before you open a PR

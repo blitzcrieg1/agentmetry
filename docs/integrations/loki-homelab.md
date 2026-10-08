@@ -12,7 +12,7 @@ Tail `audit-forward.jsonl` into **Grafana Loki** for solo/homelab monitoring. No
 
 ```powershell
 scripts\agentmetry.bat start
-# Then use a hooked agent (Cursor, Claude Code, ...) or: python scripts\demo.py
+# Then use a hooked agent (Cursor, Claude Code, ...)
 ```
 
 Confirm JSONL is growing:
