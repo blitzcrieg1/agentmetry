@@ -100,7 +100,7 @@ agentmetry dashboard
 | --- | --- |
 | Windows | CI on `windows-latest`, plus the `hooks-windows` job. PyPI classifier `Operating System :: Microsoft :: Windows`. |
 | Linux | CI on `ubuntu-latest`, plus the `install-linux` job. PyPI classifier `Operating System :: POSIX :: Linux`. |
-| macOS | The code has a per-user data directory, a launchd agent (`agentmetry install`), managed-hook paths, and `scripts/install.sh` runs there. CI has no macOS job. PyPI does not list a macOS classifier. Treat macOS as untested. |
+| macOS | The full test suite runs on `macos-latest` in CI since 2026-10-10, as a non-required check. That covers the per-user data directory, the launchd agent (`agentmetry install`) and the managed-hook paths. No hook has been exercised against a live agent on a Mac, and PyPI does not list a macOS classifier yet. |
 
 CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-latest` and `macos-latest`. The macOS leg is not yet a required check.
 
