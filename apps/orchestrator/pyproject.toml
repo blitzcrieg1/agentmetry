@@ -39,7 +39,7 @@ dependencies = [
     # so an unconstrained `>=1.2` resolved to 2.x on any fresh install and the
     # bundled server failed on first run (issue #138). Lift this when that
     # import is ported to the 2.x API, not before.
-    "mcp>=1.2,<2",
+    "mcp>=1.2,<3",
     # Windows ships no IANA timezone database, so `zoneinfo` cannot resolve
     # AGENTMETRY_BUSINESS_TZ there without this. Without it the off-hours rule
     # silently fell back to UTC and produced wrong findings on the platform this
