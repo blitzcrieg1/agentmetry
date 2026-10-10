@@ -10,11 +10,13 @@ This is the department that has shipped nothing. Treat it accordingly.
 ## Read, do not invent
 
 ```
-docs/commercial/outreach-log.md      the queue, recipients, status, replies
-docs/commercial/outreach-openers.md  the six openers and the sending order
+../agentmetry-enterprise/sales/outreach-log.md  the queue, recipients, status, replies (private repo)
+docs/commercial/outreach-openers.md              the six openers and the sending order (public)
 ```
 
-The log holds **named recipients with real contact details**. Do not invent a
+The log holds **named recipients with real contact details**, which is why it
+lives in the private repo. Never copy a name, an address or a reply into this
+public repo, including into this skill. Do not invent a
 recipient, do not substitute a different company, and do not rewrite an opener
 into something more enthusiastic. Each opener is built around one checkable
 fact and states a limitation before asking for anything. That structure is the
@@ -35,9 +37,9 @@ claim to have read is worse than a generic one.
 
 Check, every time:
 
-- **The affiliation.** `outreach-log.md` lists Luyi Xing at UIUC; the arXiv
-  abstract page for 2607.05120 carries no affiliations at all, and the PDF is
-  the place to confirm it. Do not send an academic an email that misplaces them.
+- **The affiliation** of any academic recipient. arXiv abstract pages often
+  carry no affiliations at all, and the paper's PDF is the place to confirm
+  them. Do not send an academic an email that misplaces them.
 - **The link resolves** and says what the opener claims it says
 - **Any technique id** against the source. `AML.T0109` is the MCP rug pull;
   `AML.T0051.001` is indirect prompt injection
@@ -61,7 +63,7 @@ with opener 1 and did not engage with the argument above; that was wrong.
 
 ## After a send
 
-Update the row in `outreach-log.md` with the date and channel. Record the reply
+Update the row in the private `outreach-log.md` with the date and channel. Record the reply
 verbatim when one arrives, including a rejection. The point of the log is that
 the next revision is informed by what happened rather than by what sounded good.
 

@@ -77,5 +77,5 @@ Check the live spool file, not the expired one, before reporting a spool problem
   code. If an operator is looking at a red week, tell them to triage it.
 - Do not disposition detections on the operator's behalf. Triage is a judgement
   about their own machine. Report what needs triage and let them decide.
-- Only update `docs/commercial/outreach-log.md` if the user asks for the week to
-  be recorded.
+- Only update the private `../agentmetry-enterprise/sales/outreach-log.md` if
+  the user asks for the week to be recorded.
