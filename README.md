@@ -59,6 +59,10 @@ agentmetry doctor
 agentmetry benchmark
 ```
 
+To see the demo without installing anything, `uvx agentmetry demo` (with
+[uv](https://docs.astral.sh/uv/)) or `pipx run agentmetry demo` runs it from a
+throwaway environment.
+
 `agentmetry demo` replays a session through the real ingest path into a temp directory it deletes: a private-key read, a cloud key that DLP matches without storing the value, then a URL fetch. The sequence fires one critical `credential-exfil`. It then edits that finding and shows `verify` fail, re-hashes the file the way someone with the whole machine could, and shows `verify` pass again with a different chain head. That last step is what `agentmetry anchor` is for. Nothing is kept and nothing leaves the machine.
 
 `agentmetry doctor` checks the install and exits 0 when nothing is broken. Warnings are expected on a fresh install: no trail yet, the orchestrator is not running, autostart is not registered.
@@ -98,7 +102,7 @@ agentmetry dashboard
 | Linux | CI on `ubuntu-latest`, plus the `install-linux` job. PyPI classifier `Operating System :: POSIX :: Linux`. |
 | macOS | The code has a per-user data directory, a launchd agent (`agentmetry install`), managed-hook paths, and `scripts/install.sh` runs there. CI has no macOS job. PyPI does not list a macOS classifier. Treat macOS as untested. |
 
-CI is `.github/workflows/ci.yml`. The matrix is `ubuntu-latest` and `windows-latest` only.
+CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-latest` and `macos-latest`. The macOS leg is not yet a required check.
 
 ## What you get
 
@@ -125,7 +129,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-1638 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1630 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+1639 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1631 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
