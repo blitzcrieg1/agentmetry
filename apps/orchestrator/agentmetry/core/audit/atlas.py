@@ -170,7 +170,7 @@ def attach_atlas(tool: Any) -> None:
 # adversary technique a whole sequence is evidence of, which is a claim only a
 # rule can make and never a single call.
 #
-# Deliberately small. Of the fifteen built-in rules, one describes an ATLAS
+# Deliberately small. Of the fourteen published rules, one describes an ATLAS
 # technique; the rest are host and operations behaviour that ATT&CK already
 # covers, and tagging them would put an AI-threat label on a shell command.
 # The empty entries are the design, not a backlog.

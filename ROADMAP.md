@@ -126,7 +126,7 @@ wants has moved to the bottom of the page.
 | Unwrapped MCP servers have no fingerprint | [#169](https://github.com/blitzcrieg1/agentmetry/issues/169) | Part 1 shipped in 0.9.2: the inventory reaches the SIEM as an opt-in `mcp_inventory` event. A server in a config file but not behind the proxy is still listed and not fingerprinted |
 | Unattended sessions distinguishable from supervised ones | [#170](https://github.com/blitzcrieg1/agentmetry/issues/170) | An auto-mode session reads the same as one a person is watching |
 | Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
-| Benchmark coverage for the six uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | 13 of 15 rules have corpus coverage. Benign sessions harvested from the real trail beat invented ones |
+| Benchmark coverage for the uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | Corpus expectations name 13 rule ids: 12 of the 14 published rules, plus the experimental rule. `host-subagent-swarm-burst` and `off-hours-activity` have no corpus case. Benign sessions harvested from the real trail beat invented ones |
 | Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
 
 ---

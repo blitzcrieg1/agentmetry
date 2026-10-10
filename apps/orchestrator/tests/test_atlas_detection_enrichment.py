@@ -4,7 +4,7 @@ ATT&CK describes what one tool call did. ATLAS at the detection level describes
 the adversary technique the sequence is evidence of, which is a claim only a
 rule is in a position to make.
 
-The mapping is deliberately one rule wide. Of the fifteen built-in rules, one
+The mapping is deliberately one rule wide. Of the fourteen published rules, one
 describes an ATLAS technique; the rest are host and operations behaviour that
 ATT&CK already covers, and labelling those would put an AI-threat technique on
 a shell command. Most of this file exists to hold that line, because the

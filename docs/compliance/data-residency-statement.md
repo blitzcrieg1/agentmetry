@@ -1,8 +1,8 @@
 # Data Residency & Local-First Statement
 
-**Product:** Agentmetry — local-first SIEM for AI coding agents  
-**Version:** operator-deployed appliance  
-**Last updated:** 2026-07-20
+**Product:** Agentmetry, local-first sensor for AI coding agents
+**Version:** operator-deployed package (public alpha)
+**Last updated:** 2026-10-10
 
 ---
 
@@ -10,7 +10,7 @@
 
 Agentmetry processes audit events **on infrastructure you control**. The JSONL trail, SQLite index, detection checkpoint, and dashboard stay on your machine or your LAN. No multi-tenant cloud backend is required for core operation.
 
-This supports GDPR data-minimization and deployer-side EU AI Act arguments around **data residency** and **human oversight** — not a guarantee of compliance.
+This supports GDPR data-minimization and deployer-side EU AI Act arguments around **data residency** and **human oversight**. It is not a guarantee of compliance.
 
 ---
 
@@ -18,11 +18,11 @@ This supports GDPR data-minimization and deployer-side EU AI Act arguments aroun
 
 | Data | Default location | Leaves device? |
 |------|------------------|----------------|
-| Audit JSONL trail | `apps/orchestrator/data/audit-forward.jsonl` | Only if *you* configure forwarders |
-| Query index | `apps/orchestrator/data/audit.db` | No |
-| Live detection state | `apps/orchestrator/data/detection_live.db` | No |
+| Audit JSONL trail | Checkout: `apps/orchestrator/data/audit-forward.jsonl`. Install: the user data directory (`agentmetry doctor` prints it) | Only if *you* configure forwarders |
+| Query index | `audit.db` in the same data directory as the trail | No |
+| Live detection state | `detection_live.db` in the same data directory as the trail | No |
 | Demo MCP config | `vault/.system/drivers.json` | No |
-| SIEM forwarders | Elastic / Splunk / webhook / Loki | Your choice |
+| SIEM forwarders | Elastic, Splunk, Google SecOps, Microsoft Sentinel (not yet run against a live workspace), webhook, CloudEvents. Loki tails the file via Alloy | Your choice |
 
 ---
 
@@ -31,7 +31,7 @@ This supports GDPR data-minimization and deployer-side EU AI Act arguments aroun
 | Sink | Config | Data path |
 |------|--------|-----------|
 | **File (default)** | `AGENTMETRY_AUDIT_SINK=file` | Local JSONL only |
-| **Webhook / Elastic / Splunk** | See `docs/integrations/` | Your SIEM infrastructure |
+| **Webhook / Elastic / Splunk / Google SecOps / Sentinel** | See `docs/integrations/` | Your SIEM infrastructure. Sentinel has not yet run against a live workspace |
 | **Loki homelab** | `docker-compose.loki.yml` | Your Grafana stack |
 
 **Recommendation for regulated environments:** keep file sink as system of record; forward redacted copies to corporate SIEM when contract allows.

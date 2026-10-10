@@ -24,13 +24,13 @@ enterprise = "agentmetry_enterprise.register:register"
 
 | Area | What ships |
 |------|------------|
-| **Capture** | IDE hooks (Cursor, Claude Code, Codex, Antigravity), MCP audit proxy, external ingest adapters |
-| **Schema** | Canonical event format v1.1.0, MITRE ATT&CK per-tool tagging |
+| **Capture** | IDE hooks (Cursor, Claude Code, Codex, Antigravity, Qwen, Kimi, Qoder, CodeBuddy), MCP audit proxy, Claude Code OpenTelemetry ingest (`agentmetry otel`), external ingest adapters |
+| **Schema** | Canonical event format v1.2.0 (`SCHEMA_VERSION` in `agentmetry/core/audit/canonical.py`), MITRE ATT&CK per-tool tagging, optional MITRE ATLAS labels |
 | **Detection core** | Sequence-rule executor, live detection engine, community rule pack |
 | **Native YAML rules** | `agentmetry/policies/detection/manifest.yaml` spec — thresholds, session count rules, hot-reload |
 | **DLP & tool policy** | Regex DLP manifest, tool allow/deny YAML, hook-boundary enforcement |
 | **Storage** | SQLite index, JSONL hash chain, evidence export |
-| **Forwarders** | File, webhook, Splunk HEC, Elastic ECS, Loki — API key / token auth over HTTPS |
+| **Forwarders** | File, webhook, Splunk HEC, Elastic ECS, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), CloudEvents as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. API key or token auth over HTTPS |
 | **Sigma export** | SIEM pack for forwarding Agentmetry events to existing Sigma pipelines |
 | **Dashboard** | Local Flight Recorder UI (single-operator hunt layout) |
 | **CLI** | `start`, `stop`, `status`, `doctor`, `stats`, `export`, `verify` |

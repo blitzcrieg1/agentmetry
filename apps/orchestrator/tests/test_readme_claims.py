@@ -241,3 +241,43 @@ def test_readme_sigma_count_matches_the_pack():
     assert int(match.group(1)) == shipped, (
         f"README claims {match.group(1)} Sigma rules, pack ships {shipped}"
     )
+
+
+def test_readme_collected_count_matches_pytest():
+    """The README quotes the suite size. Collection is the check.
+
+    A full `pytest -q` is too slow to pin the pass count here. The collected
+    total moves on the same commits, and it is what a reader can reproduce
+    without waiting on the suite.
+    """
+    import subprocess
+    import sys
+
+    match = re.search(r"(\d+) tests collected", _readme())
+    assert match, "README no longer states a collected test count"
+
+    root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    assert proc.returncode == 0, combined
+    collected = re.search(r"(\d+) tests collected", combined)
+    assert collected, combined
+    assert int(match.group(1)) == int(collected.group(1)), (
+        f"README says {match.group(1)} tests collected; pytest collected {collected.group(1)}"
+    )
+
+
+def test_readme_coverage_floor_matches_ci():
+    """The durable coverage claim is the CI floor, not last Tuesday's percentage."""
+    match = re.search(r"CI fails the coverage job under (\d+)%", _readme())
+    assert match, "README no longer states the CI coverage floor"
+    ci = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
+    floor = re.search(r"cov-fail-under=(\d+)", ci.read_text(encoding="utf-8"))
+    assert floor, "ci.yml lost cov-fail-under"
+    assert match.group(1) == floor.group(1)

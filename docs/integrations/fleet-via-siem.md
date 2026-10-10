@@ -2,7 +2,9 @@
 
 Agentmetry installs on one machine and keeps its evidence on that machine. That
 is deliberate: the trail belongs to the person whose agent produced it, and
-there is no vendor cloud in the path.
+this path has no vendor cloud in it. A hosted Agentmetry Enterprise console,
+if it is built, is a separate product. The sensor does not need one, and this
+document is the pattern that does not use one.
 
 It is also the first objection a security engineer raises, and fairly. You do
 not want fifteen dashboards. You want one place to answer "did any agent on this

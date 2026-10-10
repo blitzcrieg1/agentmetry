@@ -15,7 +15,7 @@ Set fleet scope for org-level SIEM queries: `AGENTMETRY_FLEET_ID=consulting-pilo
 
 | Env | Default | Description |
 |-----|---------|-------------|
-| `AGENTMETRY_AUDIT_SINK` | `file` | `file` \| `webhook` \| `both` \| `elastic` \| `splunk` \| `all` \| comma-separated |
+| `AGENTMETRY_AUDIT_SINK` | `file` | `file`, `webhook`, `both`, `elastic`, `splunk`, `chronicle`, `sentinel`, `all`, or a comma-separated list. `all` is file, webhook, elastic, splunk, chronicle, and sentinel. Microsoft Sentinel has not yet run against a live workspace. |
 | `AGENTMETRY_AUDIT_EXPORT_PATH` | `data/audit-forward.jsonl` | Append-only canonical JSONL |
 | `AGENTMETRY_AUDIT_WEBHOOK_URL` | *(empty)* | Generic JSON POST |
 | `AGENTMETRY_AUDIT_ELASTIC_URL` | *(empty)* | Elasticsearch cluster URL |
@@ -23,6 +23,9 @@ Set fleet scope for org-level SIEM queries: `AGENTMETRY_FLEET_ID=consulting-pilo
 | `AGENTMETRY_ELASTIC_API_KEY` | *(empty)* | API key `id:secret` |
 | `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` | *(empty)* | Splunk HEC base URL |
 | `AGENTMETRY_SPLUNK_HEC_TOKEN` | *(empty)* | HEC token |
+| `AGENTMETRY_AUDIT_WEBHOOK_FORMAT` | `canonical` | `cloudevents` wraps the same record in a CloudEvents v1.0 envelope. `batch` posts `{"events": [...]}` |
+| `AGENTMETRY_CHRONICLE_CUSTOMER_ID` | *(empty)* | Google SecOps. See [google-secops.md](integrations/google-secops.md) |
+| `AGENTMETRY_AUDIT_SENTINEL_ENDPOINT` | *(empty)* | Microsoft Sentinel. Not yet run against a live workspace. See [sentinel.md](integrations/sentinel.md) |
 
 Example enterprise multi-sink:
 
