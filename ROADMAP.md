@@ -129,6 +129,19 @@ wants has moved to the bottom of the page.
 | Benchmark coverage for the uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | Corpus expectations name 13 rule ids: 12 of the 14 published rules, plus the experimental rule. `host-subagent-swarm-burst` and `off-hours-activity` have no corpus case. Benign sessions harvested from the real trail beat invented ones |
 | Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
 
+### Held until a design partner replies
+
+Filed 2026-10-10 from a look at the field (Numbat, AgentSight, AgentTrail). They
+are features, and the standing rule is no new features until a prospect answers,
+so they wait in this order. None touches a frozen detection file.
+
+| Item | Issue | Note |
+|---|---|---|
+| Backtest a rule over your own recent trail | [#230](https://github.com/blitzcrieg1/agentmetry/issues/230) | The engine already replays the corpus; this replays the operator's last N days, read-only |
+| Rebuild past sessions from the agents' own logs | [#231](https://github.com/blitzcrieg1/agentmetry/issues/231) | The largest gap on the list: it is what answers "before install, or with hooks off". Labelled as reconstructed, never as live capture |
+| Import Numbat and AgentSight output | [#232](https://github.com/blitzcrieg1/agentmetry/issues/232) | Adapters like the AGT importer. Puts the trail and the SIEM output under them instead of competing for the install |
+| Signed standalone binaries | [#233](https://github.com/blitzcrieg1/agentmetry/issues/233) | After EV signing, and only if the hook's cold start does not get slower |
+
 ---
 
 ## Later, or only if somebody asks

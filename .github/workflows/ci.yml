@@ -29,18 +29,24 @@ on:
 # would block a docs typo through no change of ours. A red X the maintainer
 # reads is worth more than a blocking gate the maintainer learns to bypass.
 #
+# Not required yet: `orchestrator (macos-latest)`. That leg was added 2026-10-10
+# so "macOS is untested" stops being true. It becomes required once it has a
+# green history, not on its first run.
+#
 # Read them back with:
 #   gh api repos/blitzcrieg1/agentmetry/branches/master/protection/required_status_checks --jq .contexts
 jobs:
   orchestrator:
     # Agentmetry is installed on Windows first. Running the suite only on Linux
     # is how a path bug reached a release once already, so Windows is a required
-    # leg, not an optional nightly.
+    # leg, not an optional nightly. macOS runs too: the data directory, the
+    # launchd agent and the managed-hook paths all have macOS branches, and
+    # until this leg existed none of them had ever executed in CI.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     defaults:
       run:
         working-directory: apps/orchestrator
