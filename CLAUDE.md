@@ -104,7 +104,7 @@ stale and should be fixed.
 
 1. **The code**, and a command you can run
 2. **`CHANGELOG.md`**, what shipped, per release
-3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-08-22
+3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-10-08
 4. **Open GitHub issues**
 5. Everything else
 
@@ -168,13 +168,19 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-02 there are 1404 tests, zero open code scanning alerts,
-a passed dogfood gate, and 0.9.1 on PyPI. Dependabot is not at zero: 20 open
-alerts, all in `apps/dashboard/package-lock.json`, one of them critical (`next`).
-Check with `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open`
-rather than trusting this line. There are also **zero external users, zero
-design-partner tenants, and zero sent sales messages** against ten researched
-accounts with drafted openers.
+Not code. As of 2026-10-10 there are 1639 tests collected, zero open code
+scanning alerts, a passed dogfood gate (5 of 4 green weeks), `agentmetry demo`
+runnable with nothing installed (`uvx agentmetry demo`), and 0.9.4 on PyPI.
+Dependabot is down to 2 open alerts (one high, `braces`; one medium,
+`postcss-selector-parser`), both transitive in `apps/dashboard/package-lock.json`
+with no Dependabot PR. Check with
+`gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
+trusting this line. There are also **zero external users, zero design-partner
+tenants, and zero sent sales messages**: four recipients in the queue are marked
+Ready and none has been contacted.
+
+Do not merge Dependabot's `mcp <3` widening (#184 and its successors). CI passes
+on it because no test imports the file the pin protects; see #174.
 
 When asked "what next", the honest answer is almost always the commercial one,
 and the queue is in `agentmetry-enterprise/sales/outreach-log.md` (private, checked out beside this repo as `../agentmetry-enterprise`). It moved out of this repo
