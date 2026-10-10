@@ -8,12 +8,12 @@ Run from the orchestrator:
 
 The Sigma pack that already existed covers the recorder's own health: heartbeat
 silence, degraded coverage, MCP schema drift, denial bursts. Useful, and none of
-it is the product. The fifteen sequence detections, which are what a SOC would
+it is the product. The published sequence detections, which are what a SOC would
 actually route on, had no Sigma representation at all, so a Splunk or Sentinel
 team wanting to alert on `credential-exfil` had to write the search themselves
 from a schema document.
 
-Hand-writing fifteen would put rule ids, severities and MITRE ids in a second
+Hand-writing them would put rule ids, severities and MITRE ids in a second
 place that drifts from the first. So the metadata is harvested by replaying the
 benchmark corpus through the real engine and reading the `Detection` objects it
 emits. A severity that changes in `rules.py` changes here on the next run, and
@@ -107,7 +107,7 @@ def _stable_uuid(rule_id: str, severity: str = "") -> str:
 
     Sigma requires a UUID and consumers key on it, so running this twice must
     produce no diff. Severity joins the seed only for a split rule, which keeps
-    the fourteen unsplit ids exactly where they are.
+    the unsplit ids exactly where they are.
     """
     seed = f"agentmetry.sigma.{rule_id}" + (f".{severity}" if severity else "")
     return str(uuid.UUID(bytes=hashlib.sha256(seed.encode()).digest()[:16], version=5))

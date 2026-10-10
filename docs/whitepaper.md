@@ -241,10 +241,14 @@ tamper signal left.
 
 ## 8. Where the evidence goes
 
-Agentmetry is a sensor, not a console. The customer's SIEM stays the console.
+The open-source package is a sensor, not a console. The customer's SIEM stays
+the console for this package. A hosted fleet console is allowed for Agentmetry
+Enterprise and is not built. The sensor does not need it. See
+[open-core split](commercial/open-core-split.md).
 
 Forwarders ship for **Splunk HEC**, **Elastic ECS**, **Google SecOps UDM**,
-**CloudEvents**, and Loki via Alloy. All fourteen published detections are also
+**Microsoft Sentinel** (not yet run against a live workspace), **CloudEvents**,
+and Loki via Alloy. All fourteen published detections are also
 exported as **Sigma rules**, generated from the engine by replaying the
 benchmark corpus and reading the `Detection` objects it emits, so a severity
 that changes in the rules changes in the Sigma pack on the next run and a test
@@ -265,9 +269,11 @@ why you should believe the numbers.
 
 **A benchmark anyone can run in about ten seconds.** 54 recorded sessions, 26
 attack and 28 benign. Current result: 26 of 26 expected detections fire, 0
-missed, 0 false positives. **13 of the 14 published rules have corpus
-coverage**, and the one that does not is named in the generator with a reason
-rather than rounded up.
+missed, 0 false positives. The benchmark's "rules covered 13" counts rule ids
+named in corpus expectations: 12 of the 14 published rules, plus the
+experimental rule. Two published rules have no corpus case
+(`host-subagent-swarm-burst`, `off-hours-activity`). They are named in the
+Sigma generator rather than omitted from the pack.
 
 That "0 false positives" is worth one more sentence, because in the previous
 release it was true and hollow. Four false positives were known, filed and

@@ -1,4 +1,4 @@
-# EU AI Act — Deployer Checklist (Agentmetry SIEM)
+# EU AI Act deployer checklist (Agentmetry sensor)
 
 **Role mapping:** Agentmetry repo author = **provider** (tool). You, running it on
 developer workstations = **deployer**.

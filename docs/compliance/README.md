@@ -2,7 +2,7 @@
 
 **Scope:** Deployer-ready alignment documentation. Not legal advice, not certification.
 
-Agentmetry is a **local-first SIEM for AI coding agents**, and it is conventional
+Agentmetry is a **local-first sensor for AI coding agents**, and it is conventional
 software: deterministic sequence rules and regex, no model and no inference. It is
 therefore **not itself an AI system** under the Act's definition, and installing it
 does not place you under any obligation the Act creates.

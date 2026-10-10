@@ -55,8 +55,8 @@ conference talk mentioning the rollout.
 > whether the result left through an MCP server.
 >
 > I build a local-first recorder that sits at the tool boundary and forwards
-> into the SIEM you already run. No vendor cloud, Apache-2.0, the trail stays on
-> the laptop.
+> into the SIEM you already run. Apache-2.0, the trail stays on the laptop, and
+> the sensor does not need a vendor cloud.
 >
 > Honest limit up front: it only sees agents it hooks. Unmanaged ChatGPT and a
 > Cursor with hooks switched off stay invisible. That is CASB territory and I do

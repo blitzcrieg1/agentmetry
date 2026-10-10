@@ -1,7 +1,19 @@
-# Refreshing the README demo video
+# Refreshing the README demo media
 
-The README hero is a real inline player. It works because the URL points at an
-asset GitHub hosts itself:
+## CLI demo GIF
+
+`docs/assets/demo.gif` and `docs/assets/demo-short.gif` were rendered by
+`scripts/make_demo_gif.py` from `scripts/demo.py`. They do not show the
+tamper/verify ending that `agentmetry demo` prints as of 0.9.4 (the section
+that starts `Now try to rewrite it`), so the README does not use them. Its hero
+is the 90-second demo video instead: the poster image, served by agentmetry.ai,
+linking to the player at https://agentmetry.ai/#watch. Do not treat the
+checked-in GIFs as the 0.9.4 transcript until they are re-rendered from it.
+
+## Dashboard video
+
+The README also embeds a dashboard recording. It is a real inline player, and
+it works because the URL points at an asset GitHub hosts itself:
 
 ```
 https://github.com/user-attachments/assets/<uuid>

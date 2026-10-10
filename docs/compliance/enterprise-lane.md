@@ -1,7 +1,9 @@
 # Enterprise lane (optional, not the beta product)
 
-Agentmetry beta is a **local-first SIEM for AI coding agents** — hooks, JSONL trail,
-sequence detections, customer-owned SIEM forwarders. This document names what
+Agentmetry beta is a **local-first sensor for AI coding agents**: hooks, a JSONL trail,
+sequence detections, and forwarders into a SIEM the customer already runs. It is
+not a console. A hosted fleet console is allowed for Agentmetry Enterprise and
+is not built. The open-source sensor does not need it. This document names what
 **enterprise production** would add without pretending it ships today.
 
 ## What beta ships (Buyer A)
@@ -11,7 +13,7 @@ sequence detections, customer-owned SIEM forwarders. This document names what
 | IDE + MCP cooperative capture | Shipped (Tier B) |
 | Sequence detections + DLP + tool policy at hook boundary | Shipped |
 | Local dashboard + JSONL hash chain | Shipped |
-| Forward to Splunk / Elastic / Loki / webhook | Shipped |
+| Forward to Splunk, Elastic, Google SecOps, webhook, CloudEvents. Loki via Alloy. Microsoft Sentinel is implemented and not yet run against a live workspace | Shipped |
 | YAML detection thresholds + count rules | Shipped (`agentmetry/policies/detection/manifest.yaml`) |
 | Sigma export pack | Shipped |
 
