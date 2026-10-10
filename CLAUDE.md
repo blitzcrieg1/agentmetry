@@ -177,8 +177,10 @@ design-partner tenants, and zero sent sales messages** against ten researched
 accounts with drafted openers.
 
 When asked "what next", the honest answer is almost always the commercial one,
-and the queue is in `docs/commercial/outreach-log.md`. Say so plainly rather
-than offering a comfortable engineering task instead.
+and the queue is in `agentmetry-enterprise/sales/outreach-log.md` (private, checked out beside this repo as `../agentmetry-enterprise`). It moved out of this repo
+on 2026-10-10 because it names real recipients; do not bring names or contact
+details back into a public file. Say so plainly rather than offering a
+comfortable engineering task instead.
 
 ---
 
