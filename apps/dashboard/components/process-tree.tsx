@@ -30,10 +30,10 @@ type EventNodeData = {
 const EventNode = ({ data }: NodeProps<Node<EventNodeData>>) => {
   const getOutcomeColor = (outcome: string) => {
     switch (outcome) {
-      case "success": return "text-emerald-500 border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10";
-      case "error": return "text-red-500 border-red-500/30 bg-red-50 dark:bg-red-500/10";
-      case "denied": return "text-orange-500 border-orange-500/30 bg-orange-50 dark:bg-orange-500/10";
-      default: return "text-slate-500 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900";
+      case "success": return "text-secure border-secure/30 bg-card";
+      case "error": return "text-danger border-danger/40 bg-danger/[0.06]";
+      case "denied": return "text-signal border-signal/40 bg-signal/[0.06]";
+      default: return "text-muted-foreground border-border bg-card";
     }
   };
 
@@ -48,8 +48,8 @@ const EventNode = ({ data }: NodeProps<Node<EventNodeData>>) => {
   const colors = getOutcomeColor(data.outcome);
 
   return (
-    <div className={`px-4 py-3 shadow-lg rounded-xl border ${colors} w-64`}>
-      <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-3 !h-3" />
+    <div className={`px-3.5 py-3 rounded-sm border ${colors} w-64`}>
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-subtle" />
       <div className="flex items-center gap-3">
         <div className="shrink-0">{getIcon(data.type, data.outcome)}</div>
         <div className="min-w-0">
@@ -58,7 +58,7 @@ const EventNode = ({ data }: NodeProps<Node<EventNodeData>>) => {
           <div className="text-[10px] mt-1 opacity-60 font-mono">{data.timestamp}</div>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-3 !h-3" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-subtle" />
     </div>
   );
 };
@@ -135,14 +135,14 @@ export function ProcessTree({ events }: { events: AuditEvent[] }) {
 
   if (!events || events.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500 dark:text-slate-400">
+      <div className="flex items-center justify-center h-full text-[12px] text-subtle">
         No session selected or no events found for this session.
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full bg-slate-50/50 dark:bg-slate-900/50 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+    <div className="w-full h-full overflow-hidden rounded-sm border border-border bg-background">
       <ReactFlow
         nodes={nodes}
         edges={edges}

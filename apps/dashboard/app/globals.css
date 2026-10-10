@@ -8,92 +8,100 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The agentmetry.ai palette, as HSL triplets so Tailwind opacity modifiers
+   work (bg-danger/10). Warm off-white on near-black, orange as the one
+   accent, and severity colours that mean the same thing on every screen:
+   danger = critical, signal = high, caution = medium, subtle = low.
+   Figma: the "Dashboard" page of the Agentmetry redesign file uses the same
+   tokens (Agentmetry tokens collection). */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 4%;
+    --background: 40 20% 98%;
+    --foreground: 30 8% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --primary: 240 6% 10%;
-    --primary-foreground: 0 0% 98%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
-    --border: 240 6% 90%;
-    --radius: 0.5rem;
-
+    --card-foreground: 30 8% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --destructive: 0 84% 60%;
-    --input: 240 6% 90%;
-    --ring: 240 6% 10%;
-    
-    --graph-idle: 260 12% 28%;
-    --graph-running: 265 85% 62%;
-    --graph-completed: 152 65% 48%;
-    --graph-error: 0 72% 55%;
-    --graph-waiting: 38 92% 55%;
+    --popover-foreground: 30 8% 9%;
+    --primary: 21 90% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 12% 94%;
+    --secondary-foreground: 30 8% 9%;
+    --muted: 40 12% 94%;
+    --muted-foreground: 35 5% 36%;
+    --subtle: 35 4% 52%;
+    --accent: 40 12% 94%;
+    --accent-foreground: 30 8% 9%;
+    --border: 40 8% 87%;
+    --input: 40 8% 87%;
+    --ring: 21 90% 48%;
+    --radius: 3px;
+
+    --signal: 21 90% 48%;
+    --danger: 2 72% 48%;
+    --caution: 36 85% 36%;
+    --secure: 142 64% 30%;
+    --destructive: 2 72% 48%;
   }
 
   .dark {
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 6%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 6%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 6% 10%;
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 240 5% 84%;
+    --background: 0 0% 2%;
+    --foreground: 42 31% 94%;
+    --card: 0 0% 4%;
+    --card-foreground: 42 31% 94%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 42 31% 94%;
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 42 31% 94%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 39 6% 58%;
+    --subtle: 38 5% 40%;
+    --accent: 0 0% 8%;
+    --accent-foreground: 42 31% 94%;
+    --border: 40 5% 14%;
+    --input: 40 5% 16%;
+    --ring: 25 95% 53%;
+
+    --signal: 25 95% 53%;
+    --danger: 3 85% 62%;
+    --caution: 39 67% 55%;
+    --secure: 142 77% 73%;
+    --destructive: 3 85% 62%;
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--foreground) / 0.18) transparent;
   }
   body {
     @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: "tnum" 1;
+  }
+  ::selection {
+    background: hsl(var(--signal) / 0.3);
   }
 }
 
-@layer utilities {
-  .glass-panel {
-    @apply border border-border/80 bg-white/5 dark:bg-black/50 backdrop-blur-md shadow-xl shadow-black/20;
+@layer components {
+  /* Small uppercase label used for column heads and field names. */
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-subtle;
   }
-
-  .text-gradient {
-    @apply bg-gradient-to-r from-emerald-500 to-emerald-300 bg-clip-text text-transparent;
+  /* Native controls styled once, so every toolbar matches. */
+  .control {
+    @apply h-8 rounded-sm border border-border bg-card px-2.5 text-[13px] text-foreground transition-colors hover:border-foreground/25 focus:border-signal/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal/30;
   }
-}
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 12px hsl(var(--graph-running) / 0.35); }
-  50% { box-shadow: 0 0 28px hsl(var(--graph-running) / 0.65); }
-}
-
-@keyframes node-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.35s ease-out forwards;
+  .btn {
+    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-sm border border-border bg-card px-3 text-[13px] font-medium text-foreground transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-sm bg-signal px-3 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-signal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 disabled:pointer-events-none disabled:opacity-40;
+  }
+  .panel {
+    @apply rounded-sm border border-border bg-card;
+  }
 }

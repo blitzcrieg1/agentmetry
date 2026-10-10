@@ -4,6 +4,9 @@ import * as React from "react";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
+const ROW =
+  "flex h-9 items-center justify-center gap-2.5 rounded-sm text-[13px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground lg:justify-start lg:px-2.5";
+
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
@@ -12,8 +15,9 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <span className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground">
-        <Sun className="h-4 w-4 opacity-40" />
+      <span className={ROW}>
+        <Sun className="h-4 w-4 shrink-0 opacity-40" />
+        <span className="hidden lg:inline">Theme</span>
       </span>
     );
   }
@@ -24,11 +28,11 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted hover:text-foreground"
+      className={ROW}
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      <span className="sr-only">Toggle theme</span>
+      {isDark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
+      <span className="hidden lg:inline">{isDark ? "Light mode" : "Dark mode"}</span>
     </button>
   );
 }

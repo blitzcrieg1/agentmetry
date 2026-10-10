@@ -72,7 +72,7 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
 
   if (!loaded) {
     return (
-      <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
         Checking feed…
       </div>
@@ -81,8 +81,8 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
 
   if (signedOut) {
     return (
-      <div className="flex items-center gap-2 font-mono text-xs text-amber-600 dark:text-amber-400" title="The dashboard holds no API key; a one-time link signs it in">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+      <div className="flex items-center gap-2 text-[12px] text-caution" title="The dashboard holds no API key; a one-time link signs it in">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caution" />
         Signed out: run <code>agentmetry dashboard</code>
       </div>
     );
@@ -90,8 +90,8 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
 
   if (unreachable) {
     return (
-      <div className="flex items-center gap-2 font-mono text-xs text-red-500 dark:text-red-400" title={`No response from ${ORCHESTRATOR_URL}`}>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500 dark:bg-red-400" />
+      <div className="flex items-center gap-2 text-[12px] text-danger" title={`No response from ${ORCHESTRATOR_URL}`}>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
         Backend unreachable
       </div>
     );
@@ -111,10 +111,10 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
     const ageHours = (status?.spool_oldest_age_seconds ?? 0) / 3600;
     return (
       <div
-        className="flex items-center gap-2 font-mono text-xs text-amber-600 dark:text-amber-400"
+        className="flex items-center gap-2 text-[12px] text-caution"
         title={`Hooks are capturing, but the trail is not accepting. Oldest pending event is ${ageHours.toFixed(1)}h old and stops being replayable after 7 days.`}
       >
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" />
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caution" />
         {pending.toLocaleString()} events pending replay
       </div>
     );
@@ -123,24 +123,24 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
   const label = ingestLabel(minutes, enabled, recent);
 
   const ingestTone = !enabled
-    ? "text-red-600 dark:text-red-400"
+    ? "text-danger"
     : stale
-      ? "text-amber-600 dark:text-amber-400"
+      ? "text-caution"
       : recent === 0
         ? "text-muted-foreground"
-        : "text-emerald-600 dark:text-emerald-400";
+        : "text-secure";
 
   const ingestDot = !enabled
-    ? "bg-red-500 dark:bg-red-400"
+    ? "bg-danger"
     : stale
-      ? "bg-amber-500 dark:bg-amber-400"
+      ? "bg-caution"
       : recent === 0
         ? "bg-muted-foreground"
-        : "bg-emerald-500 dark:bg-emerald-400 animate-pulse";
+        : "bg-secure animate-pulse";
 
   return (
     <div
-      className="flex items-center gap-2 font-mono text-xs"
+      className="flex items-center gap-2 text-[12px]"
       title={
         enabled
           ? `Audit ingest · ${recent} events in tail window`
@@ -152,7 +152,7 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
         {label}
       </span>
 
-      <span className="hidden text-border sm:inline">·</span>
+      <span className="hidden text-subtle sm:inline">·</span>
 
       <span className="hidden items-center gap-1 sm:inline-flex" title="Recent events by hook source">
         {SOURCE_ORDER.map((src) => {
@@ -169,12 +169,12 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
 
       {wsConnected ? (
         <>
-          <span className="hidden text-border md:inline">·</span>
+          <span className="hidden text-subtle md:inline">·</span>
           <span
-            className="hidden items-center gap-1 text-emerald-400/80 md:inline-flex"
+            className="hidden items-center gap-1 text-muted-foreground md:inline-flex"
             title="Run stream connected (WebSocket)"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-secure/70" />
             Runs
           </span>
         </>
