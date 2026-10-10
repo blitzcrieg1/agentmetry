@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, ExternalLink, RefreshCw, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { eventSourceApp, sourceBadgeClass, sourceLabel } from "@/lib/audit-source";
+import { eventSourceApp, sourceDotClass, sourceLabel } from "@/lib/audit-source";
+import { EmptyState, SEVERITY_DOT, SeverityBadge, Technique, TechniqueChain } from "@/components/ui/kit";
 import {
   CLOSED_STATUSES,
   DISPOSITION_STATUSES,
@@ -24,13 +25,6 @@ import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-
-const SEV_CHIP: Record<string, string> = {
-  critical: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
-  high: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
-  medium: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
-  low: "bg-slate-500/15 text-slate-600 ring-slate-500/30 dark:text-slate-300",
-};
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
@@ -165,102 +159,124 @@ export function DetectionsPanel() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card/20">
-      <div className="space-y-3 border-b border-border/60 px-3 py-3">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {SEVERITIES.map((sev) => (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {SEVERITIES.map((sev) => {
+          const active = severityFilter === sev;
+          const n = counts[sev] ?? 0;
+          const open = detections.filter(
+            (d) => d.severity === sev && !isTriaged(dispositions[dispositionKey(d.correlation_id, d.rule_id)]),
+          ).length;
+          return (
             <button
               key={sev}
               type="button"
-              onClick={() => setSeverityFilter(severityFilter === sev ? "all" : sev)}
-              className={`rounded-md border px-3 py-2 text-left transition ${
-                severityFilter === sev ? "border-border bg-muted" : "border-border/60 hover:bg-muted/50"
+              aria-pressed={active}
+              onClick={() => setSeverityFilter(active ? "all" : sev)}
+              className={`panel px-4 py-3 text-left transition-colors ${
+                active ? "border-signal/60 ring-1 ring-signal/40" : "hover:border-foreground/25"
               }`}
             >
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{sev}</p>
-              <p className={`mt-0.5 font-mono text-lg font-semibold ${counts[sev] ? "" : "text-muted-foreground"}`}>
-                {counts[sev] ?? 0}
-              </p>
+              <span className="flex items-center gap-2 text-[13px] font-medium capitalize text-muted-foreground">
+                <span className={`h-2 w-2 rounded-full ${SEVERITY_DOT[sev]}`} />
+                {sev}
+              </span>
+              <span className={`mt-1 block text-[28px] font-semibold leading-tight tabular-nums ${n ? "text-foreground" : "text-subtle"}`}>
+                {n}
+              </span>
+              <span className={`block text-[12px] ${open ? "text-caution" : "text-subtle"}`}>
+                {n === 0 ? "None" : open ? `${open} untriaged` : "All triaged"}
+              </span>
             </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground"
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value)}
-          >
-            <option value="all">All severities</option>
-            {SEVERITIES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground"
-            value={ruleFilter}
-            onChange={(e) => setRuleFilter(e.target.value)}
-          >
-            <option value="all">All rules</option>
-            {ruleIds.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground"
-            value={triageFilter}
-            onChange={(e) => setTriageFilter(e.target.value)}
-          >
-            <option value="all">All triage states</option>
-            <option value="untriaged">Untriaged only</option>
-            <option value="open">Open (not closed)</option>
-            {DISPOSITION_STATUSES.filter((s) => s !== "new").map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          <span className="font-mono text-xs text-muted-foreground">{visible.length} shown</span>
-          {untriaged > 0 ? (
-            <button
-              type="button"
-              onClick={() => setTriageFilter("untriaged")}
-              className="rounded-md bg-amber-500/15 px-2 py-1 font-mono text-xs text-amber-700 ring-1 ring-inset ring-amber-500/30 transition hover:bg-amber-500/25 dark:text-amber-300"
-              title="A detection nobody dispositioned is an alert, not a control"
-            >
-              {untriaged} untriaged
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-        </div>
+          );
+        })}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className={`min-h-0 overflow-y-auto p-2 ${selected ? "hidden lg:block lg:flex-1" : "flex-1"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Severity"
+          className="control"
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value)}
+        >
+          <option value="all">All severities</option>
+          {SEVERITIES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Rule"
+          className="control"
+          value={ruleFilter}
+          onChange={(e) => setRuleFilter(e.target.value)}
+        >
+          <option value="all">All rules</option>
+          {ruleIds.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Triage state"
+          className="control"
+          value={triageFilter}
+          onChange={(e) => setTriageFilter(e.target.value)}
+        >
+          <option value="all">All triage states</option>
+          <option value="untriaged">Untriaged only</option>
+          <option value="open">Open (not closed)</option>
+          {DISPOSITION_STATUSES.filter((s) => s !== "new").map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <span className="ml-1 text-[12px] text-muted-foreground">
+          <span className="font-mono text-foreground">{visible.length}</span> shown
+        </span>
+        {untriaged > 0 ? (
+          <button
+            type="button"
+            onClick={() => setTriageFilter("untriaged")}
+            className="inline-flex h-7 items-center rounded-sm bg-caution/15 px-2 text-[12px] font-medium text-caution transition-colors hover:bg-caution/25"
+            title="A detection nobody dispositioned is an alert, not a control"
+          >
+            {untriaged} untriaged
+          </button>
+        ) : null}
+        <button type="button" onClick={() => void load()} className="btn ml-auto">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div className={`panel min-h-0 min-w-0 flex-col overflow-hidden ${selected ? "hidden lg:flex lg:flex-1" : "flex flex-1"}`}>
           {loading && detections.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Loading detections…</p>
+            <EmptyState>Loading detections…</EmptyState>
           ) : error && detections.length === 0 ? (
-            <p className="py-8 text-center text-sm text-red-500 dark:text-red-400">{error}</p>
+            <EmptyState>
+              <span className="text-danger">{error}</span>
+            </EmptyState>
           ) : visible.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
-              <ShieldCheck className="h-6 w-6 opacity-50" />
+            <EmptyState icon={<ShieldCheck className="h-6 w-6" />}>
               {detections.length === 0
                 ? "No detections in the last 7 days. Run agents with hooks installed, or check agentmetry doctor."
                 : "No detections match these filters."}
-            </div>
+            </EmptyState>
           ) : (
-            <div className="space-y-1.5">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-border bg-card px-4 py-2">
+                <span className="eyebrow shrink-0 sm:w-28">Severity</span>
+                <span className="eyebrow min-w-0 flex-1">Detection</span>
+                <span className="eyebrow hidden w-28 shrink-0 sm:block">Status</span>
+                <span className="eyebrow hidden w-44 shrink-0 2xl:block">Techniques</span>
+                <span className={`eyebrow hidden w-36 shrink-0 ${selected ? "2xl:block" : "md:block"}`}>Session</span>
+                <span className={`eyebrow hidden w-36 shrink-0 text-right ${selected ? "2xl:block" : "sm:block"}`}>Last seen</span>
+              </div>
               {visible.map((d) => (
                 <DetectionRow
                   key={detectionKey(d)}
@@ -268,6 +284,7 @@ export function DetectionsPanel() {
                   disposition={dispositions[dispositionKey(d.correlation_id, d.rule_id)]}
                   selected={detectionKey(d) === selectedKey}
                   onSelect={() => setSelectedKey(detectionKey(d))}
+                  compact={selected !== null}
                 />
               ))}
             </div>
@@ -275,7 +292,7 @@ export function DetectionsPanel() {
         </div>
 
         {selected ? (
-          <div className="flex min-h-0 w-full shrink-0 flex-col border-t border-border/60 lg:w-[26rem] lg:border-l lg:border-t-0">
+          <div className="panel flex min-h-0 w-full shrink-0 flex-col overflow-hidden lg:w-[25rem]">
             <DetectionDetail
               det={selected}
               disposition={dispositions[dispositionKey(selected.correlation_id, selected.rule_id)]}
@@ -293,7 +310,7 @@ export function DetectionsPanel() {
 function StatusChip({ status }: { status: string }) {
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ${
+      className={`inline-flex shrink-0 items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
         STATUS_CHIP[status] ?? STATUS_CHIP.new
       }`}
     >
@@ -307,60 +324,44 @@ function DetectionRow({
   disposition,
   selected,
   onSelect,
+  compact,
 }: {
   det: Detection;
   disposition?: Disposition;
   selected: boolean;
   onSelect: () => void;
+  compact: boolean;
 }) {
   const chain = det.technique_ids?.length ? det.technique_ids : det.tactic_ids;
   const status = statusOf(disposition);
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onSelect}
-      className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition ${
-        selected
-          ? "border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-950/20"
-          : "border-border bg-card/40 hover:border-border hover:bg-muted/40"
+      className={`flex w-full items-center gap-4 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 ${
+        selected ? "bg-muted shadow-[inset_2px_0_0_hsl(var(--signal))]" : "hover:bg-muted/60"
       }`}
     >
-      <ShieldAlert
-        className={`h-4 w-4 shrink-0 ${
-          det.severity === "critical" || det.severity === "high"
-            ? "text-red-500 dark:text-red-400"
-            : det.severity === "medium"
-              ? "text-amber-500 dark:text-amber-400"
-              : "text-muted-foreground"
-        }`}
-      />
-      <span
-        className={`w-16 shrink-0 rounded px-1.5 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-          SEV_CHIP[det.severity] ?? SEV_CHIP.low
-        }`}
-      >
-        {det.severity}
+      <span className="shrink-0 sm:w-28">
+        <SeverityBadge severity={det.severity} />
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{det.title || det.rule_id}</p>
-        <p className="truncate text-xs text-muted-foreground">{det.summary}</p>
-      </div>
-      <StatusChip status={status} />
-      {chain?.length ? (
-        <div className="hidden shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground xl:flex">
-          {chain.slice(0, 3).map((t, i) => (
-            <span key={`${t}-${i}`} className="inline-flex items-center gap-1">
-              {i > 0 ? <ArrowRight className="h-3 w-3 opacity-50" /> : null}
-              <span className="rounded bg-muted px-1 py-0.5">{t}</span>
-            </span>
-          ))}
-        </div>
-      ) : null}
-      <span
-        className="hidden w-32 shrink-0 truncate text-right font-mono text-[10px] text-muted-foreground sm:block"
-        title={det.correlation_id}
-      >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-medium text-foreground">{det.title || det.rule_id}</span>
+        <span className="block truncate text-[12px] text-muted-foreground">{det.summary}</span>
+        <span className="mt-1.5 block sm:hidden">
+          <StatusChip status={status} />
+        </span>
+      </span>
+      <span className="hidden w-28 shrink-0 sm:block">
+        <StatusChip status={status} />
+      </span>
+      <span className="hidden w-44 shrink-0 2xl:block">{chain?.length ? <TechniqueChain ids={chain} max={3} /> : null}</span>
+      <span className={`hidden w-36 shrink-0 truncate font-mono text-[12px] text-muted-foreground ${compact ? "2xl:block" : "md:block"}`} title={det.correlation_id}>
         {shortSession(det.correlation_id)}
+      </span>
+      <span className={`hidden w-36 shrink-0 truncate text-right font-mono text-[12px] text-subtle ${compact ? "2xl:block" : "sm:block"}`}>
+        {formatTime(det.last_seen_utc)}
       </span>
     </button>
   );
@@ -417,23 +418,23 @@ function TriagePanel({
   };
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-2.5">
+    <div className="space-y-2.5 rounded-sm border border-border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Triage</p>
+        <p className="eyebrow">Triage</p>
         <StatusChip status={current} />
       </div>
 
       {current === "new" ? (
-        <p className="text-[10px] leading-relaxed text-muted-foreground">
+        <p className="text-[12px] leading-relaxed text-muted-foreground">
           No one has dispositioned this finding. Until someone does, it is an alert,
           not a control.
         </p>
       ) : null}
 
-      <div className="flex gap-1.5">
+      <div className="flex gap-2">
         <select
           aria-label="Disposition"
-          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs"
+          className="control min-w-0 flex-1"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -445,7 +446,7 @@ function TriagePanel({
         </select>
         <input
           aria-label="Assignee"
-          className="w-28 shrink-0 rounded border border-border bg-background px-2 py-1.5 text-xs"
+          className="control w-32 shrink-0 placeholder:text-subtle"
           placeholder="Assignee"
           value={assignee}
           onChange={(e) => setAssignee(e.target.value)}
@@ -454,7 +455,7 @@ function TriagePanel({
 
       <textarea
         aria-label="Triage note"
-        className="h-16 w-full resize-none rounded border border-border bg-background px-2 py-1.5 text-xs"
+        className="control h-16 w-full resize-none py-1.5 placeholder:text-subtle"
         placeholder={
           NOTE_REQUIRED_HINT.has(status)
             ? "Required: why is this not a real finding?"
@@ -465,27 +466,25 @@ function TriagePanel({
       />
 
       {error ? (
-        <p className="text-[10px] text-red-500 dark:text-red-400">{error}</p>
+        <p className="text-[12px] text-danger">{error}</p>
       ) : blocker ? (
-        <p className="text-[10px] text-muted-foreground">{blocker}</p>
+        <p className="text-[12px] text-muted-foreground">{blocker}</p>
       ) : null}
 
       <button
         type="button"
         onClick={() => void save()}
         disabled={saving || blocker !== null}
-        className="w-full rounded border border-border px-2 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn-primary w-full"
       >
         {saving ? "Recording…" : "Record decision"}
       </button>
 
       {disposition?.history?.length ? (
-        <div className="space-y-1 border-t border-border/50 pt-2">
-          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
-            Decision history
-          </p>
+        <div className="space-y-1.5 border-t border-border pt-2.5">
+          <p className="eyebrow">Decision history</p>
           {[...disposition.history].reverse().map((entry, i) => (
-            <div key={`${entry.decided_at_utc}-${i}`} className="text-[10px] text-muted-foreground">
+            <div key={`${entry.decided_at_utc}-${i}`} className="text-[12px] text-muted-foreground">
               <span className="font-mono">{formatTime(entry.decided_at_utc)}</span>{" "}
               <span className="text-foreground">{STATUS_LABELS[entry.status] ?? entry.status}</span>
               {entry.decided_by ? ` by ${entry.decided_by}` : ""}
@@ -517,7 +516,6 @@ function DetectionDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const chain = det.technique_ids?.length ? det.technique_ids : det.tactic_ids;
-  const sev = SEV_CHIP[det.severity] ?? SEV_CHIP.low;
 
   // Load the full session so triggering events resolve even when they fall
   // outside the tail window the list was built from.
@@ -554,65 +552,64 @@ function DetectionDetail({
   }, [det.correlation_id, det.event_ids]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-card/40">
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${sev}`}>
-            {det.severity}
-          </span>
-          <span className="truncate font-mono text-[10px] text-muted-foreground">{det.rule_id}</span>
+          <SeverityBadge severity={det.severity} />
+          <span className="truncate font-mono text-[12px] text-muted-foreground">{det.rule_id}</span>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded border border-border p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           aria-label="Close detection"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        <div>
-          <p className="text-sm font-medium text-foreground">{det.title || det.rule_id}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{det.summary}</p>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        <div className="space-y-1.5">
+          <p className="text-[16px] font-semibold leading-snug text-foreground">{det.title || det.rule_id}</p>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{det.summary}</p>
         </div>
 
         {chain?.length ? (
           <div>
-            <p className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">Why it fired</p>
-            <div className="flex flex-wrap items-center gap-1 font-mono text-[10px]">
-              {chain.map((t, i) => (
-                <span key={`${t}-${i}`} className="inline-flex items-center gap-1">
-                  {i > 0 ? <ArrowRight className="h-3 w-3 text-muted-foreground/50" /> : null}
-                  <span className="rounded bg-muted px-1.5 py-0.5">{t}</span>
-                </span>
-              ))}
-            </div>
+            <p className="eyebrow mb-2">Why it fired</p>
+            <TechniqueChain ids={chain} />
           </div>
         ) : null}
 
-        <div className="flex items-center gap-3 border-t border-border/50 pt-2 font-mono text-[10px] text-muted-foreground">
-          <span title={det.correlation_id}>{shortSession(det.correlation_id)}</span>
-          <span>{formatTime(det.first_seen_utc)}</span>
-        </div>
+        <dl className="grid grid-cols-2 gap-4">
+          <div className="min-w-0">
+            <dt className="eyebrow">Session</dt>
+            <dd className="mt-1 truncate font-mono text-[12px]" title={det.correlation_id}>
+              {shortSession(det.correlation_id)}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="eyebrow">First seen</dt>
+            <dd className="mt-1 truncate font-mono text-[12px]">{formatTime(det.first_seen_utc)}</dd>
+          </div>
+        </dl>
 
         <TriagePanel det={det} disposition={disposition} onSaved={onDispositionSaved} />
 
         <div>
-          <p className="mb-1.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+          <p className="eyebrow mb-2">
             Triggered by {det.event_ids.length} event{det.event_ids.length === 1 ? "" : "s"}
           </p>
           {loading ? (
-            <p className="py-4 text-center text-xs text-muted-foreground">Loading events…</p>
+            <p className="py-4 text-center text-[12px] text-muted-foreground">Loading events…</p>
           ) : error ? (
-            <p className="py-4 text-center text-xs text-red-500 dark:text-red-400">{error}</p>
+            <p className="py-4 text-center text-[12px] text-danger">{error}</p>
           ) : trigger.length === 0 ? (
-            <p className="py-4 text-center text-xs text-muted-foreground">
+            <p className="py-4 text-center text-[12px] text-muted-foreground">
               Triggering events are no longer in the trail.
             </p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {trigger.map((e) => (
                 <TriggerEventCard key={e.event_id} event={e} />
               ))}
@@ -621,15 +618,15 @@ function DetectionDetail({
         </div>
       </div>
 
-      <div className="border-t border-border/60 p-3">
+      <div className="border-t border-border p-3">
         <button
           type="button"
           onClick={onOpenInStream}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="btn w-full"
           title="Open the whole session in the event stream"
         >
-          <ExternalLink className="h-3 w-3" />
-          View entire session in event stream
+          <ExternalLink className="h-3.5 w-3.5" />
+          View session in event stream
         </button>
       </div>
     </div>
@@ -641,23 +638,20 @@ function TriggerEventCard({ event }: { event: AuditEvent }) {
   const m = event.tool?.mitre;
   const tool = event.tool?.qualified || event.tool?.name || event.action?.type || "event";
   return (
-    <div className="space-y-1.5 rounded border border-border/60 bg-background/50 p-2">
-      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-        <span className="font-mono text-muted-foreground">{formatTime(event.timestamp_utc)}</span>
-        <span className={`rounded px-1 py-0.5 uppercase tracking-wide ${sourceBadgeClass(app)}`}>
+    <div className="space-y-2 rounded-sm border border-border bg-background p-2.5">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="font-mono text-subtle">{formatTime(event.timestamp_utc)}</span>
+        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+          <span className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(app)}`} />
           {sourceLabel(app)}
         </span>
-        {m?.technique_id ? (
-          <span className="rounded bg-muted px-1 py-0.5 font-mono text-red-700 dark:text-red-300">
-            {m.technique_id}
-          </span>
-        ) : null}
+        <span className="truncate font-mono text-foreground" title={tool}>
+          {tool}
+        </span>
+        {m?.technique_id ? <Technique id={m.technique_id} /> : null}
       </div>
-      <p className="truncate font-mono text-xs text-foreground" title={tool}>
-        {tool}
-      </p>
       {event.tool?.command ? (
-        <pre className="overflow-x-auto rounded border border-border bg-background p-1.5 font-mono text-[10px] text-foreground/90">
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-foreground">
           {event.tool.command}
         </pre>
       ) : null}

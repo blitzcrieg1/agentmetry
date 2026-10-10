@@ -38,9 +38,9 @@ export interface DogfoodReport {
 }
 
 export const VERDICT_CHIP: Record<Verdict, string> = {
-  GREEN: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300",
-  RED: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
-  "IN PROGRESS": "bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300",
+  GREEN: "bg-secure/10 text-secure ring-secure/40",
+  RED: "bg-danger/10 text-danger ring-danger/40",
+  "IN PROGRESS": "bg-muted text-foreground ring-border",
 };
 
 /** Weeks still to go. Never negative, and zero once the gate is met. */

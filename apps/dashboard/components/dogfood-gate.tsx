@@ -32,7 +32,7 @@ export function DogfoodGate() {
 
   if (error && !report) {
     return (
-      <div className="rounded-lg border border-border bg-card/40 p-3 text-xs text-muted-foreground">
+      <div className="panel px-4 py-3 text-[13px] text-muted-foreground">
         Beta gate unavailable: {error}
       </div>
     );
@@ -41,12 +41,13 @@ export function DogfoodGate() {
 
   if (!report.started) {
     return (
-      <div className="rounded-lg border border-border bg-card/40 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Beta gate</p>
-        <p className="mt-1 text-sm text-foreground">The dogfood clock has not started.</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Start it with <code className="rounded bg-muted px-1">agentmetry dogfood --start</code>.
-          Four consecutive green weeks.
+      <div className="panel px-4 py-3.5">
+        <p className="eyebrow">Beta gate</p>
+        <p className="mt-1.5 text-[14px] font-medium text-foreground">The dogfood clock has not started.</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Start it with{" "}
+          <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[12px] text-foreground">agentmetry dogfood --start</code>.
+          The gate is four consecutive green weeks.
         </p>
       </div>
     );
@@ -56,15 +57,13 @@ export function DogfoodGate() {
   const attention = needsAttention(report);
 
   return (
-    <div className="rounded-lg border border-border bg-card/40">
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <CalendarCheck className="h-4 w-4 text-muted-foreground" />
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Beta gate
-          </span>
+    <div className="panel">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <CalendarCheck className="h-4 w-4 text-subtle" />
+          <span className="text-[14px] font-semibold">Beta gate</span>
           <span
-            className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
+            className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-medium uppercase ring-1 ring-inset ${
               report.passed
                 ? VERDICT_CHIP.GREEN
                 : attention
@@ -80,58 +79,64 @@ export function DogfoodGate() {
         <button
           type="button"
           onClick={() => void load()}
-          className="rounded border border-border p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           aria-label="Refresh beta gate"
         >
           <RefreshCw className="h-3 w-3" />
         </button>
       </div>
 
-      <div className="space-y-1.5 p-3">
+      <div className="px-4 py-2">
+        <div className="hidden items-center gap-4 border-b border-border py-2 sm:flex">
+          <span className="eyebrow w-16 shrink-0">Week</span>
+          <span className="eyebrow w-48 shrink-0">Dates</span>
+          <span className="eyebrow min-w-0 flex-1">Activity</span>
+          <span className="eyebrow w-28 shrink-0 text-right">Verdict</span>
+        </div>
         {report.weeks.map((week) => (
-          <div key={week.index}>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-14 shrink-0 text-muted-foreground">Week {week.index}</span>
-              <span className="w-40 shrink-0 font-mono text-[10px] text-muted-foreground">
+          <div key={week.index} className="border-b border-border py-2 last:border-b-0">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+              <span className="w-16 shrink-0 font-medium">Week {week.index}</span>
+              <span className="w-48 shrink-0 font-mono text-[12px] text-muted-foreground">
                 {week.start} to {week.end}
               </span>
-              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                {week.active_days}d · {week.events} ev · {week.detections} det
+              <span className="min-w-0 flex-1 font-mono text-[12px] text-muted-foreground">
+                {week.active_days} days, {week.events} events, {week.detections} detections
+                {week.untriaged > 0 ? (
+                  <span className="ml-2 text-caution">{week.untriaged} untriaged</span>
+                ) : null}
               </span>
-              {week.untriaged > 0 ? (
-                <span className="shrink-0 font-mono text-[10px] text-amber-600 dark:text-amber-400">
-                  {week.untriaged} untriaged
+              <span className="w-28 shrink-0 text-right">
+                <span
+                  className={`inline-flex rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-medium ring-1 ring-inset ${
+                    VERDICT_CHIP[week.verdict]
+                  }`}
+                >
+                  {week.verdict}
                 </span>
-              ) : null}
-              <span
-                className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-                  VERDICT_CHIP[week.verdict]
-                }`}
-              >
-                {week.verdict}
               </span>
             </div>
             {week.reasons.map((reason) => (
-              <p key={reason} className="pl-16 text-[10px] text-red-600 dark:text-red-400">
+              <p key={reason} className="mt-1 text-[12px] text-danger sm:pl-20">
                 {reason}
               </p>
             ))}
           </div>
         ))}
 
-        <p className="border-t border-border/50 pt-2 text-[10px] leading-relaxed text-muted-foreground">
+        <p className="border-t border-border py-3 text-[12px] leading-relaxed text-muted-foreground">
           {report.passed
             ? "Four consecutive green weeks recorded."
             : `${remaining} more green week${remaining === 1 ? "" : "s"} needed. A week is green when the recorder ran on at least three days, the trail chain verifies, every critical or high detection was dispositioned, and nothing is stuck in the hook spool.`}
         </p>
 
         {!report.chain_ok ? (
-          <p className="text-[10px] text-red-600 dark:text-red-400">
+          <p className="pb-3 text-[12px] text-danger">
             Trail chain does not verify: {report.chain_message}
           </p>
         ) : null}
         {report.spooled > 0 ? (
-          <p className="text-[10px] text-amber-600 dark:text-amber-400">
+          <p className="pb-3 text-[12px] text-caution">
             {report.spooled} event(s) stuck in the hook spool; the orchestrator is not draining
             them.
           </p>
