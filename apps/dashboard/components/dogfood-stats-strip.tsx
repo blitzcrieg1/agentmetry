@@ -34,16 +34,16 @@ function StatPill({
   onClick?: () => void;
   title?: string;
 }) {
-  const className = `rounded-md border border-border bg-card px-3 py-2 text-left transition ${
+  const className = `panel px-4 py-3 text-left transition-colors ${
     onClick
-      ? "cursor-pointer hover:border-foreground/30 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      ? "cursor-pointer hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30"
       : ""
   }`;
 
   const body = (
     <>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${accent ? "text-amber-500" : ""}`}>
+      <div className="text-[12px] font-medium text-muted-foreground">{label}</div>
+      <div className={`mt-1 text-[24px] font-semibold leading-tight tabular-nums ${accent ? "text-caution" : ""}`}>
         {value}
       </div>
     </>
@@ -86,8 +86,8 @@ export function DogfoodStatsStrip() {
 
   if (error) {
     return (
-      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-        Weekly stats unavailable — is the orchestrator running?
+      <div className="panel px-4 py-3 text-[13px] text-muted-foreground">
+        Weekly stats unavailable. Is the orchestrator running?
       </div>
     );
   }
@@ -104,15 +104,15 @@ export function DogfoodStatsStrip() {
   const open = (kind: FeedFocusKind) => () => requestFeedFocus(kind);
 
   return (
-    <section className="rounded-lg border border-border bg-muted/20 p-4">
+    <section>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-medium">Dogfood — last {days} days</h2>
-        <span className="text-xs text-muted-foreground">
-          Click a count to open the matching events ·{" "}
-          <code className="text-[11px]">agentmetry stats --days {days}</code>
+        <h2 className="text-[15px] font-semibold">Last {days} days</h2>
+        <span className="text-[12px] text-subtle">
+          Click a count to open the matching events. Same numbers as{" "}
+          <code className="font-mono text-[11px] text-muted-foreground">agentmetry stats --days {days}</code>
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatPill
           label="Events"
           value={String(stats.total_events ?? 0)}
@@ -148,7 +148,7 @@ export function DogfoodStatsStrip() {
         />
       </div>
       {sources ? (
-        <p className="mt-3 text-xs text-muted-foreground">By source: {sources}</p>
+        <p className="mt-2.5 text-[12px] text-muted-foreground">By source: {sources}</p>
       ) : null}
     </section>
   );

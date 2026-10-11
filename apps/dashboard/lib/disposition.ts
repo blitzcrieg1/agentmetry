@@ -47,12 +47,12 @@ export const STATUS_LABELS: Record<string, string> = {
 };
 
 export const STATUS_CHIP: Record<string, string> = {
-  new: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
-  acknowledged: "bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300",
-  in_progress: "bg-violet-500/15 text-violet-700 ring-violet-500/30 dark:text-violet-300",
-  resolved: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300",
-  false_positive: "bg-slate-500/15 text-slate-600 ring-slate-500/30 dark:text-slate-300",
-  risk_accepted: "bg-orange-500/15 text-orange-700 ring-orange-500/30 dark:text-orange-300",
+  new: "bg-caution/10 text-caution ring-caution/40",
+  acknowledged: "bg-muted text-foreground ring-border",
+  in_progress: "bg-signal/10 text-signal ring-signal/40",
+  resolved: "bg-secure/10 text-secure ring-secure/40",
+  false_positive: "bg-muted text-muted-foreground ring-border",
+  risk_accepted: "bg-muted text-caution ring-caution/30",
 };
 
 export interface DispositionEntry {

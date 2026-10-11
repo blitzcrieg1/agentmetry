@@ -24,17 +24,26 @@ import { ProcessTree } from "./process-tree";
 import { DogfoodStatsStrip } from "./dogfood-stats-strip";
 import { DogfoodGate } from "./dogfood-gate";
 
-const OUTCOME_COLORS: Record<string, string> = {
-  success: "#34d399",
-  pending: "#fbbf24",
-  denied: "#f87171",
-  error: "#f87171",
+// Recharts writes these as SVG attributes, where var() does not resolve, so
+// they go through style instead. Same tokens as everywhere else.
+const OUTCOME_FILL: Record<string, string> = {
+  Success: "hsl(var(--secure))",
+  Pending: "hsl(var(--caution))",
+  Issues: "hsl(var(--danger))",
 };
 
 const CHART_TOOLTIP = {
-  contentStyle: { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: "12px" },
+  contentStyle: {
+    backgroundColor: "hsl(var(--popover))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: "3px",
+    fontSize: "12px",
+  },
   itemStyle: { color: "hsl(var(--foreground))" },
+  labelStyle: { color: "hsl(var(--muted-foreground))" },
 };
+
+const AXIS_TICK = { fill: "hsl(var(--muted-foreground))", fontSize: 11 };
 
 type WeekStats = {
   enabled: boolean;
@@ -159,17 +168,17 @@ export function AnalyticsPanel() {
 
   if (loading) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg border border-border bg-card/20">
-        <p className="text-sm text-muted-foreground">Loading analytics…</p>
+      <div className="panel flex min-h-0 flex-1 items-center justify-center">
+        <p className="text-[13px] text-muted-foreground">Loading analytics…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-card/20">
-        <p className="text-sm text-red-500 dark:text-red-400">Failed to load analytics</p>
-        <p className="font-mono text-xs text-muted-foreground">{error}</p>
+      <div className="panel flex min-h-0 flex-1 flex-col items-center justify-center gap-1">
+        <p className="text-[13px] text-danger">Failed to load analytics</p>
+        <p className="font-mono text-[12px] text-muted-foreground">{error}</p>
       </div>
     );
   }
@@ -177,81 +186,66 @@ export function AnalyticsPanel() {
   const days = week?.window_days ?? 7;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg border border-border bg-card/20">
-      <div className="border-b border-border/60 px-4 py-3">
-        <p className="text-sm font-semibold tracking-tight">Overview</p>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Last {days} days · same counts as dogfood pills below
-        </p>
-      </div>
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 pb-2">
+      <DogfoodStatsStrip />
+      <DogfoodGate />
 
-      <div className="border-b border-border/60 px-4 py-3">
-        <DogfoodStatsStrip />
-      </div>
-
-      <div className="border-b border-border/60 px-4 py-3">
-        <DogfoodGate />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 border-b border-border/60 px-4 py-3 sm:grid-cols-4">
-        <StatCard label="Events (7d)" value={String(week?.total_events ?? 0)} />
-        <StatCard label="Sessions (7d)" value={String(week?.sessions ?? 0)} />
-        <StatCard
-          label="Detections (7d)"
-          value={String(week?.detections ?? 0)}
-          accent={(week?.detections ?? 0) > 0}
-        />
-        <StatCard
-          label="Denied (7d)"
-          value={String(week?.denied ?? 0)}
-          accent={(week?.denied ?? 0) > 0}
-        />
-      </div>
-
-      <div className="border-b border-border/60 px-4 py-2">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Charts below sample the newest {chartStats.sampleTotal} events (not the full week)
+      <div className="flex items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-[15px] font-semibold">Recent activity</h2>
+        <p className="text-[12px] text-subtle">
+          Charts sample the newest {chartStats.sampleTotal} events, not the full week
         </p>
       </div>
 
       <EventHistogram events={events} />
 
-      <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-        <ChartCard title="Action outcomes (sample)">
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartStats.pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {chartStats.pieData.map((entry, index) => {
-                    let color = OUTCOME_COLORS.success;
-                    if (entry.name === "Pending") color = OUTCOME_COLORS.pending;
-                    if (entry.name === "Issues") color = OUTCOME_COLORS.denied;
-                    return <Cell key={`cell-${index}`} fill={color} />;
-                  })}
-                </Pie>
-                <RechartsTooltip {...CHART_TOOLTIP} />
-              </PieChart>
-            </ResponsiveContainer>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <ChartCard title="Action outcomes" note="sample">
+          <div className="flex h-48 w-full items-center gap-6">
+            <div className="h-full min-w-0 flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartStats.pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={52}
+                    outerRadius={72}
+                    paddingAngle={2}
+                    stroke="none"
+                    dataKey="value"
+                  >
+                    {chartStats.pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} style={{ fill: OUTCOME_FILL[entry.name] ?? OUTCOME_FILL.Success }} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip {...CHART_TOOLTIP} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <ul className="w-32 shrink-0 space-y-2 text-[12px]">
+              {chartStats.pieData.map((d) => (
+                <li key={d.name} className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full" style={{ background: OUTCOME_FILL[d.name] }} />
+                    {d.name}
+                  </span>
+                  <span className="font-mono text-foreground">{d.value}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </ChartCard>
 
-        <ChartCard title="Activity by source (7d)">
+        <ChartCard title="Activity by source" note={`${days} days`}>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartStats.sourceData} layout="vertical" margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
-                <XAxis type="number" className="text-muted-foreground" fontSize={10} />
-                <YAxis dataKey="name" type="category" className="text-muted-foreground" fontSize={10} width={70} />
-                <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              <BarChart data={chartStats.sourceData} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <YAxis dataKey="name" type="category" tick={AXIS_TICK} axisLine={false} tickLine={false} width={80} />
+                <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.6 }} />
+                <Bar dataKey="value" radius={[0, 2, 2, 0]} barSize={14}>
                   {chartStats.sourceData.map((entry) => (
                     <Cell key={entry.key} fill={sourceChartColor(entry.key)} />
                   ))}
@@ -261,33 +255,37 @@ export function AnalyticsPanel() {
           </div>
         </ChartCard>
 
-        <ChartCard title="MITRE ATT&CK tactics (sample)" className="md:col-span-2">
+        <ChartCard title="MITRE ATT&CK tactics" note="sample" className="md:col-span-2">
           {chartStats.mitreData.length > 0 ? (
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartStats.mitreData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                  <XAxis dataKey="name" className="text-muted-foreground" fontSize={10} />
-                  <YAxis className="text-muted-foreground" fontSize={10} />
-                  <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-                  <Bar dataKey="value" fill="#f87171" radius={[4, 4, 0, 0]} />
+                <BarChart data={chartStats.mitreData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                  <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <RechartsTooltip {...CHART_TOOLTIP} cursor={{ fill: "hsl(var(--muted))", opacity: 0.6 }} />
+                  <Bar dataKey="value" radius={[2, 2, 0, 0]} barSize={28} style={{ fill: "hsl(var(--signal))" }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           ) : (
             <div className="flex h-48 items-center justify-center">
-              <p className="text-xs text-muted-foreground">No MITRE tactics logged in this sample.</p>
+              <p className="text-[12px] text-subtle">No MITRE tactics logged in this sample.</p>
             </div>
           )}
         </ChartCard>
       </div>
 
-      <div className="border-t border-border/60 p-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Search className="h-3.5 w-3.5 text-muted-foreground" />
-          <p className="text-sm font-semibold tracking-tight">Process tree</p>
+      <section className="panel">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+          <Search className="h-4 w-4 text-subtle" />
+          <div className="min-w-0">
+            <h3 className="text-[14px] font-semibold">Session timeline</h3>
+            <p className="text-[12px] text-muted-foreground">Every call in one session, in order</p>
+          </div>
           <select
-            className="ml-auto rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-xs text-muted-foreground"
+            aria-label="Session"
+            className="control ml-auto max-w-full font-mono text-[12px]"
             value={selectedSession}
             onChange={(e) => setSelectedSession(e.target.value)}
           >
@@ -299,39 +297,37 @@ export function AnalyticsPanel() {
             ))}
           </select>
         </div>
-        {selectedSession ? (
-          <ProcessTree events={treeEvents} />
-        ) : (
-          <p className="py-8 text-center text-xs text-muted-foreground">
-            Pick a session from the sample above to render its horizontal timeline.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="rounded-md border border-border bg-card px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${accent ? "text-amber-500" : ""}`}>{value}</div>
+        <div className="p-4">
+          {selectedSession ? (
+            <ProcessTree events={treeEvents} />
+          ) : (
+            <p className="py-8 text-center text-[12px] text-subtle">
+              Pick a session to lay out its calls on a timeline.
+            </p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
 function ChartCard({
   title,
+  note,
   children,
   className = "",
 }: {
   title: string;
+  note?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-border bg-card/40 p-3 ${className}`}>
-      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
+    <div className={`panel p-4 ${className}`}>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <p className="text-[13px] font-medium">{title}</p>
+        {note ? <p className="text-[11px] text-subtle">{note}</p> : null}
+      </div>
       {children}
     </div>
   );

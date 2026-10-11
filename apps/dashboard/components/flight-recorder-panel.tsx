@@ -11,7 +11,7 @@ import {
   Square,
   Wrench,
   XCircle,
-  Settings2, ArrowUp, ArrowDown, Eye, EyeOff
+  Settings2, ArrowUp, ArrowDown, Eye, EyeOff, RefreshCw
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
@@ -28,9 +28,10 @@ import { apiHeaders } from "@/lib/api";
 import {
   ALL_SOURCE_APPS,
   eventSourceApp,
-  sourceBadgeClass,
+  sourceDotClass,
   sourceLabel,
 } from "@/lib/audit-source";
+import { EmptyState, Segmented, Technique } from "@/components/ui/kit";
 import { DetectionsStrip } from "@/components/detections-strip";
 import { EventHistogram } from "@/components/event-histogram";
 import { EventInspector } from "@/components/event-inspector";
@@ -117,10 +118,9 @@ function mergeEvents(
 
 function SourceBadge({ app }: { app: string }) {
   return (
-    <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-xs uppercase tracking-wide ${sourceBadgeClass(app)}`}
-    >
-      {sourceLabel(app)}
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${sourceDotClass(app)}`} />
+      <span className="truncate">{sourceLabel(app)}</span>
     </span>
   );
 }
@@ -146,37 +146,37 @@ function formatTime(ts?: string): string {
 function outcomeDot(outcome?: string): string {
   switch (outcome) {
     case "success":
-      return "bg-emerald-400";
-    case "critical":  // detection severity
-      return "bg-red-500 animate-pulse";
+      return "bg-secure";
+    case "critical": // detection severity
+      return "bg-danger";
     case "high":
-    case "medium":    // detection severity
-      return "bg-amber-400";
+      return "bg-signal";
+    case "medium": // detection severity
+      return "bg-caution";
     case "denied":
     case "error":
-      return "bg-red-400";
+      return "bg-danger";
     case "pending":
-      return "bg-amber-400 animate-pulse";
+      return "bg-caution animate-pulse";
     default:
-      return "bg-slate-500";
+      return "bg-subtle";
   }
 }
 
 function rowOutcomeClass(outcome?: string, highlight?: boolean): string {
-  if (highlight) return "border-emerald-500/40 bg-emerald-50/80 dark:bg-emerald-950/25";
+  if (highlight) return "bg-signal/[0.06]";
   switch (outcome) {
     case "critical":
-      return "border-red-500/70 bg-red-50 dark:bg-red-950/40";
+      return "bg-danger/[0.07] shadow-[inset_2px_0_0_hsl(var(--danger))]";
     case "high":
+      return "bg-signal/[0.06] shadow-[inset_2px_0_0_hsl(var(--signal))]";
     case "medium":
-      return "border-amber-500/60 bg-amber-50 dark:bg-amber-950/25";
+      return "bg-caution/[0.06] shadow-[inset_2px_0_0_hsl(var(--caution))]";
     case "denied":
     case "error":
-      return "border-red-400/50 bg-red-50 dark:bg-red-950/20";
-    case "pending":
-      return "border-amber-400/40 bg-amber-50 dark:bg-amber-950/15";
+      return "bg-danger/[0.04]";
     default:
-      return "border-border bg-card/60 dark:bg-slate-950/40";
+      return "";
   }
 }
 
@@ -215,87 +215,95 @@ export interface ColumnDef {
   render: (event: AuditEvent, formatTime: (t?: string) => string, type: string, outcome: string, Icon: any, sourceApp: string) => React.ReactNode;
 }
 
+const CELL_MUTED = "truncate font-mono text-[12px] text-subtle";
+const CELL = "truncate font-mono text-[12px] text-muted-foreground";
+const DASH = <span className="text-subtle">—</span>;
+
 export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   time: {
-    id: "time", label: "Time", widthClass: "w-32",
-    render: (e, f) => <div className="truncate text-slate-500 dark:text-slate-400">{f(e.timestamp_utc)}</div>
+    id: "time", label: "Time", widthClass: "w-24",
+    render: (e, f) => <div className={CELL_MUTED}>{f(e.timestamp_utc)}</div>
   },
   action: {
-    id: "action", label: "Action", widthClass: "w-40",
-    render: (e, f, type, outcome, Icon) => (
-      <div className="flex items-center gap-1.5 truncate text-emerald-700 dark:text-emerald-300">
+    id: "action", label: "Action", widthClass: "w-32",
+    render: (e, f, type, outcome) => (
+      <div className={`flex items-center gap-2 truncate font-mono text-[12px] ${type === "detection" ? "font-medium text-danger" : "text-foreground"}`}>
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${outcomeDot(outcome)}`} />
-        <Icon className="h-3 w-3 shrink-0 text-emerald-400/80" />
         <span className="truncate">{type}</span>
       </div>
     )
   },
   tool: {
-    id: "tool", label: "Tool", widthClass: "w-40",
-    render: (e) => <div className="truncate text-slate-700 dark:text-slate-300" title={e.tool?.qualified || e.tool?.name || ""}>{e.tool?.qualified || e.tool?.name || "—"}</div>
+    id: "tool", label: "Tool", widthClass: "w-32",
+    render: (e) => <div className="truncate font-mono text-[12px] text-foreground" title={e.tool?.qualified || e.tool?.name || ""}>{e.tool?.qualified || e.tool?.name || DASH}</div>
   },
   mitre: {
-    id: "mitre", label: "Mitre", widthClass: "w-40",
+    id: "mitre", label: "MITRE", widthClass: "w-24",
     render: (e) => {
       const m = e.tool?.mitre;
-      if (!m) return <div className="text-muted-foreground text-base">—</div>;
+      if (!m) return <div className="text-[12px]">{DASH}</div>;
       const cred = m.tactic_id === "TA0006" || m.tactic_id === "TA0010"; // credential access / exfil = high signal
       return (
-        <div className="truncate text-base" title={`${m.tactic} — ${m.technique}${m.technique_id ? ` (${m.technique_id})` : ""}`}>
-          <span className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-mono font-medium ring-1 ring-inset ${
-            cred
-              ? "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/20"
-              : "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20"
-          }`}>
-            {m.technique_id || m.tactic?.split(" ")[0] || "—"}
-          </span>
+        <div className="truncate" title={`${m.tactic}: ${m.technique}${m.technique_id ? ` (${m.technique_id})` : ""}`}>
+          <Technique id={m.technique_id || m.tactic?.split(" ")[0] || "—"} tone={cred ? "alert" : "default"} />
         </div>
       );
     }
   },
   command: {
     id: "command", label: "Command", widthClass: "min-w-[200px] flex-1",
-    render: (e) => <div className="truncate text-muted-foreground font-mono text-base" title={e.tool?.command || ""}>{e.tool?.command || "—"}</div>
+    render: (e, f, type) =>
+      type === "detection" ? (
+        <div className="truncate text-[13px] font-medium text-foreground" title={e.detection?.title || e.action?.reason || ""}>
+          {e.detection?.title || e.action?.reason || "—"}
+        </div>
+      ) : (
+        <div className={CELL} title={e.tool?.command || ""}>{e.tool?.command || DASH}</div>
+      )
   },
   source: {
-    id: "source", label: "Source", widthClass: "w-28",
+    id: "source", label: "Source", widthClass: "w-24",
     render: (e, f, t, o, i, sourceApp) => <div className="truncate"><SourceBadge app={sourceApp} /></div>
   },
   actor: {
-    id: "actor", label: "Actor", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm" title={e.actor?.id || ""}>{e.actor?.id || "—"}</div>
+    id: "actor", label: "Actor", widthClass: "w-24",
+    render: (e) => <div className={CELL_MUTED} title={e.actor?.id || ""}>{e.actor?.id || "—"}</div>
   },
   correlation_id: {
     id: "correlation_id", label: "Session ID", widthClass: "w-40",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm" title={e.correlation_id || ""}>{e.correlation_id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED} title={e.correlation_id || ""}>{e.correlation_id || "—"}</div>
   },
   agent: {
     id: "agent", label: "Agent Name", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.agent?.name || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.agent?.name || "—"}</div>
   },
   initiator: {
     id: "initiator", label: "Initiator", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.initiator?.operator_id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.initiator?.operator_id || "—"}</div>
   },
   model: {
     id: "model", label: "Model ID", widthClass: "w-40",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.model?.id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.model?.id || "—"}</div>
   },
   skill: {
     id: "skill", label: "Skill", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.agent?.skill_id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.agent?.skill_id || "—"}</div>
   },
   host_id: {
     id: "host_id", label: "Host", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.host_id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.host_id || "—"}</div>
   },
   reason: {
-    id: "reason", label: "Reason / Error", widthClass: "w-64",
-    render: (e) => <div className="truncate text-red-500 dark:text-red-400 text-sm" title={e.action?.reason || ""}>{e.action?.reason || "—"}</div>
+    id: "reason", label: "Reason / Error", widthClass: "w-44",
+    render: (e, f, type) => (
+      <div className={`truncate text-[12px] ${type === "detection" ? "text-muted-foreground" : "text-danger"}`} title={e.action?.reason || ""}>
+        {e.action?.reason || DASH}
+      </div>
+    )
   },
   mcp_server: {
     id: "mcp_server", label: "MCP Server", widthClass: "w-32",
-    render: (e) => <div className="truncate text-slate-500 dark:text-slate-400 text-sm">{e.mcp?.server_id || "—"}</div>
+    render: (e) => <div className={CELL_MUTED}>{e.mcp?.server_id || "—"}</div>
   }
 };
 
@@ -360,8 +368,9 @@ function EventRow({
   return (
     <button
       type="button"
-      className={`flex w-full items-center gap-4 border px-4 py-2.5 text-left font-mono text-base transition ${rowOutcomeClass(outcome, highlight)} ${
-        selected ? "ring-1 ring-emerald-500/60 bg-emerald-50/80 dark:bg-emerald-950/20" : "hover:bg-muted/30"
+      aria-pressed={selected}
+      className={`flex w-full items-center gap-3 border-b border-border px-4 py-2 text-left transition-colors last:border-b-0 ${
+        selected ? "bg-muted shadow-[inset_2px_0_0_hsl(var(--signal))]" : `${rowOutcomeClass(outcome, highlight)} hover:bg-muted/60`
       }`}
       onClick={() => onSelect(event)}
     >
@@ -382,21 +391,25 @@ function FilterChip({
   active,
   label,
   onClick,
+  dot,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  dot: string;
 }) {
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
-      className={`rounded px-2.5 py-1 text-base transition ${
+      className={`inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-[12px] font-medium transition-colors ${
         active
-          ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-600/30 dark:bg-emerald-900/50 dark:text-emerald-200 dark:ring-emerald-500/30"
-          : "bg-slate-100 text-slate-500 hover:text-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-slate-300"
+          ? "border-border bg-card text-foreground hover:border-foreground/25"
+          : "border-dashed border-border text-subtle hover:text-muted-foreground"
       }`}
     >
+      <span className={`h-1.5 w-1.5 rounded-full ${active ? dot : "bg-subtle/40"}`} />
       {label}
     </button>
   );
@@ -764,166 +777,152 @@ export function FlightRecorderPanel() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card/20">
-      <div className="space-y-3 border-b border-border/60 px-3 py-3">
-        {huntFocus ? (
-          <div className="flex items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-100">
-            <span>
-              Focus:{" "}
-              <span className="font-medium">{FEED_FOCUS_LABELS[huntFocus]}</span>
-              <span className="ml-2 text-amber-800/80 dark:text-amber-200/80">
-                · last 7 days · fleet · up to 500 rows · click a row for reason / tool
-              </span>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {huntFocus ? (
+        <div className="flex items-center justify-between gap-3 rounded-sm border border-caution/40 bg-caution/10 px-3 py-2 text-[13px]">
+          <span className="min-w-0 truncate">
+            <span className="font-medium text-caution">Focus: {FEED_FOCUS_LABELS[huntFocus]}</span>
+            <span className="ml-2 text-muted-foreground">
+              Last 7 days, fleet-wide, up to 500 rows. Click a row for the reason and tool.
             </span>
-            <button
-              type="button"
-              onClick={clearActiveFocus}
-              className="shrink-0 rounded border border-amber-400/50 px-2 py-0.5 text-xs uppercase tracking-wider hover:bg-amber-100 dark:hover:bg-amber-900/40"
-            >
-              Clear
-            </button>
-          </div>
-        ) : null}
-        {sessionView ? (
-          <div className="flex items-center justify-between gap-2 rounded border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-950/30 dark:text-sky-200">
-            <span className="truncate font-mono">
-              Session <span className="text-sky-700 dark:text-sky-300">{sessionView}</span>
-              {sessionTruncated ? (
-                <span className="ml-2 text-sky-700/80 dark:text-sky-300/80">· first 2000 events</span>
-              ) : null}
-            </span>
-            <button
-              type="button"
-              onClick={() => void exitSession()}
-              className="shrink-0 rounded border border-sky-400/40 px-2 py-0.5 transition hover:bg-sky-100 dark:hover:bg-sky-900/40"
-            >
-              Back to live
-            </button>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[12rem] flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search tool, command, session, hash…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-2 text-base text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
-            />
-          </div>
-          <select
-            className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground"
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-          >
-            <option value="all">All sources</option>
-            {ALL_SOURCE_APPS.map((s) => (
-              <option key={s} value={s}>
-                {sourceLabel(s)}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground"
-            value={eventTypeFilter}
-            onChange={(e) => setEventTypeFilter(e.target.value)}
-          >
-            <option value="all">All types</option>
-            {EVENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <div className="flex rounded-md border border-border p-0.5">
-            <FilterChip
-              active={fleetScope}
-              label="Fleet"
-              onClick={() => setFleetScope(true)}
-            />
-            <FilterChip
-              active={!fleetScope}
-              label="This session"
-              onClick={() => setFleetScope(false)}
-            />
-          </div>
-          {TIME_WINDOWS.map((w, i) => (
-            <FilterChip
-              key={w.label}
-              active={!huntFocus && timeWindowIdx === i}
-              label={w.label}
-              onClick={() => {
-                if (huntFocus) return;
-                setTimeWindowIdx(i);
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">Outcome</span>
-          <FilterChip active={outcomeFilters.success} label="OK" onClick={() => toggleOutcome("success")} />
-          <FilterChip active={outcomeFilters.pending} label="Pending" onClick={() => toggleOutcome("pending")} />
-          <FilterChip active={outcomeFilters.issues} label="Issues" onClick={() => toggleOutcome("issues")} />
-          <span className="ml-2 font-mono text-xs text-muted-foreground">
-            {displayEvents.length} shown
-            {huntFocus ? " · hunt" : fleetScope ? " · fleet" : " · this session"}
-            {sessionView ? " · pinned session" : !atLatest ? " · history" : ""}
           </span>
+          <button type="button" onClick={clearActiveFocus} className="btn h-7 shrink-0">
+            Clear
+          </button>
         </div>
+      ) : null}
+      {sessionView ? (
+        <div className="flex items-center justify-between gap-3 rounded-sm border border-signal/40 bg-signal/[0.08] px-3 py-2 text-[13px]">
+          <span className="min-w-0 truncate">
+            <span className="text-muted-foreground">Pinned session</span>{" "}
+            <span className="font-mono font-medium text-foreground">{sessionView}</span>
+            {sessionTruncated ? (
+              <span className="ml-2 text-muted-foreground">First 2000 events</span>
+            ) : null}
+          </span>
+          <button type="button" onClick={() => void exitSession()} className="btn h-7 shrink-0">
+            Back to live
+          </button>
+        </div>
+      ) : null}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-3">
-          <button
-            type="button"
-            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            onClick={() => downloadAuditJsonl(displayEvents)}
-          >
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-[16rem] flex-1">
+          <span className="sr-only">Search events</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <input
+            type="search"
+            placeholder="Search tool, command, session or hash"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="control w-full pl-8 placeholder:text-subtle"
+          />
+        </label>
+        <select
+          aria-label="Source"
+          className="control"
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+        >
+          <option value="all">All sources</option>
+          {ALL_SOURCE_APPS.map((s) => (
+            <option key={s} value={s}>
+              {sourceLabel(s)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Event type"
+          className="control"
+          value={eventTypeFilter}
+          onChange={(e) => setEventTypeFilter(e.target.value)}
+        >
+          <option value="all">All types</option>
+          {EVENT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <Segmented
+          label="Scope"
+          items={[
+            { value: "fleet", label: "Fleet" },
+            { value: "session", label: "This session" },
+          ]}
+          value={fleetScope ? "fleet" : "session"}
+          onChange={(v) => setFleetScope(v === "fleet")}
+        />
+        <Segmented
+          label="Time window"
+          items={TIME_WINDOWS.map((w, i) => ({ value: String(i), label: w.label }))}
+          value={huntFocus ? null : String(timeWindowIdx)}
+          disabled={!!huntFocus}
+          onChange={(v) => setTimeWindowIdx(Number(v))}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-subtle">Outcome</span>
+        <FilterChip active={outcomeFilters.success} label="OK" dot="bg-secure" onClick={() => toggleOutcome("success")} />
+        <FilterChip active={outcomeFilters.pending} label="Pending" dot="bg-caution" onClick={() => toggleOutcome("pending")} />
+        <FilterChip active={outcomeFilters.issues} label="Issues" dot="bg-danger" onClick={() => toggleOutcome("issues")} />
+        <span className="ml-1 text-[12px] text-muted-foreground">
+          <span className="font-mono text-foreground">{displayEvents.length}</span> shown
+          {huntFocus ? ", hunt" : fleetScope ? ", fleet" : ", this session"}
+          {sessionView ? ", pinned session" : !atLatest ? ", history" : ""}
+        </span>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button type="button" className="btn" onClick={() => downloadAuditJsonl(displayEvents)}>
             JSONL
           </button>
-          <button
-            type="button"
-            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            onClick={() => downloadAuditCsv(displayEvents)}
-          >
+          <button type="button" className="btn" onClick={() => downloadAuditCsv(displayEvents)}>
             CSV
           </button>
           <div className="relative">
             <button
+              type="button"
+              aria-expanded={showColumnManager}
               onClick={() => setShowColumnManager(!showColumnManager)}
-              className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground hover:bg-muted"
+              className="btn"
             >
               <Settings2 className="h-3.5 w-3.5" />
               Columns
             </button>
             {showColumnManager && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-md border border-border bg-card p-2 shadow-xl">
-                <div className="mb-2 px-2 text-sm font-semibold text-muted-foreground">Manage columns</div>
-                <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+              <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-sm border border-border bg-popover p-1.5 shadow-xl shadow-black/30">
+                <div className="eyebrow px-2 pb-1.5 pt-1">Columns</div>
+                <div className="flex max-h-72 flex-col overflow-y-auto">
                   {[...columns, ...(Object.keys(COLUMN_REGISTRY) as ColumnId[]).filter((k) => !columns.includes(k))].map(
                     (colId) => {
                       const c = COLUMN_REGISTRY[colId];
                       const isActive = columns.includes(colId);
                       const idx = columns.indexOf(colId);
                       return (
-                        <div key={colId} className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted/50">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                if (isActive) updateColumns(columns.filter((x) => x !== colId));
-                                else updateColumns([...columns, colId]);
-                              }}
-                              className={`flex h-4 w-4 items-center justify-center rounded border ${isActive ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-border text-transparent"}`}
+                        <div key={colId} className="flex items-center justify-between rounded-sm px-2 py-1.5 hover:bg-muted">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isActive) updateColumns(columns.filter((x) => x !== colId));
+                              else updateColumns([...columns, colId]);
+                            }}
+                            className="flex items-center gap-2 text-[13px]"
+                            aria-pressed={isActive}
+                          >
+                            <span
+                              className={`flex h-4 w-4 items-center justify-center rounded-sm border ${
+                                isActive ? "border-signal bg-signal/15 text-signal" : "border-border text-subtle"
+                              }`}
                             >
-                              {isActive ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 text-muted-foreground" />}
-                            </button>
-                            <span className="text-sm">{c.label}</span>
-                          </div>
+                              {isActive ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                            </span>
+                            <span className={isActive ? "text-foreground" : "text-muted-foreground"}>{c.label}</span>
+                          </button>
                           {isActive && (
-                            <div className="flex gap-1">
-                              <button disabled={idx === 0} onClick={() => { const n = [...columns]; [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]]; updateColumns(n); }} className="disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
-                              <button disabled={idx === columns.length - 1} onClick={() => { const n = [...columns]; [n[idx + 1], n[idx]] = [n[idx], n[idx + 1]]; updateColumns(n); }} className="disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
+                            <div className="flex gap-1 text-muted-foreground">
+                              <button type="button" aria-label={`Move ${c.label} up`} disabled={idx === 0} onClick={() => { const n = [...columns]; [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]]; updateColumns(n); }} className="hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
+                              <button type="button" aria-label={`Move ${c.label} down`} disabled={idx === columns.length - 1} onClick={() => { const n = [...columns]; [n[idx + 1], n[idx]] = [n[idx], n[idx + 1]]; updateColumns(n); }} className="hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
                             </div>
                           )}
                         </div>
@@ -934,11 +933,8 @@ export function FlightRecorderPanel() {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="rounded-md border border-border px-2.5 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            onClick={() => void fetchTail()}
-          >
+          <button type="button" className="btn" onClick={() => void fetchTail()}>
+            <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
         </div>
@@ -952,84 +948,86 @@ export function FlightRecorderPanel() {
       />
       <EventHistogram events={displayEvents} />
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div className="panel flex min-h-[16rem] min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-auto">
             {loading && displayEvents.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">Loading audit events…</p>
+              <EmptyState>Loading audit events…</EmptyState>
             ) : error && displayEvents.length === 0 ? (
-              <p className="py-8 text-center text-sm text-red-400">{error}</p>
+              <EmptyState>
+                <span className="text-danger">{error}</span>
+              </EmptyState>
             ) : displayEvents.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
+              <EmptyState>
                 {huntFocus
                   ? `No ${FEED_FOCUS_LABELS[huntFocus].toLowerCase()} in the last 7 days. Clear focus or check ingest.`
                   : fleetScope
-                    ? "No events match filters. Try a wider time window, or open Analytics for weekly counts."
+                    ? "No events match these filters. Try a wider time window, or open Analytics for weekly counts."
                     : "No events for this dashboard session. Switch to Fleet to see all hosts."}
-              </p>
+              </EmptyState>
             ) : (
-              <div className="overflow-x-auto">
-                <div className="min-w-[1100px]">
-                  <div className="mb-1 flex items-center gap-4 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {columns.map((colId) => {
-                      const c = COLUMN_REGISTRY[colId];
-                      if (!c) return null;
-                      return (
-                        <div
-                          key={colId}
-                          className={`shrink-0 cursor-grab select-none hover:text-emerald-400 ${c.widthClass} ${draggedCol === colId ? "opacity-50" : ""}`}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, colId)}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, colId)}
-                          onDragEnd={() => setDraggedCol(null)}
-                        >
-                          {c.label}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="space-y-1">
-                    {displayEvents.map((ev, i) => (
-                      <EventRow
-                        key={eventKey(ev) || `${i}`}
-                        columns={columns}
-                        event={ev}
-                        highlight={!!threadId && ev.correlation_id === threadId}
-                        selected={selectedEventKey === eventKey(ev)}
-                        onSelect={(e) => setSelectedEventKey(eventKey(e))}
-                      />
-                    ))}
-                  </div>
+              <div className="min-w-[1080px]">
+                <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-card px-4 py-2">
+                  {columns.map((colId) => {
+                    const c = COLUMN_REGISTRY[colId];
+                    if (!c) return null;
+                    return (
+                      <div
+                        key={colId}
+                        className={`eyebrow shrink-0 cursor-grab select-none hover:text-foreground ${c.widthClass} ${draggedCol === colId ? "opacity-50" : ""}`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, colId)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, colId)}
+                        onDragEnd={() => setDraggedCol(null)}
+                      >
+                        {c.label}
+                      </div>
+                    );
+                  })}
                 </div>
+                {displayEvents.map((ev, i) => (
+                  <EventRow
+                    key={eventKey(ev) || `${i}`}
+                    columns={columns}
+                    event={ev}
+                    highlight={!!threadId && ev.correlation_id === threadId}
+                    selected={selectedEventKey === eventKey(ev)}
+                    onSelect={(e) => setSelectedEventKey(eventKey(e))}
+                  />
+                ))}
               </div>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2">
             <div className="flex items-center gap-1.5">
-              <button type="button" disabled={!pagination.has_older || loadingOlder} onClick={() => void loadOlder()} className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1.5 text-sm text-muted-foreground disabled:opacity-40">
+              <button type="button" disabled={!pagination.has_older || loadingOlder} onClick={() => void loadOlder()} className="btn h-7">
                 <ChevronLeft className="h-3.5 w-3.5" /> Older
               </button>
-              <button type="button" disabled={!pagination.has_newer || loadingNewer} onClick={() => void loadNewer()} className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1.5 text-sm text-muted-foreground disabled:opacity-40">
+              <button type="button" disabled={!pagination.has_newer || loadingNewer} onClick={() => void loadNewer()} className="btn h-7">
                 Newer <ChevronRight className="h-3.5 w-3.5" />
               </button>
               {!atLatest ? (
-                <button type="button" onClick={() => void jumpToLatest()} className="rounded border border-emerald-500/30 px-2.5 py-1.5 text-sm text-emerald-600 dark:text-emerald-300">
+                <button type="button" onClick={() => void jumpToLatest()} className="btn h-7 border-signal/40 text-signal">
                   Latest
                 </button>
               ) : null}
             </div>
             {selectedEvent ? (
-              <button type="button" className="text-sm text-muted-foreground lg:hidden" onClick={() => setSelectedEventKey(null)}>
+              <button type="button" className="text-[12px] text-muted-foreground hover:text-foreground lg:hidden" onClick={() => setSelectedEventKey(null)}>
                 Close inspector
               </button>
-            ) : null}
+            ) : (
+              <span className="text-[12px] text-subtle">
+                {atLatest && !sessionView ? "Live, refreshes every 8 s" : "Paused on history"}
+              </span>
+            )}
           </div>
         </div>
 
         {selectedEvent ? (
-          <div className="flex w-full shrink-0 flex-col border-t border-border/60 lg:w-80 lg:border-l lg:border-t-0 xl:w-96">
+          <div className="panel flex max-h-[28rem] w-full shrink-0 flex-col overflow-hidden lg:max-h-none lg:w-80 xl:w-96">
             <EventInspector
               event={selectedEvent}
               onClose={() => setSelectedEventKey(null)}
