@@ -1489,7 +1489,7 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _emit_hook_stdout(hook_name: str) -> None:
-    """Antigravity requires JSON on stdout; Cursor/Codex use permission when enforcing."""
+    """Antigravity requires JSON on stdout; the rest print a decision only when enforcing."""
     source = _source_app()
     enforce = os.environ.get("AGENTMETRY_ENFORCE", "").strip().lower()
 
@@ -1546,6 +1546,49 @@ def _is_blocking_hook(hook_name: str, data: dict[str, Any]) -> bool:
 #: the vendor's published schema; the rest inherit it.
 _CLAUDE_PROTOCOL = frozenset({"claude", "qwen", "qoder", "codebuddy", "kimi"})
 
+#: Codex's deny reason must be non-empty, or Codex rejects the whole output.
+_CODEX_DEFAULT_REASON = "Blocked by Agentmetry policy"
+
+
+def _codex_decision_output(hook_name: str, decision: str, reason: str) -> dict[str, Any]:
+    """Codex's hook schema, which is Claude-shaped and strict where Claude is not.
+
+    Checked against Codex's parser (openai/codex `codex-rs/hooks`, 806d2d1,
+    2026-10-08), not only its docs, because every way this goes wrong fails
+    open. Codex parses hook stdout with `deny_unknown_fields`. Output it cannot
+    parse, or parses and rejects, marks the hook run `Failed` and the tool runs.
+    Until this fix Codex was sent Cursor's `{"permission": "deny"}`, which is an
+    unknown field, so every Agentmetry deny on Codex ran the tool while the
+    trail recorded `outcome: denied`.
+
+    The other rejections, each also a silent allow:
+
+      * `permissionDecision: "deny"` without a non-empty reason.
+      * `permissionDecision: "ask"`, "parsed but not supported yet".
+      * `permissionDecision: "allow"` without `updatedInput`.
+
+    So on PreToolUse a deny always carries a reason, an ask becomes a deny, and
+    an allow is an empty object, which Codex reads as no objection. On
+    PermissionRequest the behaviour is allow|deny, and an ask becomes a deny.
+    """
+    reason = reason.strip() or _CODEX_DEFAULT_REASON
+    if decision != "allow":
+        decision = "deny"
+    if hook_name == "PermissionRequest":
+        verdict: dict[str, Any] = {"behavior": decision}
+        if decision == "deny":
+            verdict["message"] = reason
+        return {"hookSpecificOutput": {"hookEventName": hook_name, "decision": verdict}}
+    if decision == "allow":
+        return {}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": hook_name,
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
 
 def _decision_output(hook_name: str, decision: str, reason: str = "") -> dict[str, Any]:
     """A hook decision in the exact shape the calling agent honours.
@@ -1568,10 +1611,13 @@ def _decision_output(hook_name: str, decision: str, reason: str = "") -> dict[st
         The safe direction, never the other way.
       * Cursor: top-level `permission`. Unchanged, because it already worked.
       * Antigravity: top-level `decision`.
+      * Codex: Claude-shaped, but strict. See `_codex_decision_output`.
     """
     source = _source_app()
     if source == "antigravity":
         return {"decision": decision}
+    if source == "codex":
+        return _codex_decision_output(hook_name, decision, reason)
     if source in _CLAUDE_PROTOCOL:
         if hook_name == "PermissionRequest":
             behaviour = "allow" if decision == "allow" else "deny"

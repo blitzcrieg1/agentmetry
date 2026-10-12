@@ -19,6 +19,10 @@ Schemas, from each vendor's hook documentation:
   Claude Code PermissionRequest hookSpecificOutput.decision.behavior  allow|deny, no ask
   Cursor                        top-level permission                   allow|deny|ask
   Antigravity                   top-level decision
+  Codex                         Claude-shaped, strict; see the Codex section
+
+Codex was the one agent the 0.9.0 fix missed. It kept receiving Cursor's key,
+and its parser rejects unknown fields, so every deny ran the tool.
 """
 
 from __future__ import annotations
@@ -129,6 +133,97 @@ def test_cursor_output_is_unchanged(monkeypatch, decision):
 
 def test_antigravity_output_is_unchanged(monkeypatch):
     assert _decision(monkeypatch, "antigravity", "PreToolUse", "deny") == {"decision": "deny"}
+
+
+# --- Codex: checked against its own schema and parser rules ------------------
+#
+# Codex parses hook stdout with `deny_unknown_fields` (openai/codex
+# codex-rs/hooks, 806d2d1). Anything it cannot parse, or parses and rejects,
+# marks the hook `Failed` and the tool runs. So a shape check is not enough:
+# these validate against Codex's published schema, then apply the parser's
+# rejections that the schema cannot express.
+
+_CODEX_SCHEMAS = Path(__file__).parent / "fixtures" / "codex_hooks"
+
+
+def _codex_blocks(hook: str, out: dict) -> bool:
+    """What Codex does with this output: True blocks, False runs the tool.
+
+    Raises if Codex would mark the hook `Failed`, which also runs the tool, but
+    is a malformed decision rather than a deliberate allow.
+    """
+    import jsonschema
+
+    name = {"PreToolUse": "pre-tool-use", "PermissionRequest": "permission-request"}[hook]
+    schema = json.loads((_CODEX_SCHEMAS / f"{name}.command.output.schema.json").read_text())
+    jsonschema.validate(out, schema)
+    specific = out.get("hookSpecificOutput") or {}
+    if hook == "PermissionRequest":
+        return (specific.get("decision") or {}).get("behavior") == "deny"
+    decision = specific.get("permissionDecision")
+    if decision == "ask":
+        raise AssertionError("Codex rejects permissionDecision:ask")
+    if decision == "allow" and "updatedInput" not in specific:
+        raise AssertionError("Codex rejects permissionDecision:allow without updatedInput")
+    if decision == "deny":
+        if not str(specific.get("permissionDecisionReason") or "").strip():
+            raise AssertionError("Codex rejects a deny without a non-empty reason")
+        return True
+    return False
+
+
+def test_codex_is_never_sent_the_cursor_key(monkeypatch):
+    """The defect: Codex rejected `permission` as an unknown field and ran the tool."""
+    import jsonschema
+
+    old = {"permission": "deny"}
+    schema = json.loads((_CODEX_SCHEMAS / "pre-tool-use.command.output.schema.json").read_text())
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(old, schema)
+    for hook in ("PreToolUse", "PermissionRequest"):
+        for decision in ("allow", "deny", "ask"):
+            assert "permission" not in _decision(monkeypatch, "codex", hook, decision), (hook, decision)
+
+
+@pytest.mark.parametrize("hook", ["PreToolUse", "PermissionRequest"])
+@pytest.mark.parametrize("reason", ["dlp:aws_key", ""])
+def test_codex_deny_blocks(monkeypatch, hook, reason):
+    """Including an empty reason, which Codex would otherwise reject as a fail-open."""
+    assert _codex_blocks(hook, _decision(monkeypatch, "codex", hook, "deny", reason))
+
+
+@pytest.mark.parametrize("hook", ["PreToolUse", "PermissionRequest"])
+def test_codex_ask_becomes_deny_never_allow(monkeypatch, hook):
+    """Codex marks an ask `Failed` and runs the tool, so an ask has to be a deny."""
+    assert _codex_blocks(hook, _decision(monkeypatch, "codex", hook, "ask", "tool_policy:x"))
+
+
+@pytest.mark.parametrize("hook", ["PreToolUse", "PermissionRequest"])
+def test_codex_allow_is_a_clean_allow(monkeypatch, hook):
+    assert not _codex_blocks(hook, _decision(monkeypatch, "codex", hook, "allow"))
+
+
+def test_codex_deny_keeps_the_rule_in_the_reason(monkeypatch):
+    out = _decision(monkeypatch, "codex", "PreToolUse", "deny", "tool_policy:block_shell_rm")
+    assert out["hookSpecificOutput"]["permissionDecisionReason"] == "tool_policy:block_shell_rm"
+    out = _decision(monkeypatch, "codex", "PermissionRequest", "deny", "dlp:aws_key")
+    assert out["hookSpecificOutput"]["decision"]["message"] == "dlp:aws_key"
+
+
+def test_a_real_policy_block_on_codex_blocks(monkeypatch, capsys):
+    """End to end through hook_main, with Codex's own Bash tool input."""
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "codex")
+    _block(monkeypatch, "block_shell_rm")
+    monkeypatch.setattr(
+        ingest,
+        "read_hook_stdin",
+        lambda: ({"session_id": "s1", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+                  "tool_input": {"command": "rm -rf /"}}, False),
+    )
+    ingest.hook_main("PreToolUse")
+    out = _last_json(capsys)
+    assert _codex_blocks("PreToolUse", out)
+    assert out["hookSpecificOutput"]["permissionDecisionReason"] == "tool_policy:block_shell_rm"
 
 
 # --- through the real hook path ---------------------------------------------

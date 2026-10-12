@@ -9,6 +9,29 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deny on Codex did not deny.** The 0.9.0 fix that sent each agent its own
+  decision format missed Codex, which kept receiving Cursor's `{"permission":
+  "deny"}`. Codex parses hook output with `deny_unknown_fields`, so it rejected
+  that as invalid, marked the hook run failed, and ran the tool. The hook had
+  already written the call to the trail as `outcome: denied`. Every DLP and
+  tool-policy block on Codex failed open this way, and the record said it had
+  worked. Codex trails written before this fix can hold `denied` events for
+  calls that ran.
+
+  Codex now gets its own schema: `hookSpecificOutput.permissionDecision` on
+  `PreToolUse` and `hookSpecificOutput.decision.behavior` on
+  `PermissionRequest`. Three more of Codex's rejections, each also a silent
+  allow, are handled: a deny always carries a non-empty reason, an ask is sent
+  as deny (Codex parses `ask` but does not support it), and an allow is an empty
+  object rather than an `allow` Codex rejects without `updatedInput`. The tests
+  validate each decision against the output schemas Codex publishes, copied
+  into `tests/fixtures/codex_hooks/`, because a shape check is what certified
+  the wrong format the first time. Found while writing an agent coverage
+  matrix, not by a test. Codex's runtime was not run; the fix is checked
+  against its parser source (`openai/codex` `806d2d1`).
+
 ## [0.9.4] - 2026-10-08
 
 The release that lets someone who only ran `pip install` see what the product
