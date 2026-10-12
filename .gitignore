@@ -100,3 +100,11 @@ docs/*-audit-*.md
 # pytest-cov data file
 .coverage
 .coverage.*
+
+# Demo video renders and their working files (scripts/make_demo_video.py).
+# The site serves its own copy from ai-audit-watch/public/video/.
+docs/assets/*.mp4
+docs/assets/agentmetry-demo-poster.png
+docs/assets/agentmetry-linkedin-*-poster.png
+docs/assets/voice/
+docs/assets/demo-stills/

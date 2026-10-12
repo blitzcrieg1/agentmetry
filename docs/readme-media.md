@@ -56,21 +56,40 @@ curl -sL https://github.com/<owner>/<repo>/blob/<branch>/README.md | grep -o '<v
 A `<video ... controls="controls" ...>` match means the player is live. Text
 extraction tools show only the filename, so they cannot confirm this.
 
-## The 90-second demo video
+## The demo videos
 
-`scripts/make_demo_video.py` renders `docs/assets/agentmetry-demo-90s.mp4`
-(1080p30, silent) and `agentmetry-demo-poster.png` frame by frame with Pillow
-and ffmpeg. Every terminal line in it is real output from `agentmetry demo` and
-`agentmetry benchmark`, typed into the script as literals, so re-run both
-commands and update those lines whenever their output changes.
+`scripts/make_demo_video.py` renders two cuts from one set of scenes, frame by
+frame with Pillow and ffmpeg, with a voiceover:
 
-```bash
-python scripts/make_demo_video.py --stills   # ten PNGs to check the look
-python scripts/make_demo_video.py            # the full render, about a minute
-```
+| Command | Output | Use |
+|---|---|---|
+| `python scripts/make_demo_video.py` | `docs/assets/agentmetry-demo-90s.mp4`, 1920x1080, 90 s | README, agentmetry.ai |
+| `python scripts/make_demo_video.py --cut social` | `agentmetry-linkedin-1x1.mp4`, 1080x1080, 37 s | LinkedIn |
+| `python scripts/make_demo_video.py --cut social --aspect 4:5` | `agentmetry-linkedin-4x5.mp4`, 1080x1350, 37 s | LinkedIn, portrait |
 
-It needs Pillow, ffmpeg on `PATH`, and the IBM Plex fonts the marketing site
-bundles (`../ai-audit-watch/node_modules/@fontsource`, or set
+Add `--stills` for two PNGs per scene (in `docs/assets/demo-stills/`) to check
+the look, or `--no-voice` for picture only. The social cut has captions burned
+in, each held at least 2.5 s, for muted autoplay.
+
+Terminal lines are real 0.9.4 output (`agentmetry demo`, `agentmetry
+benchmark`, `agentmetry hooks status`, `agentmetry mcp`, and the hook's
+`dlp:` and `tool_policy:` reasons), typed into the script as literals, so
+re-run those commands and update the lines when their output changes. The MCP
+server names in the fleet scene are illustrative; the line format is real.
+
+Two strings are placeholders, marked `TODO` near the block scene:
+`CURSOR_DENY_TEXT` (what Cursor shows when a hook denies a command) and
+`CLAUDE_ASK_TEXT` (Claude Code's prompt for a hook `ask`). Replace them with
+the agents' real text and re-render.
+
+The voice is Kokoro (`am_michael`) through `npx hyperframes@0.8.149 tts`,
+which runs locally. Lines are spelled for the voice ("E D R", "dot A I") and
+the script refuses to render if one would run into the next. Clips are cached
+in `docs/assets/voice/` and regenerated only when their text, voice or speed
+changes.
+
+It needs Pillow, ffmpeg on `PATH`, Node for `npx`, and the IBM Plex fonts the
+marketing site bundles (`../ai-audit-watch/node_modules/@fontsource`, or set
 `AGENTMETRY_PLEX_DIR`). The rendered files are not committed. The copy
 agentmetry.ai serves lives in that repo under `public/video/`, so copy a new
 render there and open a site PR.
