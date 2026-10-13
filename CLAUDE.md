@@ -170,7 +170,8 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 Not code. As of 2026-10-10 there are 1639 tests collected, zero open code
 scanning alerts, a passed dogfood gate (5 of 4 green weeks), `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), and 0.9.4 on PyPI.
+runnable with nothing installed (`uvx agentmetry demo`), and 0.9.5 on PyPI
+(released 2026-10-13, the Codex fail-open fix).
 Dependabot is down to 2 open alerts (one high, `braces`; one medium,
 `postcss-selector-parser`), both transitive in `apps/dashboard/package-lock.json`
 with no Dependabot PR. Check with
