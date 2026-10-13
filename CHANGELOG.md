@@ -9,6 +9,25 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-13
+
+GitHub Copilot becomes the ninth hooked agent, in the CLI and in VS Code agent
+mode, and `agentmetry posture` reports the agent settings that skip approval
+prompts or turn hooks off. Two attribution bugs are fixed on the way.
+
+One change is visible to existing users: an event whose `source_app` is not on
+the allowlist is now recorded as `unknown`, with the claimed name in
+`source.claimed_app`, where it used to be recorded as `cursor`. A SIEM search
+that relied on that fallback should look for `unknown` too.
+
+The Copilot deny is exit code 2, checked against Copilot CLI's documentation
+and VS Code's open-source hook executor. Neither surface has been run live
+against the hook yet, and VS Code's agent hooks are a preview feature.
+
+The detection ruleset is unchanged (fingerprint `15846a0915769d4a`), as are the
+hash-chain record format and the event schema version (1.2.0; `posture` events
+and `source.claimed_app` are additive).
+
 ### Added
 
 - **GitHub Copilot, in the CLI and in VS Code agent mode.** `agentmetry hooks
@@ -1876,7 +1895,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...v0.9.3
