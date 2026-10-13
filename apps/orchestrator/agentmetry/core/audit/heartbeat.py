@@ -300,6 +300,7 @@ async def heartbeat_forever(interval: float | None = None) -> None:
     import asyncio
 
     from agentmetry.core.audit.mcp_inventory_event import InventoryState, maybe_emit_inventory
+    from agentmetry.core.audit.posture_event import PostureState, maybe_emit_posture
 
     period = interval if interval is not None else interval_seconds()
     if not period:
@@ -307,6 +308,7 @@ async def heartbeat_forever(interval: float | None = None) -> None:
         return
 
     inventory_state = InventoryState()
+    posture_state = PostureState()
     while True:
         try:
             event = await emit_heartbeat()
@@ -321,4 +323,9 @@ async def heartbeat_forever(interval: float | None = None) -> None:
             await maybe_emit_inventory(inventory_state)
         except Exception:
             logger.exception("MCP inventory event failed")
+        try:
+            # Opt-in, like the inventory, and in its own try for the same reason.
+            await maybe_emit_posture(posture_state)
+        except Exception:
+            logger.exception("Posture event failed")
         await asyncio.sleep(period)

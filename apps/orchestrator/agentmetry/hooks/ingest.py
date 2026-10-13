@@ -19,7 +19,7 @@ keeps running untouched. Nothing about the wire format changed.
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
   AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
-  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | mcp_proxy
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | copilot | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
@@ -1048,6 +1048,114 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
     return None
 
 
+#: Copilot's shell tools. The CLI names them by shell; VS Code's Local harness
+#: uses its own names, so a terminal-ish name with a `command` argument counts too.
+_COPILOT_SHELL_TOOLS = frozenset({"bash", "powershell", "shell"})
+
+
+def _copilot_tool_context(tool_name: str, tool_input: Any) -> tuple[str, str, dict[str, Any]]:
+    clean = redact_arguments(tool_input if isinstance(tool_input, dict) else {"value": tool_input})
+    name = str(tool_name or "unknown")
+    lowered = name.lower()
+    has_command = isinstance(tool_input, dict) and bool(str(tool_input.get("command") or "").strip())
+    if lowered in _COPILOT_SHELL_TOOLS or ("terminal" in lowered and has_command):
+        return "shell.run", "shell", clean
+    if name.startswith("mcp__"):
+        parts = name.split("__")
+        if len(parts) >= 3:
+            server, tool = parts[1], parts[2]
+            return (tool if "." in tool else f"{server}.{tool}"), server, clean
+    return f"copilot.{name}", "copilot", clean
+
+
+def _copilot_tool_input(data: dict[str, Any]) -> Any:
+    """`tool_input` from VS Code, `toolArgs` from the CLI, which may be a JSON string."""
+    raw = _pick(data, "tool_input", "toolArgs", default={})
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"value": raw}
+    return raw
+
+
+#: Copilot CLI's lowerCamel event names, and VS Code's PascalCase ones, mapped to
+#: the PascalCase names the rest of this module keys on.
+_COPILOT_EVENTS = {
+    "sessionStart": "SessionStart",
+    "userPromptSubmitted": "UserPromptSubmit",
+    "preToolUse": "PreToolUse",
+    "postToolUse": "PostToolUse",
+    "postToolUseFailure": "PostToolUseFailure",
+    "sessionEnd": "SessionEnd",
+    "agentStop": "Stop",
+}
+
+
+def map_copilot_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    """GitHub Copilot: the CLI and VS Code agent mode, from one hooks file.
+
+    Both read `~/.copilot/hooks/*.json`, and they send different payloads. The CLI
+    sends camelCase (`sessionId`, `toolName`, `toolArgs`, `toolResult`); VS Code's
+    Local harness sends Claude-style snake_case (`session_id`, `tool_name`,
+    `tool_input`, `tool_response`). One mapper reads either.
+    """
+    raw_event = str(data.get("hook_event_name") or hook_name)
+    event = _COPILOT_EVENTS.get(raw_event, raw_event)
+    session_id = str(_pick(data, "session_id", "sessionId", default=""))
+    base: dict[str, Any] = {
+        "source_app": "copilot",
+        "adapter": "copilot_hook",
+        "correlation_id": session_id,
+        "session_id": session_id,
+        "initiator": {
+            "actor_type": _initiator_from_hook(event, data), "trigger": "manual", "operator_id": "",
+        },
+    }
+
+    if event == "SessionStart":
+        return {
+            **base,
+            "event_type": "session_start",
+            "reason": str(_pick(data, "source", default="startup")),
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
+        }
+    if event == "UserPromptSubmit":
+        return {
+            **base,
+            "event_type": "session_start",
+            "reason": "user_prompt",
+            "initiator": {"actor_type": "human", "trigger": "manual", "operator_id": ""},
+        }
+    if event in ("SessionEnd", "Stop"):
+        return {**base, "event_type": "session_end", "reason": str(_pick(data, "reason", default=""))}
+
+    tool_input = _copilot_tool_input(data)
+    qualified, server, clean = _copilot_tool_context(
+        str(_pick(data, "tool_name", "toolName", default="unknown")), tool_input
+    )
+    tool = {"qualified": qualified, "server": server, "arguments": clean}
+
+    if event == "PreToolUse":
+        return {
+            **base,
+            "event_type": "approval_request",
+            "outcome": "pending",
+            "reason": f"hook:{event}",
+            "tool": tool,
+        }
+    if event in ("PostToolUse", "PostToolUseFailure"):
+        event_type, outcome, reason = _after_outcome(data)
+        result = data.get("toolResult")
+        result_type = str(result.get("resultType") or "") if isinstance(result, dict) else ""
+        if event == "PostToolUseFailure" or result_type == "failure":
+            event_type, outcome, reason = "tool_failed", "error", reason or "tool_failed"
+        elif result_type == "denied":
+            event_type, outcome, reason = "tool_called", "denied", "denied_by_user"
+        return {**base, "event_type": event_type, "outcome": outcome, "reason": reason, "tool": tool}
+    return None
+
+
 def _antigravity_tool_from_data(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Parse Antigravity 2.0 (toolCall) and legacy (toolName/toolInput) stdin."""
     tool_call = data.get("toolCall")
@@ -1468,6 +1576,8 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = map_codebuddy_hook(hook_name, data)
     elif source == "codex":
         payload = map_codex_hook(hook_name, data)
+    elif source == "copilot":
+        payload = map_copilot_hook(hook_name, data)
     elif source == "antigravity":
         payload = map_antigravity_hook(hook_name, data)
     elif source == "cursor":
@@ -1488,8 +1598,11 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return payload
 
 
-def _emit_hook_stdout(hook_name: str) -> None:
-    """Antigravity requires JSON on stdout; the rest print a decision only when enforcing."""
+def _emit_hook_stdout(hook_name: str) -> int:
+    """Antigravity requires JSON on stdout; the rest print a decision only when enforcing.
+
+    Returns the hook's exit code, because for Copilot the exit code is the decision.
+    """
     source = _source_app()
     enforce = os.environ.get("AGENTMETRY_ENFORCE", "").strip().lower()
 
@@ -1501,13 +1614,20 @@ def _emit_hook_stdout(hook_name: str) -> None:
             print("{}")
         elif hook_name == "Stop":
             print(json.dumps({"decision": "stop"}))
-        return
+        return 0
 
     if enforce in ("allow", "deny", "ask") and (
         hook_name in CURSOR_BLOCKING
         or hook_name in ("PreToolUse", "PermissionRequest")
     ):
+        if source == "copilot":
+            # No ask: neither surface is trusted to honour one from here (see
+            # _emit_copilot_deny), and an ask that is not honoured is an allow.
+            if enforce == "allow":
+                return 0
+            return _emit_copilot_deny(f"AGENTMETRY_ENFORCE={enforce}")
         print(json.dumps(_decision_output(hook_name, enforce, f"AGENTMETRY_ENFORCE={enforce}")))
+    return 0
 
 
 def _hook_debug_path() -> Path:
@@ -1535,6 +1655,11 @@ def _is_blocking_hook(hook_name: str, data: dict[str, Any]) -> bool:
         or data.get("event")
         or hook_name
     )
+    # Copilot CLI names its events in lowerCamel (`preToolUse`). Cursor's are
+    # lowerCamel too and listed as they are, so only the PascalCase pair is
+    # tried capitalised; a blanket capitalisation would stop matching Cursor.
+    if effective[:1].islower() and effective[:1].upper() + effective[1:] in ("PreToolUse", "PermissionRequest"):
+        return True
     return effective in _PRE_EXECUTION_HOOKS
 
 
@@ -1618,6 +1743,15 @@ def _decision_output(hook_name: str, decision: str, reason: str = "") -> dict[st
         return {"decision": decision}
     if source == "codex":
         return _codex_decision_output(hook_name, decision, reason)
+    if source == "copilot":
+        # Copilot's deny is an exit code (_emit_copilot_deny), so no caller should
+        # land here for a deny. If one does, VS Code's shape is the safer JSON:
+        # Cursor's key is read by neither Copilot surface.
+        if decision == "allow":
+            return {}
+        out = {"hookEventName": hook_name, "permissionDecision": "deny"}
+        out["permissionDecisionReason"] = reason.strip() or _CODEX_DEFAULT_REASON
+        return {"hookSpecificOutput": out}
     if source in _CLAUDE_PROTOCOL:
         if hook_name == "PermissionRequest":
             behaviour = "allow" if decision == "allow" else "deny"
@@ -1634,9 +1768,29 @@ def _decision_output(hook_name: str, decision: str, reason: str = "") -> dict[st
     return {"permission": decision}
 
 
-def _emit_block_decision(hook_name: str, reason: str = "") -> None:
-    """Print a deny the current agent will actually enforce."""
+def _emit_copilot_deny(reason: str) -> int:
+    """Deny for GitHub Copilot by exit code 2, the one signal both surfaces document.
+
+    The CLI and VS Code read the same hooks file and disagree on the JSON. The
+    CLI takes a flat `{"permissionDecision": "deny", ...}`; VS Code reads only
+    `hookSpecificOutput.permissionDecision` and ignores a flat key (checked in
+    microsoft/vscode, `chatHookService.ts`, a113dd1). A JSON answer right for
+    one is silently an allow on the other, the Codex failure again. Exit code
+    2 is documented by both as a deny: the CLI denies on it "even if stdout says
+    allow", and VS Code's executor turns it into a blocking error with stderr as
+    the reason (`hookExecutor.ts`). Any other non-zero exit fails open in VS
+    Code, so the code here is exactly 2.
+    """
+    print(reason.strip() or _CODEX_DEFAULT_REASON, file=sys.stderr)
+    return 2
+
+
+def _emit_block_decision(hook_name: str, reason: str = "") -> int:
+    """Print a deny the current agent will actually enforce, and return the exit code."""
+    if _source_app() == "copilot":
+        return _emit_copilot_deny(reason)
     print(json.dumps(_decision_output(hook_name, "deny", reason)))
+    return 0
 
 
 def hook_main(hook_name: str) -> int:
@@ -1683,8 +1837,7 @@ def hook_main(hook_name: str) -> int:
                             payload["reason"] = f"tool_policy:{rule_id}"
                             payload["event_type"] = "tool_called"
                             post_ingest(payload, quiet=True)
-                            _emit_block_decision(hook_name, payload["reason"])
-                            return 0
+                            return _emit_block_decision(hook_name, payload["reason"])
                         # After-hook: keep the real outcome so detection rules
                         # still see the executed call; note it was not enforced.
                         payload["reason"] = (
@@ -1715,8 +1868,7 @@ def hook_main(hook_name: str) -> int:
                                 f"{reason};ask_unsupported:{_source_app()}/{hook_name}"
                             )
                             post_ingest(payload, quiet=True)
-                            _emit_block_decision(hook_name, payload["reason"])
-                            return 0
+                            return _emit_block_decision(hook_name, payload["reason"])
                         # After-hook: the tool already ran, so there was nothing to
                         # ask about. Record that the rule matched, claim nothing.
                         payload["reason"] = (
@@ -1743,8 +1895,7 @@ def hook_main(hook_name: str) -> int:
                         payload["reason"] = f"dlp:{dlp_verdict.match.rule_id}"
                         payload["event_type"] = "tool_called"
                         post_ingest(payload, quiet=True)
-                        _emit_block_decision(hook_name, payload["reason"])
-                        return 0
+                        return _emit_block_decision(hook_name, payload["reason"])
                     # After-hook: already executed — record, do not claim a block.
                     payload["reason"] = (
                         f"{payload.get('reason', '')};dlp_block_observed:{dlp_verdict.match.rule_id}"
@@ -1753,9 +1904,7 @@ def hook_main(hook_name: str) -> int:
         post_ingest(payload, quiet=True)
 
     # Observe-only: Antigravity still needs {"decision":"allow"} on PreToolUse stdout.
-    _emit_hook_stdout(hook_name)
-
-    return 0
+    return _emit_hook_stdout(hook_name)
 
 
 def cli_main(argv: list[str] | None = None) -> int:
@@ -1803,7 +1952,7 @@ def cli_main(argv: list[str] | None = None) -> int:
 
 #: Every source app the dispatch below accepts as a leading argument.
 SOURCE_APPS = (
-    "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy",
+    "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy", "copilot",
 )
 
 

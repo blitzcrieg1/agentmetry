@@ -18,6 +18,14 @@ survive anything the user does to their own config:
 - Codex: `requirements.toml` (Windows `%ProgramData%\\OpenAI\\Codex`, else
   `/etc/codex`), `[[hooks.<Event>]]` entries; `allow_managed_hooks_only`
   (opt-in) skips user, project and plugin hooks.
+- GitHub Copilot CLI: a policy hook file in `policy.d` (Windows
+  `C:\\ProgramData\\GitHub\\Copilot\\policy.d`, else
+  `/etc/github-copilot/policy.d`). Policy hooks load before every other hook,
+  `disableAllHooks` cannot turn them off, and on POSIX Copilot ignores one that
+  is not root-owned or is group- or world-writable, so it is written 0644. There
+  is no lock to opt into: a policy hook already cannot be disabled. GitHub's
+  docs describe policy hooks for the CLI; whether VS Code agent mode reads them
+  is not documented, so the per-user install still matters there.
 
 Paths and keys are from the vendors' documentation as of 2026-10. Two of these
 files are shared with whatever else an organisation manages, so every write
@@ -38,7 +46,7 @@ from typing import Any
 
 from agentmetry.core.audit import hook_bootstrap as hb
 
-MANAGED_AGENTS = ("claude", "cursor", "codex")
+MANAGED_AGENTS = ("claude", "cursor", "codex", "copilot")
 CLAUDE_DROPIN = "50-agentmetry.json"
 CODEX_BEGIN = "# agentmetry managed hooks begin (written by `agentmetry hooks install --managed`)"
 CODEX_END = "# agentmetry managed hooks end"
@@ -70,11 +78,18 @@ def codex_requirements() -> Path:
     return Path("/etc/codex/requirements.toml")
 
 
+def copilot_policy_dir() -> Path:
+    if sys.platform == "win32":
+        return _program_data() / "GitHub" / "Copilot" / "policy.d"
+    return Path("/etc/github-copilot/policy.d")
+
+
 def managed_paths() -> dict[str, Path]:
     return {
         "claude": claude_managed_dir() / "managed-settings.d" / CLAUDE_DROPIN,
         "cursor": cursor_enterprise_hooks(),
         "codex": codex_requirements(),
+        "copilot": copilot_policy_dir() / hb.COPILOT_HOOK_FILE,
     }
 
 
@@ -190,9 +205,15 @@ def install(agent: str, *, lock: bool = False) -> Path:
     elif agent == "codex":
         current = path.read_text(encoding="utf-8") if path.is_file() else ""
         text = merge_codex_requirements(current, lock=lock)
+    elif agent == "copilot":
+        # Ours alone, like the Claude drop-in: written, not merged.
+        text = json.dumps(hb.copilot_hooks_document(), indent=2) + "\n"
     else:
         raise ValueError(f"no managed location for {agent}")
     _write(path, text)
+    if agent == "copilot" and sys.platform != "win32":
+        # Copilot skips a policy file that is group- or world-writable.
+        os.chmod(path, 0o644)
     return path
 
 

@@ -9,6 +9,39 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Copilot, in the CLI and in VS Code agent mode.** `agentmetry hooks
+  install --agent copilot` writes `~/.copilot/hooks/agentmetry.json`, which both
+  read: Copilot CLI natively, and VS Code because it accepts the CLI's
+  version-1 format from the same directory. Coverage attests it, and
+  `--managed` writes it as a Copilot CLI policy hook in `policy.d`, which loads
+  before every other hook and which `disableAllHooks` cannot turn off. A deny is
+  exit code 2 with the reason on stderr, because the two surfaces read
+  different JSON for a decision (the CLI a flat `permissionDecision`, VS Code
+  only the nested `hookSpecificOutput` one) and a JSON answer right for one is
+  an allow on the other, which is #246 again. Exit code 2 is documented as a
+  deny by both, and checked in VS Code's executor, which fails open on any
+  other non-zero code. The PowerShell command carries `&`, without which VS
+  Code on Windows would read the hook as a string and fail open. Tool policy
+  now also reads `toolArgs`, Copilot CLI's argument field, so a
+  `command_pattern` rule matches there. Neither surface has been run live
+  against the hook; VS Code's agent hooks are a preview feature.
+- **`agentmetry posture`.** Reports agent settings that take a human or a hook
+  out of the loop: Claude Code's `bypassPermissions`, a tool-wide `Bash` allow,
+  `enableAllProjectMcpServers` and `disableAllHooks`; Codex with
+  `approval_policy = "never"`, `sandbox_mode = "danger-full-access"` or hooks
+  off, including profile files; VS Code's global auto-approve, an autopilot
+  default, a terminal rule that matches every command, and `chat.useHooks:
+  false`; and Copilot CLI's `disableAllHooks`. Every check is a setting from
+  the vendor's own reference, a managed ban on bypass mode downgrades the
+  finding, and Cursor is reported as not checked rather than clean, because its
+  auto-run setting is not in a settings file. Exits 0 with findings, like
+  `agentmetry mcp`; `--strict` exits 1 on a high finding. With
+  `AGENTMETRY_POSTURE=1` the findings also go to the trail and every sink as a
+  `posture` event, on start, on change and daily, carrying scope labels and no
+  file paths.
+
 ### Fixed
 
 - **An agent the allowlist did not know was recorded as Cursor.** Any

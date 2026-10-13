@@ -143,6 +143,13 @@ SURFACES: tuple[Surface, ...] = (
     # Codex's hash-based trust prompt, which skips untrusted hooks silently, so
     # a covered Codex is configured rather than proven to be firing.
     Surface("codex", "", ".codex", ("hooks.json",)),
+    # Copilot CLI and VS Code agent mode both read ~/.copilot/hooks/*.json, and
+    # the installer writes its own file there. The directory is Copilot CLI's,
+    # so a machine with only VS Code Copilot may report absent: VS Code does not
+    # necessarily create it. What a file check cannot see is VS Code's
+    # `chat.useHooks` switch or an organisation policy that turns hooks off,
+    # which `agentmetry posture` reports.
+    Surface("copilot", "COPILOT_HOME", ".copilot", ("hooks/agentmetry.json",)),
     # Antigravity 2.0 usually runs from ~/.gemini/antigravity/scratch rather
     # than the repo, so scripts/install_antigravity_hooks.ps1 writes both. Either
     # one means the agent is recorded. Its command is a .cmd wrapper, not the

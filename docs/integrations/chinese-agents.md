@@ -136,8 +136,15 @@ Docs: [CodeBuddy hooks](https://www.codebuddy.ai/docs/cli/hooks)
 
 ## Trae and IDE-only hosts
 
-[Trae](https://www.trae.ai/) (ByteDance) and similar AI-native IDEs do **not** ship
-lifecycle hooks yet ([trae-agent #397](https://github.com/bytedance/trae-agent/issues/397)).
+The [Trae](https://www.trae.ai/) IDE (ByteDance) now documents lifecycle hooks in
+Claude Code's shape: `PreToolUse`, `PostToolUse` and other events, JSON on stdin,
+`hookSpecificOutput.permissionDecision` on stdout, and exit code 2 as a deny
+([hook configuration reference](https://docs.trae.ai/ide/hook-configuration-reference)).
+Agentmetry has no Trae hook installer or mapper yet. The open-source
+[trae-agent](https://github.com/bytedance/trae-agent) CLI is a different program,
+and its hooks request ([#397](https://github.com/bytedance/trae-agent/issues/397))
+is still open.
+
 Partial coverage today:
 
 ```powershell
@@ -145,8 +152,9 @@ $env:AGENTMETRY_SOURCE_APP="trae"
 agentmetry mcp-proxy -- your-mcp-server-command --its --arguments
 ```
 
-See [`adapters/trae/README.md`](../../adapters/trae/README.md). Full hook adapter
-when ByteDance ships lifecycle hooks.
+See [`adapters/trae/README.md`](../../adapters/trae/README.md) for what a hook
+adapter needs, and [agent coverage](../agent-coverage.md) for where Trae sits
+among the other agents.
 
 ---
 

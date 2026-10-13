@@ -555,6 +555,83 @@ def install_codex_global_hooks(
     return hooks_path
 
 
+# --- GitHub Copilot (CLI and VS Code agent mode, ~/.copilot/hooks/) -----------
+# One file serves both. Copilot CLI reads every *.json in ~/.copilot/hooks (or
+# $COPILOT_HOME/hooks), and VS Code's Local harness reads the same directory and
+# accepts the CLI's format, detected by its `version` field: lowerCamel event
+# names, mapped to its own, and `bash` / `powershell` command fields, mapped to
+# its per-OS commands (microsoft/vscode `hookSchema.ts`, `hookTypes.ts`).
+#
+# The file is ours alone, so it is written whole rather than merged: a user's own
+# hooks live in their own files beside it, and Copilot loads them all.
+#
+# The PowerShell form needs `&`. VS Code on Windows runs a hook through
+# `powershell -Command`, where a command that starts with a quoted path is a
+# string expression, not a call. Without the call operator the hook would exit
+# non-zero, which VS Code treats as a non-blocking error: nothing recorded and
+# every deny an allow.
+COPILOT_HOOK_FILE = "agentmetry.json"
+
+#: (Copilot's event key, the PascalCase name our mapper and enforcement key on).
+#: `permissionRequest` is CLI-only and VS Code does not map it; `preToolUse` is
+#: the gate on both.
+COPILOT_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
+    ("sessionStart", "SessionStart"),
+    ("userPromptSubmitted", "UserPromptSubmit"),
+    ("preToolUse", "PreToolUse"),
+    ("postToolUse", "PostToolUse"),
+    ("sessionEnd", "SessionEnd"),
+    ("agentStop", "Stop"),
+)
+
+
+def copilot_hooks_dir() -> Path:
+    home = os.environ.get("COPILOT_HOME", "").strip()
+    return (Path(home).expanduser() if home else Path.home() / ".copilot") / "hooks"
+
+
+def copilot_hooks_document(
+    *, python: str | None = None, ingest: Path | None = None, repo_root: Path | None = None
+) -> dict[str, Any]:
+    """The whole hooks file, in Copilot CLI's version-1 format."""
+    hooks: dict[str, Any] = {}
+    for key, event in COPILOT_HOOK_EVENTS:
+        command = hook_command("copilot", event, python=python, ingest=ingest, repo_root=repo_root)
+        hooks[key] = [
+            {
+                "type": "command",
+                "bash": command,
+                "powershell": f"& {command}",
+                "timeoutSec": 10,
+            }
+        ]
+    return {"version": 1, "hooks": hooks}
+
+
+def install_copilot_global_hooks(
+    *, repo_root: Path | None = None, python: str | None = None
+) -> Path | None:
+    """Write ~/.copilot/hooks/agentmetry.json for Copilot CLI and VS Code agent mode.
+
+    Not called from `bootstrap_tier_b_hooks`. VS Code's hooks are a preview
+    feature an organisation can switch off, so a silent install could look like
+    coverage that is not there; installing is a decision `hooks install` makes.
+    """
+    root = repo_root or _repo_root()
+    if hook_target(root) == "none":
+        logger.warning("Copilot hook bootstrap skipped: no way to reach ingest from %s", root)
+        return None
+    doc = copilot_hooks_document(
+        python=python or sys.executable, ingest=_ingest_script(root), repo_root=root
+    )
+    hooks_dir = copilot_hooks_dir()
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    path = hooks_dir / COPILOT_HOOK_FILE
+    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    logger.info("Installed global Copilot audit hooks -> %s", path)
+    return path
+
+
 def _kimi_config_dir() -> Path:
     home = os.environ.get("KIMI_CODE_HOME", "").strip()
     if home:
@@ -648,9 +725,10 @@ if __name__ == "__main__":
         "qoder": install_qoder_global_hooks,
         "codebuddy": install_codebuddy_global_hooks,
         "codex": install_codex_global_hooks,
+        "copilot": install_copilot_global_hooks,
     }
     fn = installers.get(target, bootstrap_tier_b_hooks)
-    if target in ("qwen", "kimi", "qoder", "codebuddy", "codex"):
+    if target in ("qwen", "kimi", "qoder", "codebuddy", "codex", "copilot"):
         path = fn()
         if path:
             print(f"Installed global {target} hooks -> {path}")

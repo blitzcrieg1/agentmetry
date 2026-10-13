@@ -31,12 +31,12 @@ Deny and ask are narrower than recording. `ask_honoured()` in `core/audit/tool_p
 
 Two lists in the code bound every "supported" claim:
 
-- `SURFACES` in `core/diagnostics/hook_coverage.py` is what `doctor` and the heartbeat attest: `cursor`, `claude`, `qwen`, `qoder`, `codebuddy`, `kimi`, `codex`, `antigravity`.
-- `KNOWN_EXTERNAL_APPS` in `core/audit/external.py` is what the ingest API keeps as `source.app`: the eight above plus `mcp_proxy`, `trae`, `crewai` and `opensre`. Any other `source_app` is recorded as `unknown`, with the claimed name kept in `source.claimed_app`. A new integration still needs an allowlisted name to be attributed properly.
+- `SURFACES` in `core/diagnostics/hook_coverage.py` is what `doctor` and the heartbeat attest: `cursor`, `claude`, `qwen`, `qoder`, `codebuddy`, `kimi`, `codex`, `copilot`, `antigravity`.
+- `KNOWN_EXTERNAL_APPS` in `core/audit/external.py` is what the ingest API keeps as `source.app`: the nine above plus `mcp_proxy`, `trae`, `crewai` and `opensre`. Any other `source_app` is recorded as `unknown`, with the claimed name kept in `source.claimed_app`. A new integration still needs an allowlisted name to be attributed properly.
 
 ## A. Agentic IDEs and coding CLIs
 
-Captured through the agent's own hooks. Detections apply: **yes** for the eight hooked surfaces, because the hook sends traits and the ATT&CK block.
+Captured through the agent's own hooks. Detections apply: **yes** for the nine hooked surfaces, because the hook sends traits and the ATT&CK block.
 
 | Agent | How it is or could be captured | Status | Source |
 | --- | --- | --- | --- |
@@ -49,20 +49,21 @@ Captured through the agent's own hooks. Detections apply: **yes** for the eight 
 | Qoder | Claude-shaped hooks. | supported and tested | [Hooks](https://docs.qoder.com/cli/hooks) |
 | CodeBuddy | Claude-shaped hooks (vendor docs marked beta). | supported and tested | [Hooks](https://www.codebuddy.ai/docs/cli/hooks) |
 | Windsurf (Cascade) | Hooks. A pre-hook blocks with exit code 2. | possible, not built | [Cascade hooks](https://docs.devin.ai/desktop/cascade/hooks) |
-| Trae | Hooks, including allow, deny and ask in the Chinese reference. | possible, not built | [Hooks](https://docs.trae.ai/ide/automate-actions-with-hooks), [reference](https://docs.trae.cn/ide/hook-configuration-reference) |
+| Trae | Claude-shaped hooks: `hookSpecificOutput.permissionDecision` (allow, deny, ask), exit code 2 as deny. | possible, not built | [Hooks](https://docs.trae.ai/ide/automate-actions-with-hooks), [reference](https://docs.trae.ai/ide/hook-configuration-reference) |
 | Gemini CLI | Hooks in `settings.json` (`BeforeTool` and others). A different program from Antigravity. | possible, not built | [Hooks](https://geminicli.com/docs/hooks/) |
-| GitHub Copilot CLI | Hooks under `.github/hooks/` and `~/.copilot/hooks/`. | possible, not built | [Hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference) |
+| GitHub Copilot, CLI and VS Code agent mode | One hooks file in `~/.copilot/hooks/` serves both. Deny is exit code 2. `--managed` writes the CLI's root-owned policy hooks. | supported and tested | [Hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference), [VS Code hooks](https://code.visualstudio.com/docs/agent-customization/hooks) |
 | Grok Build | Local CLI. Hooks in `~/.grok/hooks/*.json`. Deny is `{"decision":"deny"}` or exit code 2. | possible, not built | [Hooks](https://docs.x.ai/build/features/hooks) |
 | Goose | Session database that stores tool calls, plus stdio MCP extensions. | possible, not built | [Logging](https://github.com/block/goose/blob/main/documentation/docs/guides/logs.md) |
 
 Notes that keep the status honest:
 
+- **GitHub Copilot.** The CLI and VS Code read the same `~/.copilot/hooks/*.json` and disagree on the JSON: the CLI reads a flat `permissionDecision`, VS Code only the nested `hookSpecificOutput` one (checked in microsoft/vscode `chatHookService.ts`). So the deny is exit code 2, which both document as a deny; VS Code fails open on any other non-zero code. Ask is enforced as deny. VS Code hooks are marked preview, an organisation can turn them off, and `chat.useHooks: false` turns them off locally, which `agentmetry posture` reports. Whether VS Code reads the CLI's policy hooks is not documented. Tests check both payload shapes and the exit code; neither surface was run live.
 - **Codex.** Deny was broken until [#246](https://github.com/blitzcrieg1/agentmetry/pull/246): Codex was sent Cursor's `{"permission": ...}`, rejected it as an unknown field, and ran the tool while the trail recorded `denied`. Fixed on `master`, shipping in 0.9.5. **0.9.4 and earlier fail open on Codex.** Codex parses `ask` and runs the tool, so a policy ask is sent as deny. Hosted tools such as `WebSearch` do not fire `PreToolUse`. Shell, unified exec, `apply_patch`, MCP and other local function tools do.
 - **Antigravity.** `agentmetry hooks install` does not write these hooks; `scripts/install_antigravity_hooks.ps1` does, on Windows. A public forum thread reports that the IDE and the 2.0 desktop app do not run `PreToolUse` while the CLI does. Unverified against a vendor statement.
 - **Qwen, Qoder, CodeBuddy.** They get Claude's `hookSpecificOutput` (`_CLAUDE_PROTOCOL`). Their docs document ask, but `ask_honoured` does not include them, so a policy ask is enforced as deny. CodeBuddy has no mapping test of its own.
 - **Kimi Code.** The installer writes `~/.kimi-code/config.toml`, the path on the kimi.com page. Moonshot's [kimi-cli](https://www.kimi-cli.com/en/customization/hooks.html) uses `~/.kimi/config.toml`. Whether that is the same program was not established.
 - **Windsurf.** `mcp_inventory` reads its MCP config and records nothing. Installer work is parked in issue #7.
-- **Trae.** `trae` is allowlisted for the MCP proxy. No mapper and no hook installer.
+- **Trae.** `trae` is allowlisted for the MCP proxy. No mapper and no hook installer; [adapters/trae](../adapters/trae/README.md) says what one needs.
 - **Gemini CLI.** It shares `~/.gemini` with Antigravity. Until the fix listed below, coverage read that directory as Antigravity being installed, so a machine with only Gemini CLI showed an uncovered Antigravity.
 - **Grok Build.** Its docs say it also reads Claude Code settings and Cursor `hooks.json`. Whether an Agentmetry hook installed for those runs under Grok Build was not tested, and its deny shape differs from both, so a hook that ran would not prove a working deny.
 - **Goose.** `sessions.db` holds tool-call ids, arguments, responses and outcomes. That is an after-the-fact import, not a live hook.
@@ -193,15 +194,9 @@ A local recorder cannot trace these. Where the vendor keeps its own log, that is
 | Devin | Enterprise audit log API ([v3 examples](https://docs.devin.ai/api-reference/v3/usage-examples)). Which session actions it records: unverified. |
 | OpenHands Cloud | Hooks load in cloud sessions and run where the session runs, so a recorder on a laptop does not see them. |
 
-## Repo sentences this matrix disagrees with
+## What this check found, and where it went
 
-Left untouched here. Fix them when the README or docs are next edited.
-
-- `adapters/trae/README.md` and `docs/integrations/chinese-agents.md` say Trae ships no lifecycle hooks. Trae's docs now describe them.
-- `docs/agentmetry-external-ingest.md` says Codex `PreToolUse` / `PostToolUse` may miss unified exec and some MCP. The current Codex page says those fire, and hosted tools such as `WebSearch` do not.
-
-## Bugs this check found
-
-- **Codex deny failed open.** Fixed by [#246](https://github.com/blitzcrieg1/agentmetry/pull/246), shipping in 0.9.5.
+- **Codex deny failed open.** Fixed by [#246](https://github.com/blitzcrieg1/agentmetry/pull/246), shipped in 0.9.5.
 - **Gemini CLI read as Antigravity.** A `~/.gemini` directory made coverage report Antigravity as installed. Fixed: presence is now `~/.gemini/antigravity` or one of our hook files (`Surface.presence` in `core/diagnostics/hook_coverage.py`).
 - **Unknown agents were labelled `cursor`.** Any `source_app` outside `KNOWN_EXTERNAL_APPS` was stored as `cursor`, so an event from a new integration was attributed to the wrong agent. Fixed: it is recorded as `unknown`, and the claimed name is kept in `source.claimed_app` (`_resolve_source_app` in `core/audit/external.py`). A missing `source_app` still means Cursor, for hooks that predate the field.
+- **Two stale docs.** `adapters/trae/README.md` and `docs/integrations/chinese-agents.md` said Trae ships no lifecycle hooks, and `docs/agentmetry-external-ingest.md` said Codex hooks may miss unified exec and some MCP. Both corrected against the vendors' pages on 2026-10-13.

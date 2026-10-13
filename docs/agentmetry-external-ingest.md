@@ -119,9 +119,11 @@ Transcript fallback: `<app_data>/brain/<conversationId>/.system_generated/logs/t
 
 ## OpenAI Codex CLI
 
-Install globally with `scripts/install_codex_hooks.ps1`, which merges into `~/.codex/hooks.json` with absolute paths and preserves any hooks of your own. The template in `adapters/codex/hooks.agentmetry.json` is still there for a manual merge, but note its command is relative and only resolves if Codex starts in the repo root. Codex uses nested matcher groups — see [OpenAI Codex hooks docs](https://developers.openai.com/codex/hooks).
+Install with `agentmetry hooks install --agent codex`, which merges into `~/.codex/hooks.json` with absolute paths and preserves any hooks of your own. `--managed` writes the admin-managed `requirements.toml` instead. From a clone, `scripts/install_codex_hooks.ps1` does the same per-user merge. The template in `adapters/codex/hooks.agentmetry.json` is still there for a manual merge, but its command is relative and only resolves if Codex starts in the repo root. Codex uses nested matcher groups; see [OpenAI Codex hooks docs](https://developers.openai.com/codex/hooks).
 
 Events wired: `SessionStart`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`.
+
+**Enforcement:** a DLP or tool-policy block is a real deny from **0.9.5**. Earlier releases sent Codex Cursor's `{"permission": "deny"}`, which Codex rejects as an unknown field before running the tool, so on 0.9.4 and earlier a block was recorded as `denied` while the tool ran ([#246](https://github.com/blitzcrieg1/agentmetry/pull/246)). Codex now gets `hookSpecificOutput.permissionDecision: "deny"` with a non-empty reason on `PreToolUse`, and `decision.behavior: "deny"` on `PermissionRequest`. Codex parses `ask` and runs the tool anyway, so a policy ask is enforced as deny.
 
 ```powershell
 python scripts/agentmetry_ingest.py codex hook PostToolUse
@@ -133,7 +135,17 @@ python scripts/agentmetry_ingest.py selftest
 
 **Bonus:** Codex hook stdin includes `model` (active model slug) — one of the few Tier B adapters that can populate `model.id` in the canonical event.
 
-**Coverage gaps (honest):** `PreToolUse`/`PostToolUse` may not fire for every tool path (`unified_exec`, some MCP, `WebSearch`) — see OpenAI docs. Audit what you can observe; don't claim full coverage.
+**Coverage gaps (honest):** per Codex's hooks page (checked 2026-10-13), `PreToolUse` and `PostToolUse` fire for shell, unified exec, `apply_patch`, MCP and other local function tools. Hosted tools such as `WebSearch` run on OpenAI's side and fire neither, so they are not recorded. Codex cloud tasks are not recorded at all; see [agent coverage](agent-coverage.md).
+
+## GitHub Copilot (CLI and VS Code agent mode)
+
+Install with `agentmetry hooks install --agent copilot`. It writes its own file, `~/.copilot/hooks/agentmetry.json` (or `$COPILOT_HOME/hooks/`), in Copilot CLI's version-1 format. Copilot CLI reads it, and so does VS Code agent mode, which accepts that format and reads the same directory. Your own hook files beside it are left alone. `--managed` writes the same document as a CLI policy hook (`/etc/github-copilot/policy.d/`, or `C:\ProgramData\GitHub\Copilot\policy.d\` on Windows), which a user cannot edit or turn off.
+
+Events wired: `sessionStart`, `userPromptSubmitted`, `preToolUse`, `postToolUse`, `sessionEnd`, `agentStop`.
+
+**Enforcement:** a DLP or tool-policy block exits with code 2 and the reason on stderr. The two surfaces read different JSON for a decision, and exit code 2 is the one signal both document as a deny. A policy ask is enforced as deny.
+
+**Limits:** VS Code's agent hooks are a preview feature, an organisation can disable them, and `chat.useHooks: false` disables them locally; `agentmetry posture` reports the last one. A machine with only VS Code Copilot may report Copilot as not installed, because the coverage check looks for `~/.copilot`. Neither surface has been run live against this hook yet.
 
 ## Cursor (expanded — GLM research validated)
 
