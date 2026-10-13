@@ -32,7 +32,7 @@ Deny and ask are narrower than recording. `ask_honoured()` in `core/audit/tool_p
 Two lists in the code bound every "supported" claim:
 
 - `SURFACES` in `core/diagnostics/hook_coverage.py` is what `doctor` and the heartbeat attest: `cursor`, `claude`, `qwen`, `qoder`, `codebuddy`, `kimi`, `codex`, `antigravity`.
-- `KNOWN_EXTERNAL_APPS` in `core/audit/external.py` is what the ingest API keeps as `source.app`: the eight above plus `mcp_proxy`, `trae`, `crewai` and `opensre`. **Any other `source_app` is stored as `cursor`** (`external.py:55`). A new integration therefore needs a new allowlisted name, or its events are mislabelled.
+- `KNOWN_EXTERNAL_APPS` in `core/audit/external.py` is what the ingest API keeps as `source.app`: the eight above plus `mcp_proxy`, `trae`, `crewai` and `opensre`. Any other `source_app` is recorded as `unknown`, with the claimed name kept in `source.claimed_app`. A new integration still needs an allowlisted name to be attributed properly.
 
 ## A. Agentic IDEs and coding CLIs
 
@@ -63,7 +63,7 @@ Notes that keep the status honest:
 - **Kimi Code.** The installer writes `~/.kimi-code/config.toml`, the path on the kimi.com page. Moonshot's [kimi-cli](https://www.kimi-cli.com/en/customization/hooks.html) uses `~/.kimi/config.toml`. Whether that is the same program was not established.
 - **Windsurf.** `mcp_inventory` reads its MCP config and records nothing. Installer work is parked in issue #7.
 - **Trae.** `trae` is allowlisted for the MCP proxy. No mapper and no hook installer.
-- **Gemini CLI.** Antigravity's coverage check treats any `~/.gemini` directory as Antigravity being installed, so a machine with only Gemini CLI can show up as an uncovered Antigravity.
+- **Gemini CLI.** It shares `~/.gemini` with Antigravity. Until the fix listed below, coverage read that directory as Antigravity being installed, so a machine with only Gemini CLI showed an uncovered Antigravity.
 - **Grok Build.** Its docs say it also reads Claude Code settings and Cursor `hooks.json`. Whether an Agentmetry hook installed for those runs under Grok Build was not tested, and its deny shape differs from both, so a hook that ran would not prove a working deny.
 - **Goose.** `sessions.db` holds tool-call ids, arguments, responses and outcomes. That is an after-the-fact import, not a live hook.
 
@@ -203,5 +203,5 @@ Left untouched here. Fix them when the README or docs are next edited.
 ## Bugs this check found
 
 - **Codex deny failed open.** Fixed by [#246](https://github.com/blitzcrieg1/agentmetry/pull/246), shipping in 0.9.5.
-- **Gemini CLI reads as Antigravity.** A `~/.gemini` directory makes coverage report Antigravity as installed (`core/diagnostics/hook_coverage.py`, the `.gemini` candidates).
-- **Unknown agents are labelled `cursor`.** Any `source_app` outside `KNOWN_EXTERNAL_APPS` is stored as `cursor` (`core/audit/external.py:55`), so an event from a new integration is attributed to the wrong agent rather than rejected or marked unknown.
+- **Gemini CLI read as Antigravity.** A `~/.gemini` directory made coverage report Antigravity as installed. Fixed: presence is now `~/.gemini/antigravity` or one of our hook files (`Surface.presence` in `core/diagnostics/hook_coverage.py`).
+- **Unknown agents were labelled `cursor`.** Any `source_app` outside `KNOWN_EXTERNAL_APPS` was stored as `cursor`, so an event from a new integration was attributed to the wrong agent. Fixed: it is recorded as `unknown`, and the claimed name is kept in `source.claimed_app` (`_resolve_source_app` in `core/audit/external.py`). A missing `source_app` still means Cursor, for hooks that predate the field.

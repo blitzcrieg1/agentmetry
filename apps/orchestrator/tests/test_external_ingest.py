@@ -36,6 +36,43 @@ def test_build_external_canonical_cursor_tool():
     assert out["agent"]["name"] == "cursor"
     assert out["tool"]["qualified"] == "Shell.run"
     assert len(out["tool"]["input_hash"]) == 64
+    assert "claimed_app" not in out["source"]
+
+
+def test_an_unlisted_agent_is_unknown_not_cursor():
+    """An OpenClaw plugin posting to ingest used to land in the trail, the SIEM
+    and the detections as Cursor. A confident wrong attribution in the record
+    is worse than an honest `unknown`."""
+    out = build_external_canonical({
+        "source_app": "OpenClaw",
+        "event_type": "tool_called",
+        "tool": {"qualified": "shell.run", "arguments": {"command": "ls"}},
+    })
+    assert out["source"]["app"] == "unknown"
+    assert out["agent"]["name"] == "unknown"
+    assert out["source"]["claimed_app"] == "openclaw"
+    assert out["source_topic"] == "external/unknown/tool_called"
+
+
+def test_a_claimed_name_cannot_carry_arbitrary_text():
+    """The claim is kept so an operator can see who sent it, but only as a
+    short identifier: SIEM rules group on this field."""
+    out = build_external_canonical({
+        "source_app": 'evil"} app\n' + "x" * 200,
+        "event_type": "tool_called",
+    })
+    claimed = out["source"]["claimed_app"]
+    assert out["source"]["app"] == "unknown"
+    assert len(claimed) <= 64
+    assert all(c.isalnum() or c in "_.-" for c in claimed)
+
+
+def test_a_missing_source_app_still_means_cursor():
+    """The default predates `source_app`; hooks installed before it may still
+    post without one."""
+    out = build_external_canonical({"event_type": "tool_called"})
+    assert out["source"]["app"] == "cursor"
+    assert "claimed_app" not in out["source"]
 
 
 def test_build_external_canonical_with_command():

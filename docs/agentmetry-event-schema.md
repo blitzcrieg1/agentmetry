@@ -350,3 +350,5 @@ It does **not** see unmanaged ChatGPT, Cursor with hooks disabled, or browser co
 ```
 
 Agentmetry-native events use `agent.name: "agentmetry"` and omit `source` (implicit Tier A).
+
+`source.app` is one of the allowlisted agents (`KNOWN_EXTERNAL_APPS` in `core/audit/external.py`), or `unknown`. An unlisted name is recorded as `unknown`, with the name the client claimed in `source.claimed_app`, reduced to at most 64 characters of `a-z 0-9 _ . -` (additive; schema stays 1.2.0). Through 0.9.5 an unlisted name was recorded as `cursor`. A missing `source_app` still records as `cursor`, because hooks that predate the field post without it.

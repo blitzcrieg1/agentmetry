@@ -136,8 +136,36 @@ def test_antigravity_is_found_in_either_of_its_two_locations(home):
 
 
 def test_an_agent_directory_with_no_hook_file_at_all_is_uncovered(home):
-    _install(home, ".gemini", None)
+    _install(home, ".qoder", None)
+    assert hook_coverage.coverage()["qoder"] == hook_coverage.UNCOVERED
+
+
+def test_gemini_cli_alone_is_not_an_uncovered_antigravity(home):
+    """~/.gemini is shared. Gemini CLI keeps settings.json there and nothing of
+    Antigravity's. Reading the directory as Antigravity degraded the beat of
+    every Gemini CLI user for an agent they never installed."""
+    _install(home, ".gemini", "settings.json", hooked=False)
+    states = hook_coverage.coverage()
+    assert states["antigravity"] == hook_coverage.ABSENT
+    assert "antigravity" not in hook_coverage.uncovered(states)
+
+
+def test_antigravity_installed_without_our_hook_is_still_the_incident(home):
+    """The fix must not hide the real finding: Antigravity's own data directory
+    is there and no hook of ours is."""
+    _install(home, ".gemini/antigravity", None)
     assert hook_coverage.coverage()["antigravity"] == hook_coverage.UNCOVERED
+
+
+def test_our_antigravity_hook_counts_as_presence(home):
+    """A hook file we wrote means somebody installed for Antigravity, even
+    before Antigravity has written its own data directory."""
+    d = _install(home, ".gemini/config", None)
+    (d / "hooks.json").write_text(
+        json.dumps({"hooks": [{"command": "agentmetry_antigravity_hook.cmd"}]}),
+        encoding="utf-8",
+    )
+    assert hook_coverage.coverage()["antigravity"] == hook_coverage.COVERED
 
 
 # ----------------------------------------------------------------------
