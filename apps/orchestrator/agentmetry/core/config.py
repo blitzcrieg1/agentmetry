@@ -220,6 +220,14 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AGENTMETRY_MCP_INVENTORY"),
     )
 
+    # Agent settings that skip approval or turn hooks off, as a `posture` event
+    # (`agentmetry posture`). Off by default, for the same reason as the
+    # inventory: what reaches a SOC from a laptop is the operator's decision.
+    posture_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_POSTURE"),
+    )
+
     # Rewrite ~/.claude/settings.json and ~/.cursor/hooks.json on every boot to
     # point at this checkout. Off by default: it used to always run, so booting
     # any second checkout (a test clone, a feature branch, a demo instance)

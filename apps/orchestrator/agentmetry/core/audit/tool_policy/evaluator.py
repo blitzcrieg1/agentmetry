@@ -52,11 +52,12 @@ def _nested_arg_containers(hook_data: dict[str, Any]) -> tuple[list[dict[str, An
     Cursor shell hooks put `command` at the top level, but Claude and Codex nest
     it under `tool_input` and Antigravity under `toolCall.args`. Without those,
     a `command_pattern` rule matched nothing on three of the four supported IDEs
-    — the shipped block_shell_rm rule was Cursor-only in practice.
+    — the shipped block_shell_rm rule was Cursor-only in practice. Copilot CLI
+    sends `toolArgs`, and the same gap would have opened again for it.
     """
     containers: list[dict[str, Any]] = []
     raw = ""
-    for key in ("arguments", "args", "input", "tool_input", "toolInput"):
+    for key in ("arguments", "args", "input", "tool_input", "toolInput", "toolArgs"):
         val = hook_data.get(key)
         if isinstance(val, str):
             try:

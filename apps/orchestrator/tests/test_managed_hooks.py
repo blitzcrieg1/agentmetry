@@ -23,6 +23,7 @@ def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
         "claude": tmp_path / "ClaudeCode" / "managed-settings.d" / mh.CLAUDE_DROPIN,
         "cursor": tmp_path / "Cursor" / "hooks.json",
         "codex": tmp_path / "OpenAI" / "Codex" / "requirements.toml",
+        "copilot": tmp_path / "github-copilot" / "policy.d" / hb.COPILOT_HOOK_FILE,
     }
     monkeypatch.setattr(mh, "managed_paths", lambda: p)
     return p
@@ -42,6 +43,12 @@ def test_the_windows_locations_are_the_documented_ones(monkeypatch):
     assert str(mh.claude_managed_dir()) == r"C:\Program Files\ClaudeCode", "ProgramData is the legacy path Claude no longer reads"
     assert str(mh.cursor_enterprise_hooks()) == r"C:\ProgramData\Cursor\hooks.json"
     assert str(mh.codex_requirements()) == r"C:\ProgramData\OpenAI\Codex\requirements.toml"
+    assert str(mh.copilot_policy_dir()) == r"C:\ProgramData\GitHub\Copilot\policy.d"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the POSIX location")
+def test_the_copilot_policy_location_is_the_documented_one():
+    assert str(mh.copilot_policy_dir()) == "/etc/github-copilot/policy.d"
 
 
 # --- Claude Code -------------------------------------------------------------
@@ -166,3 +173,22 @@ def test_no_admin_rights_is_reported_not_crashed(paths, monkeypatch, capsys):
     monkeypatch.setattr(mh, "_write", denied)
     assert main(["hooks", "install", "--managed", "--agent", "claude"]) == 1
     assert "administrator" in capsys.readouterr().err
+
+
+# --- GitHub Copilot ------------------------------------------------------------
+
+
+def test_the_copilot_policy_file_is_the_whole_hooks_document(paths):
+    """Ours alone, like the Claude drop-in, in Copilot CLI's version-1 format."""
+    mh.install("copilot")
+    doc = json.loads(paths["copilot"].read_text(encoding="utf-8"))
+    assert doc["version"] == 1
+    assert set(doc["hooks"]) == {key for key, _ in hb.COPILOT_HOOK_EVENTS}
+    assert mh.status("copilot") == "managed"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_copilot_policy_file_is_not_group_or_world_writable(paths):
+    """Copilot ignores a policy file that is, so a 0664 umask would mean no hook."""
+    mh.install("copilot")
+    assert paths["copilot"].stat().st_mode & 0o022 == 0

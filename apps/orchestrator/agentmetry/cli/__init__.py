@@ -526,7 +526,7 @@ def cmd_install(args: argparse.Namespace) -> int:
 #: live in ~/.gemini and are written by scripts/install_antigravity_hooks.ps1,
 #: which has no Python equivalent. Listing it here and quietly doing nothing
 #: would be the reporting failure this codebase keeps finding in itself.
-_HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codebuddy")
+_HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codebuddy", "copilot")
 
 
 def _hooks_status() -> int:
@@ -972,6 +972,35 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_posture(args: argparse.Namespace) -> int:
+    """Report agent settings that take a human or a hook out of the loop.
+
+    Exits 0 with findings by default, like `mcp`: a posture is a risk report, and
+    a health check somebody wired into MDM should not fail on one. `--strict`
+    turns any high finding into exit 1 for a pipeline that wants exactly that.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from agentmetry.core.diagnostics.posture import HIGH, NOT_CHECKED, collect, summary_lines
+
+    posture = collect(_Path(args.project).resolve() if args.project else _Path.cwd())
+    if args.json:
+        print(_json.dumps({
+            "findings": [{**f.wire(), "why": f.why} for f in posture.sorted()],
+            "counts": posture.counts(),
+            "files_read": len(posture.files_read),
+            "files_unreadable": len(posture.unreadable),
+            "not_checked": sorted(NOT_CHECKED),
+        }, indent=2))
+    else:
+        for line in summary_lines(posture):
+            print(line)
+    if args.strict and posture.counts()[HIGH]:
+        return 1
+    return 0
+
+
 def cmd_otel(args: argparse.Namespace) -> int:
     """Receive Claude Code's native OpenTelemetry stream and record it.
 
@@ -1360,7 +1389,7 @@ def main(argv: list[str] | None = None) -> int:
     hooks.add_argument(
         "--managed",
         action="store_true",
-        help="use each vendor's admin-managed, machine-wide location (claude, cursor, codex); needs admin",
+        help="use each vendor's admin-managed, machine-wide location (claude, cursor, codex, copilot); needs admin",
     )
     hooks.add_argument(
         "--lock",
@@ -1485,6 +1514,14 @@ def main(argv: list[str] | None = None) -> int:
         "--digest", action="store_true",
         help="also print the config digest, which names no server and is safe to publish",
     )
+    posture = sub.add_parser(
+        "posture", help="report agent settings that skip approval prompts or turn hooks off"
+    )
+    posture.add_argument("--project", default=None, help="project root to include (default: cwd)")
+    posture.add_argument("--json", action="store_true", help="print findings as JSON")
+    posture.add_argument(
+        "--strict", action="store_true", help="exit 1 when any high-severity finding is present",
+    )
     otel = sub.add_parser(
         "otel", help="receive Claude Code's native OpenTelemetry stream (no hooks needed)"
     )
@@ -1586,6 +1623,7 @@ def main(argv: list[str] | None = None) -> int:
         "prove": cmd_prove,
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,
+        "posture": cmd_posture,
         "dashboard": cmd_dashboard,
         "otel": cmd_otel,
         "import-agt": cmd_import_agt,
