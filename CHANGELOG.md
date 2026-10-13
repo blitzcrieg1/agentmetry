@@ -9,6 +9,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-13
+
+A security fix for Codex users, and nothing else that changes behaviour. On
+0.9.4 and earlier, a DLP or tool-policy block on Codex let the tool run while
+the trail recorded the call as denied. Upgrade if you run Codex with any rule
+in block mode. No other agent's behaviour changes.
+
+The detection ruleset is unchanged (fingerprint `15846a0915769d4a`), as are the
+event schema and the hash-chain record format.
+
 ### Fixed
 
 - **A deny on Codex did not deny.** The 0.9.0 fix that sent each agent its own
@@ -1809,7 +1819,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.1...v0.9.2
