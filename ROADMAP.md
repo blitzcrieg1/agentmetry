@@ -39,11 +39,11 @@ Two rules, so it does not happen again.
 
 | | |
 |---|---|
-| Version | 0.9.4 on PyPI, released 2026-10-08. `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
+| Version | 0.9.5 on PyPI, released 2026-10-13: the Codex fail-open fix ([#246](https://github.com/blitzcrieg1/agentmetry/pull/246)). Since 0.9.4, `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1628 passing in CI on the 0.9.4 release commit, 82% coverage, a 78% floor enforced in CI |
+| Tests | 1642 passing and 8 skipped in the 0.9.5 release run (2026-10-13), 82% coverage on the same code in [#246](https://github.com/blitzcrieg1/agentmetry/pull/246), a 78% floor enforced in CI |
 | Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. Weeks 2 and 4 were red only on untriaged detections, and turned green when they were triaged, which is how the gate is designed to work |
 | Own trail | 56,038 hash-chained lines, 197 external checkpoints |
 | Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 10 GitHub stars, the newest from 2026-08-23 |
