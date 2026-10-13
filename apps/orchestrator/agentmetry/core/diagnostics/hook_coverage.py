@@ -99,12 +99,31 @@ class Surface:
     configs: tuple[str, ...]
     #: Overridden where our command is not the ingest script itself.
     markers: tuple[str, ...] = _DEFAULT_MARKERS
+    #: Paths under that directory that only this agent creates. Empty means the
+    #: directory is the agent's own and its existence is the answer. Set where
+    #: the directory is shared with another program, so that program's presence
+    #: does not read as this agent's.
+    presence: tuple[str, ...] = ()
 
     def directory(self) -> Path:
         override = os.environ.get(self.home_env, "").strip() if self.home_env else ""
         if override:
             return Path(override).expanduser()
         return Path.home() / self.home_rel
+
+    def installed(self) -> bool:
+        """Whether this agent is on the machine, as far as the disk can say.
+
+        A config we write counts as presence too: if our hook is in one of its
+        files, somebody installed it for this agent, and reporting the agent
+        absent would hide a hook that is there.
+        """
+        root = self.directory()
+        if not root.is_dir():
+            return False
+        if not self.presence:
+            return True
+        return any((root / rel).exists() for rel in (*self.presence, *self.configs))
 
 
 #: Mirrors hook_bootstrap's installers, plus the two surfaces that have none.
@@ -128,12 +147,19 @@ SURFACES: tuple[Surface, ...] = (
     # than the repo, so scripts/install_antigravity_hooks.ps1 writes both. Either
     # one means the agent is recorded. Its command is a .cmd wrapper, not the
     # ingest script, hence the marker override.
+    #
+    # ~/.gemini is not Antigravity's alone: Gemini CLI keeps its settings.json
+    # there too. Treating the directory as the answer reported every machine
+    # with only Gemini CLI as an uncovered Antigravity, which degraded its beat
+    # for an agent that was never installed. Antigravity's own data lives in
+    # ~/.gemini/antigravity, so that, or one of our hook files, is presence.
     Surface(
         "antigravity",
         "",
         ".gemini",
         ("config/hooks.json", "antigravity/scratch/.agents/hooks.json"),
         markers=("agentmetry_antigravity_hook", *_DEFAULT_MARKERS),
+        presence=("antigravity",),
     ),
 )
 
@@ -175,7 +201,7 @@ def coverage() -> dict[str, str]:
     result: dict[str, str] = {}
     for surface in SURFACES:
         try:
-            present = surface.directory().is_dir()
+            present = surface.installed()
         except OSError:
             present = False
         if not present:

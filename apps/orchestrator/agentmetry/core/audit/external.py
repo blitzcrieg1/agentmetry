@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -49,11 +50,34 @@ def _split_tool(qualified: str) -> tuple[str, str]:
     return "", qualified
 
 
+#: What an agent that is not on the allowlist is recorded as.
+UNKNOWN_APP = "unknown"
+
+_CLAIMED_APP_UNSAFE = re.compile(r"[^a-z0-9_.-]")
+
+
+def _resolve_source_app(raw: Any) -> tuple[str, str]:
+    """The app to record, and the name the client claimed when that differs.
+
+    An unlisted name used to be recorded as `cursor`. So an OpenClaw plugin, a
+    LangGraph handler or anything else posting to ingest landed in the trail,
+    the SIEM and the detections attributed to Cursor: a confident wrong answer
+    in a record whose value is that it is right. It is now `unknown`, with the
+    claimed name kept beside it, reduced to a short identifier so a client
+    cannot write arbitrary text into a field SIEM rules group on.
+
+    A missing name still means Cursor. That default predates `source_app`, and
+    hooks installed before it may still post without one.
+    """
+    source_app = str(raw or "cursor").strip().lower()
+    if source_app in KNOWN_EXTERNAL_APPS or source_app == "agentmetry":
+        return source_app, ""
+    return UNKNOWN_APP, _CLAIMED_APP_UNSAFE.sub("", source_app)[:64]
+
+
 def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize an adapter payload into canonical v1.1 JSON."""
-    source_app = str(payload.get("source_app") or "cursor").lower()
-    if source_app not in KNOWN_EXTERNAL_APPS and source_app != "agentmetry":
-        source_app = "cursor"
+    source_app, claimed_app = _resolve_source_app(payload.get("source_app"))
 
     event_type = str(payload.get("event_type") or "tool_called")
     action_type, default_outcome = _ACTION_MAP.get(event_type, ("tool_called", "success"))
@@ -130,6 +154,8 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "model": {"id": model_id, "provider": model_provider},
     }
+    if claimed_app:
+        event["source"]["claimed_app"] = claimed_app
 
     if tool_qualified:
         server = str(tool_block.get("server") or driver_name or source_app)

@@ -9,6 +9,30 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An agent the allowlist did not know was recorded as Cursor.** Any
+  `source_app` outside `KNOWN_EXTERNAL_APPS` was rewritten to `cursor`, so an
+  OpenClaw plugin, a LangGraph handler or anything else posting to the ingest
+  API landed in the trail, the SIEM and the detections attributed to Cursor. A
+  confident wrong answer is worse than none in a record whose value is being
+  right. It is now recorded as `unknown`, and the name the client claimed is
+  kept in a new `source.claimed_app` field, reduced to a short identifier so a
+  client cannot write arbitrary text into a field SIEM rules group on
+  (additive; schema stays 1.2.0). A missing `source_app` still records as
+  `cursor`, because hooks installed before the field existed post without it.
+- **Gemini CLI read as an uncovered Antigravity.** Coverage treated the
+  `~/.gemini` directory as Antigravity being installed, but Gemini CLI keeps its
+  settings there too. A machine with only Gemini CLI reported an uncovered
+  Antigravity, which degraded its heartbeat for an agent that was never
+  installed, and a fleet that learns to ignore a degraded beat has no tamper
+  signal left. Antigravity counts as present only when its own
+  `~/.gemini/antigravity` directory or one of our hook files is there. A
+  machine with Antigravity and no hook still reports uncovered, which is the
+  incident the check exists for.
+
+Both were found while writing `docs/agent-coverage.md` (#248).
+
 ## [0.9.5] - 2026-10-13
 
 A security fix for Codex users, and nothing else that changes behaviour. On
