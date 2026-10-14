@@ -74,12 +74,15 @@ trust. **Trigger:** their own post. This is the warmest of the six.
 > **Subject: the postmark-mcp gap, in one field**
 >
 > You wrote about postmark-mcp. The part that stuck with me: fifteen clean
-> releases before the one that mattered, and the config file identical
-> throughout.
+> releases, and then 1.0.16 shipped a single added line that BCC'd a third
+> party on every send. No announcement, and the interface a user approves
+> never moved.
 >
-> I fingerprint the `tools/list` schema per session. When the schema digest
-> moves while the config digest holds still, that is the rug pull, and it is an
-> event rather than a blog post. MITRE ATLAS calls it AML.T0109.
+> I fingerprint the `tools/list` schema per session and flag unpinned package
+> launchers, because that incident had two halves and point-in-time scans see
+> neither. A listing that moves while the config holds still is the rug pull,
+> and an unpinned `npx` launch is what let 1.0.16 land silently. Either way it
+> is an event rather than a blog post. MITRE ATLAS calls it AML.T0109.
 >
 > Not selling you anything in this message. If the detection logic is wrong I
 > would rather hear it from you than from a customer.
@@ -100,7 +103,7 @@ detection content, or work somewhere that does.
 > `sourcetype=agentmetry:json`, plus a TA. You keep Splunk as the console; I am
 > only the sensor.
 >
-> The benchmark is 50 sessions, 26 attack and 24 benign. The benign half is the
+> The benchmark is 54 sessions, 26 attack and 28 benign. The benign half is the
 > number I care about.
 >
 > Happy to send the searches with no call attached.
