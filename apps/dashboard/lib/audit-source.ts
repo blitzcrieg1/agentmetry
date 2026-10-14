@@ -21,6 +21,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   trae: "Trae",
   crewai: "CrewAI",
   opensre: "OpenSRE",
+  zcode: "ZCode",
 };
 
 /** Every known source_app for /audit/tail `sources=` — keep in sync with labels. */
@@ -54,6 +55,8 @@ const SOURCE_BADGE_CLASS: Record<string, string> = {
     "bg-lime-100 text-lime-900 ring-1 ring-lime-500/25 dark:bg-lime-950/50 dark:text-lime-200",
   opensre:
     "bg-teal-100 text-teal-900 ring-1 ring-teal-500/25 dark:bg-teal-950/50 dark:text-teal-200",
+  zcode:
+    "bg-zinc-100 text-zinc-900 ring-1 ring-zinc-500/25 dark:bg-zinc-950/50 dark:text-zinc-200",
 };
 
 const SOURCE_DOT_CLASS: Record<string, string> = {
@@ -70,6 +73,7 @@ const SOURCE_DOT_CLASS: Record<string, string> = {
   trae: "bg-red-400",
   crewai: "bg-lime-400",
   opensre: "bg-teal-400",
+  zcode: "bg-zinc-400",
 };
 
 /** Hex fills for Recharts source breakdown. */
@@ -87,6 +91,7 @@ export const SOURCE_CHART_COLOR: Record<string, string> = {
   trae: "#f87171",
   crewai: "#a3e635",
   opensre: "#2dd4bf",
+  zcode: "#a1a1aa",
 };
 
 const DEFAULT_BADGE_CLASS =

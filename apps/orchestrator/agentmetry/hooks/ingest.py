@@ -19,7 +19,7 @@ keeps running untouched. Nothing about the wire format changed.
 Environment:
   AGENTMETRY_URL            default http://127.0.0.1:8000
   AGENTMETRY_API_KEY          optional X-API-Key header (legacy: BLACKBOX_API_KEY)
-  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | copilot | mcp_proxy
+  AGENTMETRY_SOURCE_APP     cursor | claude | antigravity | codex | qwen | kimi | qoder | codebuddy | copilot | zcode | mcp_proxy
   AGENTMETRY_LOG_COMMANDS   1 = keep shell command text in audit (see also AGENTMETRY_AUDIT_LOG_COMMANDS in apps/orchestrator/.env)
 """
 
