@@ -23,6 +23,12 @@ updates:
     commit-message:
       prefix: "deps"
       prefix-development: "deps(dev)"
+    # The mcp pin is load-bearing and deliberate (>=1.2,<2). Dependabot's
+    # widening passes CI because no test imports the module the pin protects
+    # (#174), which makes it exactly the kind of green PR that should not
+    # merge. Ignore it here so the PR stops reopening every Monday.
+    ignore:
+      - dependency-name: "mcp"
     groups:
       # One PR for the routine bumps, so the ones worth reading stand out.
       # Security updates are deliberately not grouped: Dependabot raises those
