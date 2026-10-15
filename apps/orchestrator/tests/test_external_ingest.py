@@ -54,6 +54,21 @@ def test_an_unlisted_agent_is_unknown_not_cursor():
     assert out["source_topic"] == "external/unknown/tool_called"
 
 
+def test_zcode_is_a_known_source():
+    """ZCode is Claude-Code-derived, so its hook payload arrives in the Claude
+    shape; the events must record under their own name, not be coerced to
+    Claude by the unknown-source fallback."""
+    out = build_external_canonical({
+        "source_app": "zcode",
+        "event_type": "tool_called",
+        "tool": {"qualified": "Bash", "arguments": {"command": "ls"}},
+    })
+    assert out["source"]["app"] == "zcode"
+    assert out["agent"]["name"] == "zcode"
+    assert not out["source"].get("claimed_app")
+    assert out["source_topic"] == "external/zcode/tool_called"
+
+
 def test_a_claimed_name_cannot_carry_arbitrary_text():
     """The claim is kept so an operator can see who sent it, but only as a
     short identifier: SIEM rules group on this field."""

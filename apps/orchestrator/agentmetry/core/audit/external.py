@@ -20,12 +20,12 @@ from agentmetry.core.config import settings
 
 ExternalApp = Literal[
     "cursor", "claude", "antigravity", "codex", "mcp_proxy",
-    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "copilot", "agentmetry",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "copilot", "zcode", "agentmetry",
 ]
 
 KNOWN_EXTERNAL_APPS = frozenset({
     "cursor", "claude", "antigravity", "codex", "mcp_proxy",
-    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "copilot",
+    "qwen", "kimi", "qoder", "codebuddy", "trae", "crewai", "opensre", "copilot", "zcode",
 })
 
 _ACTION_MAP = {
