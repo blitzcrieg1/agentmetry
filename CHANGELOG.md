@@ -9,9 +9,62 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-15
+
+Two capture surfaces that had none. `agentmetry cloud cursor` and
+`agentmetry cloud claude` poll the Cursor Cloud Agents API and the Claude
+Compliance API once and record what each exposes through the same ingest as
+the hooks, and ZCode records under its own name instead of the unknown
+fallback. The dashboard gets a page for this machine. The Copilot CLI deny,
+which 0.9.6 said had not been run live, has now been run against Copilot CLI
+1.0.97; VS Code's agent host still has not.
+
+One change is visible to existing users: evidence packs are schema 2.2, and
+`meta.integrity_sha256` now covers `meta` except the digest itself. A checker
+that recomputes the hash over the body alone will not match a pack written by
+0.9.7. Packs at 2.1 and earlier verify under the old rule, so nothing already
+issued stops verifying.
+
+The cloud sources record what the vendor API exposes and nothing past it. The
+filesystem and environment of a vendor VM stay with the vendor, a Cursor run's
+stream is gone once the vendor's retention ends, and the Claude surface needs
+an org-level Compliance Access Key.
+
+The detection ruleset is unchanged (fingerprint `15846a0915769d4a`), as are the
+hash-chain record format and the event schema version (1.2.0; `cursor_cloud`,
+`claude_cloud`, `grok_build` and `zcode` are additive `source_app` values).
+
 ### Added
 
-- **The dashboard opens on this machine.** Agents installed here, whether each is recorded, posture findings, configured MCP servers, and the tool-policy rules in force. An MCP row opens a panel. Command lines, paths and secret values are not in the payload. A tools/list that differs from the previous listing says so, and does not claim the config file stayed still.
+- **Cloud Bridge: `agentmetry cloud cursor` and `agentmetry cloud claude`.**
+  Cloud agents run on vendor infrastructure, where no local hook fires. The
+  command polls the vendor API once and records what it exposes through the
+  same external ingest as the hook client. Cursor Cloud Agents
+  (`api.cursor.com`, key in `CURSOR_API_KEY`): agent lifecycle, runs with the
+  branch they pushed and the PR they opened, and the tool calls on a run's live
+  stream (name, status, arguments, result). Claude Compliance API
+  (`api.anthropic.com`, key in `ANTHROPIC_COMPLIANCE_KEY`, a Compliance Access
+  Key with `read:compliance_user_data`, not an admin key): session lists and
+  transcripts, keeping only `tool_use` blocks. `tool_use.input` arrives as a
+  JSON-encoded string and is decoded before classification; text, thinking and
+  system content never reach a payload. Tool arguments become the same redacted
+  canonical SHA-256 the hook client produces, and a test holds the two digests
+  equal for the same input, so a cloud event and a local event carrying the
+  same call hash the same way and a sequence rule does not split on the
+  boundary. `grok_build` is reserved and raises `NotImplementedError`: Grok
+  Build is a local CLI whose on-disk session logs need a real sample before a
+  parser is worth writing. Keys come from the environment and are never
+  logged. ([#267](https://github.com/blitzcrieg1/agentmetry/pull/267))
+- **ZCode records under its own name.** `zcode` joins the known sources, the
+  hook client routes `zcode hook <event>` as a source rather than treating the
+  first argument as a hook name, and `AGENTMETRY_SOURCE_APP` overrides the
+  label a mapper hardcodes, so a Claude-shaped hook config run from another
+  host agent records as that agent instead of the unknown fallback. Without
+  the variable nothing changes. The dashboard filter, badge and chart entry
+  follow. ([#264](https://github.com/blitzcrieg1/agentmetry/pull/264),
+  [#265](https://github.com/blitzcrieg1/agentmetry/pull/265),
+  [#266](https://github.com/blitzcrieg1/agentmetry/pull/266))
+- **The dashboard opens on this machine.** Agents installed here, whether each is recorded, posture findings, configured MCP servers, and the tool-policy rules in force. An MCP row opens a panel. Command lines, paths and secret values are not in the payload. A tools/list that differs from the previous listing says so, and does not claim the config file stayed still. ([#257](https://github.com/blitzcrieg1/agentmetry/pull/257))
 
 ### Fixed
 
@@ -1943,7 +1996,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...HEAD
+[0.9.7]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.3...v0.9.4
