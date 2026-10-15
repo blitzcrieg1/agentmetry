@@ -529,6 +529,88 @@ def cmd_install(args: argparse.Namespace) -> int:
 _HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codebuddy", "copilot")
 
 
+
+
+def cmd_cloud(args: argparse.Namespace) -> int:
+    """Poll a vendor cloud-agent API once and record what it exposes.
+
+    Everything this records passes through the same external ingest as the
+    hooks: canonicalized server-side, hash-chained, detected against. The
+    key comes from the environment (CURSOR_API_KEY, ANTHROPIC_COMPLIANCE_KEY)
+    and is never logged.
+    """
+    import os
+
+    import httpx
+
+    from agentmetry.core.audit.cloud_bridge import (
+        fetch_claude_messages,
+        fetch_claude_sessions,
+        fetch_cursor_agents,
+        fetch_cursor_runs,
+        map_claude_messages,
+        map_claude_session,
+        map_cursor_agent,
+    )
+
+    base = (args.url or "").strip() or None
+    posted = 0
+
+    def post(payload: dict) -> bool:
+        nonlocal posted
+        url = os.environ.get("AGENTMETRY_URL", "http://127.0.0.1:8000").rstrip("/")
+        key = os.environ.get("AGENTMETRY_API_KEY", "")
+        headers = {"Content-Type": "application/json"}
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        resp = httpx.post(f"{url}/api/v1/audit/ingest", json=payload, headers=headers, timeout=15)
+        ok = resp.status_code < 300
+        if ok:
+            posted += 1
+        else:
+            print(f"  ingest refused ({resp.status_code}): {resp.text[:120]}")
+        return ok
+
+    if args.provider == "cursor":
+        api_key = os.environ.get("CURSOR_API_KEY", "")
+        if not api_key:
+            print("CURSOR_API_KEY is not set.")
+            return 2
+        for agent in fetch_cursor_agents(api_key, base or __import__("agentmetry.core.audit.cloud_bridge", fromlist=["CURSOR_DEFAULT_BASE"]).CURSOR_DEFAULT_BASE):
+            runs = []
+            if not args.skip_runs:
+                try:
+                    runs = fetch_cursor_runs(str(agent.get("id")), api_key, base or "https://api.cursor.com")
+                except httpx.HTTPError as exc:
+                    print(f"  runs fetch failed for {agent.get('id')}: {exc}")
+            for payload in map_cursor_agent(agent, runs):
+                post(payload)
+        print(f"cursor: {posted} events recorded.")
+        return 0
+
+    if args.provider == "claude":
+        api_key = os.environ.get("ANTHROPIC_COMPLIANCE_KEY", "")
+        if not api_key:
+            print("ANTHROPIC_COMPLIANCE_KEY is not set (a Compliance Access Key with read:compliance_user_data, not an admin key).")
+            return 2
+        kind = "remote" if args.remote else "local"
+        sessions = fetch_claude_sessions(api_key, kind=kind, base=base or "https://api.anthropic.com", limit=args.limit)
+        for session in sessions[: args.limit]:
+            post(map_claude_session(session))
+            try:
+                messages = fetch_claude_messages(api_key, kind, str(session.get("id")), base or "https://api.anthropic.com")
+            except httpx.HTTPError as exc:
+                print(f"  messages fetch failed for {session.get('id')}: {exc}")
+                continue
+            for payload in map_claude_messages(session, messages):
+                post(payload)
+        print(f"claude ({kind}): {posted} events recorded.")
+        return 0
+
+    print(f"unknown provider: {args.provider}")
+    return 2
+
+
 def _hooks_status() -> int:
     """Coverage as an exit code, for a deployment tool rather than a person.
 
@@ -1419,6 +1501,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="orchestrator health and audit export status")
     stats = sub.add_parser("stats", help="audit trail metrics for dogfood (events, detections)")
     stats.add_argument("--days", type=int, default=7)
+    cloud = sub.add_parser("cloud", help="record what a vendor cloud-agent API exposes (Cursor, Claude)")
+    cloud.add_argument("provider", choices=("cursor", "claude"))
+    cloud.add_argument("--url", default="", help="vendor API base override")
+    cloud.add_argument("--limit", type=int, default=10, help="max sessions/agents per poll")
+    cloud.add_argument("--skip-runs", action="store_true", help="cursor: agents only, skip per-run fetch")
     detections = sub.add_parser("detections", help="list detections for one session")
     detections.add_argument("correlation_id", help="correlation_id / session id")
     disposition = sub.add_parser("disposition", help="close an audit detection from the shell")
@@ -1610,6 +1697,7 @@ def main(argv: list[str] | None = None) -> int:
         "hook": cmd_hook,
         "status": cmd_status,
         "stats": cmd_stats,
+        "cloud": cmd_cloud,
         "detections": cmd_detections,
         "disposition": cmd_disposition,
         "logs": cmd_logs,

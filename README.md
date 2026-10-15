@@ -132,7 +132,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-1707 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+1718 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -205,6 +205,7 @@ From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build 
 | `agentmetry mcp` | List MCP servers configured for agents on this machine. |
 | `agentmetry posture` | Report agent settings that skip approval prompts or turn hooks off: Claude Code bypass mode, Codex with no approvals or sandbox, VS Code auto-approve. `--strict` exits 1 on a high finding. `AGENTMETRY_POSTURE=1` also sends it to the SIEM. |
 | `agentmetry dashboard` | Open the dashboard signed in. |
+| `agentmetry cloud cursor` / `cloud claude` | Poll a vendor cloud-agent API once (Cursor Cloud Agents, Claude Compliance) and record what it exposes through the same ingest as the hooks. Keys from `CURSOR_API_KEY` / `ANTHROPIC_COMPLIANCE_KEY`. |
 | `agentmetry logs` | Tail the orchestrator log. |
 | `agentmetry stats` | Trail metrics. `agentmetry stats --days 7`. |
 | `agentmetry detections` | List detections for one session, via the API. |
