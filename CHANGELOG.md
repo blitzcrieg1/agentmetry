@@ -34,6 +34,17 @@ separately (currently `1.2.0`) and changes additively.
   as an issue.
 - **The open-core split omitted GitHub Copilot** from the capture row. The
   ingest field description omitted it too.
+- **The Copilot CLI deny had never been run against the CLI.** On 2026-10-14
+  Copilot CLI 1.0.97 (the current npm release) loaded the hooks file from
+  `agentmetry hooks install --agent copilot` and, on `preToolUse` for `bash`
+  `rm -rf /tmp/x`, printed `Denied by preToolUse hook: hook exited with code 2`.
+  The session used a local OpenAI-compatible provider, because this machine
+  has no Copilot subscription. The live payload sends `toolArgs` as an object.
+  The string form the older docs show still works. VS Code's agent host was
+  not run. Exit code 2 is still the deny both surfaces document. GitHub's
+  current hooks reference also fail-closes other non-zero exits on CLI
+  `preToolUse`. VS Code still fails open on any code other than 2, so the
+  hook keeps exiting 2.
 
 ## [0.9.6] - 2026-10-13
 

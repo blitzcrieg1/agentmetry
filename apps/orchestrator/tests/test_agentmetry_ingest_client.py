@@ -249,6 +249,7 @@ def test_hook_main_observe_only_no_auto_allow(monkeypatch, capsys):
     """Default install must not emit an allow decision (F1 security footgun)."""
     monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "cursor")
     monkeypatch.delenv("AGENTMETRY_ENFORCE", raising=False)
+    monkeypatch.delenv("AGENTMETRY_TOOL_POLICY_MODE", raising=False)
     monkeypatch.setattr(ingest, "post_ingest", lambda *a, **k: True)
     monkeypatch.setattr(
         ingest,
