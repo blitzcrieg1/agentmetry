@@ -355,3 +355,28 @@ def test_default_is_loopback_when_nothing_is_configured(monkeypatch):
     monkeypatch.delenv("AGENTMETRY_URL", raising=False)
     monkeypatch.delenv("AGENTMETRY_AUDIT_INGEST_URL", raising=False)
     assert ingest._base_url() == "http://127.0.0.1:8000"
+
+
+def test_source_app_override_relabels_the_claude_mapper(monkeypatch):
+    """A hook config running the Claude-shaped mapper from another host agent
+    (ZCode) sets AGENTMETRY_SOURCE_APP and the events record under that name
+    instead of the mapper's hardcoded label. Unknown names pass through here
+    and are coerced safely by the canonicalizer, never silently relabelled."""
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "zcode")
+    payload = ingest.map_hook(
+        "PostToolUse",
+        {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}},
+    )
+    assert payload["source_app"] == "zcode"
+
+
+def test_source_app_override_stays_off_when_unset(monkeypatch):
+    """Without the override, map_hook dispatches on the default source
+    (cursor), which cannot read a Claude-shaped payload: this is exactly the
+    silence a ZCode hook produced before the override existed."""
+    monkeypatch.delenv("AGENTMETRY_SOURCE_APP", raising=False)
+    payload = ingest.map_hook(
+        "PostToolUse",
+        {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}},
+    )
+    assert payload is None or payload.get("source_app") != "zcode"
