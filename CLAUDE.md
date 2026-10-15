@@ -168,10 +168,12 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-10 there are 1639 tests collected, zero open code
-scanning alerts, a passed dogfood gate (5 of 4 green weeks), `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), and 0.9.6 on PyPI
-(released 2026-10-13: GitHub Copilot hooks and `agentmetry posture`).
+Not code. As of 2026-10-15 there are 1724 tests collected, zero open code
+scanning alerts, a dogfood gate that passed 4 of 4 on 2026-10-02 (`dogfood`
+currently prints 0 of 4 consecutive: week 6 is red on untriaged detections),
+`agentmetry demo` runnable with nothing installed (`uvx agentmetry demo`), and
+0.9.7 on PyPI (released 2026-10-15: Cloud Bridge, ZCode as a source, the
+Copilot CLI deny run live, and evidence pack schema 2.2).
 Dependabot is down to 2 open alerts (one high, `braces`; one medium,
 `postcss-selector-parser`), both transitive in `apps/dashboard/package-lock.json`
 with no Dependabot PR. Check with
