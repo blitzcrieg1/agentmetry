@@ -162,14 +162,11 @@ def test_verify_reports_a_tampered_evidence_pack(tmp_path: Path, capsys):
     assert "integrity mismatch" in capsys.readouterr().out
 
 
-def test_verify_accepts_a_pack_whose_meta_was_edited(tmp_path: Path, capsys):
-    """Documents a real gap rather than asserting the behaviour is right.
+def test_verify_rejects_a_pack_whose_meta_was_edited(tmp_path: Path, capsys):
+    """The date range and producer are inside the integrity hash (schema 2.2).
 
-    `_integrity_hash` covers the body only, so `meta.producer`, `meta.date_from`
-    and `meta.date_to` can all be rewritten and the pack still verifies. The
-    date range is the one that matters: a pack can be relabelled to claim a
-    period it does not cover. Tracked in blitzcrieg1/agentmetry#75; when that is
-    fixed this test flips to asserting failure.
+    A pack that still verifies after those fields change can be relabelled to
+    claim a period it does not cover. blitzcrieg1/agentmetry#75.
     """
     from datetime import date
 
@@ -181,7 +178,8 @@ def test_verify_accepts_a_pack_whose_meta_was_edited(tmp_path: Path, capsys):
     pack["meta"]["date_to"] = "2031-12-31"
     pack_path.write_text(json.dumps(pack), encoding="utf-8")
 
-    assert main(["verify", str(pack_path)]) == 0, "gap closed? update this test and #75"
+    assert main(["verify", str(pack_path)]) == 1
+    assert "integrity mismatch" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------

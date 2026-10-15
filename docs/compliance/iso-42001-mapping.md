@@ -19,9 +19,9 @@ Export command: `agentmetry export --evidence --from YYYY-MM-DD --to YYYY-MM-DD`
 
 ---
 
-## Evidence pack sections (schema 2.1)
+## Evidence pack sections (schema 2.2)
 
-The pack is built from the canonical audit trail (`audit.db`) — the same events
+The pack is built from the canonical audit trail (`audit.db`), the same events
 the dashboard and SIEM sinks see.
 
 | Section | Contents | Governance use |
@@ -34,7 +34,7 @@ the dashboard and SIEM sinks see.
 | `summary.detections_untriaged` | Findings with no human decision at all | The honest measure of whether detection is operating as a control |
 | `controls` | DLP + tool-policy **manifest SHA-256 and enforcement modes** | Which controls were in force during the period |
 | `meta.trail_chain` | `head_seq`, `head_sha256`, verification result | Binds the pack to a position in the hash chain |
-| `meta.integrity_sha256` | Hash over the pack body | `agentmetry verify <export.json>` |
+| `meta.integrity_sha256` | Hash over `meta` (except the digest) and the pack body. Schema 2.1 and earlier hashed the body only, and those packs still verify that way | `agentmetry verify <export.json>` |
 
 **Read `summary.detections_untriaged` before citing detection as a control.** A
 detection nobody dispositioned evidences that the system noticed, not that

@@ -27,7 +27,15 @@ from agentmetry.core.audit.run_context import resolve_operator
 from agentmetry.core.config import settings
 from agentmetry.core.version import __version__
 
-SCHEMA_VERSION = "2.1"
+SCHEMA_VERSION = "2.2"
+# One evidence export reads at most this many events. Hitting the cap used to
+# drop the rest with no mark on the pack, so a period looked complete. The pack
+# now says so in meta, and the integrity hash covers that statement.
+_EXPORT_EVENT_CAP = 200_000
+# Packs at this version and above hash `meta` (except the digest itself).
+# Older packs hashed the body only, and `verify` still accepts that scope so a
+# pack already handed to an auditor keeps verifying.
+_META_IN_INTEGRITY: tuple[int, ...] = (2, 2)
 
 
 _COMPLIANCE_MAPPING = {
@@ -79,7 +87,9 @@ _COMPLIANCE_MAPPING = {
         "audit proxy. It does not observe unmanaged assistants (browser "
         "ChatGPT, unhooked IDEs) and is not a CASB, a sandbox, or a model "
         "evaluation tool. Absence of an event is not evidence that nothing "
-        "happened outside the monitored boundary."
+        "happened outside the monitored boundary. When meta.events_truncated "
+        "is true, the export hit its event cap and this pack is a prefix of "
+        "the requested window, not the whole period."
     ),
     "disclaimer": (
         "This pack is an operator-generated audit artifact. It is not legal "
@@ -381,8 +391,39 @@ def _summarize(
     }
 
 
-def _integrity_hash(body: dict[str, Any]) -> str:
-    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
+def _schema_tuple(version: object) -> tuple[int, ...]:
+    """`2.2` -> `(2, 2)`. A missing or non-numeric version sorts below every real one."""
+    if not isinstance(version, str) or not version:
+        return (0,)
+    parts: list[int] = []
+    for piece in version.split("."):
+        if not piece.isdigit():
+            break
+        parts.append(int(piece))
+    return tuple(parts) or (0,)
+
+
+def _covers_meta(schema_version: object) -> bool:
+    return _schema_tuple(schema_version) >= _META_IN_INTEGRITY
+
+
+def _integrity_subject(
+    body: dict[str, Any], meta: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """What the digest is computed over.
+
+    Schema 2.2 and later include `meta` with `integrity_sha256` removed, so the
+    date range, producer and trail-chain binding cannot be relabelled without
+    breaking the hash. Older packs pass `meta=None` and hash the body alone.
+    """
+    if meta is None:
+        return body
+    covered = {key: value for key, value in meta.items() if key != "integrity_sha256"}
+    return {"meta": covered, **body}
+
+
+def _integrity_hash(subject: dict[str, Any]) -> str:
+    canonical = json.dumps(subject, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -412,7 +453,10 @@ def build_evidence_pack(
         from agentmetry.core.audit.trail_db import get_trail_db
 
         trail_db = get_trail_db()
-    events = trail_db.read_between(start_ts, end_ts)
+    events = trail_db.read_between(start_ts, end_ts, limit=_EXPORT_EVENT_CAP + 1)
+    events_truncated = len(events) > _EXPORT_EVENT_CAP
+    if events_truncated:
+        events = events[:_EXPORT_EVENT_CAP]
 
     tool_calls = _extract_tool_calls(events)
     approvals = _extract_approvals(events)
@@ -449,11 +493,14 @@ def build_evidence_pack(
             "query_end_ts": end_ts,
             "source": "audit_trail",
             "raw_events_included": include_raw_events,
+            "events_truncated": events_truncated,
             "trail_chain": _trail_chain_state(),
         },
         **body,
     }
-    pack["meta"]["integrity_sha256"] = _integrity_hash(body)
+    pack["meta"]["integrity_sha256"] = _integrity_hash(
+        _integrity_subject(body, pack["meta"])
+    )
     return pack
 
 
@@ -483,8 +530,14 @@ def default_export_path(
 
 
 def verify_evidence_pack(pack: dict[str, Any]) -> tuple[bool, str]:
-    """Return (ok, message). Recomputes integrity_sha256 over the body."""
+    """Return (ok, message). Recomputes integrity_sha256.
+
+    Schema 2.2 and later cover `meta` except the digest. Earlier schemas cover
+    the body only, which is what those packs were hashed with.
+    """
     meta = pack.get("meta") or {}
+    if not isinstance(meta, dict):
+        return False, "meta must be an object"
     stored = meta.get("integrity_sha256")
     if not stored:
         return False, "missing meta.integrity_sha256"
@@ -495,7 +548,11 @@ def verify_evidence_pack(pack: dict[str, Any]) -> tuple[bool, str]:
         if not isinstance(body.get(key), dict):
             body[key] = {}
 
-    expected = _integrity_hash(body)
+    if _covers_meta(meta.get("schema_version")):
+        subject = _integrity_subject(body, meta)
+    else:
+        subject = _integrity_subject(body)
+    expected = _integrity_hash(subject)
     if expected != stored:
         return False, f"integrity mismatch (expected {expected[:16]}…, got {stored[:16]}…)"
     return True, "integrity verified"

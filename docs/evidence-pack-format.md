@@ -1,94 +1,67 @@
-# Evidence pack format (v1)
+# Evidence pack format (schema 2.2)
 
-Agentmetry exports a structured JSON audit artifact for a date range:
+`agentmetry export --evidence` writes a JSON audit artifact for an inclusive
+calendar date range. It reads the canonical trail index (`audit.db`), the same
+events the dashboard and the SIEM sinks see. No running orchestrator is required.
 
-```powershell
+```text
 agentmetry export --evidence --from 2026-07-01 --to 2026-07-31
-agentmetry verify vault/30-Archive/exports/evidence-2026-07-01_to_2026-07-31.json
+agentmetry verify path/to/evidence-2026-07-01_to_2026-07-31.json
 ```
 
-Default output: `vault/30-Archive/exports/evidence-<from>_to_<to>.json`
+Default path: `vault/30-Archive/exports/evidence-<from>_to_<to>.json` when that
+vault directory exists, otherwise `data/exports/` next to the trail.
 
-No running orchestrator required — reads `apps/orchestrator/data/events.db` and
-`runs.jsonl` directly.
+## Top-level keys
 
-## Schema version 1.0
+`meta`, `events`, `tool_calls`, `approvals`, `detections`, `dispositions`,
+`controls`, `compliance_mapping`, `summary`.
 
-```json
-{
-  "meta": {
-    "schema_version": "1.0",
-    "exported_at": "ISO-8601 UTC",
-    "date_from": "YYYY-MM-DD",
-    "date_to": "YYYY-MM-DD",
-    "vault_path": "/path/to/vault",
-    "query_start_ts": "ISO-8601 UTC inclusive lower bound",
-    "query_end_ts": "ISO-8601 UTC inclusive upper bound",
-    "integrity_sha256": "hex digest of body (see below)"
-  },
-  "summary": {
-    "event_count": 0,
-    "run_ledger_rows": 0,
-    "approval_gates": 0,
-    "approvals_granted": 0,
-    "approvals_terminated": 0,
-    "approvals_pending": 0,
-    "tool_calls": 0,
-    "tool_denials": 0,
-    "runs_started": 0,
-    "runs_failed": 0
-  },
-  "runs": [],
-  "approvals": [],
-  "tool_calls": [],
-  "events": [],
-  "compliance_mapping": {
-    "art_12_logging": "...",
-    "art_13_transparency": "...",
-    "art_14_human_oversight": "...",
-    "disclaimer": "..."
-  }
-}
-```
+## `meta`
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | `2.2` on packs this version writes |
+| `producer` | `agentmetry/<version>`, the build that wrote the pack |
+| `exported_at` | UTC timestamp of the export |
+| `date_from`, `date_to` | Inclusive calendar dates the pack claims to cover |
+| `query_start_ts`, `query_end_ts` | UTC bounds used to read the trail |
+| `source` | `audit_trail` |
+| `raw_events_included` | Whether `events` holds the raw records |
+| `events_truncated` | True when the window held more events than one export reads (200,000). The pack is then a prefix of the window, not the whole period |
+| `trail_chain` | Chain head the pack was drawn against (`head_seq`, `head_sha256`, `verified`, line counts) |
+| `integrity_sha256` | Digest defined below. Not itself an input to the digest |
 
 ## Integrity
 
-`meta.integrity_sha256` is SHA-256 of the canonical JSON serialization of:
+For schema 2.2 and later, `meta.integrity_sha256` is the SHA-256 of the
+canonical JSON of `meta` (with `integrity_sha256` removed) plus every body
+section. Canonical means keys sorted and compact separators, the same
+serialization `json.dumps(..., sort_keys=True, separators=(",", ":"))` produces.
 
-```json
-{
-  "runs": [...],
-  "approvals": [...],
-  "tool_calls": [...],
-  "events": [...],
-  "compliance_mapping": {...},
-  "summary": {...}
-}
-```
+`agentmetry verify <file>` recomputes that digest. Editing the date range, the
+producer, the trail-chain binding, or any body section fails the check.
 
-Keys sorted, compact separators (`sort_keys=True`, `separators=(",", ":")`).
+Packs whose `schema_version` is below `2.2`, including `2.1`, are verified the
+old way: the digest covers the body sections only, not `meta`. Those packs stay
+verifiable. Their date range is not protected. Re-export if you need the
+stronger check.
 
-Verify with `agentmetry verify <file>` — recomputes the hash and compares.
+The digest is an integrity check on the file. It is not a signature. Someone
+who rewrites the pack and the digest together still needs the trail chain and
+an external anchor (`agentmetry anchor`, `agentmetry verify --trail`) before a
+third party should trust the contents.
 
-## Data sources
+## Where each section comes from
 
 | Section | Source |
-|---------|--------|
-| `events` | `data/events.db` outbox (all bus topics except LLM tokens) |
-| `runs` | `data/runs.jsonl` filtered by `ts` |
-| `tool_calls` | `events` where `topic` is `run/tool_called` or `run/tool_denied` |
-| `approvals` | Reconstructed from `run/approval_required`, `run/completed`, `run/terminated`, plus ledger status rows |
+| --- | --- |
+| `events` | `audit.db`, events whose `timestamp_utc` falls inside the query bounds |
+| `tool_calls`, `approvals`, `detections` | Derived from those events |
+| `dispositions` | Triage decisions recorded on the trail during the window. The disposition currently in force is also stamped on each detection, including decisions made outside the window |
+| `controls` | DLP and tool-policy manifest hashes and modes in force at export time. This is the configuration at export, not a history of every change inside the window |
+| `compliance_mapping` | Static explanatory text, including what the pack does not cover |
+| `summary` | Counts over the sections above |
 
-## EU AI Act mapping (informational)
-
-The `compliance_mapping` block explains which sections of the export correspond to
-common deployer obligations under Articles 12 (logging), 13 (transparency), and 14
-(human oversight). **This is not legal advice or a certification.** Risk
-classification depends on your use case — consult qualified counsel.
-
-## v2 (planned)
-
-- PDF/MHTML human-readable summary
-- Merkle chain over event seq for third-party verification
-- Structured reject reasons + edit diffs in `approvals[]`
-- API endpoint `GET /api/v1/audit/export`
+This pack is an operator-generated artifact. It is not legal advice and it is
+not a certification.
