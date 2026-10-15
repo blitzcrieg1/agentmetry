@@ -337,7 +337,7 @@ def run_classic(ctx: DemoContext, settings: Any) -> int:
     say(f"  Detections from the trail:   {C['bold']}{api_count}{C['off']} "
         f"{C['dim']}via GET /api/v1/audit/detections/{{id}}{C['off']}")
     say(f"  Events a SIEM sink receives: {C['bold']}{len(events)}{C['off']} "
-        f"{C['dim']}(Splunk, Elastic, Sentinel, SecOps, Loki){C['off']}")
+        f"{C['dim']}(Splunk, Elastic, Sentinel, SecOps; Loki tails the file){C['off']}")
     return 1 if leaked or err else 0
 
 

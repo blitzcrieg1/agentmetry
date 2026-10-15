@@ -19,6 +19,7 @@ import {
   FEED_FOCUS_LABELS,
   FEED_FOCUS_SINCE_MINUTES,
   eventMatchesFocus,
+  outcomeCountsAsIssue,
   outcomeFiltersForFocus,
   tailFocusParam,
   type FeedFocusKind,
@@ -417,7 +418,6 @@ function FilterChip({
 
 export function FlightRecorderPanel() {
   const threadId = useAgentStore((s) => s.threadId);
-  const sessionId = useAgentStore((s) => s.sessionId);
   const fleetScope = useAgentStore((s) => s.fleetScope);
   const setFleetScope = useAgentStore((s) => s.setFleetScope);
   const runsRefreshKey = useAgentStore((s) => s.runsRefreshKey);
@@ -508,8 +508,11 @@ export function FlightRecorderPanel() {
       extra?: { before_utc?: string; after_utc?: string },
       focusOverride?: FeedFocusKind | null,
     ) => {
-      // Hunt mode mirrors Analytics stats (fleet, 7 days, server focus).
-      // Default SIEM view is fleet-wide; "This session" narrows to the browser id.
+      // Hunt mode mirrors Analytics stats (this machine, 7 days, server focus).
+      // "This machine" is the whole trail, heartbeats included. "Agent activity"
+      // is scope=runs: tool calls, approvals, and detections. It does not pass
+      // the dashboard browser id. That filter hid recorder-owned sessions and
+      // left every IDE event on screen, so the control did not mean a session.
       const focusKind = focusOverride === undefined ? huntFocus : focusOverride;
       const hunting = focusKind != null;
       const params = new URLSearchParams({
@@ -517,7 +520,6 @@ export function FlightRecorderPanel() {
         scope: hunting || fleetScope ? "all" : "runs",
       });
       if (!hunting) params.set("sources", ALL_SOURCE_APPS.join(","));
-      if (!hunting && !fleetScope && sessionId) params.set("session_id", sessionId);
       if (hunting) {
         params.set("since_minutes", String(FEED_FOCUS_SINCE_MINUTES));
         const focus = tailFocusParam(focusKind);
@@ -529,7 +531,7 @@ export function FlightRecorderPanel() {
       if (extra?.after_utc) params.set("after_utc", extra.after_utc);
       return params;
     },
-    [huntFocus, fleetScope, sessionId, timeWindow],
+    [huntFocus, fleetScope, timeWindow],
   );
 
   const fetchPage = useCallback(
@@ -669,7 +671,7 @@ export function FlightRecorderPanel() {
     if (sessionView) return; // don't clobber a pinned session view
     setLoading(true);
     void fetchTail();
-  }, [fetchTail, runsRefreshKey, timeWindowIdx, fleetScope, sessionId, sessionView]);
+  }, [fetchTail, runsRefreshKey, timeWindowIdx, fleetScope, sessionView]);
 
   useEffect(() => {
     if (!atLatest || sessionView) return;
@@ -724,10 +726,7 @@ export function FlightRecorderPanel() {
       const type = ev.action?.type ?? "";
       if (eventTypeFilter !== "all" && type !== eventTypeFilter) return false;
       const outcome = ev.action?.outcome ?? "";
-      // A detection's outcome IS its severity (critical/high/medium), not a
-      // standard outcome — group it with issues so it isn't silently filtered out.
-      const isDetection = type === "detection";
-      const isIssue = outcome === "denied" || outcome === "error" || isDetection;
+      const isIssue = outcomeCountsAsIssue(type, outcome);
       const outcomeOk =
         (outcome === "success" && outcomeFilters.success) ||
         (outcome === "pending" && outcomeFilters.pending) ||
@@ -783,7 +782,7 @@ export function FlightRecorderPanel() {
           <span className="min-w-0 truncate">
             <span className="font-medium text-caution">Focus: {FEED_FOCUS_LABELS[huntFocus]}</span>
             <span className="ml-2 text-muted-foreground">
-              Last 7 days, fleet-wide, up to 500 rows. Click a row for the reason and tool.
+              Last 7 days on this machine, up to 500 rows. Click a row for the reason and tool.
             </span>
           </span>
           <button type="button" onClick={clearActiveFocus} className="btn h-7 shrink-0">
@@ -847,8 +846,8 @@ export function FlightRecorderPanel() {
         <Segmented
           label="Scope"
           items={[
-            { value: "fleet", label: "Fleet" },
-            { value: "session", label: "This session" },
+            { value: "fleet", label: "This machine" },
+            { value: "session", label: "Agent activity" },
           ]}
           value={fleetScope ? "fleet" : "session"}
           onChange={(v) => setFleetScope(v === "fleet")}
@@ -869,7 +868,7 @@ export function FlightRecorderPanel() {
         <FilterChip active={outcomeFilters.issues} label="Issues" dot="bg-danger" onClick={() => toggleOutcome("issues")} />
         <span className="ml-1 text-[12px] text-muted-foreground">
           <span className="font-mono text-foreground">{displayEvents.length}</span> shown
-          {huntFocus ? ", hunt" : fleetScope ? ", fleet" : ", this session"}
+          {huntFocus ? ", hunt" : fleetScope ? ", this machine" : ", agent activity"}
           {sessionView ? ", pinned session" : !atLatest ? ", history" : ""}
         </span>
 
@@ -963,7 +962,7 @@ export function FlightRecorderPanel() {
                   ? `No ${FEED_FOCUS_LABELS[huntFocus].toLowerCase()} in the last 7 days. Clear focus or check ingest.`
                   : fleetScope
                     ? "No events match these filters. Try a wider time window, or open Analytics for weekly counts."
-                    : "No events for this dashboard session. Switch to Fleet to see all hosts."}
+                    : "No agent activity in this window. Switch to This machine to include heartbeats."}
               </EmptyState>
             ) : (
               <div className="min-w-[1080px]">

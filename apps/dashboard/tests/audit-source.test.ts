@@ -28,6 +28,7 @@ const FIRST_PARTY = [
   "kimi",
   "qoder",
   "codebuddy",
+  "copilot",
   "trae",
   "crewai",
   "opensre",

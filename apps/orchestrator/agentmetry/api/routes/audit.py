@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -100,7 +101,7 @@ class ExternalIngestBody(BaseModel):
 
     source_app: str = Field(
         ...,
-        description="cursor | claude | antigravity | codex | mcp_proxy | qwen | kimi | qoder | codebuddy | trae | crewai | opensre",
+        description="cursor | claude | antigravity | codex | copilot | mcp_proxy | qwen | kimi | qoder | codebuddy | trae | crewai | opensre",
     )
     event_type: str = Field(
         ...,
@@ -228,7 +229,7 @@ async def audit_tail(
     ),
     sources: str | None = Query(
         None,
-        description="Comma-separated source apps: agentmetry,cursor,claude,antigravity,mcp_proxy",
+        description="Comma-separated source.app values. Known names include cursor, claude, codex, copilot, antigravity, qwen, kimi, qoder, codebuddy, mcp_proxy, trae, crewai, opensre",
     ),
     since_minutes: int | None = Query(
         None,
@@ -450,6 +451,18 @@ async def audit_export_evidence():
         media_type="application/json",
         filename=out_path.name,
     )
+
+
+@router.get("/machine", dependencies=[Depends(require_api_key)])
+async def machine_view():
+    """This machine's agents, posture, MCP servers and tool policy.
+
+    Read-only. The payload is the local dashboard's "This machine" page. It
+    carries no command lines, paths, or secret values.
+    """
+    from agentmetry.core.diagnostics.machine_view import snapshot
+
+    return await asyncio.to_thread(snapshot)
 
 
 @router.get("/status", dependencies=[Depends(require_api_key)])

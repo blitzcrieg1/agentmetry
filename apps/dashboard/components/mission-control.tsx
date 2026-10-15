@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Activity, FileDown, ShieldAlert, Terminal } from "lucide-react";
+import { Activity, FileDown, Laptop, ShieldAlert, Terminal } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel, detectionsFromEvents } from "@/components/flight-recorder-panel";
+import { MachinePanel } from "@/components/machine-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
 import { DetectionsPanel } from "@/components/detections-panel";
 import { FeedStatusBar } from "@/components/feed-status-bar";
@@ -15,9 +16,15 @@ import { apiHeaders } from "@/lib/api";
 import { countUntriaged, fetchDispositions } from "@/lib/disposition";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 
-type Tab = "recorder" | "detections" | "analytics";
+type Tab = "machine" | "recorder" | "detections" | "analytics";
 
 const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon: typeof Terminal }> = {
+  machine: {
+    label: "This machine",
+    title: "This machine",
+    subtitle: "Agents, settings, MCP servers and policy on the machine this page is reading",
+    icon: Laptop,
+  },
   recorder: {
     label: "Event stream",
     title: "Event stream",
@@ -80,13 +87,19 @@ function useUntriagedCount(refreshKey: string): number | null {
   return count;
 }
 
+function shownHost(): string {
+  const explicit = ORCHESTRATOR_URL.replace(/^https?:\/\//, "");
+  if (explicit) return explicit;
+  if (typeof window === "undefined") return "";
+  return window.location.host;
+}
+
 export function MissionControl() {
   useWebSocket();
-  const wsConnected = useAgentStore((s) => s.wsConnected);
   const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
   const feedFocus = useAgentStore((s) => s.feedFocus);
   const clearFeedFocus = useAgentStore((s) => s.clearFeedFocus);
-  const [activeTab, setActiveTab] = useState<Tab>("recorder");
+  const [activeTab, setActiveTab] = useState<Tab>("machine");
   const untriaged = useUntriagedCount(activeTab);
 
   // Opening a detection from the Detections section hands off to the flight
@@ -107,7 +120,6 @@ export function MissionControl() {
   }, [feedFocus, clearFeedFocus]);
 
   const page = PAGES[activeTab];
-  const host = ORCHESTRATOR_URL.replace(/^https?:\/\//, "");
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
@@ -124,8 +136,13 @@ export function MissionControl() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 pt-5 lg:px-3" aria-label="Sections">
-          <p className="eyebrow mb-2 hidden px-2.5 lg:block">Monitor</p>
-          {(Object.keys(PAGES) as Tab[]).map((id) => {
+          {([
+            ["Overview", ["machine"]],
+            ["Activity", ["recorder", "detections", "analytics"]],
+          ] as const).map(([group, ids]) => (
+          <div key={group} className="mb-3">
+          <p className="eyebrow mb-2 hidden px-2.5 lg:block">{group}</p>
+          {ids.map((id) => {
             const item = PAGES[id];
             const active = activeTab === id;
             const badge = id === "detections" && untriaged ? untriaged : null;
@@ -157,6 +174,8 @@ export function MissionControl() {
               </button>
             );
           })}
+          </div>
+          ))}
         </nav>
 
         <div className="flex flex-col gap-0.5 border-t border-border px-2 py-3 lg:px-3">
@@ -171,8 +190,12 @@ export function MissionControl() {
             <span className="hidden lg:inline">Export evidence pack</span>
           </a>
           <ThemeToggle />
-          <p className="mt-2 hidden truncate px-2.5 font-mono text-[11px] text-subtle lg:block" title={ORCHESTRATOR_URL}>
-            {host}
+          <p
+            className="mt-2 hidden truncate px-2.5 font-mono text-[11px] text-subtle lg:block"
+            title={ORCHESTRATOR_URL || shownHost()}
+            suppressHydrationWarning
+          >
+            {shownHost()}
           </p>
         </div>
       </aside>
@@ -184,12 +207,14 @@ export function MissionControl() {
             <p className="mt-0.5 hidden truncate text-[13px] text-muted-foreground sm:block">{page.subtitle}</p>
           </div>
           <div className="flex h-8 items-center rounded-sm border border-border bg-card px-3">
-            <FeedStatusBar wsConnected={wsConnected} />
+            <FeedStatusBar />
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 lg:px-7 lg:py-5">
-          {activeTab === "recorder" ? (
+          {activeTab === "machine" ? (
+            <MachinePanel />
+          ) : activeTab === "recorder" ? (
             <FlightRecorderPanel />
           ) : activeTab === "detections" ? (
             <DetectionsPanel />

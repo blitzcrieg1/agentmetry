@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   eventMatchesFocus,
+  outcomeCountsAsIssue,
   outcomeFiltersForFocus,
 } from "@/lib/feed-focus";
 
@@ -30,6 +31,22 @@ describe("outcomeFiltersForFocus", () => {
         issues: true,
       });
     }
+  });
+});
+
+describe("outcomeCountsAsIssue", () => {
+  it("keeps a degraded heartbeat, which is how a missing hook is attested", () => {
+    expect(outcomeCountsAsIssue("heartbeat", "degraded")).toBe(true);
+  });
+
+  it("keeps detection severities that are not denied or error", () => {
+    expect(outcomeCountsAsIssue("detection", "critical")).toBe(true);
+  });
+
+  it("leaves success, pending, and an empty outcome off the Issues chip", () => {
+    expect(outcomeCountsAsIssue("tool_called", "success")).toBe(false);
+    expect(outcomeCountsAsIssue("approval_request", "pending")).toBe(false);
+    expect(outcomeCountsAsIssue("tool_called", "")).toBe(false);
   });
 });
 

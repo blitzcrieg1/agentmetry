@@ -62,7 +62,7 @@ interface AgentStore {
   memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
   runsRefreshKey: number;
-  /** Fleet = all hosts/sessions (SIEM default). Session = this dashboard browser id. */
+  /** True: every event on this machine, including heartbeats. False: agent activity only. */
   fleetScope: boolean;
   // Set by the Detections section to hand a detection to the flight recorder:
   // switch to the recorder tab, pin the session, and filter to the rule. The

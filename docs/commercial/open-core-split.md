@@ -24,7 +24,7 @@ enterprise = "agentmetry_enterprise.register:register"
 
 | Area | What ships |
 |------|------------|
-| **Capture** | IDE hooks (Cursor, Claude Code, Codex, Antigravity, Qwen, Kimi, Qoder, CodeBuddy), MCP audit proxy, Claude Code OpenTelemetry ingest (`agentmetry otel`), external ingest adapters |
+| **Capture** | IDE hooks (Cursor, Claude Code, Codex, GitHub Copilot, Antigravity, Qwen, Kimi, Qoder, CodeBuddy), MCP audit proxy, Claude Code OpenTelemetry ingest (`agentmetry otel`), external ingest adapters |
 | **Schema** | Canonical event format v1.2.0 (`SCHEMA_VERSION` in `agentmetry/core/audit/canonical.py`), MITRE ATT&CK per-tool tagging, optional MITRE ATLAS labels |
 | **Detection core** | Sequence-rule executor, live detection engine, community rule pack |
 | **Native YAML rules** | `agentmetry/policies/detection/manifest.yaml` spec — thresholds, session count rules, hot-reload |

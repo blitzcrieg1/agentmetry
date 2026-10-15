@@ -4,8 +4,11 @@
     python scripts/demo_dashboard.py           # static: seeded trail, no live traffic
     python scripts/demo_dashboard.py --live     # also stream synthetic events live
 
-Seeds a demo trail (5 sessions, 4 detections), then serves the built dashboard
-+ API on http://127.0.0.1:8010. Open that URL. Ctrl-C to stop.
+Seeds the demo trail, then serves the built dashboard and API on
+http://127.0.0.1:8010. Open that URL. Ctrl-C to stop.
+
+The static export calls the same origin that served the page, so this does
+not have to be port 8000. Build with `npm run build` in apps/dashboard.
 
 With --live, a background emitter posts clearly-synthetic agent activity through
 the real ingest API every few seconds, so MITRE tags and detections appear in
