@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-10-14.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-15.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -35,18 +35,18 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-10-14
+## Where this actually is, on 2026-10-15
 
 | | |
 |---|---|
-| Version | 0.9.6 on PyPI, released 2026-10-13: GitHub Copilot hooks and `agentmetry posture` ([#251](https://github.com/blitzcrieg1/agentmetry/pull/251)), after 0.9.5's Codex fail-open fix ([#246](https://github.com/blitzcrieg1/agentmetry/pull/246)). Since 0.9.4, `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
+| Version | 0.9.7 on PyPI, released 2026-10-15: Cloud Bridge ([#267](https://github.com/blitzcrieg1/agentmetry/pull/267)), ZCode as a source ([#264](https://github.com/blitzcrieg1/agentmetry/pull/264), [#265](https://github.com/blitzcrieg1/agentmetry/pull/265), [#266](https://github.com/blitzcrieg1/agentmetry/pull/266)), the dashboard page for this machine ([#257](https://github.com/blitzcrieg1/agentmetry/pull/257)), the Copilot CLI deny run live ([#256](https://github.com/blitzcrieg1/agentmetry/pull/256)), and evidence pack schema 2.2 ([#255](https://github.com/blitzcrieg1/agentmetry/pull/255)). Since 0.9.4, `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1692 passing and 8 skipped in the 0.9.6 release run (2026-10-13), 82% coverage on the same code in [#251](https://github.com/blitzcrieg1/agentmetry/pull/251), a 78% floor enforced in CI |
-| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. Weeks 2 and 4 were red only on untriaged detections, and turned green when they were triaged, which is how the gate is designed to work |
-| Own trail | 56,038 hash-chained lines and 197 external checkpoints, counted on the maintainer's machine. Not rechecked on 2026-10-14 |
-| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 14 GitHub stars on 2026-10-14 |
+| Tests | 1716 passed and 8 skipped in the 0.9.7 release verify job (2026-10-15), 1724 collected. 82% coverage was measured on the same code in [#255](https://github.com/blitzcrieg1/agentmetry/pull/255). A 78% floor is enforced in CI |
+| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. As of 2026-10-15 `dogfood` prints 0 of 4 consecutive because week 6 is red on one untriaged `session-tool-burst`. A red week from untriaged detections can be rescued at any time |
+| Own trail | 61,099 hash-chained lines, counted on the maintainer's machine on 2026-10-15 (`agentmetry verify --trail`). The default anchor log is empty: verify prints `anchors: none` |
+| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 15 GitHub stars on 2026-10-15 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
