@@ -9,6 +9,32 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **The dashboard opens on this machine.** Agents installed here, whether each is recorded, posture findings, configured MCP servers, and the tool-policy rules in force. An MCP row opens a panel. Command lines, paths and secret values are not in the payload. A tools/list that differs from the previous listing says so, and does not claim the config file stayed still.
+
+### Fixed
+
+- **The built dashboard called port 8000.** `npm run build` baked
+  `http://localhost:8000` into the export, and `scripts/demo_dashboard.py`
+  serves that export on 8010, so the page loaded and the feed could not see
+  the API. A production build now uses the origin that served the page.
+  `next dev` still talks to :8000.
+- **The event stream said Fleet, and Copilot was absent from the source list.**
+  The scope control reads This machine and Agent activity. Agent activity is
+  the tool, approval, and detection rows. It does not filter by the dashboard
+  browser id: that filter hid recorder-owned sessions and left every IDE event
+  on screen. The header no longer says Runs for a websocket that is not an
+  agent runtime. Copilot is in the source filter with the other allowlisted
+  apps. `agentmetry demo` no longer lists Loki as a SIEM sink: Loki tails the file.
+- **A degraded heartbeat disappeared from the event stream.** Heartbeats use
+  `action.outcome=degraded` when an agent is installed and not recorded. The
+  Issues chip only kept `denied`, `error`, and detections, so an idle hour
+  showed "last event minutes ago" and an empty table. `degraded` now counts
+  as an issue.
+- **The open-core split omitted GitHub Copilot** from the capture row. The
+  ingest field description omitted it too.
+
 ## [0.9.6] - 2026-10-13
 
 GitHub Copilot becomes the ninth hooked agent, in the CLI and in VS Code agent

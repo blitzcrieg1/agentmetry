@@ -62,7 +62,7 @@ export function DetectionsStrip({
                 aria-pressed={active}
                 onClick={() => onSelect?.(active ? null : d.rule_id)}
                 className="flex min-w-0 items-center gap-2 px-2.5 py-1 text-left"
-                title={`${d.severity}: filter events for this rule`}
+                title={`${d.title}. ${d.severity}: filter the stream to this rule`}
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEVERITY_DOT[d.severity] ?? SEVERITY_DOT.low}`} />
                 <span className="max-w-[16rem] truncate text-[12px] font-medium text-foreground">{d.title}</span>

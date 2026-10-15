@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { sourceDotClass } from "@/lib/audit-source";
+import { sourceDotClass, sourceLabel } from "@/lib/audit-source";
 
 interface AuditStatus {
   enabled: boolean;
@@ -19,7 +19,35 @@ interface AuditStatus {
 // misleading the reader.
 const SPOOL_ALERT_PENDING = 25;
 
-const SOURCE_ORDER = ["agentmetry", "claude", "cursor", "codex", "antigravity", "mcp_proxy"] as const;
+// Hooked agents first, then the other allowlisted sources. A dot is drawn
+// only for a source that has events in the tail window, so the header does
+// not advertise a catalog this machine is not recording.
+const SOURCE_DOT_ORDER = [
+  "cursor",
+  "claude",
+  "codex",
+  "copilot",
+  "antigravity",
+  "qwen",
+  "kimi",
+  "qoder",
+  "codebuddy",
+  "mcp_proxy",
+  "trae",
+  "crewai",
+  "opensre",
+  "agentmetry",
+] as const;
+
+const SOURCE_DOT_RANK = new Set<string>(SOURCE_DOT_ORDER);
+
+function sourcesWithEvents(bySource: Record<string, number>): string[] {
+  const ranked = SOURCE_DOT_ORDER.filter((src) => (bySource[src] ?? 0) > 0);
+  const extra = Object.keys(bySource)
+    .filter((src) => (bySource[src] ?? 0) > 0 && !SOURCE_DOT_RANK.has(src))
+    .sort();
+  return [...ranked, ...extra];
+}
 
 const STALE_MINUTES = 15;
 
@@ -38,7 +66,7 @@ function ingestLabel(minutes: number | null, enabled: boolean, recent: number): 
   return `Last event ${minutes}m ago`;
 }
 
-export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
+export function FeedStatusBar() {
   const [status, setStatus] = useState<AuditStatus | null>(null);
   // Backend down and ingest disabled are opposite diagnoses; a fetch failure
   // must not render as "Ingest off".
@@ -137,6 +165,7 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
       : recent === 0
         ? "bg-muted-foreground"
         : "bg-secure animate-pulse";
+  const activeSources = sourcesWithEvents(bySource);
 
   return (
     <div
@@ -152,30 +181,17 @@ export function FeedStatusBar({ wsConnected }: { wsConnected: boolean }) {
         {label}
       </span>
 
-      <span className="hidden text-subtle sm:inline">·</span>
-
-      <span className="hidden items-center gap-1 sm:inline-flex" title="Recent events by hook source">
-        {SOURCE_ORDER.map((src) => {
-          const count = bySource[src] ?? 0;
-          return (
-            <span
-              key={src}
-              className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(src, count > 0)}`}
-              title={`${src}: ${count}`}
-            />
-          );
-        })}
-      </span>
-
-      {wsConnected ? (
+      {activeSources.length > 0 ? (
         <>
-          <span className="hidden text-subtle md:inline">·</span>
-          <span
-            className="hidden items-center gap-1 text-muted-foreground md:inline-flex"
-            title="Run stream connected (WebSocket)"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-secure/70" />
-            Runs
+          <span className="hidden text-subtle sm:inline">·</span>
+          <span className="hidden items-center gap-1 sm:inline-flex" title="Recent events by source">
+            {activeSources.map((src) => (
+              <span
+                key={src}
+                className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(src)}`}
+                title={`${sourceLabel(src)}: ${bySource[src] ?? 0}`}
+              />
+            ))}
           </span>
         </>
       ) : null}

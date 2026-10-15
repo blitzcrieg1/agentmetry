@@ -15,6 +15,8 @@ Sessions seeded:
   3. Guardrail bypass (Antigravity)      — CRITICAL: denied, then ran anyway
   4. Autonomous cron job                 — HIGH: writes with no human approval
   5. Recon sweep (Codex)                 — MEDIUM: discovery burst, then collect
+  6. Claude Code debugging               — an ordinary session on the second IDE
+  7. Encoded download cradle (Cursor)    — CRITICAL: fetch and execute from a raw IP
 """
 
 from __future__ import annotations

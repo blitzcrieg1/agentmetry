@@ -12,6 +12,20 @@ export type FeedFocus = {
   kind: FeedFocusKind;
 };
 
+/**
+ * Whether an event belongs under the Issues chip.
+ *
+ * Detections store severity in `action.outcome` (`critical`, `high`, `medium`).
+ * Heartbeats store `degraded` when an agent is installed and not recorded.
+ * Neither value is `denied` or `error`. Treating only those two as issues
+ * dropped the rows, while the status bar still reported a recent event.
+ */
+export function outcomeCountsAsIssue(type: string, outcome: string): boolean {
+  if (type === "detection") return true;
+  if (!outcome || outcome === "success" || outcome === "pending") return false;
+  return true;
+}
+
 /** Outcome chips the recorder should enable for a given focus. */
 export function outcomeFiltersForFocus(kind: FeedFocusKind): {
   success: boolean;

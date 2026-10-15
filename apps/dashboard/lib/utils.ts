@@ -30,30 +30,61 @@ export function generateSessionId(): string {
   return `session-${Date.now()}-${suffix}`;
 }
 
-// When the dashboard is served as a static export by the orchestrator itself
-// (single-process mode, NEXT_PUBLIC_SAME_ORIGIN=true), talk to the same origin
-// the page was loaded from — this also makes LAN/phone access "just work".
-// In two-terminal dev the explicit env var (or the :8000 default) is used.
-const _SAME_ORIGIN =
-  process.env.NEXT_PUBLIC_SAME_ORIGIN === "true" && typeof window !== "undefined";
+// A production build is the static export the orchestrator serves, on :8000
+// (`scripts/serve.bat`) or on :8010 (`scripts/demo_dashboard.py`) or on a LAN
+// address. Relative URLs follow that page. `next dev` stays on :8000, because
+// the Next server is :3000 and is not the API. An explicit
+// NEXT_PUBLIC_ORCHESTRATOR_URL still wins, for a split deploy.
+//
+// The production string is empty on the server and in the browser, so the
+// evidence-pack link does not hydrate to a different host. The old
+// NEXT_PUBLIC_SAME_ORIGIN flag depended on `window` and was false during
+// prerender, and a plain `npm run build` never set it.
 
-function httpBase(): string {
-  if (process.env.NEXT_PUBLIC_ORCHESTRATOR_URL) {
-    return process.env.NEXT_PUBLIC_ORCHESTRATOR_URL;
-  }
-  if (_SAME_ORIGIN) return window.location.origin;
-  return "http://localhost:8000";
+export type OrchestratorLocation = {
+  configuredUrl?: string;
+  nodeEnv?: string;
+  sameOriginFlag?: boolean;
+  pageOrigin?: string | null;
+};
+
+function wantsSameOrigin(nodeEnv: string | undefined, flag: boolean | undefined): boolean {
+  if (flag !== undefined) return flag;
+  return nodeEnv === "production" || process.env.NEXT_PUBLIC_SAME_ORIGIN === "true";
 }
 
-function wsBase(): string {
-  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  if (_SAME_ORIGIN) {
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${proto}//${window.location.host}`;
+export function orchestratorHttpBase(loc: OrchestratorLocation = {}): string {
+  const configured = loc.configuredUrl ?? process.env.NEXT_PUBLIC_ORCHESTRATOR_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const nodeEnv = loc.nodeEnv ?? process.env.NODE_ENV;
+  if (!wantsSameOrigin(nodeEnv, loc.sameOriginFlag)) return "http://localhost:8000";
+  if (nodeEnv === "production") return "";
+  if (loc.pageOrigin) return loc.pageOrigin.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+}
+
+export type OrchestratorSocket = {
+  configuredUrl?: string;
+  nodeEnv?: string;
+  sameOriginFlag?: boolean;
+  pageProtocol?: string | null;
+  pageHost?: string | null;
+};
+
+export function orchestratorWsBase(loc: OrchestratorSocket = {}): string {
+  const configured = loc.configuredUrl ?? process.env.NEXT_PUBLIC_WS_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const nodeEnv = loc.nodeEnv ?? process.env.NODE_ENV;
+  const protocol = loc.pageProtocol ?? (typeof window !== "undefined" ? window.location.protocol : null);
+  const host = loc.pageHost ?? (typeof window !== "undefined" ? window.location.host : null);
+  if (wantsSameOrigin(nodeEnv, loc.sameOriginFlag) && protocol && host) {
+    const wsProto = protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProto}//${host}`;
   }
   return "ws://localhost:8000";
 }
 
-export const ORCHESTRATOR_URL = httpBase();
+export const ORCHESTRATOR_URL = orchestratorHttpBase();
 
-export const WS_URL = wsBase();
+export const WS_URL = orchestratorWsBase();

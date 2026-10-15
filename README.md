@@ -45,7 +45,7 @@ Public alpha. Capture, sequence detection, and SIEM forwarding work. APIs and ho
 
 Security engineers and developers who want a record of what a coding agent did at the tool boundary: which agent, which session, which call, in what order.
 
-It is a sensor. The open-source package is not a console. Fleet questions are answered in the SIEM you forward to. A hosted fleet console is allowed for Agentmetry Enterprise and is not built. The sensor never needs that service to record or to forward. See [open-core split](docs/commercial/open-core-split.md).
+It is a sensor. The open-source package is not a console. `agentmetry dashboard` reads the trail on this machine. Fleet questions are answered in the SIEM you forward to. A hosted fleet console is allowed for Agentmetry Enterprise and is not built. The sensor never needs that service to record or to forward. See [open-core split](docs/commercial/open-core-split.md).
 
 It does not see an unmanaged browser chat, an IDE with hooks off, or an MCP server reached over HTTP instead of the stdio proxy. That is CASB or gateway territory.
 
@@ -132,7 +132,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-1704 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+1707 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
