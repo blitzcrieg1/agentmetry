@@ -45,6 +45,9 @@ CLI_PRE = {
     "toolName": "bash",
     "toolArgs": json.dumps({"command": "rm -rf /tmp/x"}),
 }
+# Copilot CLI 1.0.97, run on 2026-10-14, sent toolArgs as an object, not a
+# JSON string. The string form is still what the older docs show.
+CLI_PRE_OBJECT = {**CLI_PRE, "toolArgs": {"command": "rm -rf /tmp/x"}}
 VSCODE_PRE = {
     "timestamp": "2026-10-13T12:00:00Z",
     "hook_event_name": "PreToolUse",
@@ -86,7 +89,7 @@ def _run(monkeypatch, capsys, data: dict, hook: str = "PreToolUse") -> tuple[int
 # --- mapping both payloads ---------------------------------------------------
 
 
-@pytest.mark.parametrize("data", [CLI_PRE, VSCODE_PRE], ids=["cli", "vscode"])
+@pytest.mark.parametrize("data", [CLI_PRE, CLI_PRE_OBJECT, VSCODE_PRE], ids=["cli-string", "cli-object", "vscode"])
 def test_both_payloads_map_to_a_shell_call(data):
     payload = ingest.map_copilot_hook("PreToolUse", data)
     assert payload["source_app"] == "copilot"
@@ -120,12 +123,15 @@ def test_tool_policy_sees_the_command_in_cli_tool_args():
     """Copilot CLI's `toolArgs` was in none of the containers tool policy read,
     so a command_pattern rule would have matched nothing on it."""
     assert _extract_command(CLI_PRE) == "rm -rf /tmp/x"
+    assert _extract_command(CLI_PRE_OBJECT) == "rm -rf /tmp/x"
 
 
 # --- the deny is an exit code ------------------------------------------------
 
 
-@pytest.mark.parametrize("data", [CLI_PRE, VSCODE_PRE], ids=["cli", "vscode"])
+@pytest.mark.parametrize(
+    "data", [CLI_PRE, CLI_PRE_OBJECT, VSCODE_PRE], ids=["cli-string", "cli-object", "vscode"]
+)
 def test_a_policy_block_exits_2_with_the_reason_on_stderr(monkeypatch, capsys, data):
     _block(monkeypatch)
     code, out, err = _run(monkeypatch, capsys, data)
