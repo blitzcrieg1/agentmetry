@@ -319,7 +319,7 @@ what catches renumbering. Two examples that a from-memory mapping gets wrong:
 ## CLI
 
 ```powershell
-agentmetry replay <thread_id>     # ASCII timeline from events.db
+agentmetry replay <thread_id>     # ASCII timeline of one session from the hash-chained trail
 agentmetry export --evidence ...  # Batch compliance pack (separate format)
 ```
 

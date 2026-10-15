@@ -9,6 +9,7 @@ trail. These tests pin the source and the shape an auditor relies on.
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -328,3 +329,79 @@ def test_the_integrity_hash_covers_dispositions(dates, isolated_dispositions):
     assert verify_evidence_pack(pack)[0] is True
     pack["dispositions"].append({"rule_id": "credential-exfil", "status": "resolved"})
     assert verify_evidence_pack(pack)[0] is False
+
+
+def test_schema_2_2_integrity_covers_the_date_range_and_producer(dates):
+    """Rewriting the label must fail even when every event is left untouched."""
+    from_date, to_date = dates
+    pack = build_evidence_pack(from_date, to_date, trail_db=_FakeTrail([_tool_event()]))
+    assert pack["meta"]["schema_version"] == "2.2"
+    assert verify_evidence_pack(pack)[0] is True
+
+    pack["meta"]["date_to"] = "2031-12-31"
+    ok, message = verify_evidence_pack(pack)
+    assert ok is False and "integrity mismatch" in message
+
+    pack = build_evidence_pack(from_date, to_date, trail_db=_FakeTrail([_tool_event()]))
+    pack["meta"]["producer"] = "somebody-else/9.9.9"
+    assert verify_evidence_pack(pack)[0] is False
+
+    pack = build_evidence_pack(from_date, to_date, trail_db=_FakeTrail([_tool_event()]))
+    pack["meta"]["trail_chain"]["head_sha256"] = "0" * 64
+    assert verify_evidence_pack(pack)[0] is False
+
+
+def test_schema_2_1_packs_keep_the_body_only_hash(dates):
+    """Packs already issued were hashed without meta. They must still verify.
+
+    Their date range stays unprotected, which is the old contract. Re-export
+    to get schema 2.2.
+    """
+    from agentmetry.core.audit.evidence_pack import _BODY_KEYS, _integrity_hash
+
+    from_date, to_date = dates
+    pack = build_evidence_pack(from_date, to_date, trail_db=_FakeTrail([_tool_event()]))
+    body = {key: pack[key] for key in _BODY_KEYS}
+    pack["meta"]["schema_version"] = "2.1"
+    pack["meta"]["integrity_sha256"] = _integrity_hash(body)
+    pack["meta"]["date_to"] = "2031-12-31"
+    pack["meta"]["producer"] = "somebody-else/9.9.9"
+    assert verify_evidence_pack(pack)[0] is True
+
+    pack["events"] = [{"event_id": "planted"}]
+    assert verify_evidence_pack(pack)[0] is False
+
+
+def test_an_export_that_hits_the_event_cap_says_so(dates, monkeypatch):
+    """A capped export used to look complete. The flag is inside the hash."""
+    import agentmetry.core.audit.evidence_pack as evidence_pack
+
+    monkeypatch.setattr(evidence_pack, "_EXPORT_EVENT_CAP", 2)
+
+    class _Unbounded:
+        def read_between(self, _start, _end, *, limit=200_000):
+            return [_tool_event(event_id=f"e{i}") for i in range(limit)]
+
+    from_date, to_date = dates
+    pack = build_evidence_pack(from_date, to_date, trail_db=_Unbounded())
+    assert pack["meta"]["events_truncated"] is True
+    assert len(pack["events"]) == 2
+    assert verify_evidence_pack(pack)[0] is True
+    pack["meta"]["events_truncated"] = False
+    assert verify_evidence_pack(pack)[0] is False
+
+    short = build_evidence_pack(
+        from_date, to_date, trail_db=_FakeTrail([_tool_event()])
+    )
+    assert short["meta"]["events_truncated"] is False
+
+
+def test_a_written_pack_verifies_after_a_json_round_trip(dates, tmp_path):
+    from agentmetry.core.audit.evidence_pack import write_evidence_pack
+
+    from_date, to_date = dates
+    pack = build_evidence_pack(from_date, to_date, trail_db=_FakeTrail([_tool_event()]))
+    path = write_evidence_pack(pack, tmp_path / "pack.json")
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    ok, message = verify_evidence_pack(loaded)
+    assert ok, message

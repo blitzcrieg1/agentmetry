@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-10-08.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-14.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -35,7 +35,7 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-10-08
+## Where this actually is, on 2026-10-14
 
 | | |
 |---|---|
@@ -45,8 +45,8 @@ Two rules, so it does not happen again.
 | Benchmark | 54 recorded sessions, 26 attack and 28 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
 | Tests | 1692 passing and 8 skipped in the 0.9.6 release run (2026-10-13), 82% coverage on the same code in [#251](https://github.com/blitzcrieg1/agentmetry/pull/251), a 78% floor enforced in CI |
 | Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. Weeks 2 and 4 were red only on untriaged detections, and turned green when they were triaged, which is how the gate is designed to work |
-| Own trail | 56,038 hash-chained lines, 197 external checkpoints |
-| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 10 GitHub stars, the newest from 2026-08-23 |
+| Own trail | 56,038 hash-chained lines and 197 external checkpoints, counted on the maintainer's machine. Not rechecked on 2026-10-14 |
+| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 14 GitHub stars on 2026-10-14 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
@@ -99,8 +99,7 @@ the most important one on the page.
 | **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. The dogfood gate passing is the checkable fact the openers were missing. Nothing else on this list matters as much |
 | The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has now passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass |
 | `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Every detection that held a week at red in the run was this rule, on intended work. A rule change, so it belongs in the same pass as #55 |
-| Evidence pack integrity covers `meta` | [#75](https://github.com/blitzcrieg1/agentmetry/issues/75) | The date range on an evidence pack can currently be rewritten without breaking the hash. Needs a schema bump so existing packs keep verifying |
-| The removed runtime out of the boot path, `replay` on the trail | [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) | The orchestrator still mounts the old runtime's MCP host on every boot, `replay` reads only its outbox, and it holds `mcp` below 2 |
+| Finish removing the old runtime | [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) | Boot no longer mounts the driver host unless `AGENTMETRY_LEGACY_DRIVERS=1`, and `replay` reads the trail. What remains is the outbox, the vault demo, and the `mcp<2` pin those leftovers still require |
 
 **The freeze held for the run that passed.** The ruleset fingerprint covers
 `detection/rules.py`, `detection/traits.py`, `detection/engine.py`,

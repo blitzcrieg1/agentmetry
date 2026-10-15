@@ -45,6 +45,17 @@ separately (currently `1.2.0`) and changes additively.
   current hooks reference also fail-closes other non-zero exits on CLI
   `preToolUse`. VS Code still fails open on any code other than 2, so the
   hook keeps exiting 2.
+- **Evidence pack integrity now covers `meta`.** `meta.integrity_sha256` was
+  SHA-256 of the body only, so `date_from`, `date_to`, `producer` and
+  `trail_chain` could be rewritten and `agentmetry verify` still exited 0. A
+  pack could claim a period, or a build, it was not drawn from. Schema 2.2
+  hashes `meta` except the digest itself. Packs at 2.1 and earlier still
+  verify under the old rule, so a pack already issued keeps verifying.
+  ([#75](https://github.com/blitzcrieg1/agentmetry/issues/75))
+- **An evidence export that hit its event cap no longer looks complete.** The
+  trail read stopped at 200,000 events and the pack still claimed the whole
+  date range. `meta.events_truncated` is now set when that cap is hit, and the
+  integrity hash covers the flag.
 
 ## [0.9.6] - 2026-10-13
 
