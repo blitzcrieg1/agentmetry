@@ -1961,6 +1961,7 @@ def cli_main(argv: list[str] | None = None) -> int:
 #: Every source app the dispatch below accepts as a leading argument.
 SOURCE_APPS = (
     "cursor", "claude", "antigravity", "codex", "qwen", "kimi", "qoder", "codebuddy", "copilot",
+    "zcode",
 )
 
 

@@ -380,3 +380,20 @@ def test_source_app_override_stays_off_when_unset(monkeypatch):
         {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}},
     )
     assert payload is None or payload.get("source_app") != "zcode"
+
+
+def test_zcode_is_a_recognized_first_argument(monkeypatch):
+    """`agentmetry_ingest.py zcode hook PostToolUse` must route to hook_main
+    with the source label set, not fall through to the unknown-app branch
+    that treats the first argument as a hook name."""
+    monkeypatch.setattr(sys, "argv", ["agentmetry_ingest.py", "zcode", "hook", "PostToolUse"])
+    captured = {}
+    def fake_hook_main(hook_name):
+        captured["hook_name"] = hook_name
+        return 0
+    monkeypatch.setattr(ingest, "hook_main", fake_hook_main)
+    rc = ingest.main()
+    assert rc == 0
+    import os
+    assert os.environ.get("AGENTMETRY_SOURCE_APP") == "zcode"
+    assert captured["hook_name"] == "PostToolUse"
