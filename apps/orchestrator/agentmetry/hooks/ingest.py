@@ -1595,6 +1595,14 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     adapter_override = os.environ.get("AGENTMETRY_ADAPTER", "").strip()
     if payload and adapter_override:
         payload["adapter"] = adapter_override
+    # Same override pattern for the source label: a hook config that runs the
+    # Claude-shaped mapper from another host agent (ZCode, forks, wrappers)
+    # sets AGENTMETRY_SOURCE_APP and the events record under that name, as
+    # long as it is a known source. Unknown names are coerced safely
+    # downstream, never silently relabelled.
+    source_override = os.environ.get("AGENTMETRY_SOURCE_APP", "").strip().lower()
+    if payload and source_override:
+        payload["source_app"] = source_override
     return payload
 
 
