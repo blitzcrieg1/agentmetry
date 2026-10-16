@@ -15,7 +15,6 @@ import {
   AGENT_STATE_LABEL,
 } from "@/lib/machine";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
-import { MachineScene } from "@/components/machine-scene";
 import { EmptyState, SeverityBadge } from "@/components/ui/kit";
 
 function serverKey(row: McpServerRow): string {
@@ -45,6 +44,56 @@ function Stat({ label, value, detail, tone = "text-foreground" }: { label: strin
       <p className={`mt-1 font-mono text-[22px] font-medium leading-none ${tone}`}>{value}</p>
       <p className="mt-1.5 text-[12px] text-muted-foreground">{detail}</p>
     </div>
+  );
+}
+
+function HostCoverage({
+  agents,
+  selected,
+  onSelect,
+}: {
+  agents: MachineSnapshot["agents"];
+  selected: string | null;
+  onSelect: (name: string | null) => void;
+}) {
+  const installed = agents.filter((agent) => agent.state !== "absent");
+  const recorded = installed.filter((agent) => agent.state === "covered").length;
+  return (
+    <section className="panel shrink-0">
+      <header className="border-b border-border px-4 py-3">
+        <p className="eyebrow">This host</p>
+        <p className="mt-1 text-[15px]">
+          <span className="font-mono font-medium">{recorded}</span>
+          <span className="text-muted-foreground">
+            {" "}
+            of {installed.length} installed {installed.length === 1 ? "agent is" : "agents are"} recorded
+          </span>
+        </p>
+      </header>
+      {agents.length === 0 ? (
+        <p className="px-4 py-6 text-[13px] text-muted-foreground">No supported agent is installed here.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-4">
+          {agents.map((agent) => {
+            const on = selected === agent.name;
+            return (
+              <button
+                key={agent.name}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onSelect(on ? null : agent.name)}
+                className={`bg-card px-4 py-3 text-left hover:bg-muted/60 ${on ? "bg-muted" : ""}`}
+              >
+                <span className="block text-[14px]">{sourceLabel(agent.name)}</span>
+                <span className="mt-2 block">
+                  <StatePill state={agent.state} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -117,7 +166,7 @@ export function MachinePanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-      <MachineScene
+      <HostCoverage
         agents={showAbsent ? agents : installed}
         selected={focusAgent}
         onSelect={setFocusAgent}
