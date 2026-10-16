@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 REDACT_KEYS = frozenset(
     {"authorization", "api_key", "apikey", "password", "secret", "token", "session_key"}
@@ -108,6 +109,29 @@ def tool_summary(args: Any) -> dict[str, Any]:
                     summary["has_path"] = True
                     break
     return summary
+
+
+def map_outbound_poll(source_app: str, method: str, url: str) -> dict[str, Any]:
+    """The request this machine sends. The key is not in the payload.
+
+    Query strings are dropped: a token does not belong in the trail. The path
+    and host are the trace of the send.
+    """
+    parts = urlsplit(url)
+    target = f"{method} {parts.netloc}{parts.path}"
+    return {
+        "source_app": source_app,
+        "adapter": "cloud_bridge",
+        "event_type": "tool_called",
+        "outcome": "success",
+        "correlation_id": f"{source_app}-outbound",
+        "reason": "outbound poll; key sent and not stored",
+        "tool": {
+            "qualified": f"{source_app}.poll",
+            "server": source_app,
+            "command": target,
+        },
+    }
 
 
 # --- Cursor Cloud Agents API -------------------------------------------------

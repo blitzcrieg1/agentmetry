@@ -27,31 +27,32 @@ if (Test-Path $VenvPython) {
 
 $HookCmd = "`"$Wrapper`""
 
+# Tool names read from this machine's Antigravity conversation databases.
+# Matching only run_command dropped every file read, write and search.
+$ToolMatchers = @(
+    "run_command", "view_file", "write_to_file", "replace_file_content",
+    "multi_replace_file_content", "grep_search", "list_dir", "find_by_name",
+    "search_web", "read_url_content", "generate_image", "schedule",
+    "manage_task", "send_message", "ask_question", "ask_permission",
+    "manage_subagents", "invoke_subagent", "list_permissions"
+)
+
+function New-ToolHook($hookName, $matcher) {
+    @{
+        matcher = $matcher
+        hooks = @(
+            @{
+                type = "command"
+                command = "$HookCmd $hookName"
+                timeout = 15
+            }
+        )
+    }
+}
+
 $agentmetry = @{
-    PreToolUse = @(
-        @{
-            matcher = "run_command"
-            hooks = @(
-                @{
-                    type = "command"
-                    command = "$HookCmd PreToolUse"
-                    timeout = 15
-                }
-            )
-        }
-    )
-    PostToolUse = @(
-        @{
-            matcher = "run_command"
-            hooks = @(
-                @{
-                    type = "command"
-                    command = "$HookCmd PostToolUse"
-                    timeout = 15
-                }
-            )
-        }
-    )
+    PreToolUse = @($ToolMatchers | ForEach-Object { New-ToolHook "PreToolUse" $_ })
+    PostToolUse = @($ToolMatchers | ForEach-Object { New-ToolHook "PostToolUse" $_ })
     Stop = @(
         @{
             type = "command"
