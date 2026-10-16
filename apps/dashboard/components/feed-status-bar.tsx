@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { sourceDotClass, sourceLabel } from "@/lib/audit-source";
+import { displaySource, sourceDotClass, sourceLabel } from "@/lib/audit-source";
 
 interface AuditStatus {
   enabled: boolean;
@@ -37,14 +37,20 @@ const SOURCE_DOT_ORDER = [
   "crewai",
   "opensre",
   "agentmetry",
+  "cloud",
 ] as const;
 
 const SOURCE_DOT_RANK = new Set<string>(SOURCE_DOT_ORDER);
 
 function sourcesWithEvents(bySource: Record<string, number>): string[] {
-  const ranked = SOURCE_DOT_ORDER.filter((src) => (bySource[src] ?? 0) > 0);
-  const extra = Object.keys(bySource)
-    .filter((src) => (bySource[src] ?? 0) > 0 && !SOURCE_DOT_RANK.has(src))
+  const folded: Record<string, number> = {};
+  for (const [src, count] of Object.entries(bySource)) {
+    const key = displaySource(src);
+    folded[key] = (folded[key] ?? 0) + count;
+  }
+  const ranked = SOURCE_DOT_ORDER.filter((src) => (folded[src] ?? 0) > 0);
+  const extra = Object.keys(folded)
+    .filter((src) => (folded[src] ?? 0) > 0 && !SOURCE_DOT_RANK.has(src))
     .sort();
   return [...ranked, ...extra];
 }

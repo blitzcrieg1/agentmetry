@@ -24,7 +24,11 @@ export const SOURCE_LABELS: Record<string, string> = {
   opensre: "OpenSRE",
   zcode: "ZCode",
   grok_bot: "Grok Bot",
+  cloud: "Cloud",
 };
+
+/** Vendor APIs. The trail keeps the vendor name. The feed groups them as Cloud. */
+export const CLOUD_SOURCE_APPS = ["cursor_cloud", "claude_cloud", "grok_build"] as const;
 
 /** Every known source_app for /audit/tail `sources=` — keep in sync with labels. */
 export const ALL_SOURCE_APPS = Object.keys(SOURCE_LABELS);
@@ -63,6 +67,8 @@ const SOURCE_BADGE_CLASS: Record<string, string> = {
     "bg-zinc-100 text-zinc-900 ring-1 ring-zinc-500/25 dark:bg-zinc-950/50 dark:text-zinc-200",
   grok_bot:
     "bg-yellow-100 text-yellow-950 ring-1 ring-yellow-500/25 dark:bg-yellow-950/50 dark:text-yellow-200",
+  cloud:
+    "bg-sky-100 text-sky-950 ring-1 ring-sky-500/25 dark:bg-sky-950/50 dark:text-sky-200",
 };
 
 const SOURCE_DOT_CLASS: Record<string, string> = {
@@ -82,6 +88,7 @@ const SOURCE_DOT_CLASS: Record<string, string> = {
   opensre: "bg-teal-400",
   zcode: "bg-zinc-400",
   grok_bot: "bg-yellow-400",
+  cloud: "bg-sky-300",
 };
 
 /** Hex fills for Recharts source breakdown. */
@@ -102,6 +109,7 @@ export const SOURCE_CHART_COLOR: Record<string, string> = {
   opensre: "#2dd4bf",
   zcode: "#a1a1aa",
   grok_bot: "#facc15",
+  cloud: "#7dd3fc",
 };
 
 const DEFAULT_BADGE_CLASS =
@@ -115,22 +123,29 @@ export const normalizeSourceApp = (name: string): string => {
   return LEGACY_SOURCE_APPS.has(key) ? "agentmetry" : key;
 };
 
-export function sourceLabel(app: string): string {
+/** Vendor cloud sources share one feed category. Local agents keep their own names. */
+export function displaySource(app: string): string {
   const key = normalizeSourceApp(app);
+  if (key === "grok_build" || key.endsWith("_cloud")) return "cloud";
+  return key;
+}
+
+export function sourceLabel(app: string): string {
+  const key = displaySource(app);
   return SOURCE_LABELS[key] || app;
 }
 
 export function sourceBadgeClass(app: string): string {
-  return SOURCE_BADGE_CLASS[normalizeSourceApp(app)] ?? DEFAULT_BADGE_CLASS;
+  return SOURCE_BADGE_CLASS[displaySource(app)] ?? DEFAULT_BADGE_CLASS;
 }
 
 export function sourceDotClass(app: string, active = true): string {
   if (!active) return "bg-muted";
-  return SOURCE_DOT_CLASS[normalizeSourceApp(app)] ?? DEFAULT_DOT_CLASS;
+  return SOURCE_DOT_CLASS[displaySource(app)] ?? DEFAULT_DOT_CLASS;
 }
 
 export function sourceChartColor(app: string): string {
-  return SOURCE_CHART_COLOR[normalizeSourceApp(app)] ?? DEFAULT_CHART_COLOR;
+  return SOURCE_CHART_COLOR[displaySource(app)] ?? DEFAULT_CHART_COLOR;
 }
 
 export function eventSourceApp(event: AuditEvent): string {
@@ -138,7 +153,7 @@ export function eventSourceApp(event: AuditEvent): string {
   if (claimed && (!event.source?.app || event.source.app === "unknown")) {
     return normalizeSourceApp(claimed);
   }
-  if (event.source?.app) return normalizeSourceApp(event.source.app);
+  if (event.source?.app) return displaySource(event.source.app);
   const agent = event.agent?.name ? normalizeSourceApp(event.agent.name) : "";
   if (agent && agent !== "agentmetry") return agent;
   return "agentmetry";

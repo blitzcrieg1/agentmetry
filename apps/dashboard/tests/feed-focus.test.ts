@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   eventMatchesFocus,
+  isInferredApproval,
   outcomeCountsAsIssue,
   outcomeFiltersForFocus,
 } from "@/lib/feed-focus";
@@ -31,6 +32,21 @@ describe("outcomeFiltersForFocus", () => {
         issues: true,
       });
     }
+  });
+});
+
+describe("isInferredApproval", () => {
+  it("matches a synthetic approval and leaves a real tool call alone", () => {
+    expect(
+      isInferredApproval({
+        action: { type: "approval_response", reason: "inferred:tool_ran_after_ask" },
+      }),
+    ).toBe(true);
+    expect(
+      isInferredApproval({
+        action: { type: "tool_called", reason: "hook:postToolUse" },
+      }),
+    ).toBe(false);
   });
 });
 

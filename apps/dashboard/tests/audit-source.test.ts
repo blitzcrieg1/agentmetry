@@ -74,6 +74,17 @@ describe("source presentation", () => {
     expect(sourceLabel("windsurf")).toBe("windsurf");
   });
 
+  it("groups vendor cloud sources under Cloud and leaves the local agent alone", () => {
+    for (const app of ["cursor_cloud", "claude_cloud", "grok_build"]) {
+      const event = { source: { app } } as AuditEvent;
+      expect(eventSourceApp(event)).toBe("cloud");
+      expect(sourceLabel(app)).toBe("Cloud");
+    }
+    expect(sourceLabel("cursor")).toBe("Cursor");
+    expect(sourceLabel("claude")).toBe("Claude");
+    expect(sourceLabel("grok_bot")).toBe("Grok Bot");
+  });
+
   it("labels a claimed Grok Bot name instead of the unknown bucket", () => {
     const event = {
       source: { app: "unknown", claimed_app: "grok_bot" },
