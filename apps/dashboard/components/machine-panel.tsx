@@ -15,6 +15,7 @@ import {
   AGENT_STATE_LABEL,
 } from "@/lib/machine";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { MachineScene } from "@/components/machine-scene";
 import { EmptyState, SeverityBadge } from "@/components/ui/kit";
 
 function serverKey(row: McpServerRow): string {
@@ -59,6 +60,7 @@ export function MachinePanel() {
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [focusAgent, setFocusAgent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +117,12 @@ export function MachinePanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+      <MachineScene
+        agents={showAbsent ? agents : installed}
+        selected={focusAgent}
+        onSelect={setFocusAgent}
+      />
+
       {data.profile === "service" ? (
         <p className="rounded-sm border border-caution/40 bg-caution/10 px-3 py-2 text-[13px] text-caution">
           This process is a service account. It cannot see a developer&apos;s agent configuration, so the rows below are unknown rather than clear.
@@ -158,9 +166,17 @@ export function MachinePanel() {
           </header>
           <ul className="divide-y divide-border">
             {(showAbsent ? agents : installed).map((agent) => (
-              <li key={agent.name} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-[14px]">{sourceLabel(agent.name)}</span>
-                <StatePill state={agent.state} />
+              <li key={agent.name}>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-muted/60 ${
+                    focusAgent === agent.name ? "bg-muted/80" : ""
+                  }`}
+                  onClick={() => setFocusAgent((name) => (name === agent.name ? null : agent.name))}
+                >
+                  <span className="text-[14px]">{sourceLabel(agent.name)}</span>
+                  <StatePill state={agent.state} />
+                </button>
               </li>
             ))}
             {installed.length === 0 ? (
