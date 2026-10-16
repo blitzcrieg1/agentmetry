@@ -23,6 +23,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   crewai: "CrewAI",
   opensre: "OpenSRE",
   zcode: "ZCode",
+  grok_bot: "Grok Bot",
 };
 
 /** Every known source_app for /audit/tail `sources=` — keep in sync with labels. */
@@ -60,6 +61,8 @@ const SOURCE_BADGE_CLASS: Record<string, string> = {
     "bg-teal-100 text-teal-900 ring-1 ring-teal-500/25 dark:bg-teal-950/50 dark:text-teal-200",
   zcode:
     "bg-zinc-100 text-zinc-900 ring-1 ring-zinc-500/25 dark:bg-zinc-950/50 dark:text-zinc-200",
+  grok_bot:
+    "bg-yellow-100 text-yellow-950 ring-1 ring-yellow-500/25 dark:bg-yellow-950/50 dark:text-yellow-200",
 };
 
 const SOURCE_DOT_CLASS: Record<string, string> = {
@@ -78,6 +81,7 @@ const SOURCE_DOT_CLASS: Record<string, string> = {
   crewai: "bg-lime-400",
   opensre: "bg-teal-400",
   zcode: "bg-zinc-400",
+  grok_bot: "bg-yellow-400",
 };
 
 /** Hex fills for Recharts source breakdown. */
@@ -97,6 +101,7 @@ export const SOURCE_CHART_COLOR: Record<string, string> = {
   crewai: "#a3e635",
   opensre: "#2dd4bf",
   zcode: "#a1a1aa",
+  grok_bot: "#facc15",
 };
 
 const DEFAULT_BADGE_CLASS =
@@ -129,6 +134,10 @@ export function sourceChartColor(app: string): string {
 }
 
 export function eventSourceApp(event: AuditEvent): string {
+  const claimed = event.source?.claimed_app;
+  if (claimed && (!event.source?.app || event.source.app === "unknown")) {
+    return normalizeSourceApp(claimed);
+  }
   if (event.source?.app) return normalizeSourceApp(event.source.app);
   const agent = event.agent?.name ? normalizeSourceApp(event.agent.name) : "";
   if (agent && agent !== "agentmetry") return agent;

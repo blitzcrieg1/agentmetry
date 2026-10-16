@@ -33,6 +33,7 @@ const FIRST_PARTY = [
   "crewai",
   "opensre",
   "mcp_proxy",
+  "grok_bot",
 ];
 
 describe("normalizeSourceApp", () => {
@@ -71,6 +72,14 @@ describe("source presentation", () => {
 
   it("shows an unknown app under its own name, not a wrong one", () => {
     expect(sourceLabel("windsurf")).toBe("windsurf");
+  });
+
+  it("labels a claimed Grok Bot name instead of the unknown bucket", () => {
+    const event = {
+      source: { app: "unknown", claimed_app: "grok_bot" },
+    } as AuditEvent;
+    expect(eventSourceApp(event)).toBe("grok_bot");
+    expect(sourceLabel(eventSourceApp(event))).toBe("Grok Bot");
   });
 
   it("mutes the dot when a source is inactive", () => {

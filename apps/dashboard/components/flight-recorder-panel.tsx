@@ -48,7 +48,7 @@ export interface AuditEvent {
   action?: { type?: string; outcome?: string; reason?: string };
   tool?: { name?: string; qualified?: string; server?: string; input_hash?: string; command?: string; arguments?: Record<string, unknown>; mitre?: { tactic: string; technique: string; tactic_id?: string; technique_id?: string } };
   agent?: { name?: string; skill_id?: string };
-  source?: { app?: string; tier?: string; adapter?: string };
+  source?: { app?: string; tier?: string; adapter?: string; claimed_app?: string };
   actor?: { type?: string; id?: string; role?: string };
   initiator?: { actor_type?: string; trigger?: string; operator_id?: string };
   model?: { id?: string; provider?: string };
@@ -519,7 +519,7 @@ export function FlightRecorderPanel() {
         limit: String(hunting ? 500 : timeWindow.limit),
         scope: hunting || fleetScope ? "all" : "runs",
       });
-      if (!hunting) params.set("sources", ALL_SOURCE_APPS.join(","));
+      if (!hunting) params.set("sources", [...ALL_SOURCE_APPS, "unknown"].join(","));
       if (hunting) {
         params.set("since_minutes", String(FEED_FOCUS_SINCE_MINUTES));
         const focus = tailFocusParam(focusKind);

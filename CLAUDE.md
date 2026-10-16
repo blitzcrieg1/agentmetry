@@ -168,7 +168,7 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-15 there are 1724 tests collected, zero open code
+Not code. As of 2026-10-16 there are 1726 tests collected, zero open code
 scanning alerts, a dogfood gate that passed 4 of 4 on 2026-10-02 (`dogfood`
 currently prints 0 of 4 consecutive: week 6 is red on untriaged detections),
 `agentmetry demo` runnable with nothing installed (`uvx agentmetry demo`), and
