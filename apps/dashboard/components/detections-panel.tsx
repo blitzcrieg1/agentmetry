@@ -597,8 +597,9 @@ function DetectionDetail({
         <TriagePanel det={det} disposition={disposition} onSaved={onDispositionSaved} />
 
         <div>
-          <p className="eyebrow mb-2">
-            Triggered by {det.event_ids.length} event{det.event_ids.length === 1 ? "" : "s"}
+          <p className="eyebrow mb-1">Sequence</p>
+          <p className="mb-3 text-[12px] leading-snug text-muted-foreground">
+            The tool calls this finding cites, in the order they happened.
           </p>
           {loading ? (
             <p className="py-4 text-center text-[12px] text-muted-foreground">Loading events…</p>
@@ -609,11 +610,11 @@ function DetectionDetail({
               Triggering events are no longer in the trail.
             </p>
           ) : (
-            <div className="space-y-2">
-              {trigger.map((e) => (
-                <TriggerEventCard key={e.event_id} event={e} />
+            <ol>
+              {trigger.map((event, index) => (
+                <SequenceStep key={event.event_id} event={event} last={index === trigger.length - 1} />
               ))}
-            </div>
+            </ol>
           )}
         </div>
       </div>
@@ -633,28 +634,41 @@ function DetectionDetail({
   );
 }
 
-function TriggerEventCard({ event }: { event: AuditEvent }) {
+function SequenceStep({ event, last }: { event: AuditEvent; last: boolean }) {
   const app = eventSourceApp(event);
   const m = event.tool?.mitre;
   const tool = event.tool?.qualified || event.tool?.name || event.action?.type || "event";
+  const outcome = event.action?.outcome;
+  const dot =
+    outcome === "critical" || outcome === "denied" || outcome === "error"
+      ? "bg-danger"
+      : outcome === "high"
+        ? "bg-signal"
+        : outcome === "medium"
+          ? "bg-caution"
+          : "bg-secure";
   return (
-    <div className="space-y-2 rounded-sm border border-border bg-background p-2.5">
-      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="font-mono text-subtle">{formatTime(event.timestamp_utc)}</span>
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-          <span className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(app)}`} />
-          {sourceLabel(app)}
-        </span>
-        <span className="truncate font-mono text-foreground" title={tool}>
-          {tool}
-        </span>
-        {m?.technique_id ? <Technique id={m.technique_id} /> : null}
+    <li className="relative pl-5">
+      {last ? null : <span className="absolute bottom-0 left-[4px] top-3 w-px bg-border" aria-hidden />}
+      <span className={`absolute left-0 top-1.5 h-[9px] w-[9px] rounded-full ${dot}`} aria-hidden />
+      <div className="space-y-1.5 pb-4">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="font-mono text-subtle">{formatTime(event.timestamp_utc)}</span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(app)}`} />
+            {sourceLabel(app)}
+          </span>
+          <span className="truncate font-mono text-foreground" title={tool}>
+            {tool}
+          </span>
+          {m?.technique_id ? <Technique id={m.technique_id} /> : null}
+        </div>
+        {event.tool?.command ? (
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-foreground">
+            {event.tool.command}
+          </pre>
+        ) : null}
       </div>
-      {event.tool?.command ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-foreground">
-          {event.tool.command}
-        </pre>
-      ) : null}
-    </div>
+    </li>
   );
 }

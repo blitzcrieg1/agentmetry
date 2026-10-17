@@ -19,6 +19,7 @@ import {
   FEED_FOCUS_LABELS,
   FEED_FOCUS_SINCE_MINUTES,
   eventMatchesFocus,
+  isInferredApproval,
   outcomeCountsAsIssue,
   outcomeFiltersForFocus,
   tailFocusParam,
@@ -28,6 +29,7 @@ import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import {
   ALL_SOURCE_APPS,
+  CLOUD_SOURCE_APPS,
   eventSourceApp,
   sourceDotClass,
   sourceLabel,
@@ -37,6 +39,7 @@ import { DetectionsStrip } from "@/components/detections-strip";
 import { EventHistogram } from "@/components/event-histogram";
 import { EventInspector } from "@/components/event-inspector";
 import { downloadAuditCsv, downloadAuditJsonl } from "@/lib/audit-export";
+import { toolColumnText, toolColumnTitle } from "@/lib/tool-label";
 
 export interface AuditEvent {
   event_id?: string;
@@ -236,7 +239,17 @@ export const COLUMN_REGISTRY: Record<ColumnId, ColumnDef> = {
   },
   tool: {
     id: "tool", label: "Tool", widthClass: "w-32",
-    render: (e) => <div className="truncate font-mono text-[12px] text-foreground" title={e.tool?.qualified || e.tool?.name || ""}>{e.tool?.qualified || e.tool?.name || DASH}</div>
+    render: (e) => {
+      const label = toolColumnText(e);
+      return (
+        <div
+          className={`truncate font-mono text-[12px] ${label === "unparsed" ? "text-subtle" : "text-foreground"}`}
+          title={toolColumnTitle(e)}
+        >
+          {label ?? DASH}
+        </div>
+      );
+    }
   },
   mitre: {
     id: "mitre", label: "MITRE", widthClass: "w-24",
@@ -498,6 +511,7 @@ export function FlightRecorderPanel() {
     pending: true,
     issues: true,
   });
+  const [showInferred, setShowInferred] = useState(false);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
   const [detectionRuleFilter, setDetectionRuleFilter] = useState<string | null>(null);
 
@@ -519,7 +533,9 @@ export function FlightRecorderPanel() {
         limit: String(hunting ? 500 : timeWindow.limit),
         scope: hunting || fleetScope ? "all" : "runs",
       });
-      if (!hunting) params.set("sources", [...ALL_SOURCE_APPS, "unknown"].join(","));
+      if (!hunting) {
+        params.set("sources", [...ALL_SOURCE_APPS, ...CLOUD_SOURCE_APPS, "unknown"].join(","));
+      }
       if (hunting) {
         params.set("since_minutes", String(FEED_FOCUS_SINCE_MINUTES));
         const focus = tailFocusParam(focusKind);
@@ -725,6 +741,13 @@ export function FlightRecorderPanel() {
       if (sourceFilter !== "all" && eventSourceApp(ev) !== sourceFilter) return false;
       const type = ev.action?.type ?? "";
       if (eventTypeFilter !== "all" && type !== eventTypeFilter) return false;
+      if (
+        !showInferred &&
+        eventTypeFilter !== "approval_response" &&
+        isInferredApproval(ev)
+      ) {
+        return false;
+      }
       const outcome = ev.action?.outcome ?? "";
       const isIssue = outcomeCountsAsIssue(type, outcome);
       const outcomeOk =
@@ -741,10 +764,16 @@ export function FlightRecorderPanel() {
     events,
     sourceFilter,
     eventTypeFilter,
+    showInferred,
     outcomeFilters,
     debouncedSearchQuery,
     huntFocus,
   ]);
+
+  const inferredHidden = useMemo(() => {
+    if (showInferred || eventTypeFilter === "approval_response") return 0;
+    return events.filter((ev) => isInferredApproval(ev)).length;
+  }, [events, showInferred, eventTypeFilter]);
 
   const visibleDetections = useMemo(() => {
     const merged = new Map<string, Detection>();
@@ -866,10 +895,14 @@ export function FlightRecorderPanel() {
         <FilterChip active={outcomeFilters.success} label="OK" dot="bg-secure" onClick={() => toggleOutcome("success")} />
         <FilterChip active={outcomeFilters.pending} label="Pending" dot="bg-caution" onClick={() => toggleOutcome("pending")} />
         <FilterChip active={outcomeFilters.issues} label="Issues" dot="bg-danger" onClick={() => toggleOutcome("issues")} />
+        <FilterChip active={showInferred} label="Inferred" dot="bg-foreground/40" onClick={() => setShowInferred((on) => !on)} />
         <span className="ml-1 text-[12px] text-muted-foreground">
           <span className="font-mono text-foreground">{displayEvents.length}</span> shown
           {huntFocus ? ", hunt" : fleetScope ? ", this machine" : ", agent activity"}
           {sessionView ? ", pinned session" : !atLatest ? ", history" : ""}
+          {!showInferred && eventTypeFilter !== "approval_response" && inferredHidden > 0
+            ? `, ${inferredHidden} inferred hidden`
+            : ""}
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -958,11 +991,13 @@ export function FlightRecorderPanel() {
               </EmptyState>
             ) : displayEvents.length === 0 ? (
               <EmptyState>
-                {huntFocus
-                  ? `No ${FEED_FOCUS_LABELS[huntFocus].toLowerCase()} in the last 7 days. Clear focus or check ingest.`
-                  : fleetScope
-                    ? "No events match these filters. Try a wider time window, or open Analytics for weekly counts."
-                    : "No agent activity in this window. Switch to This machine to include heartbeats."}
+                {inferredHidden > 0
+                  ? "Inferred approvals are hidden. Turn Inferred on to see them."
+                  : huntFocus
+                    ? `No ${FEED_FOCUS_LABELS[huntFocus].toLowerCase()} in the last 7 days. Clear focus or check ingest.`
+                    : fleetScope
+                      ? "No events match these filters. Try a wider time window, or open Analytics for weekly counts."
+                      : "No agent activity in this window. Switch to This machine to include heartbeats."}
               </EmptyState>
             ) : (
               <div className="min-w-[1080px]">
