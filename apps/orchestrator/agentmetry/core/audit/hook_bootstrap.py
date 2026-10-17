@@ -191,8 +191,9 @@ def ephemeral_environment(executable: str | None = None) -> str:
         resolved = Path(raw).resolve()
     except OSError:
         resolved = Path(raw)
-    parts = [p.lower() for p in resolved.parts]
+    # Split on both separators by hand: on POSIX a Windows path is one part.
     text = str(resolved).replace("\\", "/").lower()
+    parts = [p for p in text.split("/") if p]
     cache = os.environ.get("UV_CACHE_DIR", "").strip()
     if cache and text.startswith(str(Path(cache).resolve()).replace("\\", "/").lower() + "/"):
         return f"this interpreter is inside uv's cache ({resolved})"
