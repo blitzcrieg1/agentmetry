@@ -663,6 +663,21 @@ def cmd_hooks(args: argparse.Namespace) -> int:
     from agentmetry.core.audit import hook_bootstrap
     from agentmetry.core.diagnostics import hook_coverage
 
+    if args.action == "install":
+        # Before --managed too: a managed install would put the temporary path
+        # into machine-wide policy files.
+        reason = hook_bootstrap.ephemeral_environment()
+        if reason:
+            print(
+                f"Not installing hooks: {reason}. That cache can be deleted at any "
+                "time, and every hook would then fail (most agents silently stop "
+                "recording; Copilot CLI blocks every tool call). Install Agentmetry "
+                "somewhere that stays, then run this again:\n"
+                "  uv tool install agentmetry   (or: pipx install agentmetry, or: pip install agentmetry)\n"
+                "  agentmetry hooks install",
+                file=sys.stderr,
+            )
+            return 1
     if getattr(args, "managed", False):
         return _hooks_managed(args)
     if args.action == "status":

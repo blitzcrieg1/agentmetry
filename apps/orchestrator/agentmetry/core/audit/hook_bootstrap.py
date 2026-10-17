@@ -174,6 +174,35 @@ def _console_script() -> Path | None:
     return None
 
 
+def ephemeral_environment(executable: str | None = None) -> str:
+    """Why this interpreter is a temporary one, or "" when it will still exist later.
+
+    `uvx agentmetry ...` and `pipx run agentmetry ...` run from a cache the tool
+    may delete at any time (`uv cache clean`, a pipx cache expiry). A hook
+    config written from there names an executable inside that cache: it works
+    today, and after the next clean every hook fails. Most agents treat a
+    failing hook as a non-blocking error, so recording stops without a word;
+    Copilot CLI fails closed on a broken pre-tool hook and blocks every tool
+    call. Coverage would still report the agent covered, because it checks the
+    hook text in the config, not the file it points at.
+    """
+    raw = executable or sys.executable
+    try:
+        resolved = Path(raw).resolve()
+    except OSError:
+        resolved = Path(raw)
+    parts = [p.lower() for p in resolved.parts]
+    text = str(resolved).replace("\\", "/").lower()
+    cache = os.environ.get("UV_CACHE_DIR", "").strip()
+    if cache and text.startswith(str(Path(cache).resolve()).replace("\\", "/").lower() + "/"):
+        return f"this interpreter is inside uv's cache ({resolved})"
+    if "uv" in parts and ("archive-v0" in parts or "builds-v0" in parts):
+        return f"this interpreter is inside uv's cache ({resolved})"
+    if "pipx" in parts and ".cache" in parts:
+        return f"this interpreter is inside pipx's run cache ({resolved})"
+    return ""
+
+
 def hook_target(repo_root: Path | None = None) -> str:
     """Which of the three ways to reach ingest exists here: repo, frozen, wheel.
 
