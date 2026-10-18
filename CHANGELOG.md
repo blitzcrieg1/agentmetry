@@ -62,6 +62,20 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **Every restart of the recorder left an Antigravity transcript watcher
+  running, and each one recorded every Antigravity call.** The recorder starts
+  the watcher and stopped it only in its shutdown code, which a hard stop, a
+  crash or a logoff never reaches; on Windows a clean stop reached only the
+  venv launcher, not the interpreter it started. Three watchers were found
+  tailing the same transcript on 2026-10-18, and that day's trail holds 67
+  transcript events for 17 calls (matched on session, tool and input hash
+  within ten seconds). Each watcher recorded each call, their hooks ran
+  concurrently, and the ones that timed out into the spool were recorded once
+  more on replay, because a spooled payload carries no event id to match. The watcher
+  now holds a pipe from the recorder and exits when it closes, however the
+  recorder ends, and its hooks wait 10 seconds rather than the 2 an IDE's
+  tool call can afford. Events already duplicated stay in the trail, which is
+  append-only by design.
 - **`hooks install` from uvx wrote hooks that the next `uv cache clean`
   breaks.** Run as `uvx agentmetry hooks install`, the hook command named an
   executable inside uv's cache. After a cache clean every hook fails: most
@@ -87,7 +101,7 @@ separately (currently `1.2.0`) and changes additively.
   `doctor` reported only the disabled authentication. It now fails on that
   pair and warns on `*` alone.
 
-Found by an audit on 2026-10-17.
+The last three were found by an audit on 2026-10-17.
 
 ## [0.9.7] - 2026-10-15
 

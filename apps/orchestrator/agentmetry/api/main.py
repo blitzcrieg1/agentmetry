@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -74,6 +77,34 @@ def _start_forwarders() -> list[asyncio.Task]:
         tasks.append(asyncio.create_task(forwarder.run(), name=f"forward-{destination.name}"))
         logger.info("Forwarding the trail to %s from its cursor", destination.name)
     return tasks
+
+
+def start_transcript_watcher(watcher_path: Path) -> subprocess.Popen:
+    """Start the Antigravity transcript watcher, tied to this process's life.
+
+    Its stdin is a pipe only this process holds, and the lifeline variable
+    tells it to exit at end-of-file. When this process dies, however it dies,
+    the pipe closes and the watcher follows. Without it each restart left a
+    watcher behind, and every one of them recorded every Antigravity call.
+    """
+    return subprocess.Popen(
+        [sys.executable, str(watcher_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env={**os.environ, "AGENTMETRY_WATCHER_LIFELINE": "1"},
+    )
+
+
+def stop_transcript_watcher(process: subprocess.Popen) -> None:
+    """Close the lifeline, then terminate. Closing alone is enough; terminate is
+    for a watcher that predates the lifeline."""
+    try:
+        if process.stdin:
+            process.stdin.close()
+    except OSError:
+        pass
+    process.terminate()
 
 
 @asynccontextmanager
@@ -177,17 +208,11 @@ async def lifespan(app: FastAPI):
         )
 
     # Launch transcript watcher for Antigravity in the background
-    import subprocess
-    import sys
     watcher_process = None
     try:
         watcher_path = Path(__file__).resolve().parents[4] / "scripts" / "antigravity_transcript_watcher.py"
         if watcher_path.exists():
-            watcher_process = subprocess.Popen(
-                [sys.executable, str(watcher_path)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            watcher_process = start_transcript_watcher(watcher_path)
             logger.info("Started Antigravity transcript watcher (PID: %s)", watcher_process.pid)
     except Exception as exc:
         logger.warning("Failed to start Antigravity transcript watcher: %s", exc)
@@ -201,7 +226,7 @@ async def lifespan(app: FastAPI):
     for task in bridge_tasks:
         task.cancel()
     if watcher_process:
-        watcher_process.terminate()
+        stop_transcript_watcher(watcher_process)
 
 
 app = FastAPI(
