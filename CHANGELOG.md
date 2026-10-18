@@ -9,6 +9,22 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-10-18
+
+The dashboard opens on an Overview of what needs a person, and a detection
+opens as a tree of its session, built from a new read-only session endpoint
+that also stops long sessions losing their cited calls. Three changes an
+existing user will notice: `hooks install` refuses to run from a uv or pipx
+cache (run it from `uv tool install agentmetry`, `pipx install agentmetry` or
+`pip install agentmetry`), `doctor` says "Hooks installed for" where it said
+"Recording", and the dashboard has a Sign out button. A recorder started from
+a source checkout no longer leaves its Antigravity transcript watcher running
+after each restart. The wheel does not ship the watcher, so a pip or uvx
+install was never affected; a checkout restarted under 0.9.7 may still have
+orphaned watchers, which updating does not stop, so end any
+`antigravity_transcript_watcher.py` process before restarting. The VS Code side
+of the Copilot deny has still not been run against a live editor.
+
 ### Added
 
 - **A detection opens as an investigation, with the session as a process
@@ -59,6 +75,29 @@ separately (currently `1.2.0`) and changes additively.
   dark theme and from 3.65:1 to 5.21:1 in the light one, both now past the
   4.5:1 WCAG asks of body text. Labels, buttons, badges and the headline
   numbers are larger.
+- **`agentmetry cloud` records its own poll.** Each run writes one event for
+  the request this machine sends, with the method, host and path, so the trail
+  shows what was asked as well as what came back. The query string is dropped,
+  so a key passed in the URL never reaches the trail. (#271)
+- **Grok Bot is a source of its own, `grok_bot`.** Events posted under it are
+  labelled Grok Bot instead of landing as unknown, and
+  `core/audit/grok_bot_transcript.py` turns the desktop app's chat cache into
+  ingest payloads. Nothing in the package reads that cache on its own yet.
+  (#270)
+- **Three benign benchmark sessions**: publishing to a package registry, a
+  Terraform apply with a named cloud profile, and a dependency audit, normal
+  work that looks noisy to sequence rules. `agentmetry benchmark` is now 57
+  cases, 26 attack and 31 benign, with 0 missed and 0 false positives. (#145,
+  contributed by @kkkhs)
+
+### Changed
+
+- **The event stream hides inferred approvals unless the Inferred chip is
+  on.** A spool replay had filled the feed with blank approval rows. A minute
+  in the histogram is coloured by the worst detection in it, so a critical
+  minute no longer looks like a quiet one, and a hook payload the recorder
+  could not decode is labelled unparsed instead of appearing as a tool named
+  `unknown`. (#271)
 
 ### Fixed
 
@@ -101,7 +140,20 @@ separately (currently `1.2.0`) and changes additively.
   `doctor` reported only the disabled authentication. It now fails on that
   pair and warns on `*` alone.
 
-The last three were found by an audit on 2026-10-17.
+- **Antigravity file reads and searches never reached the recorder.**
+  `scripts/install_antigravity_hooks.ps1` matched only `run_command`, so every
+  other tool Antigravity ran went unrecorded. It now matches the tools this
+  machine's Antigravity actually runs; re-run the script to pick it up. (#271)
+
+The three `doctor` and `hooks install` fixes above were found by an audit on
+2026-10-17.
+
+### Security
+
+- **`postcss-selector-parser` forced to 7.1.6** in the dashboard's build
+  dependencies (GHSA-rj75-hqrm-r3gf). `braces` (GHSA-vfj7-8cjw-p6xm) stays
+  open: no patched release exists, and its only callers are Tailwind's
+  development dependencies, which run at build time. (#272)
 
 ## [0.9.7] - 2026-10-15
 
@@ -2090,7 +2142,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.8...HEAD
+[0.9.8]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.4...v0.9.5
