@@ -3,9 +3,45 @@ import time
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 BRAIN_DIR = Path(os.path.expanduser("~/.gemini/antigravity/brain"))
+
+#: Set by the orchestrator that starts this watcher. With it, the watcher's
+#: stdin is a pipe the orchestrator holds open, and end-of-file on it means the
+#: orchestrator is gone.
+LIFELINE_ENV = "AGENTMETRY_WATCHER_LIFELINE"
+
+#: The hook's own default is 2 seconds because it blocks the IDE's tool call.
+#: Nothing waits on this watcher, so a slow answer is better than a timeout:
+#: a timed-out POST spools, and the replay records the event a second time
+#: whenever the server had in fact accepted it.
+INGEST_TIMEOUT_SECONDS = "10"
+
+
+def exit_with_parent() -> bool:
+    """Exit when the orchestrator that started this watcher dies.
+
+    Every restart of the orchestrator used to leave its watcher running. A hard
+    stop never reaches the lifespan teardown, and on Windows `terminate()`
+    reaches only the venv launcher, not the interpreter it started. Three
+    watchers were found tailing the same transcript, each recording every
+    Antigravity tool call, and their concurrent hooks timing out into the spool.
+    Reading stdin to end-of-file catches every way the parent can end.
+    """
+    if os.environ.get(LIFELINE_ENV) != "1":
+        return False
+
+    def _wait() -> None:
+        try:
+            sys.stdin.buffer.read()
+        except (OSError, ValueError):
+            pass  # a broken or closed pipe is the same signal as end-of-file
+        os._exit(0)
+
+    threading.Thread(target=_wait, name="lifeline", daemon=True).start()
+    return True
 
 def get_latest_transcript():
     if not BRAIN_DIR.exists():
@@ -77,6 +113,10 @@ def process_line(line, conversation_id):
             env = os.environ.copy()
             env["AGENTMETRY_SOURCE_APP"] = "antigravity"
             env["AGENTMETRY_ADAPTER"] = "antigravity_transcript"
+            env.setdefault("AGENTMETRY_INGEST_TIMEOUT", INGEST_TIMEOUT_SECONDS)
+            # The lifeline is this watcher's, not the hook's; the hook reads its
+            # payload from the pipe below.
+            env.pop(LIFELINE_ENV, None)
             
             try:
                 process = subprocess.Popen(
@@ -98,6 +138,7 @@ def process_line(line, conversation_id):
 
 def main():
     print("Starting Antigravity Transcript Watcher...", flush=True)
+    exit_with_parent()
     current_file = None
     tail_generator = None
     
