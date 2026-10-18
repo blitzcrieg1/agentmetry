@@ -309,6 +309,29 @@ async def audit_session(
     }
 
 
+@router.get("/session/{correlation_id}/tree", dependencies=[Depends(require_api_key)])
+async def audit_session_tree(
+    correlation_id: str,
+    limit: int = Query(20000, ge=1, le=50000),
+    around_utc: str = Query("", max_length=40),
+):
+    """One session folded into investigation-tree nodes.
+
+    Each ask, its answer and the call it led to become one node, so a detection
+    that cites the ask and a policy verdict recorded on it land on the call
+    they belong to. A session longer than `limit` is windowed on `around_utc`
+    (a detection's first_seen_utc) when given. See `core/audit/session_tree.py`.
+    """
+    from agentmetry.core.audit.session_tree import session_tree
+
+    if not settings.audit_export_enabled:
+        return {"correlation_id": correlation_id, "enabled": False, "nodes": [], "summary": {}, "truncated": False}
+    try:
+        return await asyncio.to_thread(session_tree, correlation_id, limit, around_utc)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/detections/{correlation_id}", dependencies=[Depends(require_api_key)])
 async def audit_detections(correlation_id: str):
     """Run correlated behavioral rules over one session and return detections.
