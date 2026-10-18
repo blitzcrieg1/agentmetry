@@ -39,6 +39,26 @@ separately (currently `1.2.0`) and changes additively.
   skip a prompt, policy matches that log mode let run, MCP servers the proxy
   never saw, and agents whose settings are not checked. Beside it, events by
   agent, detections by severity and the ATT&CK techniques seen.
+- **A Sign out button, and a page that says when you are signed out.** The
+  server had `POST /auth/logout` and the dashboard had no way to call it, so
+  the only ways out were clearing a cookie by hand or restarting the recorder.
+  Signing out revokes the session on the server, not only in the browser. And
+  a browser with no session, which is every open tab after a recorder restart,
+  fired every request anyway: the Overview listed six 401s as failures and left
+  every tile on "Loading". It now shows one screen with the command that signs
+  it back in.
+- **Agent marks, depth and larger type in the dashboard.** Each agent shows
+  its mark (Cursor, Claude Code, Codex, GitHub Copilot, Antigravity) on a small
+  raised tile in the Overview, the detection list, the investigation and This
+  machine, under the same rules as agentmetry.ai: monochrome simple-icons
+  paths, and a letter for an agent with no mark of its own. Panels sit on real
+  shadows, the Overview tiles lean toward the pointer, and the calls a
+  detection cites stand above the rest of the tree; none of it moves for
+  someone who has asked for reduced motion. The faintest grey, used for
+  labels and timestamps, went from 3.53:1 to 5.95:1 against its panel in the
+  dark theme and from 3.65:1 to 5.21:1 in the light one, both now past the
+  4.5:1 WCAG asks of body text. Labels, buttons, badges and the headline
+  numbers are larger.
 
 ### Fixed
 

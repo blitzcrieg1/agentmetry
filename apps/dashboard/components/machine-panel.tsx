@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { apiHeaders } from "@/lib/api";
 import { sourceLabel } from "@/lib/audit-source";
+import { AgentTile } from "@/components/ui/agent-mark";
 import {
   agentsByAttention,
   dlpModeSentence,
@@ -84,7 +85,10 @@ function HostCoverage({
                 onClick={() => onSelect(on ? null : agent.name)}
                 className={`bg-card px-4 py-3 text-left hover:bg-muted/60 ${on ? "bg-muted" : ""}`}
               >
-                <span className="block text-[14px]">{sourceLabel(agent.name)}</span>
+                <span className="flex items-center gap-2 text-[14px]">
+                  <AgentTile app={agent.name} size="sm" />
+                  {sourceLabel(agent.name)}
+                </span>
                 <span className="mt-2 block">
                   <StatePill state={agent.state} />
                 </span>
@@ -223,7 +227,10 @@ export function MachinePanel() {
                   }`}
                   onClick={() => setFocusAgent((name) => (name === agent.name ? null : agent.name))}
                 >
-                  <span className="text-[14px]">{sourceLabel(agent.name)}</span>
+                  <span className="flex items-center gap-2.5 text-[14px]">
+                    <AgentTile app={agent.name} size="sm" muted={agent.state === "absent"} />
+                    {sourceLabel(agent.name)}
+                  </span>
                   <StatePill state={agent.state} />
                 </button>
               </li>

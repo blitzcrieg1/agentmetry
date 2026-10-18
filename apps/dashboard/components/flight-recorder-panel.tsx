@@ -62,6 +62,8 @@ export interface AuditEvent {
 }
 
 export interface Detection {
+  /** The agent whose session fired it, from the detection event's source. */
+  app?: string;
   rule_id: string;
   title: string;
   severity: "critical" | "high" | "medium" | "low";
@@ -341,7 +343,7 @@ export function detectionsFromEvents(events: AuditEvent[]): Detection[] {
     if (ev.action?.type !== "detection") continue;
     if (ev.detection?.rule_id) {
       const d = ev.detection;
-      byKey.set(`${d.rule_id}:${d.correlation_id}`, d);
+      byKey.set(`${d.rule_id}:${d.correlation_id}`, { ...d, app: d.app ?? eventSourceApp(ev) });
       continue;
     }
     const ruleId = ev.source_topic?.replace(/^detection\//, "") || ev.event_id || "detection";

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { Activity, FileDown, LayoutDashboard, Laptop, ShieldAlert, Terminal } from "lucide-react";
+import { Activity, FileDown, LayoutDashboard, Laptop, LogOut, ShieldAlert, Terminal } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel, detectionsFromEvents } from "@/components/flight-recorder-panel";
@@ -12,6 +12,8 @@ import { DetectionsPanel } from "@/components/detections-panel";
 import { OverviewPanel } from "@/components/overview-panel";
 import { FeedStatusBar } from "@/components/feed-status-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SignedOut } from "@/components/signed-out";
+import { type SessionState, checkSession, signOut } from "@/lib/session";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import { countUntriaged, fetchDispositions } from "@/lib/disposition";
@@ -94,6 +96,24 @@ function useUntriagedCount(refreshKey: string): number | null {
   return count;
 }
 
+/**
+ * Whether this browser holds a session, checked on load and every 30 seconds.
+ * A restart of the recorder drops every session, so a page left open goes
+ * from signed in to signed out without anyone touching it.
+ */
+function useSession(): { state: SessionState; recheck: () => void; markSignedOut: () => void } {
+  const [state, setState] = useState<SessionState>("checking");
+  const recheck = useCallback(() => {
+    void checkSession().then(setState);
+  }, []);
+  useEffect(() => {
+    recheck();
+    const timer = window.setInterval(recheck, 30_000);
+    return () => window.clearInterval(timer);
+  }, [recheck]);
+  return { state, recheck, markSignedOut: () => setState("signed_out") };
+}
+
 function shownHost(): string {
   const explicit = ORCHESTRATOR_URL.replace(/^https?:\/\//, "");
   if (explicit) return explicit;
@@ -117,6 +137,16 @@ export function MissionControl() {
     setActiveTab(target);
   };
   const untriaged = useUntriagedCount(activeTab);
+  const session = useSession();
+  const [justSignedOut, setJustSignedOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    setSigningOut(false);
+    setJustSignedOut(true);
+    session.markSignedOut();
+  };
 
   // Opening a detection from the Detections section hands off to the flight
   // recorder, which lives in another tab — follow it there.
@@ -206,6 +236,19 @@ export function MissionControl() {
             <span className="hidden lg:inline">Export evidence pack</span>
           </a>
           <ThemeToggle />
+          {session.state === "signed_in" ? (
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              title="Sign this browser out. Recording carries on."
+              className="flex h-9 items-center justify-center gap-2.5 rounded-sm text-[13px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50 lg:justify-start lg:px-2.5"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className="hidden lg:inline">{signingOut ? "Signing out…" : "Sign out"}</span>
+              <span className="sr-only lg:hidden">Sign out</span>
+            </button>
+          ) : null}
           <p
             className="mt-2 hidden truncate px-2.5 font-mono text-[11px] text-subtle lg:block"
             title={ORCHESTRATOR_URL || shownHost()}
@@ -223,12 +266,22 @@ export function MissionControl() {
             <p className="mt-0.5 hidden truncate text-[13px] text-muted-foreground sm:block">{page.subtitle}</p>
           </div>
           <div className="flex h-8 items-center rounded-sm border border-border bg-card px-3">
-            <FeedStatusBar />
+            <FeedStatusBar signedOut={session.state === "signed_out"} />
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 lg:px-7 lg:py-5">
-          {activeTab === "overview" ? (
+          {session.state === "checking" ? (
+            <p className="py-10 text-center text-[13px] text-muted-foreground">Checking sign-in…</p>
+          ) : session.state === "signed_out" ? (
+            <SignedOut
+              justSignedOut={justSignedOut}
+              onCheckAgain={() => {
+                setJustSignedOut(false);
+                session.recheck();
+              }}
+            />
+          ) : activeTab === "overview" ? (
             <OverviewPanel onNavigate={navigate} />
           ) : activeTab === "machine" ? (
             <MachinePanel />

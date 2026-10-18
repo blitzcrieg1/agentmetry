@@ -27,12 +27,12 @@
     --secondary: 40 12% 94%;
     --secondary-foreground: 30 8% 9%;
     --muted: 40 12% 94%;
-    --muted-foreground: 35 5% 36%;
-    --subtle: 35 4% 52%;
+    --muted-foreground: 35 6% 30%;
+    --subtle: 35 5% 42%;
     --accent: 40 12% 94%;
     --accent-foreground: 30 8% 9%;
-    --border: 40 8% 87%;
-    --input: 40 8% 87%;
+    --border: 40 8% 84%;
+    --input: 40 8% 84%;
     --ring: 21 90% 48%;
     --radius: 3px;
 
@@ -41,12 +41,18 @@
     --caution: 36 85% 36%;
     --secure: 142 64% 30%;
     --destructive: 2 72% 48%;
+
+    /* Depth. Two shadows per level: a tight one that seats the surface and a
+       wide soft one that lifts it. Light mode keeps them faint. */
+    --elev-1: 0 1px 2px hsl(30 10% 20% / 0.06), 0 6px 18px -10px hsl(30 10% 20% / 0.18);
+    --elev-2: 0 2px 4px hsl(30 10% 20% / 0.08), 0 16px 32px -14px hsl(30 10% 20% / 0.28);
+    --edge: hsl(0 0% 100% / 0.9);
   }
 
   .dark {
-    --background: 0 0% 2%;
+    --background: 0 0% 3%;
     --foreground: 42 31% 94%;
-    --card: 0 0% 4%;
+    --card: 30 4% 7%;
     --card-foreground: 42 31% 94%;
     --popover: 0 0% 5%;
     --popover-foreground: 42 31% 94%;
@@ -54,13 +60,13 @@
     --primary-foreground: 0 0% 0%;
     --secondary: 0 0% 8%;
     --secondary-foreground: 42 31% 94%;
-    --muted: 0 0% 8%;
-    --muted-foreground: 39 6% 58%;
-    --subtle: 38 5% 40%;
+    --muted: 30 3% 11%;
+    --muted-foreground: 39 9% 72%;
+    --subtle: 38 6% 56%;
     --accent: 0 0% 8%;
     --accent-foreground: 42 31% 94%;
-    --border: 40 5% 14%;
-    --input: 40 5% 16%;
+    --border: 40 5% 18%;
+    --input: 40 5% 20%;
     --ring: 25 95% 53%;
 
     --signal: 25 95% 53%;
@@ -68,6 +74,10 @@
     --caution: 39 67% 55%;
     --secure: 142 77% 73%;
     --destructive: 3 85% 62%;
+
+    --elev-1: 0 1px 2px hsl(0 0% 0% / 0.5), 0 10px 24px -12px hsl(0 0% 0% / 0.7);
+    --elev-2: 0 2px 6px hsl(0 0% 0% / 0.55), 0 22px 40px -16px hsl(0 0% 0% / 0.85);
+    --edge: hsl(40 30% 96% / 0.06);
   }
 }
 
@@ -89,19 +99,56 @@
 @layer components {
   /* Small uppercase label used for column heads and field names. */
   .eyebrow {
-    @apply font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-subtle;
+    @apply font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-subtle;
   }
   /* Native controls styled once, so every toolbar matches. */
   .control {
-    @apply h-8 rounded-sm border border-border bg-card px-2.5 text-[13px] text-foreground transition-colors hover:border-foreground/25 focus:border-signal/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal/30;
+    @apply h-9 rounded-sm border border-border bg-card px-2.5 text-[14px] text-foreground transition-colors hover:border-foreground/25 focus:border-signal/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal/30;
   }
   .btn {
-    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-sm border border-border bg-card px-3 text-[13px] font-medium text-foreground transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-sm border border-border bg-card px-3.5 text-[14px] font-medium text-foreground transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-40;
   }
   .btn-primary {
-    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-sm bg-signal px-3 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-signal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-signal px-3.5 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-signal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 disabled:pointer-events-none disabled:opacity-40;
   }
   .panel {
-    @apply rounded-sm border border-border bg-card;
+    @apply rounded-md border border-border bg-card;
+    box-shadow: inset 0 1px 0 var(--edge), var(--elev-1);
+  }
+
+  /* Depth, not scenes. A surface you can act on rises when you point at it;
+     the Overview tiles also lean toward the pointer (use-tilt.ts sets
+     --rx and --ry). Nothing here moves for someone who asked for less motion. */
+  .lift {
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: inset 0 1px 0 var(--edge), var(--elev-2);
+  }
+  .tilt {
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--ty, 0px));
+    transform-style: preserve-3d;
+    transition: transform 180ms ease-out, box-shadow 180ms ease, border-color 160ms ease;
+    will-change: transform;
+  }
+  .tilt:hover {
+    --ty: -3px;
+    box-shadow: inset 0 1px 0 var(--edge), var(--elev-2);
+  }
+  /* An agent's mark on a small raised tile: lit from above, seated by a shadow. */
+  .raised {
+    background: linear-gradient(180deg, hsl(var(--foreground) / 0.09), hsl(var(--foreground) / 0.02));
+    border: 1px solid hsl(var(--border));
+    box-shadow: inset 0 1px 0 var(--edge), var(--elev-1);
+  }
+  /* A call a detection cites stands above the calls around it. */
+  .rise {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 var(--edge), 0 0 0 1px hsl(var(--danger) / 0.35), 0 10px 26px -12px hsl(var(--danger) / 0.55);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lift, .tilt { transition: none; }
+    .lift:hover, .tilt, .tilt:hover, .rise { transform: none; }
   }
 }

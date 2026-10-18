@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -20,9 +20,10 @@ import {
 } from "lucide-react";
 import type { Detection } from "@/components/flight-recorder-panel";
 import { SeverityBadge, Technique, TechniqueChain } from "@/components/ui/kit";
+import { AgentMark, AgentTile } from "@/components/ui/agent-mark";
 import { StatusChip, TriagePanel, formatTime } from "@/components/triage-panel";
 import { type Disposition, statusOf } from "@/lib/disposition";
-import { sourceDotClass, sourceLabel } from "@/lib/audit-source";
+import { sourceLabel } from "@/lib/audit-source";
 import {
   type Branch,
   type Family,
@@ -214,8 +215,8 @@ export function DetectionInvestigation({
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
           {app ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(app)}`} />
+            <span className="inline-flex items-center gap-1.5 text-foreground">
+              <AgentMark app={app} size="sm" />
               {sourceLabel(app)}
             </span>
           ) : null}
@@ -380,13 +381,29 @@ function Timeline({
   );
 }
 
-function LineageCard({ icon: Icon, eyebrow, title, sub }: { icon: typeof Monitor; eyebrow: string; title: string; sub?: string }) {
+function LineageCard({
+  icon: Icon,
+  mark,
+  eyebrow,
+  title,
+  sub,
+}: {
+  icon?: typeof Monitor;
+  mark?: ReactNode;
+  eyebrow: string;
+  title: string;
+  sub?: string;
+}) {
   return (
-    <div className="flex min-w-0 items-center gap-2.5 rounded-sm border border-border bg-background px-3 py-2">
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+    <div className="panel flex min-w-0 items-center gap-3 px-3.5 py-2.5">
+      {mark ?? (Icon ? (
+        <span className="raised inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
+          <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+        </span>
+      ) : null)}
       <div className="min-w-0">
         <p className="eyebrow">{eyebrow}</p>
-        <p className="truncate text-[13px] font-medium" title={title}>
+        <p className="truncate text-[14px] font-semibold" title={title}>
           {title}
         </p>
         {sub ? <p className="truncate font-mono text-[11px] text-subtle">{sub}</p> : null}
@@ -417,7 +434,7 @@ function Lineage({
     <div className="mb-1 flex flex-wrap items-stretch gap-2">
       <LineageCard icon={Monitor} eyebrow="Machine" title={host || "This machine"} />
       <ChevronRight className="h-4 w-4 self-center text-subtle" aria-hidden />
-      <LineageCard icon={Bot} eyebrow="Agent" title={app ? sourceLabel(app) : "Agent"} sub={adapter || undefined} />
+      <LineageCard mark={app ? <AgentTile app={app} size="md" /> : undefined} icon={Bot} eyebrow="Agent" title={app ? sourceLabel(app) : "Agent"} sub={adapter || undefined} />
       <ChevronRight className="h-4 w-4 self-center text-subtle" aria-hidden />
       <LineageCard
         icon={TerminalSquare}
@@ -464,7 +481,7 @@ function BranchItem({
       >
         <Chevron className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-[13px] font-medium">{branch.label}</span>
+        <span className="text-[14px] font-semibold">{branch.label}</span>
         <span className="font-mono text-[11px] text-muted-foreground">
           {branch.nodes.length.toLocaleString()} {branch.nodes.length === 1 ? "call" : "calls"}
         </span>
@@ -529,7 +546,7 @@ function NodeItem({
   const denied = node.kind === "denied";
   const error = node.outcome === "error";
   const tone = cited
-    ? "border-danger/50 bg-danger/[0.07]"
+    ? "rise border-danger/60 bg-danger/[0.09]"
     : denied || node.tool_policy?.rule_id || node.dlp?.rule_id
       ? "border-caution/40 bg-caution/[0.05]"
       : "border-border bg-card hover:border-foreground/25";
@@ -553,7 +570,7 @@ function NodeItem({
         )}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-[12px] font-medium text-foreground">{shortTool(node)}</span>
+            <span className="font-mono text-[13px] font-semibold text-foreground">{shortTool(node)}</span>
             {cited ? <span className="rounded-sm bg-danger/15 px-1 py-px font-mono text-[10px] uppercase tracking-wide text-danger">cited</span> : null}
             {denied ? <span className="rounded-sm bg-caution/15 px-1 py-px font-mono text-[10px] uppercase tracking-wide text-caution">denied</span> : null}
             {error ? <span className="rounded-sm bg-danger/10 px-1 py-px font-mono text-[10px] uppercase tracking-wide text-danger">error</span> : null}
@@ -562,7 +579,7 @@ function NodeItem({
             {node.tool.mitre?.technique_id ? <Technique id={node.tool.mitre.technique_id} tone={cited ? "alert" : "default"} /> : null}
           </span>
           {node.tool.command ? (
-            <span className="mt-0.5 block truncate font-mono text-[11.5px] text-muted-foreground" title={node.tool.command}>
+            <span className="mt-0.5 block truncate font-mono text-[12.5px] text-muted-foreground" title={node.tool.command}>
               {node.tool.command}
             </span>
           ) : node.kind.startsWith("subagent") ? (

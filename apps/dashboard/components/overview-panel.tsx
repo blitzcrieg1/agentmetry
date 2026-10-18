@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
 import { EmptyState, SEVERITY_DOT, SeverityBadge, Technique } from "@/components/ui/kit";
+import { AgentTile } from "@/components/ui/agent-mark";
+import { tiltHandlers } from "@/lib/use-tilt";
 import { apiHeaders } from "@/lib/api";
 import { sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { type Disposition, dispositionKey, fetchDispositions, isTriaged } from "@/lib/disposition";
@@ -134,6 +136,15 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
           }
           tone={machine && covered < installed.length ? "alert" : "default"}
           onClick={() => onNavigate("machine")}
+          extra={
+            installed.length ? (
+              <span className="mt-1 flex flex-wrap gap-1.5" aria-hidden>
+                {installed.map((a) => (
+                  <AgentTile key={a.name} app={a.name} size="sm" muted={a.state !== "covered"} />
+                ))}
+              </span>
+            ) : null
+          }
         />
         <Tile
           label="Activity, 7 days"
@@ -164,7 +175,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
       <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel min-w-0 p-4" aria-label="Needs attention">
           <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-[15px] font-semibold">Needs attention</h2>
+            <h2 className="text-[17px] font-semibold">Needs attention</h2>
             <span className="text-[12px] text-muted-foreground">Worst first. Each one opens where it gets fixed.</span>
           </div>
           {items.length === 0 ? (
@@ -177,8 +188,8 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
                 <li key={item.id} className="flex flex-wrap items-center gap-3 border-t border-border py-3.5 first:border-t-0">
                   <div className="min-w-0 flex-[1_1_20rem] space-y-1">
                     <SeverityBadge severity={item.severity} />
-                    <p className="text-[14px] font-medium leading-snug">{item.title}</p>
-                    <p className="text-[13px] leading-relaxed text-muted-foreground">{item.body}</p>
+                    <p className="text-[15px] font-semibold leading-snug">{item.title}</p>
+                    <p className="text-[14px] leading-relaxed text-muted-foreground">{item.body}</p>
                   </div>
                   <button
                     type="button"
@@ -204,12 +215,15 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
             ) : (
               <ul className="space-y-2">
                 {bars.map((bar) => (
-                  <li key={bar.app} className="grid grid-cols-[6.5rem_minmax(0,1fr)_4rem] items-center gap-3">
-                    <span className="truncate text-[13px]">{sourceLabel(bar.app)}</span>
-                    <span className="h-2 overflow-hidden rounded-full bg-muted">
-                      <span className="block h-2 rounded-full" style={{ width: `${bar.pct}%`, backgroundColor: sourceChartColor(bar.app) }} />
+                  <li key={bar.app} className="grid grid-cols-[9rem_minmax(0,1fr)_4.5rem] items-center gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <AgentTile app={bar.app} size="sm" />
+                      <span className="truncate text-[14px]">{sourceLabel(bar.app)}</span>
                     </span>
-                    <span className="text-right font-mono text-[12px] text-muted-foreground">{bar.n.toLocaleString()}</span>
+                    <span className="h-2.5 overflow-hidden rounded-full bg-muted">
+                      <span className="block h-2.5 rounded-full" style={{ width: `${bar.pct}%`, backgroundColor: sourceChartColor(bar.app) }} />
+                    </span>
+                    <span className="text-right font-mono text-[13px] text-foreground">{bar.n.toLocaleString()}</span>
                   </li>
                 ))}
               </ul>
@@ -279,6 +293,7 @@ function Tile({
   sub,
   tone = "default",
   onClick,
+  extra,
 }: {
   label: string;
   value: string;
@@ -286,21 +301,24 @@ function Tile({
   sub: string;
   tone?: "default" | "alert";
   onClick: () => void;
+  extra?: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`panel flex min-w-0 flex-col gap-1 px-4 py-3.5 text-left transition-colors hover:border-foreground/25 ${
-        tone === "alert" ? "border-danger/40 bg-danger/[0.04]" : ""
+      {...tiltHandlers()}
+      className={`panel tilt flex min-w-0 flex-col gap-1.5 px-5 py-4 text-left hover:border-foreground/30 ${
+        tone === "alert" ? "border-danger/50 bg-danger/[0.06]" : ""
       }`}
     >
       <span className="eyebrow">{label}</span>
-      <span className="text-[28px] font-semibold leading-tight tracking-tight tabular-nums">
+      <span className="text-[34px] font-semibold leading-none tracking-tight tabular-nums">
         {value}
-        {unit ? <span className="ml-1.5 text-[15px] font-medium text-muted-foreground">{unit}</span> : null}
+        {unit ? <span className="ml-1.5 text-[16px] font-medium text-muted-foreground">{unit}</span> : null}
       </span>
-      <span className="text-[12px] leading-snug text-muted-foreground">{sub}</span>
+      <span className="text-[13px] leading-snug text-muted-foreground">{sub}</span>
+      {extra}
     </button>
   );
 }
