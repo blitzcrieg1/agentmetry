@@ -174,15 +174,17 @@ Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma p
 
 `agentmetry otel` receives Claude Code's stream. It does not replace hooks for policy. Mapped today: `tool_result` becomes `tool_called` or `tool_failed` (arguments only if `OTEL_LOG_TOOL_DETAILS=1`); a person's yes on `tool_decision` becomes an observed approval. Other documented types are counted, not dropped silently. Prompts are not forwarded. `--print-env` and `--print-mapping` print the rest.
 
-## Dashboard recording
+## The console
 
-The player below is the local dashboard (event stream, detections, live feed). The CLI demo is the 90-second video at the top.
+<div align="center">
 
-<!--
-  Bare github.com/user-attachments URL, on its own line. See docs/readme-media.md.
--->
+<a href="https://agentmetry.ai/#console"><img src="https://agentmetry.ai/video/agentmetry-console-poster.jpg" alt="The one-minute console tour: what agents do on a machine, what Agentmetry records and how, then the Overview, agent marks, detections, and a finding opened as a process tree" width="720" /></a>
 
-https://github.com/user-attachments/assets/edd2002e-47c1-4885-8500-b3651f648018
+<p><em>One minute: what it records, then the console you read it in. Captured from the sessions <code>agentmetry demo</code> writes.<br/><a href="https://agentmetry.ai/#console">Watch it on agentmetry.ai</a>.</em></p>
+
+</div>
+
+`agentmetry dashboard` signs a browser in to the console for this machine. The Overview lists what needs a person, worst first. A detection opens as a tree of the session: the machine, the agent, the session, then every tool call, with the calls the detection cites lit. This machine shows which agents are recorded.
 
 From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build `apps/dashboard` first (`npm install && npm run build`). The script says so if the export is missing.
 

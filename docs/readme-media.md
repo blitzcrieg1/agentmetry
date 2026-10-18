@@ -10,10 +10,28 @@ is the 90-second demo video instead: the poster image, served by agentmetry.ai,
 linking to the player at https://agentmetry.ai/#watch. Do not treat the
 checked-in GIFs as the 0.9.4 transcript until they are re-rendered from it.
 
-## Dashboard video
+## Console tour
 
-The README also embeds a dashboard recording. It is a real inline player, and
-it works because the URL points at an asset GitHub hosts itself:
+The README's "The console" section is the one-minute console tour: a poster
+served by agentmetry.ai (`/video/agentmetry-console-poster.jpg`) linking to the
+player at https://agentmetry.ai/#console. The MP4 lives in the site repo under
+`public/video/agentmetry-console-58s.mp4`.
+
+Every screen in it was captured from the sessions `agentmetry demo` writes, on a
+machine named `dev-laptop` and a user named `demo`, by driving a headless browser
+over the dashboard of a throwaway orchestrator. Nothing of a real machine is in
+it. The composition is a HyperFrames HTML file rendered locally with
+`npx hyperframes render`; the music is synthesised for it, so nothing is
+licensed. Re-capture the screens when the dashboard changes visibly.
+
+It replaced an inline recording of the earlier dashboard. To make the tour an
+inline player in the README too, upload it the way the next section describes
+and put the bare `user-attachments` URL in the section.
+
+## Inline players on GitHub
+
+An inline video player in a README works only when the URL points at an asset
+GitHub hosts itself:
 
 ```
 https://github.com/user-attachments/assets/<uuid>
