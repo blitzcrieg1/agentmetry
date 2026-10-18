@@ -329,3 +329,81 @@ def test_no_trail_names_commands_an_install_actually_has(tmp_path: Path, monkeyp
     assert "agentmetry demo" in trail[0].message
     assert "agentmetry hooks install" in trail[0].message
     assert "scripts/" not in trail[0].message
+
+
+# --- what doctor claims about capture (audit 2026-10-17) ----------------------
+# A fresh install with no recorder running was told "Recording" and "capture is
+# reaching the trail", and a wheel user was pointed at install.ps1. Each line
+# claimed more than the check behind it can know.
+
+
+def test_hook_coverage_says_installed_not_recording(tmp_path: Path, monkeypatch):
+    from agentmetry.core.diagnostics import hook_coverage
+
+    monkeypatch.setattr(hook_coverage, "is_service_profile", lambda: False)
+    monkeypatch.setattr(hook_coverage, "coverage", lambda: {"claude": hook_coverage.COVERED})
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    hooks = [f.message for f in report.findings if f.code == "hooks"]
+    assert any(m.startswith("Hooks installed for: claude") for m in hooks)
+    assert not any("Recording" in m for m in hooks), "a file check cannot see events arrive"
+
+
+def test_an_empty_spool_does_not_claim_capture_works(tmp_path: Path, monkeypatch):
+    from agentmetry.core.audit import spool
+
+    monkeypatch.setattr(spool, "spool_depth", lambda: 0)
+    monkeypatch.setattr(spool, "expired_path", lambda: tmp_path / "none.jsonl")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    msg = _finding(report, "spool").message
+    assert msg == "No pending hook spool"
+
+
+def test_a_wheel_install_is_not_told_to_run_install_ps1(tmp_path: Path, monkeypatch):
+    from agentmetry.core.audit import hook_bootstrap
+
+    monkeypatch.setattr(hook_bootstrap, "hook_target", lambda *_a, **_k: "console")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    msg = _finding(report, "hook_enforcement").message
+    assert "install.ps1" not in msg
+    assert "AGENTMETRY_TOOL_POLICY_MODE=block" in msg
+
+
+def test_a_checkout_still_gets_the_install_script_hint(tmp_path: Path, monkeypatch):
+    from agentmetry.core.audit import hook_bootstrap
+
+    monkeypatch.setattr(hook_bootstrap, "hook_target", lambda *_a, **_k: "repo")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert "install.ps1 -ToolPolicyBlock" in _finding(report, "hook_enforcement").message
+
+
+def test_no_wildcard_trusted_host_says_nothing(tmp_path: Path, monkeypatch):
+    from agentmetry.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_hosts", "devbox.corp.example")
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert not [f for f in report.findings if f.code == "trusted_hosts"]
+
+
+def test_a_wildcard_trusted_host_with_auth_off_fails(tmp_path: Path, monkeypatch):
+    """The operator's own start script ran this way: no Host check and no token,
+    so a page that rebinds its domain to 127.0.0.1 could rewrite the record."""
+    from agentmetry.core import auth
+    from agentmetry.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_hosts", "*")
+    monkeypatch.setattr(settings, "api_key", "")
+    monkeypatch.setattr(auth, "auth_is_disabled", lambda: True)
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    finding = _finding(report, "trusted_hosts")
+    assert finding.severity == "fail"
+    assert "rebind" in finding.message
+
+
+def test_a_wildcard_trusted_host_with_auth_on_warns(tmp_path: Path, monkeypatch):
+    from agentmetry.core import auth
+    from agentmetry.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_hosts", "*")
+    monkeypatch.setattr(auth, "auth_is_disabled", lambda: False)
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    assert _finding(report, "trusted_hosts").severity == "warn"

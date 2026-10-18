@@ -9,6 +9,35 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`hooks install` from uvx wrote hooks that the next `uv cache clean`
+  breaks.** Run as `uvx agentmetry hooks install`, the hook command named an
+  executable inside uv's cache. After a cache clean every hook fails: most
+  agents treat that as a non-blocking error and stop recording without a word,
+  and Copilot CLI, which fails closed on a broken pre-tool hook, blocks every
+  tool call. Coverage still reported the agents covered, because it checks the
+  hook text, not the file it names. `hooks install`, `--managed` included,
+  now refuses from a uv or pipx cache and says how to install somewhere that
+  stays (`uv tool install agentmetry`, `pipx install agentmetry` or `pip
+  install agentmetry`). `hooks status` still runs from anywhere.
+- **`doctor` claimed more than its checks know.** It printed `[OK] Recording:`
+  for every agent whose config holds our hook, on a machine whose orchestrator
+  was down with 286 events stuck in the spool; it now says `Hooks installed
+  for:`. An empty spool printed "capture is reaching the trail" on a fresh
+  install with no recorder and no trail; it now says only that nothing is
+  pending. And a wheel or uvx install was told to run `install.ps1`, which
+  only a checkout has; it now names the `.env` settings, and the script only
+  in a checkout.
+- **`doctor` said nothing about `AGENTMETRY_TRUSTED_HOSTS=*`.** A `*` turns the
+  Host check off, which is the API's defence against DNS rebinding. With
+  authentication disabled as well, a web page that rebinds its domain to
+  127.0.0.1 can read the trail, inject events and close detections, and
+  `doctor` reported only the disabled authentication. It now fails on that
+  pair and warns on `*` alone.
+
+Found by an audit on 2026-10-17.
+
 ## [0.9.7] - 2026-10-15
 
 Two capture surfaces that had none. `agentmetry cloud cursor` and

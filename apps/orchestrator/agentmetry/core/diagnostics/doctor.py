@@ -75,6 +75,38 @@ def _check_health_endpoint(report: DoctorReport) -> None:
 _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1", ""})
 
 
+def _check_trusted_hosts(report: DoctorReport) -> None:
+    """A `*` in AGENTMETRY_TRUSTED_HOSTS turns the Host check off entirely.
+
+    The Host check (`api/trusted_host.py`) is what stops a web page that has
+    rebound its own domain to 127.0.0.1 from talking to the API. With `*` it is
+    skipped, and nothing here said so: an operator ran with `*` and
+    authentication disabled, which let any page that won that race read the
+    trail, inject events and close detections, while `doctor` reported only the
+    disabled auth. With auth on the token still has to be presented, so it
+    warns; with auth off as well it fails.
+    """
+    from agentmetry.core.auth import auth_is_disabled
+
+    configured = {h.strip() for h in str(settings.trusted_hosts or "").split(",") if h.strip()}
+    if "*" not in configured:
+        return
+    if auth_is_disabled() and not settings.api_key.strip():
+        report.fail(
+            "trusted_hosts",
+            "AGENTMETRY_TRUSTED_HOSTS=* with authentication disabled. The Host check is "
+            "off, so a web page that rebinds its domain to 127.0.0.1 can read the trail, "
+            "inject events and close detections. Remove the *, and unset "
+            "AGENTMETRY_AUTH_DISABLED.",
+        )
+        return
+    report.warn(
+        "trusted_hosts",
+        "AGENTMETRY_TRUSTED_HOSTS=* turns the Host check off, which is the API's "
+        "defence against DNS rebinding. List the host names you need instead.",
+    )
+
+
 def _check_exposure(report: DoctorReport) -> None:
     """Is the API reachable by anyone who cannot already read the trail?
 
@@ -194,7 +226,11 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     unverified = hook_coverage.unverified(states)
 
     if covered:
-        report.ok("hooks", f"Recording: {', '.join(covered)}")
+        # "Hooks installed", not "Recording": this is a file check. It said
+        # Recording on a machine whose orchestrator was down with hundreds of
+        # events stuck in the spool. Whether events arrive is the spool and
+        # health checks' answer, not this one's.
+        report.ok("hooks", f"Hooks installed for: {', '.join(covered)}")
     if uncovered:
         report.warn(
             "hooks",
@@ -460,7 +496,9 @@ def _check_spool(report: DoctorReport) -> None:
                 f"Spool empty, but past events were quarantined unreplayed: {quarantined}",
             )
         else:
-            report.ok("spool", "No pending hook spool (capture is reaching the trail)")
+            # An empty spool means nothing is waiting, not that capture works:
+            # a machine with no hooks and no recorder has an empty spool too.
+            report.ok("spool", "No pending hook spool")
         return
 
     age = spool_oldest_age_seconds() or 0.0
@@ -525,10 +563,16 @@ def _check_manifests(report: DoctorReport) -> None:
         except Exception as exc:
             report.fail("detection", f"Detection manifest failed to load: {exc}")
 
+    # install.ps1 exists only in a checkout. A wheel or uvx install was told to
+    # run a script it does not have, the same class of hint 0.9.4 removed.
+    from agentmetry.core.audit.hook_bootstrap import hook_target
+
+    hint = "AGENTMETRY_TOOL_POLICY_MODE=block and AGENTMETRY_DLP_MODE=block in .env"
+    if hook_target() == "repo":
+        hint += ", or scripts/install.ps1 -ToolPolicyBlock"
     report.ok(
         "hook_enforcement",
-        f"Tool policy={settings.tool_policy_mode}, DLP={settings.dlp_mode} "
-        "(set block in .env or install.ps1 -ToolPolicyBlock)",
+        f"Tool policy={settings.tool_policy_mode}, DLP={settings.dlp_mode} (to enforce: {hint})",
     )
 
 
@@ -738,6 +782,7 @@ def run_doctor(
     _check_manifests(report)
     _check_ask_gate(report)
     _check_exposure(report)
+    _check_trusted_hosts(report)
     _check_hashing(report)
     _check_trail(report)
     _check_triage(report)

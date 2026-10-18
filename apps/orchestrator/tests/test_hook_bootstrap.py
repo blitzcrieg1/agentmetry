@@ -346,3 +346,62 @@ def test_coverage_shares_the_marker_table():
     from agentmetry.core.diagnostics import hook_coverage
 
     assert hook_coverage._DEFAULT_MARKERS == HOOK_COMMAND_TOKENS
+
+
+# --- hooks installed from a temporary environment (audit 2026-10-17) -----------
+# `uvx agentmetry hooks install` would have written hooks naming an executable
+# inside uv's cache, and the next `uv cache clean` would break every one of them.
+
+import pytest  # noqa: E402
+
+from agentmetry.core.audit import hook_bootstrap as _hb  # noqa: E402
+
+_UVX = r"C:\Users\dev\AppData\Local\uv\cache\archive-v0\AtPd9qJrVQza6f7nfaE5k\Scripts\python.exe"
+
+
+@pytest.mark.parametrize("exe", [
+    _UVX,
+    "/home/dev/.cache/uv/archive-v0/x1y2/bin/python",
+    "/home/dev/.local/pipx/.cache/abc123/bin/python",
+])
+def test_a_cache_interpreter_is_ephemeral(monkeypatch, exe):
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    assert _hb.ephemeral_environment(exe)
+
+
+@pytest.mark.parametrize("exe", [
+    r"C:\Users\dev\AppData\Roaming\uv\tools\agentmetry\Scripts\python.exe",
+    "/home/dev/.local/share/uv/tools/agentmetry/bin/python",
+    "/home/dev/.local/pipx/venvs/agentmetry/bin/python",
+    r"C:\repo\apps\orchestrator\.venv\Scripts\python.exe",
+])
+def test_an_installed_interpreter_is_not(monkeypatch, exe):
+    """`uv tool install` and `pipx install` are the fixes the refusal suggests."""
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    assert _hb.ephemeral_environment(exe) == ""
+
+
+def test_a_custom_uv_cache_dir_counts(tmp_path, monkeypatch):
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "uvc"))
+    assert _hb.ephemeral_environment(str(tmp_path / "uvc" / "env" / "python.exe"))
+
+
+@pytest.mark.parametrize("extra", [[], ["--managed"]])
+def test_hooks_install_refuses_from_a_cache_and_writes_nothing(monkeypatch, capsys, extra):
+    from agentmetry.cli import main
+
+    monkeypatch.setattr(_hb, "ephemeral_environment", lambda *_a, **_k: "this interpreter is inside uv's cache (x)")
+    wrote = []
+    monkeypatch.setattr(_hb, "install_claude_global_hooks", lambda **_k: wrote.append("claude"))
+    assert main(["hooks", "install", "--agent", "claude", *extra]) == 1
+    assert wrote == []
+    err = capsys.readouterr().err
+    assert "uv tool install agentmetry" in err
+
+
+def test_hooks_status_still_works_from_a_cache(monkeypatch):
+    """Reading coverage is harmless from anywhere; only writing is refused."""
+    from agentmetry.cli import main
+
+    monkeypatch.setattr(_hb, "ephemeral_environment", lambda *_a, **_k: "cache")
+    assert main(["hooks", "status"]) in (0, 1, 2)
