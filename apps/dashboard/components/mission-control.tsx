@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Activity, FileDown, Laptop, ShieldAlert, Terminal } from "lucide-react";
+import { Activity, FileDown, LayoutDashboard, Laptop, ShieldAlert, Terminal } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel, detectionsFromEvents } from "@/components/flight-recorder-panel";
 import { MachinePanel } from "@/components/machine-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
 import { DetectionsPanel } from "@/components/detections-panel";
+import { OverviewPanel } from "@/components/overview-panel";
 import { FeedStatusBar } from "@/components/feed-status-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
@@ -16,9 +17,15 @@ import { apiHeaders } from "@/lib/api";
 import { countUntriaged, fetchDispositions } from "@/lib/disposition";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 
-type Tab = "machine" | "recorder" | "detections" | "analytics";
+type Tab = "overview" | "machine" | "recorder" | "detections" | "analytics";
 
 const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon: typeof Terminal }> = {
+  overview: {
+    label: "Overview",
+    title: "Overview",
+    subtitle: "What needs a person on this machine, and whether the record can be trusted",
+    icon: LayoutDashboard,
+  },
   machine: {
     label: "This machine",
     title: "This machine",
@@ -34,7 +41,7 @@ const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon:
   detections: {
     label: "Detections",
     title: "Detections",
-    subtitle: "Correlated sequences from the last 7 days, sorted by severity",
+    subtitle: "Correlated sequences from the last 7 days. Open one to see its process tree.",
     icon: ShieldAlert,
   },
   analytics: {
@@ -99,7 +106,16 @@ export function MissionControl() {
   const pinnedDetection = useAgentStore((s) => s.pinnedDetection);
   const feedFocus = useAgentStore((s) => s.feedFocus);
   const clearFeedFocus = useAgentStore((s) => s.clearFeedFocus);
-  const [activeTab, setActiveTab] = useState<Tab>("machine");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  // Opening Detections from the Overview filters it to the untriaged ones; the
+  // key remounts the panel so the filter applies even when it was already open.
+  const [detectionsView, setDetectionsView] = useState({ key: 0, triage: "all" });
+  const navigate = (target: Tab, opts?: { untriaged?: boolean }) => {
+    if (target === "detections") {
+      setDetectionsView((v) => ({ key: v.key + 1, triage: opts?.untriaged ? "untriaged" : "all" }));
+    }
+    setActiveTab(target);
+  };
   const untriaged = useUntriagedCount(activeTab);
 
   // Opening a detection from the Detections section hands off to the flight
@@ -137,7 +153,7 @@ export function MissionControl() {
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 pt-5 lg:px-3" aria-label="Sections">
           {([
-            ["Overview", ["machine"]],
+            ["Overview", ["overview", "machine"]],
             ["Activity", ["recorder", "detections", "analytics"]],
           ] as const).map(([group, ids]) => (
           <div key={group} className="mb-3">
@@ -212,12 +228,14 @@ export function MissionControl() {
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 lg:px-7 lg:py-5">
-          {activeTab === "machine" ? (
+          {activeTab === "overview" ? (
+            <OverviewPanel onNavigate={navigate} />
+          ) : activeTab === "machine" ? (
             <MachinePanel />
           ) : activeTab === "recorder" ? (
             <FlightRecorderPanel />
           ) : activeTab === "detections" ? (
-            <DetectionsPanel />
+            <DetectionsPanel key={detectionsView.key} initialTriage={detectionsView.triage} />
           ) : (
             <AnalyticsPanel />
           )}

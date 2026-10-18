@@ -1,28 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
-import { eventSourceApp, sourceDotClass, sourceLabel } from "@/lib/audit-source";
-import { EmptyState, SEVERITY_DOT, SeverityBadge, Technique, TechniqueChain } from "@/components/ui/kit";
+import { EmptyState, SEVERITY_DOT, SeverityBadge, TechniqueChain } from "@/components/ui/kit";
 import {
   CLOSED_STATUSES,
   DISPOSITION_STATUSES,
   type Disposition,
-  STATUS_CHIP,
   STATUS_LABELS,
   countUntriaged,
-  dispositionBlocker,
   dispositionKey,
   fetchDispositions,
   isTriaged,
-  saveDisposition,
   statusOf,
 } from "@/lib/disposition";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
+import { DetectionInvestigation } from "@/components/detection-investigation";
+import { StatusChip, formatTime } from "@/components/triage-panel";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -36,29 +34,14 @@ function shortSession(id: string): string {
   return id.length > 20 ? `${id.slice(0, 12)}…${id.slice(-4)}` : id;
 }
 
-function formatTime(ts?: string): string {
-  if (!ts) return "—";
-  try {
-    return new Date(ts).toLocaleString(undefined, {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return ts;
-  }
-}
-
-export function DetectionsPanel() {
+export function DetectionsPanel({ initialTriage = "all" }: { initialTriage?: string }) {
   const requestPinnedDetection = useAgentStore((s) => s.requestPinnedDetection);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [ruleFilter, setRuleFilter] = useState<string>("all");
-  const [triageFilter, setTriageFilter] = useState<string>("all");
+  const [triageFilter, setTriageFilter] = useState<string>(initialTriage);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
 
@@ -153,10 +136,26 @@ export function DetectionsPanel() {
     [detections, severityFilter, ruleFilter, triageFilter, dispositions],
   );
 
+  // From every detection, not the filtered list: recording a decision under
+  // "Untriaged only" takes the finding out of that list, and the investigation
+  // must not vanish under the person who just triaged it.
   const selected = useMemo(
-    () => visible.find((d) => detectionKey(d) === selectedKey) ?? null,
-    [visible, selectedKey],
+    () => detections.find((d) => detectionKey(d) === selectedKey) ?? null,
+    [detections, selectedKey],
   );
+
+  if (selected) {
+    return (
+      <DetectionInvestigation
+        key={detectionKey(selected)}
+        det={selected}
+        disposition={dispositions[dispositionKey(selected.correlation_id, selected.rule_id)]}
+        onDispositionSaved={applyDisposition}
+        onClose={() => setSelectedKey(null)}
+        onOpenInStream={() => requestPinnedDetection(selected.correlation_id, selected.rule_id)}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -253,8 +252,8 @@ export function DetectionsPanel() {
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <div className={`panel min-h-0 min-w-0 flex-col overflow-hidden ${selected ? "hidden lg:flex lg:flex-1" : "flex flex-1"}`}>
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {loading && detections.length === 0 ? (
             <EmptyState>Loading detections…</EmptyState>
           ) : error && detections.length === 0 ? (
@@ -274,48 +273,25 @@ export function DetectionsPanel() {
                 <span className="eyebrow min-w-0 flex-1">Detection</span>
                 <span className="eyebrow hidden w-28 shrink-0 sm:block">Status</span>
                 <span className="eyebrow hidden w-44 shrink-0 2xl:block">Techniques</span>
-                <span className={`eyebrow hidden w-36 shrink-0 ${selected ? "2xl:block" : "md:block"}`}>Session</span>
-                <span className={`eyebrow hidden w-36 shrink-0 text-right ${selected ? "2xl:block" : "sm:block"}`}>Last seen</span>
+                <span className="eyebrow hidden w-36 shrink-0 md:block">Session</span>
+                <span className="eyebrow hidden w-36 shrink-0 text-right sm:block">Last seen</span>
               </div>
               {visible.map((d) => (
                 <DetectionRow
                   key={detectionKey(d)}
                   det={d}
                   disposition={dispositions[dispositionKey(d.correlation_id, d.rule_id)]}
-                  selected={detectionKey(d) === selectedKey}
+                  selected={false}
                   onSelect={() => setSelectedKey(detectionKey(d))}
-                  compact={selected !== null}
+                  compact={false}
                 />
               ))}
             </div>
           )}
         </div>
 
-        {selected ? (
-          <div className="panel flex min-h-0 w-full shrink-0 flex-col overflow-hidden lg:w-[25rem]">
-            <DetectionDetail
-              det={selected}
-              disposition={dispositions[dispositionKey(selected.correlation_id, selected.rule_id)]}
-              onDispositionSaved={applyDisposition}
-              onClose={() => setSelectedKey(null)}
-              onOpenInStream={() => requestPinnedDetection(selected.correlation_id, selected.rule_id)}
-            />
-          </div>
-        ) : null}
       </div>
     </div>
-  );
-}
-
-function StatusChip({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
-        STATUS_CHIP[status] ?? STATUS_CHIP.new
-      }`}
-    >
-      {STATUS_LABELS[status] ?? status}
-    </span>
   );
 }
 
@@ -364,311 +340,5 @@ function DetectionRow({
         {formatTime(det.last_seen_utc)}
       </span>
     </button>
-  );
-}
-
-function TriagePanel({
-  det,
-  disposition,
-  onSaved,
-}: {
-  det: Detection;
-  disposition?: Disposition;
-  onSaved: (updated: Disposition) => void;
-}) {
-  const current = statusOf(disposition);
-  const [status, setStatus] = useState<string>(current === "new" ? "acknowledged" : current);
-  const [assignee, setAssignee] = useState(disposition?.assignee ?? "");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Switching detections must not carry the previous one's draft across, or
-  // a note written about finding A gets filed against finding B.
-  useEffect(() => {
-    setStatus(current === "new" ? "acknowledged" : current);
-    setAssignee(disposition?.assignee ?? "");
-    setNote("");
-    setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [det.rule_id, det.correlation_id]);
-
-  const blocker = dispositionBlocker(status, note);
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      onSaved(
-        await saveDisposition({
-          correlationId: det.correlation_id,
-          ruleId: det.rule_id,
-          status,
-          assignee,
-          note,
-          severity: det.severity,
-        }),
-      );
-      setNote("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2.5 rounded-sm border border-border bg-background p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="eyebrow">Triage</p>
-        <StatusChip status={current} />
-      </div>
-
-      {current === "new" ? (
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
-          No one has dispositioned this finding. Until someone does, it is an alert,
-          not a control.
-        </p>
-      ) : null}
-
-      <div className="flex gap-2">
-        <select
-          aria-label="Disposition"
-          className="control min-w-0 flex-1"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          {DISPOSITION_STATUSES.filter((s) => s !== "new").map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <input
-          aria-label="Assignee"
-          className="control w-32 shrink-0 placeholder:text-subtle"
-          placeholder="Assignee"
-          value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
-        />
-      </div>
-
-      <textarea
-        aria-label="Triage note"
-        className="control h-16 w-full resize-none py-1.5 placeholder:text-subtle"
-        placeholder={
-          NOTE_REQUIRED_HINT.has(status)
-            ? "Required: why is this not a real finding?"
-            : "Note (optional)"
-        }
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-      />
-
-      {error ? (
-        <p className="text-[12px] text-danger">{error}</p>
-      ) : blocker ? (
-        <p className="text-[12px] text-muted-foreground">{blocker}</p>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={() => void save()}
-        disabled={saving || blocker !== null}
-        className="btn-primary w-full"
-      >
-        {saving ? "Recording…" : "Record decision"}
-      </button>
-
-      {disposition?.history?.length ? (
-        <div className="space-y-1.5 border-t border-border pt-2.5">
-          <p className="eyebrow">Decision history</p>
-          {[...disposition.history].reverse().map((entry, i) => (
-            <div key={`${entry.decided_at_utc}-${i}`} className="text-[12px] text-muted-foreground">
-              <span className="font-mono">{formatTime(entry.decided_at_utc)}</span>{" "}
-              <span className="text-foreground">{STATUS_LABELS[entry.status] ?? entry.status}</span>
-              {entry.decided_by ? ` by ${entry.decided_by}` : ""}
-              {entry.note ? <span className="block pl-1 italic">{entry.note}</span> : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-const NOTE_REQUIRED_HINT: ReadonlySet<string> = new Set(["false_positive", "risk_accepted"]);
-
-function DetectionDetail({
-  det,
-  disposition,
-  onDispositionSaved,
-  onClose,
-  onOpenInStream,
-}: {
-  det: Detection;
-  disposition?: Disposition;
-  onDispositionSaved: (updated: Disposition) => void;
-  onClose: () => void;
-  onOpenInStream: () => void;
-}) {
-  const [trigger, setTrigger] = useState<AuditEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const chain = det.technique_ids?.length ? det.technique_ids : det.tactic_ids;
-
-  // Load the full session so triggering events resolve even when they fall
-  // outside the tail window the list was built from.
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(det.correlation_id)}`, {
-      headers: apiHeaders(),
-      credentials: "include",
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const all = (data.events ?? []) as AuditEvent[];
-        const ids = new Set(det.event_ids);
-        const matched = all.filter((e) => e.event_id && ids.has(e.event_id));
-        // Keep the rule's own event order; fall back to timestamp.
-        matched.sort((a, b) => (a.timestamp_utc ?? "").localeCompare(b.timestamp_utc ?? ""));
-        setTrigger(matched);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(String(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [det.correlation_id, det.event_ids]);
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <SeverityBadge severity={det.severity} />
-          <span className="truncate font-mono text-[12px] text-muted-foreground">{det.rule_id}</span>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-sm p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Close detection"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        <div className="space-y-1.5">
-          <p className="text-[16px] font-semibold leading-snug text-foreground">{det.title || det.rule_id}</p>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{det.summary}</p>
-        </div>
-
-        {chain?.length ? (
-          <div>
-            <p className="eyebrow mb-2">Why it fired</p>
-            <TechniqueChain ids={chain} />
-          </div>
-        ) : null}
-
-        <dl className="grid grid-cols-2 gap-4">
-          <div className="min-w-0">
-            <dt className="eyebrow">Session</dt>
-            <dd className="mt-1 truncate font-mono text-[12px]" title={det.correlation_id}>
-              {shortSession(det.correlation_id)}
-            </dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="eyebrow">First seen</dt>
-            <dd className="mt-1 truncate font-mono text-[12px]">{formatTime(det.first_seen_utc)}</dd>
-          </div>
-        </dl>
-
-        <TriagePanel det={det} disposition={disposition} onSaved={onDispositionSaved} />
-
-        <div>
-          <p className="eyebrow mb-1">Sequence</p>
-          <p className="mb-3 text-[12px] leading-snug text-muted-foreground">
-            The tool calls this finding cites, in the order they happened.
-          </p>
-          {loading ? (
-            <p className="py-4 text-center text-[12px] text-muted-foreground">Loading events…</p>
-          ) : error ? (
-            <p className="py-4 text-center text-[12px] text-danger">{error}</p>
-          ) : trigger.length === 0 ? (
-            <p className="py-4 text-center text-[12px] text-muted-foreground">
-              Triggering events are no longer in the trail.
-            </p>
-          ) : (
-            <ol>
-              {trigger.map((event, index) => (
-                <SequenceStep key={event.event_id} event={event} last={index === trigger.length - 1} />
-              ))}
-            </ol>
-          )}
-        </div>
-      </div>
-
-      <div className="border-t border-border p-3">
-        <button
-          type="button"
-          onClick={onOpenInStream}
-          className="btn w-full"
-          title="Open the whole session in the event stream"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          View session in event stream
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SequenceStep({ event, last }: { event: AuditEvent; last: boolean }) {
-  const app = eventSourceApp(event);
-  const m = event.tool?.mitre;
-  const tool = event.tool?.qualified || event.tool?.name || event.action?.type || "event";
-  const outcome = event.action?.outcome;
-  const dot =
-    outcome === "critical" || outcome === "denied" || outcome === "error"
-      ? "bg-danger"
-      : outcome === "high"
-        ? "bg-signal"
-        : outcome === "medium"
-          ? "bg-caution"
-          : "bg-secure";
-  return (
-    <li className="relative pl-5">
-      {last ? null : <span className="absolute bottom-0 left-[4px] top-3 w-px bg-border" aria-hidden />}
-      <span className={`absolute left-0 top-1.5 h-[9px] w-[9px] rounded-full ${dot}`} aria-hidden />
-      <div className="space-y-1.5 pb-4">
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="font-mono text-subtle">{formatTime(event.timestamp_utc)}</span>
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className={`h-1.5 w-1.5 rounded-full ${sourceDotClass(app)}`} />
-            {sourceLabel(app)}
-          </span>
-          <span className="truncate font-mono text-foreground" title={tool}>
-            {tool}
-          </span>
-          {m?.technique_id ? <Technique id={m.technique_id} /> : null}
-        </div>
-        {event.tool?.command ? (
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-foreground">
-            {event.tool.command}
-          </pre>
-        ) : null}
-      </div>
-    </li>
   );
 }

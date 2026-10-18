@@ -333,6 +333,82 @@ class AuditTrailDB:
         """Return events for detection correlation — no limit, full session."""
         return self.session(correlation_id, limit=10000)
 
+    def session_tree_events(
+        self, correlation_id: str, limit: int = 20000, around_utc: str = ""
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """The events a session's tree is drawn from, plus the whole session's counts.
+
+        `session()` stops at 2,000 events by default, oldest first, so on a long
+        session the calls a late detection cites fall past the cut. Here only
+        heartbeats are left out (they carry no session work) and the limit sits
+        above the longest session seen, so the cited calls arrive. `total` counts
+        everything, so a caller can tell when the list was cut anyway.
+
+        A session longer than `limit` with `around_utc` given returns the window
+        centred on that moment, half before and half after, rather than the
+        oldest events, which are the ones least likely to hold the finding.
+        """
+        conn = self._get_conn()
+        count = 0
+        if around_utc:
+            (count,) = conn.execute(
+                """SELECT COUNT(*) FROM audit_events
+                   WHERE correlation_id = ? AND action_type != 'heartbeat'""",
+                (correlation_id,),
+            ).fetchone()
+        if around_utc and count > limit:
+            before = conn.execute(
+                """SELECT event_json FROM audit_events
+                   WHERE correlation_id = ? AND action_type != 'heartbeat'
+                     AND timestamp_utc < ?
+                   ORDER BY timestamp_utc DESC, id DESC LIMIT ?""",
+                (correlation_id, around_utc, limit),
+            ).fetchall()
+            after = conn.execute(
+                """SELECT event_json FROM audit_events
+                   WHERE correlation_id = ? AND action_type != 'heartbeat'
+                     AND timestamp_utc >= ?
+                   ORDER BY timestamp_utc ASC, id ASC LIMIT ?""",
+                (correlation_id, around_utc, limit),
+            ).fetchall()
+            # Half each side, and the side that runs out gives its share to the
+            # other, so a detection near either end still gets a full window.
+            take_before = min(len(before), max(limit // 2, limit - len(after)))
+            rows = list(reversed(before[:take_before])) + list(after[: limit - take_before])
+        else:
+            rows = conn.execute(
+                """SELECT event_json FROM audit_events
+                   WHERE correlation_id = ? AND action_type != 'heartbeat'
+                   ORDER BY timestamp_utc ASC, id ASC LIMIT ?""",
+                (correlation_id, limit),
+            ).fetchall()
+        events = []
+        for row in rows:
+            try:
+                events.append(json.loads(row["event_json"]))
+            except (json.JSONDecodeError, KeyError):
+                continue
+        summary = conn.execute(
+            """SELECT COUNT(*) AS total, MIN(timestamp_utc) AS first_utc,
+                      MAX(timestamp_utc) AS last_utc
+               FROM audit_events WHERE correlation_id = ?""",
+            (correlation_id,),
+        ).fetchone()
+        by_type = {
+            row["action_type"]: row["cnt"]
+            for row in conn.execute(
+                """SELECT action_type, COUNT(*) AS cnt FROM audit_events
+                   WHERE correlation_id = ? GROUP BY action_type""",
+                (correlation_id,),
+            ).fetchall()
+        }
+        return events, {
+            "total": summary["total"] if summary else 0,
+            "first_utc": summary["first_utc"] if summary else None,
+            "last_utc": summary["last_utc"] if summary else None,
+            "by_type": by_type,
+        }
+
     def events_by_action_type(
         self, action_type: str, limit: int = 100_000
     ) -> list[dict[str, Any]]:

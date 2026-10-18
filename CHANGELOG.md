@@ -9,6 +9,37 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **A detection opens as an investigation, with the session as a process
+  tree.** This machine, then the agent, then the session across the top; under
+  it one branch per kind of tool (shell commands, files, web, each MCP server,
+  subagents) and the calls on each, with the calls the detection cites lit and
+  scrolled into view, and the rest folded into runs a click opens. A timeline
+  of the session marks where the cited calls fall. The selected call's command
+  (when `AGENTMETRY_LOG_COMMANDS` kept it), ATT&CK technique, approval and any
+  DLP or tool policy match sit beside the triage form. It is a tree of the
+  calls the hooks saw, not of the operating system's processes, and says so on
+  the page. The side panel it replaces loaded the first 2,000 events of the
+  session, so on a long one, such as a 4,445-event Cursor session with six
+  detections on this machine, it could report the cited calls as no longer in
+  the trail.
+- **`GET /api/v1/audit/session/{id}/tree`.** One session folded into those
+  nodes. An ask, its answer and the call it led to become one node, joined on
+  the input hash, because Cursor asks as `cursor.Shell` and runs as
+  `shell.run`, a detection may cite either, and the DLP and policy verdicts sit
+  on the ask. An ask the recorder closed when the session ended
+  (`inferred:session_ended_pending`, 1,399 of the 1,402 "denied" answers in
+  this machine's trail) is shown as expired, not as a refusal. A session
+  longer than the limit is windowed on the detection.
+- **An Overview page, now the first page.** What needs a person, worst first,
+  each item computed from an API field and linked to where it gets fixed:
+  untriaged detections, a trail that does not verify, a spool backlog, an
+  installed agent without a hook, red weeks on the beta gate, settings that
+  skip a prompt, policy matches that log mode let run, MCP servers the proxy
+  never saw, and agents whose settings are not checked. Beside it, events by
+  agent, detections by severity and the ATT&CK techniques seen.
+
 ### Fixed
 
 - **`hooks install` from uvx wrote hooks that the next `uv cache clean`
