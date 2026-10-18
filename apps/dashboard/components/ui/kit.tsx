@@ -33,11 +33,11 @@ const SEVERITY_WASH: Record<string, string> = {
 export function SeverityBadge({ severity, className = "" }: { severity: string; className?: string }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.04em] ${
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-0.5 font-mono text-[12px] font-semibold uppercase tracking-[0.04em] ${
         SEVERITY_WASH[severity] ?? SEVERITY_WASH.low
       } ${SEVERITY_TEXT[severity] ?? SEVERITY_TEXT.low} ${className}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${SEVERITY_DOT[severity] ?? SEVERITY_DOT.low}`} />
+      <span className={`h-2 w-2 rounded-full ${SEVERITY_DOT[severity] ?? SEVERITY_DOT.low}`} />
       {severity}
     </span>
   );
@@ -46,7 +46,7 @@ export function SeverityBadge({ severity, className = "" }: { severity: string; 
 export function Technique({ id, tone = "default" }: { id: string; tone?: "default" | "alert" }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-[11px] ${
+      className={`inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-[12px] ${
         tone === "alert"
           ? "border-danger/30 bg-danger/10 text-danger"
           : "border-border bg-muted text-muted-foreground"

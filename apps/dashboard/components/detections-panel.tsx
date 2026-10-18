@@ -20,6 +20,7 @@ import {
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
 import { DetectionInvestigation } from "@/components/detection-investigation";
+import { AgentTile } from "@/components/ui/agent-mark";
 import { StatusChip, formatTime } from "@/components/triage-panel";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -315,16 +316,17 @@ function DetectionRow({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`flex w-full items-center gap-4 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 ${
+      className={`flex w-full items-center gap-4 border-b border-border px-4 py-3.5 text-left transition-colors last:border-b-0 ${
         selected ? "bg-muted shadow-[inset_2px_0_0_hsl(var(--signal))]" : "hover:bg-muted/60"
       }`}
     >
       <span className="shrink-0 sm:w-28">
         <SeverityBadge severity={det.severity} />
       </span>
+      {det.app ? <AgentTile app={det.app} size="md" className="hidden sm:inline-flex" /> : null}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-medium text-foreground">{det.title || det.rule_id}</span>
-        <span className="block truncate text-[12px] text-muted-foreground">{det.summary}</span>
+        <span className="block truncate text-[15px] font-semibold text-foreground">{det.title || det.rule_id}</span>
+        <span className="block truncate text-[13px] text-muted-foreground">{det.summary}</span>
         <span className="mt-1.5 block sm:hidden">
           <StatusChip status={status} />
         </span>

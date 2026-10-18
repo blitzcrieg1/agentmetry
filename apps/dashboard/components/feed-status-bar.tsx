@@ -72,7 +72,8 @@ function ingestLabel(minutes: number | null, enabled: boolean, recent: number): 
   return `Last event ${minutes}m ago`;
 }
 
-export function FeedStatusBar() {
+/** `signedOut` lets the shell say so at once, instead of after this bar's next poll. */
+export function FeedStatusBar({ signedOut: forcedSignedOut = false }: { signedOut?: boolean } = {}) {
   const [status, setStatus] = useState<AuditStatus | null>(null);
   // Backend down and ingest disabled are opposite diagnoses; a fetch failure
   // must not render as "Ingest off".
@@ -113,7 +114,7 @@ export function FeedStatusBar() {
     );
   }
 
-  if (signedOut) {
+  if (signedOut || forcedSignedOut) {
     return (
       <div className="flex items-center gap-2 text-[12px] text-caution" title="The dashboard holds no API key; a one-time link signs it in">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-caution" />
