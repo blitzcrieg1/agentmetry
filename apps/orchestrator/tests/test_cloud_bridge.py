@@ -19,6 +19,7 @@ from agentmetry.core.audit.cloud_bridge import (
     map_claude_tool_use,
     map_cursor_agent,
     map_cursor_stream_tool_call,
+    map_outbound_poll,
 )
 
 
@@ -39,6 +40,19 @@ def test_cursor_agent_maps_lifecycle_and_outcome():
     run = payloads[1]
     assert run["event_type"] == "session_end"
     assert "pr:yes" in run["reason"] and "branches:1" in run["reason"]
+
+
+def test_outbound_poll_keeps_the_host_and_drops_the_key():
+    payload = map_outbound_poll(
+        "cursor_cloud",
+        "GET",
+        "https://api.cursor.com/v1/agents?token=super-secret",
+    )
+    text = json.dumps(payload)
+    assert payload["tool"]["command"] == "GET api.cursor.com/v1/agents"
+    assert "super-secret" not in text
+    assert "Bearer" not in text
+    assert payload["reason"] == "outbound poll; key sent and not stored"
 
 
 def test_cursor_run_status_passes_through_as_outcome():

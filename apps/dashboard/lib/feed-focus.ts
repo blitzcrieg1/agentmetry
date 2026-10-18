@@ -13,6 +13,22 @@ export type FeedFocus = {
 };
 
 /**
+ * A synthetic approval the recorder wrote because the tool ran after an ask.
+ *
+ * Cursor does not send the click. These rows are evidence, and a spool replay
+ * writes one per caught-up tool call, which is why the live feed fills with
+ * blank approval_response lines. The trail keeps them. The default feed does not.
+ */
+export function isInferredApproval(event: {
+  action?: { type?: string; reason?: string };
+}): boolean {
+  return (
+    event.action?.type === "approval_response" &&
+    String(event.action.reason ?? "").startsWith("inferred:")
+  );
+}
+
+/**
  * Whether an event belongs under the Issues chip.
  *
  * Detections store severity in `action.outcome` (`critical`, `high`, `medium`).

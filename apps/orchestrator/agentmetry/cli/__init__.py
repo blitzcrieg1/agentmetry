@@ -551,6 +551,7 @@ def cmd_cloud(args: argparse.Namespace) -> int:
         map_claude_messages,
         map_claude_session,
         map_cursor_agent,
+        map_outbound_poll,
     )
 
     base = (args.url or "").strip() or None
@@ -576,7 +577,9 @@ def cmd_cloud(args: argparse.Namespace) -> int:
         if not api_key:
             print("CURSOR_API_KEY is not set.")
             return 2
-        for agent in fetch_cursor_agents(api_key, base or __import__("agentmetry.core.audit.cloud_bridge", fromlist=["CURSOR_DEFAULT_BASE"]).CURSOR_DEFAULT_BASE):
+        cursor_base = base or __import__("agentmetry.core.audit.cloud_bridge", fromlist=["CURSOR_DEFAULT_BASE"]).CURSOR_DEFAULT_BASE
+        post(map_outbound_poll("cursor_cloud", "GET", f"{cursor_base.rstrip('/')}/v1/agents"))
+        for agent in fetch_cursor_agents(api_key, cursor_base):
             runs = []
             if not args.skip_runs:
                 try:
@@ -594,7 +597,9 @@ def cmd_cloud(args: argparse.Namespace) -> int:
             print("ANTHROPIC_COMPLIANCE_KEY is not set (a Compliance Access Key with read:compliance_user_data, not an admin key).")
             return 2
         kind = "remote" if args.remote else "local"
-        sessions = fetch_claude_sessions(api_key, kind=kind, base=base or "https://api.anthropic.com", limit=args.limit)
+        claude_base = base or "https://api.anthropic.com"
+        post(map_outbound_poll("claude_cloud", "GET", f"{claude_base.rstrip('/')}/v1/compliance/apps/sessions/{kind}"))
+        sessions = fetch_claude_sessions(api_key, kind=kind, base=claude_base, limit=args.limit)
         for session in sessions[: args.limit]:
             post(map_claude_session(session))
             try:
