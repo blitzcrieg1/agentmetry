@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentmetry.core.paths import user_profile_dir
+
 logger = logging.getLogger(__name__)
 
 # Hook subprocesses read these from orchestrator .env (Claude also gets them in settings env).
@@ -78,7 +80,7 @@ def install_cursor_global_hooks(
         return None
 
     py = python or sys.executable
-    hooks_dir = Path.home() / ".cursor"
+    hooks_dir = user_profile_dir() / ".cursor"
     hooks_path = hooks_dir / "hooks.json"
     payload = cursor_hooks_payload(python=py, ingest=ingest, repo_root=root)
 
@@ -371,7 +373,7 @@ def install_claude_global_hooks(
         return None
 
     py = python or sys.executable
-    settings_dir = Path.home() / ".claude"
+    settings_dir = user_profile_dir() / ".claude"
     settings_path = settings_dir / "settings.json"
 
     settings: dict[str, Any] = {}
@@ -400,7 +402,7 @@ def _qwen_settings_dir() -> Path:
     home = os.environ.get("QWEN_HOME", "").strip()
     if home:
         return Path(home).expanduser()
-    return Path.home() / ".qwen"
+    return user_profile_dir() / ".qwen"
 
 
 def install_qwen_global_hooks(
@@ -413,7 +415,7 @@ def install_qwen_global_hooks(
 
 
 def _qoder_settings_dir() -> Path:
-    return Path.home() / ".qoder"
+    return user_profile_dir() / ".qoder"
 
 
 def install_qoder_global_hooks(
@@ -426,7 +428,7 @@ def install_qoder_global_hooks(
 
 
 def _codebuddy_settings_dir() -> Path:
-    return Path.home() / ".codebuddy"
+    return user_profile_dir() / ".codebuddy"
 
 
 def install_codebuddy_global_hooks(
@@ -561,7 +563,7 @@ def install_codex_global_hooks(
         return None
 
     py = python or sys.executable
-    hooks_dir = Path.home() / ".codex"
+    hooks_dir = user_profile_dir() / ".codex"
     hooks_path = hooks_dir / "hooks.json"
 
     doc: dict[str, Any] = {}
@@ -617,7 +619,7 @@ COPILOT_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
 
 def copilot_hooks_dir() -> Path:
     home = os.environ.get("COPILOT_HOME", "").strip()
-    return (Path(home).expanduser() if home else Path.home() / ".copilot") / "hooks"
+    return (Path(home).expanduser() if home else user_profile_dir() / ".copilot") / "hooks"
 
 
 def copilot_hooks_document(
@@ -666,7 +668,7 @@ def _kimi_config_dir() -> Path:
     home = os.environ.get("KIMI_CODE_HOME", "").strip()
     if home:
         return Path(home).expanduser()
-    return Path.home() / ".kimi-code"
+    return user_profile_dir() / ".kimi-code"
 
 
 def kimi_hooks_toml_block(*, python: str, ingest: Path, repo_root: Path | None = None) -> str:

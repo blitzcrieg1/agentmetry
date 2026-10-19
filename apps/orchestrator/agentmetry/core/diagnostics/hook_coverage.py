@@ -45,6 +45,10 @@ found there, and reported as installed, while no developer's IDE ever reads that
 directory. A per-machine install would then attest full coverage for a fleet
 recording nothing. So a service profile is a definite failure rather than an
 unknown, and it degrades the beat.
+
+`AGENTMETRY_USER_PROFILE_DIR` (or `--user-profile-dir`) is the way out: a
+service told whose home to read reads that developer's configs, and is not
+blind. `profile_blind()` is the one test for "nothing here can be seen".
 """
 
 from __future__ import annotations
@@ -52,6 +56,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from agentmetry.core.paths import named_user_profile, user_profile_dir
 
 #: What our hook command looks like in a config we merged into. Checking for the
 #: marker rather than for the file means an IDE config the user owns is judged on
@@ -109,7 +115,7 @@ class Surface:
         override = os.environ.get(self.home_env, "").strip() if self.home_env else ""
         if override:
             return Path(override).expanduser()
-        return Path.home() / self.home_rel
+        return user_profile_dir() / self.home_rel
 
     def installed(self) -> bool:
         """Whether this agent is on the machine, as far as the disk can say.
@@ -183,6 +189,18 @@ def is_service_profile(home: Path | None = None) -> bool:
     return "/config/systemprofile" in text or "/windows/serviceprofiles/" in text
 
 
+def profile_blind() -> bool:
+    """True when no developer's configs are in view: a service profile with no
+    `AGENTMETRY_USER_PROFILE_DIR` naming whose home to read."""
+    return is_service_profile() and not named_user_profile()
+
+
+def attestation_profile() -> str:
+    """What a heartbeat says about whose configs it attests: `service` when
+    blind, else `user`, including a service that was named a developer."""
+    return "service" if profile_blind() else "user"
+
+
 def _has_marker(path: Path, markers: tuple[str, ...]) -> bool:
     try:
         if not path.is_file():
@@ -200,7 +218,7 @@ def coverage() -> dict[str, str]:
     a value captured at boot keeps asserting the configuration the machine had
     when it last restarted, which is precisely the lie being hunted.
     """
-    if is_service_profile():
+    if profile_blind():
         # Every path below would describe the service's own profile. Reporting
         # confident per-agent answers from it is worse than reporting none.
         return {s.name: UNKNOWN for s in SURFACES}
@@ -256,7 +274,7 @@ def unverified(states: dict[str, str] | None = None) -> list[str]:
 
 def summary_lines(states: dict[str, str] | None = None) -> list[str]:
     states = states if states is not None else coverage()
-    if is_service_profile():
+    if profile_blind():
         return [
             "  hooks: UNKNOWN, running under a service profile "
             f"({Path.home()}); no developer's configuration is visible from here"

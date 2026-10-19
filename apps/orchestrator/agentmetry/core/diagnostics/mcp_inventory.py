@@ -32,12 +32,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlparse
+
+from agentmetry.core.paths import user_profile_dir
 
 #: Fetch-and-run launchers. These resolve a package over the network on every
 #: invocation, so the bytes executed are decided later than the config was read.
@@ -192,7 +193,7 @@ def config_locations(project: Path | None = None) -> list[tuple[str, str, Path]]
     A missing file is normal rather than an error: a machine running Cursor and
     not Claude Code should report on Cursor and stay silent about the rest.
     """
-    home = Path(os.path.expanduser("~"))
+    home = user_profile_dir()
     found: list[tuple[str, str, Path]] = [
         ("claude", "user", home / ".claude.json"),
         ("claude", "user", home / ".claude" / "settings.json"),

@@ -50,6 +50,24 @@ def user_data_dir() -> Path:
     return (Path(base) if base else Path.home() / ".local" / "share") / "agentmetry"
 
 
+def named_user_profile() -> str:
+    """The developer home `AGENTMETRY_USER_PROFILE_DIR` names, or empty."""
+    return os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip()
+
+
+def user_profile_dir() -> Path:
+    """The home whose IDE and agent configs this process reads and writes.
+
+    Unset, this is `Path.home()`, the solo-developer default. A recorder run as
+    root or LocalSystem names the developer with `AGENTMETRY_USER_PROFILE_DIR`
+    (or `--user-profile-dir`), so hook install, coverage, posture and the MCP
+    inventory read that person's configs instead of the service account's. It
+    does not move the trail; that is `data_dir()`.
+    """
+    named = named_user_profile()
+    return Path(named).expanduser() if named else Path.home()
+
+
 def data_dir() -> Path:
     """The directory the trail, indexes, spool, logs and API token live in."""
     explicit = os.environ.get("AGENTMETRY_DATA_DIR", "").strip()

@@ -44,7 +44,7 @@ def snapshot() -> dict[str, Any]:
     from agentmetry.core.audit.identity import host_id
     from agentmetry.core.audit.policy_settings import policy_settings
     from agentmetry.core.audit.tool_policy.loader import load_tool_policy
-    from agentmetry.core.diagnostics.hook_coverage import SURFACES, coverage, is_service_profile
+    from agentmetry.core.diagnostics.hook_coverage import SURFACES, attestation_profile, coverage
     from agentmetry.core.diagnostics.mcp_inventory import collect as collect_mcp
     from agentmetry.core.diagnostics.mcp_schema import load_store
     from agentmetry.core.diagnostics.posture import NOT_CHECKED, collect as collect_posture
@@ -67,7 +67,7 @@ def snapshot() -> dict[str, Any]:
 
     return {
         "host_id": host_id(),
-        "profile": "service" if is_service_profile() else "user",
+        "profile": attestation_profile(),
         "agents": agents,
         "posture": {
             "findings": [{**item.wire(), "why": item.why} for item in posture.sorted()],

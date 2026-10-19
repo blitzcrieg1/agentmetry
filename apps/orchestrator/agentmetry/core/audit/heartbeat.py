@@ -98,7 +98,7 @@ def _hook_facts() -> dict[str, Any]:
         "hook_coverage": states,
         "hooks_uncovered": hook_coverage.uncovered(states),
         "hooks_unverified": hook_coverage.unverified(states),
-        "hook_profile": "service" if hook_coverage.is_service_profile() else "user",
+        "hook_profile": hook_coverage.attestation_profile(),
     }
 
 

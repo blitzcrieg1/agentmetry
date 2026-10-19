@@ -48,6 +48,40 @@ def _api_base_url(port: int) -> str:
     return os.environ.get("AGENTMETRY_URL", "").strip().rstrip("/") or _base_url(port)
 
 
+def _add_dir_flags(parser: argparse.ArgumentParser) -> None:
+    """The path split. Omit both flags and nothing moves.
+
+    `SUPPRESS`, so the same flag on `agentmetry` and on the subcommand do not
+    overwrite each other with a default of None.
+    """
+    parser.add_argument(
+        "--data-dir", default=argparse.SUPPRESS,
+        help="trail, spool, token and logs (env AGENTMETRY_DATA_DIR)",
+    )
+    parser.add_argument(
+        "--user-profile-dir", default=argparse.SUPPRESS,
+        help="the developer home whose IDE configs to install into and check "
+        "(env AGENTMETRY_USER_PROFILE_DIR); for a recorder run as root or LocalSystem",
+    )
+
+
+def _apply_dir_flags(args: argparse.Namespace) -> None:
+    """Export the path flags before a command reads data_dir() or the profile.
+
+    Exported, not passed: `start` spawns `serve`, and the hook commands it
+    writes run in other processes, all of which read the environment.
+    """
+    global _DATA_DIR, _PID_FILE
+    if getattr(args, "user_profile_dir", None):
+        os.environ["AGENTMETRY_USER_PROFILE_DIR"] = args.user_profile_dir
+    if getattr(args, "data_dir", None):
+        os.environ["AGENTMETRY_DATA_DIR"] = args.data_dir
+        # Only when the flag was given: a caller that already pointed these at
+        # a temp tree must not have them recomputed under it.
+        _DATA_DIR = data_dir()
+        _PID_FILE = _DATA_DIR / "agentmetry.pid"
+
+
 def _api_headers() -> dict[str, str]:
     from agentmetry.core.api_token import client_token
 
@@ -636,11 +670,12 @@ def _hooks_status() -> int:
     """
     from agentmetry.core.diagnostics import hook_coverage
 
-    if hook_coverage.is_service_profile():
+    if hook_coverage.profile_blind():
         print(
             "UNDETERMINABLE: running under a service profile. Hook configuration "
             "lives in each developer's profile and none is visible from here. "
-            "Run this in the user's context.",
+            "Run this in the user's context, or name the developer's home with "
+            "--user-profile-dir.",
             file=sys.stderr,
         )
         return 2
@@ -1451,6 +1486,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="agentmetry",
         description="Agentmetry local ops. New here? Start with `agentmetry demo`.",
     )
+    _add_dir_flags(parser)
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
     # First, so it heads the help: it is the one command that needs nothing set up.
@@ -1465,6 +1501,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("stop", help="stop the orchestrator")
     start = sub.add_parser("start", help="start the orchestrator (detached)")
+    _add_dir_flags(start)
     start.add_argument(
         "--host",
         default="127.0.0.1",
@@ -1474,12 +1511,14 @@ def main(argv: list[str] | None = None) -> int:
         "serve",
         help="run the orchestrator in the foreground (what autostart registers)",
     )
+    _add_dir_flags(serve)
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     hooks = sub.add_parser(
         "hooks",
         help="install IDE hook configs for the agents on this machine",
     )
+    _add_dir_flags(hooks)
     hooks.add_argument(
         "action",
         choices=("install", "status"),
@@ -1681,6 +1720,7 @@ def main(argv: list[str] | None = None) -> int:
     doctor = sub.add_parser(
         "doctor", help="SIEM preflight (manifests, trail chain, health, hooks)"
     )
+    _add_dir_flags(doctor)
     doctor.add_argument(
         "--fix",
         action="store_true",
@@ -1708,6 +1748,7 @@ def main(argv: list[str] | None = None) -> int:
     replay.add_argument("--trail", default="", help="trail to read (default: the configured trail)")
 
     args = parser.parse_args(argv)
+    _apply_dir_flags(args)
     handlers = {
         "demo": cmd_demo,
         "start": cmd_start,

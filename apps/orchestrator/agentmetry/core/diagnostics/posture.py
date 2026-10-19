@@ -54,6 +54,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agentmetry.core.paths import named_user_profile, user_profile_dir
+
 HIGH = "high"
 MEDIUM = "medium"
 LOW = "low"
@@ -172,7 +174,7 @@ def _claude_managed_settings() -> Path:
 
 
 def _check_claude(posture: Posture, project: Path | None) -> None:
-    files: list[tuple[str, Path]] = [("user", Path.home() / ".claude" / "settings.json")]
+    files: list[tuple[str, Path]] = [("user", user_profile_dir() / ".claude" / "settings.json")]
     if project is not None:
         files += [
             ("project", project / ".claude" / "settings.json"),
@@ -248,7 +250,7 @@ def _check_claude(posture: Posture, project: Path | None) -> None:
 
 def _codex_home() -> Path:
     home = os.environ.get("CODEX_HOME", "").strip()
-    return Path(home).expanduser() if home else Path.home() / ".codex"
+    return Path(home).expanduser() if home else user_profile_dir() / ".codex"
 
 
 def _check_codex_doc(posture: Posture, scope: str, doc: dict[str, Any]) -> None:
@@ -299,14 +301,23 @@ _BROAD_EDITS = frozenset({"**", "**/*", "*"})
 
 
 def vscode_user_settings() -> list[Path]:
-    """Stable and Insiders user settings, where each OS keeps them."""
+    """Stable and Insiders user settings, where each OS keeps them.
+
+    `APPDATA` and `XDG_CONFIG_HOME` belong to the process's own account. Under a
+    service told whose home to read, they name the service's profile, so they
+    are ignored and the developer's default location is used.
+    """
     names = ("Code", "Code - Insiders")
+    home = user_profile_dir()
+    own_env = not named_user_profile()
     if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+        appdata = os.environ.get("APPDATA") if own_env else None
+        base = Path(appdata) if appdata else home / "AppData" / "Roaming"
     elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
+        base = home / "Library" / "Application Support"
     else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        xdg = os.environ.get("XDG_CONFIG_HOME") if own_env else None
+        base = Path(xdg) if xdg else home / ".config"
     return [base / name / "User" / "settings.json" for name in names]
 
 
