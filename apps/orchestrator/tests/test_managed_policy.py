@@ -148,9 +148,28 @@ def test_windows_reads_real_sids():
 @pytest.mark.skipif(os.name != "nt", reason="Win32 security descriptors")
 def test_windows_refuses_a_file_in_the_users_own_temp(tmp_path):
     policy = tmp_path / "policy.yaml"
-    policy.write_text("dlp_mode: block\n", encoding="utf-8")
+    policy.write_bytes(b"dlp_mode: block\n")
     with pytest.raises(Untrusted):
         mp.read_trusted(policy)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Win32 security descriptors")
+def test_the_acl_doctor_prints_leaves_the_file_readable(tmp_path):
+    """No elevation needed for this half. With `/T` the same command leaves the
+    file an empty DACL, and the recorder could not read the policy it trusts."""
+    folder = tmp_path / "Agentmetry"
+    folder.mkdir()
+    policy = folder / "policy.yaml"
+    policy.write_bytes(b"dlp_mode: block\n")
+    remedy = mp.remediation(str(policy))
+    acl = remedy.split("then icacls ", 1)[1].rstrip(".")
+    assert "/T" not in acl
+    subprocess.run(["icacls", str(folder), "/inheritance:r", "/grant:r", f"*{mp.SYSTEM_SID}:(OI)(CI)F",
+                    f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX"],
+                   check=True, capture_output=True)
+    _owner, aces = mp._windows_security(path=policy)
+    assert {a.sid for a in aces or []} == {mp.SYSTEM_SID, mp.ADMINISTRATORS_SID, USERS_SID}
+    assert policy.read_bytes() == b"dlp_mode: block\n"
 
 
 def _elevated() -> bool:
@@ -166,12 +185,12 @@ def test_windows_trusts_a_folder_hardened_the_way_doctor_says(tmp_path):
     folder = tmp_path / "Agentmetry"
     folder.mkdir()
     policy = folder / "policy.yaml"
-    policy.write_text("dlp_mode: block\n", encoding="utf-8")
+    policy.write_bytes(b"dlp_mode: block\n")
     # The order doctor prints: owner first, then the ACL.
     for args in (
         ["/setowner", f"*{mp.ADMINISTRATORS_SID}", "/T"],
         ["/inheritance:r", "/grant:r", f"*{mp.SYSTEM_SID}:(OI)(CI)F",
-         f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX", "/T"],
+         f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX"],
     ):
         done = subprocess.run(["icacls", str(folder), *args], capture_output=True, text=True)
         assert done.returncode == 0, f"icacls {' '.join(args)}: {done.stdout}{done.stderr}"
@@ -217,7 +236,7 @@ def test_a_mac_acl_allowing_write_is_caught_and_a_deny_is_not():
 @pytest.mark.skipif(os.name == "nt", reason="POSIX ownership")
 def test_posix_refuses_a_file_the_user_owns(tmp_path):
     policy = tmp_path / "policy.yaml"
-    policy.write_text("dlp_mode: block\n", encoding="utf-8")
+    policy.write_bytes(b"dlp_mode: block\n")
     if os.geteuid() == 0:
         pytest.skip("root owns everything it writes")
     with pytest.raises(Untrusted):

@@ -636,11 +636,14 @@ def remediation(location: str) -> str:
     if os.name == "nt":
         folder = str(Path(location).parent)
         # Owner first: once the ACL is locked down, the account running this
-        # may no longer hold the right to take ownership.
+        # may no longer hold the right to take ownership. No /T on the ACL:
+        # applied to the file it strips what the file just inherited, and the
+        # inheritable grants do not land on a file, leaving a DACL nobody can
+        # read through. Without /T the file inherits the folder's new ACL.
         return (
             f'From an elevated prompt: icacls "{folder}" /setowner *{ADMINISTRATORS_SID} /T, '
             f'then icacls "{folder}" /inheritance:r /grant:r *{SYSTEM_SID}:(OI)(CI)F '
-            f'*{ADMINISTRATORS_SID}:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T.'
+            f'*{ADMINISTRATORS_SID}:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX.'
         )
     return "Make it and every directory above it root-owned and not group or world writable."
 
