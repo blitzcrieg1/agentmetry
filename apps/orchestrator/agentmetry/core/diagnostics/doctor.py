@@ -210,7 +210,7 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     """
     from agentmetry.core.diagnostics import hook_coverage
 
-    if hook_coverage.is_service_profile():
+    if hook_coverage.is_service_profile() and not os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip():
         report.fail(
             "hooks",
             f"Running under a service profile ({Path.home()}). Hook configuration "
@@ -707,6 +707,43 @@ def _check_ask_gate(report: DoctorReport) -> None:
         )
 
 
+def _check_managed_policy(report: DoctorReport) -> None:
+    """Say which keys a managed file locked, and refuse a user-writable one.
+
+    A file under /etc or ProgramData that the developer can edit is not a
+    managed policy. Honoring it would let the person the policy exists to
+    constrain turn enforcement off. `load_policy` already refused it; doctor
+    is where that becomes a FAIL an installer can see.
+    """
+    from agentmetry.core.managed_policy import load_policy
+
+    try:
+        layers = load_policy()
+    except Exception as exc:
+        report.fail("managed_policy", f"Could not read managed policy: {exc}")
+        return
+    for source in layers.rejected:
+        report.fail(
+            "managed_policy",
+            f"Refusing managed policy {source.location}: {source.reason}",
+        )
+    if layers.locked:
+        keys = ", ".join(sorted(layers.locked))
+        report.ok("managed_policy", f"Managed policy locks: {keys}")
+    elif not layers.rejected:
+        report.ok(
+            "managed_policy",
+            "No managed policy; user and environment defaults apply",
+        )
+    for source in layers.sources:
+        if source.accepted and source.unknown:
+            names = ", ".join(source.unknown)
+            report.warn(
+                "managed_policy",
+                f"Ignoring unknown keys in {source.location}: {names}",
+            )
+
+
 def run_doctor(
     *,
     vault_path: Path | None = None,
@@ -721,6 +758,13 @@ def run_doctor(
     now run last and can only warn.
     """
     report = DoctorReport()
+    # Locks move the data directory before the writable check below reads it.
+    try:
+        from agentmetry.core.managed_policy import overlay_settings
+
+        overlay_settings(settings)
+    except Exception as exc:
+        report.fail("managed_policy", f"Could not apply managed policy: {exc}")
     orch = orchestrator_root()
 
     # --- SIEM flight recorder ------------------------------------------------
@@ -779,6 +823,7 @@ def run_doctor(
     except OSError as exc:
         report.fail("data", f"Data directory not writable ({data_dir}): {exc}")
 
+    _check_managed_policy(report)
     _check_manifests(report)
     _check_ask_gate(report)
     _check_exposure(report)

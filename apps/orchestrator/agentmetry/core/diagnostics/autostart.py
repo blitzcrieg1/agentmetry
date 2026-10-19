@@ -242,11 +242,15 @@ def render_launchd_plist() -> str:
 
 
 def systemd_unit_path() -> Path:
-    return Path.home() / ".config" / "systemd" / "user" / f"{SERVICE_NAME}.service"
+    from agentmetry.core.paths import user_profile_dir
+
+    return user_profile_dir() / ".config" / "systemd" / "user" / f"{SERVICE_NAME}.service"
 
 
 def launchd_plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
+    from agentmetry.core.paths import user_profile_dir
+
+    return user_profile_dir() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
 
 
 # ----------------------------------------------------------------------

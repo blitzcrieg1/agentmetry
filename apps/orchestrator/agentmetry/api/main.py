@@ -24,10 +24,21 @@ from agentmetry.core.bus.bridges import outbox_persister
 from agentmetry.core.bus.bus import bus
 from agentmetry.core.bus.outbox import get_outbox
 from agentmetry.core.config import settings
-from agentmetry.core.paths import data_dir
 from agentmetry.core.extensions import load_extensions
 from agentmetry.core.health import get_system_health
+from agentmetry.core.managed_policy import overlay_settings
+from agentmetry.core.paths import data_dir
 from agentmetry.core.version import __version__
+
+# Before the log directory is chosen. A locked data_dir has to win over a
+# user environment that pointed the trail somewhere the user can rewrite.
+# Skipped under pytest: the suite isolates HOME after import, and lifespan
+# applies the policy once that isolation is in place.
+if "pytest" not in sys.modules:
+    try:
+        overlay_settings(settings)
+    except Exception:
+        logging.getLogger(__name__).exception("Managed policy was not applied")
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +121,11 @@ def stop_transcript_watcher(process: subprocess.Popen) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from agentmetry.core.audit.migrate import backfill_db_from_jsonl
+
+    try:
+        overlay_settings(settings)
+    except Exception:
+        logger.exception("Managed policy was not applied")
 
     # Backfill SQLite from the existing JSONL trail. A broken or locked audit DB
     # must degrade the dashboard, never stop the daemon from booting: the

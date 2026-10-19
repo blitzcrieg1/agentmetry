@@ -12,6 +12,22 @@ REAL_HOME = Path.home()
 
 
 @pytest.fixture(autouse=True)
+def _no_host_managed_policy(monkeypatch: pytest.MonkeyPatch):
+    """The suite must not read a managed policy that happens to be on the host.
+
+    A lock would change DLP mode for every later test. Tests that exercise the
+    loader point it at their own files.
+    """
+    from agentmetry.core import managed_policy
+
+    monkeypatch.setattr(managed_policy, "platform_managed_candidates", lambda: [])
+    monkeypatch.setattr(managed_policy, "read_registry_policy", lambda: None)
+    managed_policy.clear_cache()
+    yield
+    managed_policy.clear_cache()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_orchestrator(monkeypatch: pytest.MonkeyPatch):
     """No test may post to a real orchestrator.
 

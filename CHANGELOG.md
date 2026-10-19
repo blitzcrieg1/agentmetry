@@ -9,6 +9,11 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Managed policy hierarchy.** A root-owned `/etc/agentmetry/policy.yaml`, a macOS Managed Preferences plist (`ai.agentmetry.sensor`), Windows `HKLM\SOFTWARE\Policies\Agentmetry`, or `%ProgramData%\Agentmetry\policy.yaml` locks the keys it sets. A file at those paths that a user can write is refused, not applied. `~/.agentmetry/policy.yaml` and the environment fill everything else and cannot change a locked key. With no managed file, defaults are unchanged.
+- **`--data-dir`, `--user-profile-dir`, and `--policy-dir`.** The trail and the IDE home are no longer the same directory. Unset, both behave as before (`Path.home()` for hooks, the existing data-dir rule for the trail). A recorder running as root or LocalSystem can be pointed at the developer's home for hook install and coverage without moving the trail into that home.
+
 ## [0.9.8] - 2026-10-18
 
 The dashboard opens on an Overview of what needs a person, and a detection

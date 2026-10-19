@@ -130,26 +130,83 @@ def _bool(raw: str | None, default: bool) -> bool:
     return default
 
 
+def _as_text(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _locked_and_user(key: str) -> tuple[object, object]:
+    """Managed lock and user-file value. Imported lazily: the hook pays for it
+    on the first scan, not at import, and a missing module must not break a call."""
+    from agentmetry.core.managed_policy import locked_value, user_value
+
+    return locked_value(key), user_value(key)
+
+
 def resolve() -> PolicySettings:
-    """Resolve without pydantic, as the hook does."""
+    """Resolve without pydantic, as the hook does.
+
+    A managed lock wins over the environment and over `~/.agentmetry/policy.yaml`.
+    The user file fills a key only when the environment and `.env` did not.
+    """
     environ = {k.lower(): v for k, v in os.environ.items()}
     dotenv = _dotenv()
     base = _defaults()
 
-    def text(name: str, default: str) -> str:
+    def text(name: str, default: str, key: str | None = None) -> str:
+        if key is not None:
+            locked, user = _locked_and_user(key)
+            if locked is not None:
+                return _as_text(locked)
+        else:
+            user = None
         value = _lookup(name, environ, dotenv)
-        return default if value is None else value
+        if value is not None:
+            return value
+        if key is not None and user is not None:
+            return _as_text(user)
+        return default
+
+    def flag(name: str, default: bool, key: str) -> bool:
+        locked, user = _locked_and_user(key)
+        if locked is not None:
+            return bool(locked) if isinstance(locked, bool) else _bool(_as_text(locked), default)
+        raw = _lookup(name, environ, dotenv)
+        if raw is not None:
+            return _bool(raw, default)
+        if user is not None:
+            return bool(user) if isinstance(user, bool) else _bool(_as_text(user), default)
+        return default
 
     def path(name: str, default: Path) -> Path:
         value = _lookup(name, environ, dotenv)
         return default if value is None else Path(value)
 
     return PolicySettings(
-        dlp_mode=text("AGENTMETRY_DLP_MODE", base.dlp_mode),
+        dlp_mode=text("AGENTMETRY_DLP_MODE", base.dlp_mode, "dlp_mode"),
         dlp_rules_path=path("AGENTMETRY_DLP_RULES_PATH", base.dlp_rules_path),
-        dlp_pii=_bool(_lookup("AGENTMETRY_DLP_PII", environ, dotenv), base.dlp_pii),
-        tool_policy_mode=text("AGENTMETRY_TOOL_POLICY_MODE", base.tool_policy_mode),
+        dlp_pii=flag("AGENTMETRY_DLP_PII", base.dlp_pii, "dlp_pii"),
+        tool_policy_mode=text("AGENTMETRY_TOOL_POLICY_MODE", base.tool_policy_mode, "tool_policy_mode"),
         tool_policy_path=path("AGENTMETRY_TOOL_POLICY_PATH", base.tool_policy_path),
+    )
+
+
+def _with_locks(base: PolicySettings) -> PolicySettings:
+    """Managed locks win over the already-loaded Settings object."""
+    dlp_mode, _user = _locked_and_user("dlp_mode")
+    dlp_pii, _user_pii = _locked_and_user("dlp_pii")
+    tool_mode, _user_tool = _locked_and_user("tool_policy_mode")
+    if dlp_mode is None and dlp_pii is None and tool_mode is None:
+        return base
+    return PolicySettings(
+        dlp_mode=_as_text(dlp_mode) if dlp_mode is not None else base.dlp_mode,
+        dlp_rules_path=base.dlp_rules_path,
+        dlp_pii=bool(dlp_pii) if isinstance(dlp_pii, bool) else (
+            _bool(_as_text(dlp_pii), base.dlp_pii) if dlp_pii is not None else base.dlp_pii
+        ),
+        tool_policy_mode=_as_text(tool_mode) if tool_mode is not None else base.tool_policy_mode,
+        tool_policy_path=base.tool_policy_path,
     )
 
 
@@ -159,10 +216,10 @@ def policy_settings() -> PolicySettings:
     settings = getattr(config, "settings", None) if config is not None else None
     if settings is None:
         return resolve()
-    return PolicySettings(
+    return _with_locks(PolicySettings(
         dlp_mode=settings.dlp_mode,
         dlp_rules_path=Path(settings.dlp_rules_path),
         dlp_pii=bool(settings.dlp_pii),
         tool_policy_mode=settings.tool_policy_mode,
         tool_policy_path=Path(settings.tool_policy_path),
-    )
+    ))

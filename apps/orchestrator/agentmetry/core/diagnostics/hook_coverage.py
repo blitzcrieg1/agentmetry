@@ -109,6 +109,12 @@ class Surface:
         override = os.environ.get(self.home_env, "").strip() if self.home_env else ""
         if override:
             return Path(override).expanduser()
+        # A named profile wins over the process home. LocalSystem's home is not
+        # where the IDE reads hooks; `--user-profile-dir` is. Unset, Path.home()
+        # stays the solo default, which is what the coverage tests patch.
+        profile = os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip()
+        if profile:
+            return Path(profile).expanduser() / self.home_rel
         return Path.home() / self.home_rel
 
     def installed(self) -> bool:
@@ -193,6 +199,21 @@ def _has_marker(path: Path, markers: tuple[str, ...]) -> bool:
     return any(marker in body for marker in markers)
 
 
+def _named_user_profile() -> str:
+    return os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip()
+
+
+def attestation_profile() -> str:
+    """`user` when a developer profile is in view, else `service` or `user`.
+
+    The process home can be LocalSystem while `--user-profile-dir` names the
+    developer. That beat is about the developer, so it is not a service profile.
+    """
+    if _named_user_profile():
+        return "user"
+    return "service" if is_service_profile() else "user"
+
+
 def coverage() -> dict[str, str]:
     """Per-surface state, re-read from disk on every call.
 
@@ -200,9 +221,11 @@ def coverage() -> dict[str, str]:
     a value captured at boot keeps asserting the configuration the machine had
     when it last restarted, which is precisely the lie being hunted.
     """
-    if is_service_profile():
+    if is_service_profile() and not _named_user_profile():
         # Every path below would describe the service's own profile. Reporting
         # confident per-agent answers from it is worse than reporting none.
+        # A named user profile is the exception: the service was told whose
+        # IDE configs to read, and those paths are not the service home.
         return {s.name: UNKNOWN for s in SURFACES}
 
     result: dict[str, str] = {}
@@ -256,7 +279,7 @@ def unverified(states: dict[str, str] | None = None) -> list[str]:
 
 def summary_lines(states: dict[str, str] | None = None) -> list[str]:
     states = states if states is not None else coverage()
-    if is_service_profile():
+    if is_service_profile() and not _named_user_profile():
         return [
             "  hooks: UNKNOWN, running under a service profile "
             f"({Path.home()}); no developer's configuration is visible from here"

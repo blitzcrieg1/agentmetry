@@ -44,6 +44,8 @@ compromised".
 
 from __future__ import annotations
 
+from agentmetry.core.paths import user_profile_dir
+
 import hashlib
 import json
 import os
@@ -172,7 +174,7 @@ def _claude_managed_settings() -> Path:
 
 
 def _check_claude(posture: Posture, project: Path | None) -> None:
-    files: list[tuple[str, Path]] = [("user", Path.home() / ".claude" / "settings.json")]
+    files: list[tuple[str, Path]] = [("user", user_profile_dir() / ".claude" / "settings.json")]
     if project is not None:
         files += [
             ("project", project / ".claude" / "settings.json"),
@@ -248,7 +250,7 @@ def _check_claude(posture: Posture, project: Path | None) -> None:
 
 def _codex_home() -> Path:
     home = os.environ.get("CODEX_HOME", "").strip()
-    return Path(home).expanduser() if home else Path.home() / ".codex"
+    return Path(home).expanduser() if home else user_profile_dir() / ".codex"
 
 
 def _check_codex_doc(posture: Posture, scope: str, doc: dict[str, Any]) -> None:
@@ -302,11 +304,11 @@ def vscode_user_settings() -> list[Path]:
     """Stable and Insiders user settings, where each OS keeps them."""
     names = ("Code", "Code - Insiders")
     if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+        base = Path(os.environ.get("APPDATA") or user_profile_dir() / "AppData" / "Roaming")
     elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
+        base = user_profile_dir() / "Library" / "Application Support"
     else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or user_profile_dir() / ".config")
     return [base / name / "User" / "settings.json" for name in names]
 
 

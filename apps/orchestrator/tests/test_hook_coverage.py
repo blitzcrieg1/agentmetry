@@ -173,6 +173,22 @@ def test_our_antigravity_hook_counts_as_presence(home):
 # ----------------------------------------------------------------------
 
 
+def test_a_named_profile_is_checked_from_a_service_account(monkeypatch, tmp_path):
+    """LocalSystem plus --user-profile-dir reads that home, not System32."""
+    from pathlib import Path as _P
+
+    user = tmp_path / "dev"
+    monkeypatch.setattr(
+        hook_coverage.Path, "home",
+        staticmethod(lambda: _P(r"C:\Windows\System32\config\systemprofile")),
+    )
+    monkeypatch.setenv("AGENTMETRY_USER_PROFILE_DIR", str(user))
+    _install(user, ".cursor", "hooks.json")
+    assert hook_coverage.is_service_profile()
+    assert hook_coverage.attestation_profile() == "user"
+    assert hook_coverage.coverage()["cursor"] == hook_coverage.COVERED
+
+
 @pytest.mark.parametrize(
     "profile",
     [

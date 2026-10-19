@@ -12,6 +12,19 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def profile_home() -> Path:
+    """IDE config root. `AGENTMETRY_USER_PROFILE_DIR`, else this process's home.
+
+    `Path.home()` under a LaunchDaemon or the MSI service is root or
+    LocalSystem, and writing hooks there records nobody. Unset, this is
+    `Path.home()`, so a solo install does not change.
+    """
+    explicit = os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path.home()
+
 # Hook subprocesses read these from orchestrator .env (Claude also gets them in settings env).
 HOOK_ENV_KEYS = (
     "AGENTMETRY_TOOL_POLICY_MODE",
@@ -78,7 +91,7 @@ def install_cursor_global_hooks(
         return None
 
     py = python or sys.executable
-    hooks_dir = Path.home() / ".cursor"
+    hooks_dir = profile_home() / ".cursor"
     hooks_path = hooks_dir / "hooks.json"
     payload = cursor_hooks_payload(python=py, ingest=ingest, repo_root=root)
 
@@ -371,7 +384,7 @@ def install_claude_global_hooks(
         return None
 
     py = python or sys.executable
-    settings_dir = Path.home() / ".claude"
+    settings_dir = profile_home() / ".claude"
     settings_path = settings_dir / "settings.json"
 
     settings: dict[str, Any] = {}
@@ -400,7 +413,7 @@ def _qwen_settings_dir() -> Path:
     home = os.environ.get("QWEN_HOME", "").strip()
     if home:
         return Path(home).expanduser()
-    return Path.home() / ".qwen"
+    return profile_home() / ".qwen"
 
 
 def install_qwen_global_hooks(
@@ -413,7 +426,7 @@ def install_qwen_global_hooks(
 
 
 def _qoder_settings_dir() -> Path:
-    return Path.home() / ".qoder"
+    return profile_home() / ".qoder"
 
 
 def install_qoder_global_hooks(
@@ -426,7 +439,7 @@ def install_qoder_global_hooks(
 
 
 def _codebuddy_settings_dir() -> Path:
-    return Path.home() / ".codebuddy"
+    return profile_home() / ".codebuddy"
 
 
 def install_codebuddy_global_hooks(
@@ -561,7 +574,7 @@ def install_codex_global_hooks(
         return None
 
     py = python or sys.executable
-    hooks_dir = Path.home() / ".codex"
+    hooks_dir = profile_home() / ".codex"
     hooks_path = hooks_dir / "hooks.json"
 
     doc: dict[str, Any] = {}
@@ -617,7 +630,7 @@ COPILOT_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
 
 def copilot_hooks_dir() -> Path:
     home = os.environ.get("COPILOT_HOME", "").strip()
-    return (Path(home).expanduser() if home else Path.home() / ".copilot") / "hooks"
+    return (Path(home).expanduser() if home else profile_home() / ".copilot") / "hooks"
 
 
 def copilot_hooks_document(
@@ -666,7 +679,7 @@ def _kimi_config_dir() -> Path:
     home = os.environ.get("KIMI_CODE_HOME", "").strip()
     if home:
         return Path(home).expanduser()
-    return Path.home() / ".kimi-code"
+    return profile_home() / ".kimi-code"
 
 
 def kimi_hooks_toml_block(*, python: str, ingest: Path, repo_root: Path | None = None) -> str:

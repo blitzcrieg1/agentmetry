@@ -50,9 +50,14 @@ Out of scope:
   CASB/endpoint-DLP territory, not this product. Anyone telling you an
   agent-observability tool gives you full coverage of unmanaged AI usage is
   selling you something.
-- **Auth is off by default.** With no `AGENTMETRY_API_KEY` set, the local API is
-  unauthenticated so local dev works out of the box. Set the key before exposing
-  the port beyond localhost.
+- **Auth is on by default** (since 0.9.3). The first start writes a random
+  token to `<data dir>/api-token` and every route except `/api/v1/health`
+  requires it. `AGENTMETRY_API_KEY`, when set, replaces that token.
+  `AGENTMETRY_AUTH_DISABLED=1` turns the check off for local development.
+  `doctor` warns while that is set, and fails if the API is also reachable
+  beyond loopback. The token file is owner-only, so another OS user cannot
+  read it. A process running as the same user can, which is the same-user
+  limit below, not an open port.
 - **Redaction is best-effort.** Secrets are scrubbed by pattern matching. Novel
   credential formats can slip through into the trail. Do not treat the JSONL as
   safe to publish.

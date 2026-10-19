@@ -85,6 +85,21 @@ def test_the_hook_and_the_orchestrator_agree(monkeypatch):
     assert ingest._data_dir() == paths.data_dir()
 
 
+def test_user_profile_dir_defaults_to_home(monkeypatch):
+    monkeypatch.delenv("AGENTMETRY_USER_PROFILE_DIR", raising=False)
+    assert paths.user_profile_dir() == Path.home()
+
+
+def test_user_profile_dir_does_not_move_the_trail(monkeypatch, tmp_path):
+    """IDE hooks and the trail are different directories. A service can hold
+    the trail while hooks stay in the developer's home."""
+    monkeypatch.setenv("AGENTMETRY_USER_PROFILE_DIR", str(tmp_path / "home"))
+    monkeypatch.setenv("AGENTMETRY_DATA_DIR", str(tmp_path / "trail"))
+    assert paths.user_profile_dir() == tmp_path / "home"
+    assert paths.data_dir() == tmp_path / "trail"
+    assert paths.user_profile_dir() != paths.data_dir()
+
+
 def test_the_resolver_costs_the_hook_no_third_party_import():
     import subprocess
     import sys

@@ -1977,6 +1977,15 @@ def main(argv: list[str] | None = None) -> int:
     Returns rather than calling sys.exit, because a CLI subcommand that killed
     the interpreter would take the rest of the CLI down with it.
     """
+    # Locked keys win over this process's environment before DLP or paths run.
+    # A failure here must not fail the tool call: the hook falls back to the
+    # environment it was given, and doctor reports the policy error.
+    try:
+        from agentmetry.core.managed_policy import apply_locked_env
+
+        apply_locked_env()
+    except Exception as exc:
+        print(f"Agentmetry: managed policy was not applied ({exc})", file=sys.stderr)
     args = list(sys.argv[1:] if argv is None else argv)
 
     if args and args[0] in SOURCE_APPS:

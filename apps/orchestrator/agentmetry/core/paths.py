@@ -50,6 +50,21 @@ def user_data_dir() -> Path:
     return (Path(base) if base else Path.home() / ".local" / "share") / "agentmetry"
 
 
+def user_profile_dir() -> Path:
+    """Home directory whose IDE configs this process should read and write.
+
+    Unset, this is `Path.home()`, which is the solo-developer default. A
+    recorder running as root or LocalSystem sets `AGENTMETRY_USER_PROFILE_DIR`
+    (or `--user-profile-dir`) to the developer's home so hook install and
+    coverage do not land in the service profile. It does not move the trail.
+    That is `data_dir()`.
+    """
+    explicit = os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path.home()
+
+
 def data_dir() -> Path:
     """The directory the trail, indexes, spool, logs and API token live in."""
     explicit = os.environ.get("AGENTMETRY_DATA_DIR", "").strip()
