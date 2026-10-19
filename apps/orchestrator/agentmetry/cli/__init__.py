@@ -1479,10 +1479,10 @@ def cmd_demo(args: argparse.Namespace) -> int:
 def cmd_doctor(args: argparse.Namespace) -> int:
     """SIEM preflight: manifests, trail chain, orchestrator health, hooks."""
     sys.path.insert(0, str(_ORCH_ROOT))
-    from agentmetry.core.diagnostics.doctor import format_report, run_doctor
+    from agentmetry.core.diagnostics.doctor import print_report, run_doctor
 
     report = run_doctor(fix_drivers=getattr(args, "fix", False))
-    print("Agentmetry doctor\n" + format_report(report))
+    print_report(report, as_json=getattr(args, "json", False))
     return report.exit_code
 
 
@@ -1751,6 +1751,12 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="SIEM preflight (manifests, trail chain, health, hooks)"
     )
     _add_dir_flags(doctor)
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="the report as JSON, for a deployment script: exit_code, "
+        "orchestrator_reachable, hooks, policy and findings",
+    )
     doctor.add_argument(
         "--fix",
         action="store_true",

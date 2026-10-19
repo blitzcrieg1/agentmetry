@@ -36,6 +36,16 @@ class Finding:
 @dataclass
 class DoctorReport:
     findings: list[Finding] = field(default_factory=list)
+    #: Facts for `doctor --json`, set by the checks that establish them. A
+    #: deployment script reads these rather than the sentences, which get
+    #: reworded, and a compliance check that breaks on a wording change fails
+    #: silently.
+    hooks: dict[str, str] = field(default_factory=dict)
+    hook_profile: str = ""
+    orchestrator_reachable: bool = False
+    policy_locked: list[str] = field(default_factory=list)
+    policy_pinned: list[str] = field(default_factory=list)
+    policy_rejected: list[str] = field(default_factory=list)
 
     def ok(self, code: str, message: str) -> None:
         self.findings.append(Finding("ok", code, message))
@@ -61,6 +71,7 @@ def _check_health_endpoint(report: DoctorReport) -> None:
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
             if resp.status == 200:
+                report.orchestrator_reachable = True
                 report.ok("orchestrator_up", f"Orchestrator responding at {url}")
                 return
             report.warn("orchestrator_up", f"Orchestrator returned HTTP {resp.status} at {url}")
@@ -210,7 +221,9 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     """
     from agentmetry.core.diagnostics import hook_coverage
 
+    report.hook_profile = hook_coverage.attestation_profile()
     if hook_coverage.profile_blind():
+        report.hooks = {s.name: hook_coverage.UNKNOWN for s in hook_coverage.SURFACES}
         report.fail(
             "hooks",
             f"Running under a service profile ({Path.home()}). Hook configuration "
@@ -221,6 +234,7 @@ def _check_hooks_installed(report: DoctorReport) -> None:
         return
 
     states = hook_coverage.coverage()
+    report.hooks = dict(states)
     covered = sorted(n for n, st in states.items() if st == hook_coverage.COVERED)
     uncovered = hook_coverage.uncovered(states)
     unverified = hook_coverage.unverified(states)
@@ -722,6 +736,9 @@ def _check_managed_policy(report: DoctorReport) -> None:
     except Exception as exc:
         report.fail("managed_policy", f"Managed policy could not be read: {exc}")
         return
+    report.policy_locked = sorted(policy.locked)
+    report.policy_pinned = list(policy.pinned)
+    report.policy_rejected = [s.location for s in policy.rejected]
     for source in policy.rejected:
         hint = "" if source.location == managed_policy.REGISTRY_LOCATION else (
             " " + managed_policy.remediation(source.location)
@@ -860,14 +877,55 @@ def format_report(report: DoctorReport) -> str:
     return "\n".join(lines)
 
 
+#: Bumped when a field changes meaning or goes away. Adding one does not bump it.
+JSON_SCHEMA = 1
+
+
+def report_payload(report: DoctorReport) -> dict:
+    """`doctor --json`: the report as fields a deployment script can test.
+
+    `hooks` uses the coverage vocabulary (`covered`, `uncovered`, `absent`,
+    `unknown`), and `absent` is an agent that is not installed, not drift.
+    `orchestrator_reachable` is true only when the health route answered 200.
+    `exit_code` is the one the command returns.
+    """
+    from agentmetry.core.version import __version__
+
+    return {
+        "schema": JSON_SCHEMA,
+        "version": __version__,
+        "exit_code": report.exit_code,
+        "orchestrator_reachable": report.orchestrator_reachable,
+        "hook_profile": report.hook_profile,
+        "hooks": dict(report.hooks),
+        "policy": {
+            "locked": list(report.policy_locked),
+            "pinned": list(report.policy_pinned),
+            "rejected": list(report.policy_rejected),
+        },
+        "findings": [
+            {"severity": f.severity, "code": f.code, "message": f.message}
+            for f in report.findings
+        ],
+    }
+
+
+def print_report(report: DoctorReport, *, as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps(report_payload(report), indent=2))
+    else:
+        print("Agentmetry doctor\n" + format_report(report))
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(prog="agentmetry-doctor")
     parser.add_argument("--fix", action="store_true", help="rewrite drivers.json to portable tokens")
+    parser.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)
     report = run_doctor(fix_drivers=args.fix)
-    print("Agentmetry doctor\n" + format_report(report))
+    print_report(report, as_json=args.json)
     return report.exit_code
 
 

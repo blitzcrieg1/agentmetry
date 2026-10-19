@@ -38,7 +38,19 @@ _ACTION_MAP = {
     "tool_failed": ("tool_called", "error"),
     "approval_request": ("approval_request", "pending"),
     "approval_response": ("approval_response", "success"),
+    # A deployment tool (an Intune remediation, a LaunchAgent) reinstalled
+    # hooks. That changes this machine's configuration; it is not a tool call.
+    # Unmapped it was stored as `tool_called`, which tool-sequence rules count.
+    "hook_remediation": ("config_change", "success"),
 }
+
+#: The only payload fields a remediation notice keeps. Anything session- or
+#: tool-shaped a client attached is dropped: it would join the notice to an
+#: agent's session, or give a detection a tool to read.
+_REMEDIATION_FIELDS = frozenset({
+    "event_type", "source_app", "outcome", "reason", "timestamp_utc", "adapter",
+    "triggered_by", "initiator", "operator",
+})
 
 
 def _utc_now() -> str:
@@ -82,8 +94,14 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     source_app, claimed_app = _resolve_source_app(payload.get("source_app"))
 
     event_type = str(payload.get("event_type") or "tool_called")
+    if event_type == "hook_remediation":
+        payload = {k: v for k, v in payload.items() if k in _REMEDIATION_FIELDS}
     action_type, default_outcome = _ACTION_MAP.get(event_type, ("tool_called", "success"))
     outcome = str(payload.get("outcome") or default_outcome)
+    if event_type == "hook_remediation" and outcome not in ("success", "error"):
+        # Anything else is not a confirmed success, and a fleet alerting on
+        # failed remediations must not have one hidden by a spelling.
+        outcome = "error"
     reason = str(payload.get("reason") or "")
 
     correlation_id = str(payload.get("correlation_id") or payload.get("thread_id") or "")

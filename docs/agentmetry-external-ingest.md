@@ -89,7 +89,27 @@ X-API-Key: <optional>
 }
 ```
 
-`event_type`: `session_start` | `session_end` | `tool_called` | `tool_denied` | `tool_failed` | `approval_request` | `approval_response`
+`event_type`: `session_start` | `session_end` | `tool_called` | `tool_denied` | `tool_failed` | `approval_request` | `approval_response` | `hook_remediation`
+
+`hook_remediation` is for a deployment tool that reinstalled hooks, such as an
+Intune remediation or a LaunchAgent. It is recorded as `action.type:
+config_change` with `source_topic: external/<app>/hook_remediation`, never as a
+tool call, so tool-sequence rules do not count it. Only `source_app`,
+`outcome`, `reason`, `timestamp_utc`, `adapter` and the initiator fields are
+kept; a session id or a tool block is dropped. `outcome` is `success` or
+`error`, and any other value is recorded as `error`.
+
+```json
+{"event_type": "hook_remediation", "source_app": "agentmetry", "outcome": "success",
+ "reason": "intune remediation reinstalled hooks"}
+```
+
+A deployment script can check the result with `agentmetry doctor --json`. It
+prints `schema`, `version`, `exit_code`, `orchestrator_reachable`,
+`hook_profile`, `hooks` (each agent `covered`, `uncovered`, `absent` or
+`unknown`), `policy` (`locked`, `pinned`, `rejected`) and `findings`. Test the
+fields rather than the sentences in `findings`, which get reworded. `schema`
+changes only when a field changes meaning or goes away.
 
 Canonical output adds:
 
