@@ -1,7 +1,7 @@
 [project]
 name = "agentmetry"
 dynamic = ["version"]
-description = "Local-first flight recorder for AI coding agents: hash-chained audit trail, MITRE-mapped sequence detection, DLP"
+description = "Local-first endpoint sensor for AI coding agents: hash-chained audit trail, MITRE-mapped sequence detection, DLP"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Ioannis L." }]

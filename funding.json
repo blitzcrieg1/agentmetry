@@ -5,7 +5,7 @@
     "role": "owner",
     "name": "Ioannis Loutsis",
     "email": "g.loutsis95@gmail.com",
-    "description": "Solo maintainer, based in Greece. I build and maintain Agentmetry, a local-first flight recorder for AI coding agents, alongside other work. The project has received no funding to date.\n\nThe thing I care most about here is that every published number comes from a command somebody else can run. The detection ruleset is frozen behind a published hash during evaluation periods, so a claim of four clean weeks cannot quietly mean four different rulesets. The benchmark corpus carries the project's own known false positives as cases that must stay silent. Tests assert that figures quoted in the README still match what the commands print, because they had drifted once already.",
+    "description": "Solo maintainer, based in Greece. I build and maintain Agentmetry, a local-first endpoint sensor for AI coding agents, alongside other work. The project has received no funding to date.\n\nThe thing I care most about here is that every published number comes from a command somebody else can run. The detection ruleset is frozen behind a published hash during evaluation periods, so a claim of four clean weeks cannot quietly mean four different rulesets. The benchmark corpus carries the project's own known false positives as cases that must stay silent. Tests assert that figures quoted in the README still match what the commands print, because they had drifted once already.",
     "webpageUrl": {
       "url": "https://agentmetry.ai",
       "wellKnown": "https://agentmetry.ai/.well-known/funding-manifest-urls"
