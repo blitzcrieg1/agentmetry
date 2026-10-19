@@ -60,8 +60,8 @@ during the run. Whether the freeze now ends, so #55 and #172 can land, is the
 maintainer's decision; until it is made, the list above stays frozen.
 
 That flip is worth knowing about. **A week scored red on untriaged detections
-can be rescued at any time**, because `build_report` reads the disposition store
-on every run (`core/audit/dogfood.py:289`) rather than freezing a verdict when
+can be rescued at any time**, because `assess` reads the disposition store
+on every run (`core/audit/dogfood.py:288`) rather than freezing a verdict when
 the week ends. Too few active days is the only failure that is genuinely
 permanent. Two documents in this repo asserted the opposite for a day, both
 written from the RED verdict rather than the code.
@@ -73,6 +73,16 @@ green week still needed, and a red week moves it. Run it rather than quote it:
 ```bash
 apps/orchestrator/.venv/Scripts/python.exe -m agentmetry.cli dogfood
 ```
+
+**`dogfood` scores from the SQLite index and the disposition store that the
+CLI's settings name, not from the JSONL trail.** On the dogfood machine those
+must be the same files the running recorder writes, which its start script
+sets. From 2026-10-15 to 2026-10-19 they were not: the recorder indexed into
+`audit.db` while the CLI's `.env` still named `agentmetry-trail.db`, frozen at
+2026-10-14. Week 7 scored GREEN on 2,325 events instead of RED on 8,022 with
+seven untriaged detections, and "1 of 4" was reported for an afternoon. If a week's
+event count looks low, count the trail before believing the verdict, and
+check that `settings.audit_db_path` matches the recorder's.
 
 Four green weeks measured against four different rulesets is not a number worth
 quoting, which is why the freeze is checkable rather than promised. Verify the
@@ -168,19 +178,22 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-16 there are 1726 tests collected, zero open code
-scanning alerts, a dogfood gate that passed 4 of 4 on 2026-10-02 (`dogfood`
-currently prints 0 of 4 consecutive: week 6 is red on untriaged detections),
-`agentmetry demo` runnable with nothing installed (`uvx agentmetry demo`), and
-0.9.7 on PyPI (released 2026-10-15: Cloud Bridge, ZCode as a source, the
-Copilot CLI deny run live, and evidence pack schema 2.2).
-Dependabot is down to 2 open alerts (one high, `braces`; one medium,
-`postcss-selector-parser`), both transitive in `apps/dashboard/package-lock.json`
-with no Dependabot PR. Check with
+Not code. As of 2026-10-19 there are 1848 tests collected in CI, zero open
+code scanning alerts, zero open Dependabot alerts, a dogfood gate that passed
+4 of 4 on 2026-10-02 (`dogfood` currently prints 0 of 4 consecutive: weeks 6
+and 7 are red on untriaged critical and high detections, which triage can
+still rescue), `agentmetry demo` runnable with nothing installed
+(`uvx agentmetry demo`), and 0.9.9 on PyPI (released 2026-10-19: managed
+policy, `--user-profile-dir` and `--data-dir` for a recorder run as a service,
+`doctor --json`, and the `hook_remediation` event). Check alerts with
 `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
 trusting this line. There are also **zero external users, zero design-partner
 tenants, and zero sent sales messages**: four recipients in the queue are marked
 Ready and none has been contacted.
+
+The fleet installers Cursor drafted in #282 are parked as
+agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
+when a prospect needs one, not before.
 
 Do not merge Dependabot's `mcp <3` widening (#184 and its successors). CI passes
 on it because no test imports the file the pin protects; see #174.
