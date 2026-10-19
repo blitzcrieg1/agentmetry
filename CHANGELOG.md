@@ -11,6 +11,17 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **`doctor --json`, for deployment scripts.** It prints `exit_code`,
+  `orchestrator_reachable`, `hook_profile`, per-agent `hooks` coverage, the
+  managed `policy` (locked, pinned, rejected) and the findings, with a
+  `schema` number that moves only when a field changes meaning. An Intune
+  remediation or a LaunchAgent can test fields instead of parsing sentences
+  that get reworded. A service profile that cannot see any developer's
+  configuration reports every agent `unknown`, not an empty map.
+- **`hook_remediation` ingest event.** A deployment tool that reinstalled hooks
+  can say so, and it is recorded as `config_change` with no session and no
+  tool. Before, an unrecognised `event_type` was stored as `tool_called`, and
+  fifty of them in a minute raised `session-tool-burst`.
 - **Managed policy: a fleet can lock settings a developer cannot change.**
   `HKLM\SOFTWARE\Policies\Agentmetry`, `%ProgramData%\Agentmetry\policy.yaml`,
   an MDM profile at `/Library/Managed Preferences/ai.agentmetry.sensor.plist`,
