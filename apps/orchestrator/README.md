@@ -1,6 +1,6 @@
 # Agentmetry
 
-A local-first flight recorder for AI coding agents.
+A local-first endpoint sensor for AI coding agents.
 
 Agentmetry hooks the tool lifecycle of Claude Code, Cursor, Codex and Antigravity,
 writes every tool call, approval and denial to a hash-chained JSONL trail on your

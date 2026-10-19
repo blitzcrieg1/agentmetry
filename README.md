@@ -9,14 +9,14 @@
 
 <h1>Agentmetry</h1>
 
-<p><strong>A local flight recorder for AI coding agents.</strong><br/>
-It records each tool call on the machine, tags the ones it recognises, and can forward that trail to a SIEM you already run.</p>
+<p><strong>A local-first endpoint sensor for AI coding agents.</strong><br/>
+A flight recorder for each tool call on the machine: it tags the ones it recognises, and can forward that trail to a SIEM you already run.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
-  <img src="https://img.shields.io/badge/CI-Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="CI: Windows and Linux">
+  <img src="https://img.shields.io/badge/CI-Windows%20%7C%20Linux%20%7C%20macOS%20preview-lightgrey?style=for-the-badge" alt="CI: Windows and Linux, macOS in preview">
 </p>
 
 <p align="center">

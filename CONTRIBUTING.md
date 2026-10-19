@@ -1,6 +1,6 @@
 # Contributing to Agentmetry
 
-Thanks for helping build an open, local-first flight recorder for AI agents.
+Thanks for helping build an open, local-first endpoint sensor for AI agents.
 Contributions are welcome across detection rules, DLP patterns, SIEM adapters,
 and dashboard UX.
 
