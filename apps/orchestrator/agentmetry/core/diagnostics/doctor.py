@@ -210,7 +210,7 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     """
     from agentmetry.core.diagnostics import hook_coverage
 
-    if hook_coverage.is_service_profile():
+    if hook_coverage.profile_blind():
         report.fail(
             "hooks",
             f"Running under a service profile ({Path.home()}). Hook configuration "

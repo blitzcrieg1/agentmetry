@@ -9,6 +9,20 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **`--user-profile-dir` and `--data-dir`, so a recorder run as root or
+  LocalSystem reads the developer's configs.** Under a service, `Path.home()`
+  is the service account's profile: `hooks install` wrote hooks where no IDE
+  reads them, and coverage could only say "unknown". Naming the developer's
+  home (`--user-profile-dir`, or `AGENTMETRY_USER_PROFILE_DIR`) points hook
+  install, coverage, `hooks status`, posture and the MCP inventory at that
+  person, and the heartbeat then attests `user` rather than `service`. Posture
+  ignores the service's own `APPDATA` and `XDG_CONFIG_HOME` when a profile is
+  named. `--data-dir` sets `AGENTMETRY_DATA_DIR` for that command. Both flags
+  work at the top level and on `start`, `serve`, `hooks` and `doctor`, and are
+  exported so a spawned `serve` inherits them. Unset, nothing changes.
+
 ## [0.9.8] - 2026-10-18
 
 The dashboard opens on an Overview of what needs a person, and a detection

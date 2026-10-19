@@ -78,6 +78,9 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     # unless they turn it on; test_auth_default.py does.
     monkeypatch.setattr(settings, "auth_disabled", True)
     monkeypatch.delenv("AGENTMETRY_OPERATOR_ID", raising=False)
+    # A developer who set this for a service install must not have every
+    # coverage and hook-install test read their real home.
+    monkeypatch.delenv("AGENTMETRY_USER_PROFILE_DIR", raising=False)
     from agentmetry.hooks import ingest as _hook_ingest
 
     monkeypatch.setattr(_hook_ingest, "_OPERATOR", None)
