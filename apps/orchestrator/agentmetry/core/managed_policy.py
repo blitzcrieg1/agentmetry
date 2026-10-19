@@ -376,12 +376,34 @@ def parse_policy_yaml(text: str) -> dict[str, Any]:
     return data
 
 
+def _unwrap_managed_plist(loaded: dict[str, Any]) -> dict[str, Any]:
+    """Accept a flat domain plist or the Managed Preferences wrapper.
+
+    macOS writes `/Library/Managed Preferences/ai.agentmetry.sensor.plist` as
+    the preference keys themselves, or as `{domain: {Forced: [{mcx_preference_settings: ...}]}}`.
+    Payload* keys from a configuration profile are not policy.
+    """
+    if any(key in SPECS for key in loaded):
+        return {key: value for key, value in loaded.items() if not str(key).startswith("Payload")}
+    for value in loaded.values():
+        if not isinstance(value, dict):
+            continue
+        forced = value.get("Forced")
+        if not isinstance(forced, list):
+            continue
+        for item in forced:
+            settings = item.get("mcx_preference_settings") if isinstance(item, dict) else None
+            if isinstance(settings, dict):
+                return dict(settings)
+    return {key: value for key, value in loaded.items() if not str(key).startswith("Payload")}
+
+
 def parse_policy_plist(path: Path) -> dict[str, Any]:
     with path.open("rb") as fh:
         loaded = plistlib.load(fh)
     if not isinstance(loaded, dict):
         raise PolicySyntax("plist root must be a dictionary")
-    return dict(loaded)
+    return _unwrap_managed_plist(loaded)
 
 
 def _coerce(key: str, value: Any) -> Any:

@@ -36,6 +36,11 @@ class Finding:
 @dataclass
 class DoctorReport:
     findings: list[Finding] = field(default_factory=list)
+    #: Coverage map from the same check that writes the hooks finding.
+    #: Empty until that check runs. Intune reads this from `doctor --json`
+    #: rather than the prose, which changes wording and would silently break.
+    hooks: dict[str, str] = field(default_factory=dict)
+    orchestrator_reachable: bool = False
 
     def ok(self, code: str, message: str) -> None:
         self.findings.append(Finding("ok", code, message))
@@ -61,6 +66,7 @@ def _check_health_endpoint(report: DoctorReport) -> None:
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
             if resp.status == 200:
+                report.orchestrator_reachable = True
                 report.ok("orchestrator_up", f"Orchestrator responding at {url}")
                 return
             report.warn("orchestrator_up", f"Orchestrator returned HTTP {resp.status} at {url}")
@@ -211,6 +217,7 @@ def _check_hooks_installed(report: DoctorReport) -> None:
     from agentmetry.core.diagnostics import hook_coverage
 
     if hook_coverage.is_service_profile() and not os.environ.get("AGENTMETRY_USER_PROFILE_DIR", "").strip():
+        report.hooks = {s.name: hook_coverage.UNKNOWN for s in hook_coverage.SURFACES}
         report.fail(
             "hooks",
             f"Running under a service profile ({Path.home()}). Hook configuration "
@@ -221,6 +228,7 @@ def _check_hooks_installed(report: DoctorReport) -> None:
         return
 
     states = hook_coverage.coverage()
+    report.hooks = dict(states)
     covered = sorted(n for n, st in states.items() if st == hook_coverage.COVERED)
     uncovered = hook_coverage.uncovered(states)
     unverified = hook_coverage.unverified(states)
@@ -853,14 +861,37 @@ def format_report(report: DoctorReport) -> str:
     return "\n".join(lines)
 
 
+def report_payload(report: DoctorReport) -> dict:
+    """Structured doctor result for a deployment script.
+
+    `hooks` uses the coverage vocabulary (covered, uncovered, absent, unknown).
+    `orchestrator_reachable` is true only when health returned HTTP 200.
+    A script exits 1 on uncovered, unknown, or an unreachable recorder without
+    parsing the sentences above.
+    """
+    return {
+        "exit_code": report.exit_code,
+        "findings": [
+            {"severity": f.severity, "code": f.code, "message": f.message}
+            for f in report.findings
+        ],
+        "hooks": dict(report.hooks),
+        "orchestrator_reachable": report.orchestrator_reachable,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(prog="agentmetry-doctor")
     parser.add_argument("--fix", action="store_true", help="rewrite drivers.json to portable tokens")
+    parser.add_argument("--json", action="store_true", help="print findings, hooks, and reachability as JSON")
     args = parser.parse_args(argv)
     report = run_doctor(fix_drivers=args.fix)
-    print("Agentmetry doctor\n" + format_report(report))
+    if args.json:
+        print(json.dumps(report_payload(report), indent=2))
+    else:
+        print("Agentmetry doctor\n" + format_report(report))
     return report.exit_code
 
 

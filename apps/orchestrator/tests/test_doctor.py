@@ -142,6 +142,30 @@ def test_ipv6_loopback_is_not_exposed(tmp_path: Path, monkeypatch):
     assert _finding(report, "exposure").severity == "warn", "loopback, but authentication is off"
 
 
+def test_doctor_json_exposes_hooks_and_reachability(monkeypatch, capsys):
+    """Intune reads fields, not sentences. absent is not drift; uncovered is."""
+    import json
+
+    from agentmetry.cli import main
+    from agentmetry.core.diagnostics import hook_coverage
+
+    monkeypatch.setattr(
+        hook_coverage,
+        "coverage",
+        lambda: {"cursor": "covered", "claude": "absent", "codex": "uncovered"},
+    )
+    monkeypatch.setattr(hook_coverage, "is_service_profile", lambda home=None: False)
+    code = main(["doctor", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["hooks"]["cursor"] == "covered"
+    assert payload["hooks"]["claude"] == "absent"
+    assert payload["hooks"]["codex"] == "uncovered"
+    assert payload["orchestrator_reachable"] is False
+    assert payload["exit_code"] == code
+    assert isinstance(payload["findings"], list)
+    assert all(set(item) == {"severity", "code", "message"} for item in payload["findings"])
+
+
 def test_doctor_output_is_ascii_safe():
     """`doctor` is now a command inside the MSI, run on a cp1252 console.
 

@@ -13,6 +13,10 @@ separately (currently `1.2.0`) and changes additively.
 
 - **Managed policy hierarchy.** A root-owned `/etc/agentmetry/policy.yaml`, a macOS Managed Preferences plist (`ai.agentmetry.sensor`), Windows `HKLM\SOFTWARE\Policies\Agentmetry`, or `%ProgramData%\Agentmetry\policy.yaml` locks the keys it sets. A file at those paths that a user can write is refused, not applied. `~/.agentmetry/policy.yaml` and the environment fill everything else and cannot change a locked key. With no managed file, defaults are unchanged.
 - **`--data-dir`, `--user-profile-dir`, and `--policy-dir`.** The trail and the IDE home are no longer the same directory. Unset, both behave as before (`Path.home()` for hooks, the existing data-dir rule for the trail). A recorder running as root or LocalSystem can be pointed at the developer's home for hook install and coverage without moving the trail into that home.
+- **macOS LaunchDaemon and LaunchAgent.** `deploy/macos/` runs the orchestrator as root over `/var/db/agentmetry` and a per-user agent that installs IDE hooks only when coverage is missing. `build_pkg.sh` codesigns and notarizes from environment variables. The MDM profile locks `ai.agentmetry.sensor` and registers the user agent as a managed login item.
+- **Intune detection and remediation.** `Detect-Agentmetry.ps1` reads `agentmetry doctor --json` and exits 1 when the recorder is down or a present agent is uncovered or unknown. `Remediate-Agentmetry.ps1` reinstalls hooks and records a `hook_remediation` event, which is not stored as a tool call. `Protect-AgentmetryData.ps1` removes inheritance and grants the trail and `policy.yaml` to SYSTEM and Administrators only.
+- **`doctor --json`.** Findings, the hook coverage map, and `orchestrator_reachable`, so a deployment script does not parse the text report.
+- **Azure Trusted Signing example.** `docs/deploy/examples/windows-trusted-signing.yml` shows OIDC login and `azure/trusted-signing-action`. It is not a live workflow, and it contains no client secret.
 
 ## [0.9.8] - 2026-10-18
 

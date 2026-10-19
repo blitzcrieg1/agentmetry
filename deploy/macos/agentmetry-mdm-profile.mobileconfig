@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadDisplayName</key>
+	<string>Agentmetry sensor</string>
+	<key>PayloadIdentifier</key>
+	<string>ai.agentmetry.sensor.profile</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>4F2A9C10-6B3E-4D55-8A71-0C5E91B2D001</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>ai.agentmetry.sensor</string>
+			<key>PayloadIdentifier</key>
+			<string>ai.agentmetry.sensor.preferences</string>
+			<key>PayloadUUID</key>
+			<string>4F2A9C10-6B3E-4D55-8A71-0C5E91B2D002</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Agentmetry managed preferences</string>
+			<key>schema</key>
+			<integer>1</integer>
+			<key>dlp_mode</key>
+			<string>log</string>
+			<key>tool_policy_mode</key>
+			<string>log</string>
+			<key>auth_disabled</key>
+			<false/>
+		</dict>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.servicemanagement</string>
+			<key>PayloadIdentifier</key>
+			<string>ai.agentmetry.sensor.servicemanagement</string>
+			<key>PayloadUUID</key>
+			<string>4F2A9C10-6B3E-4D55-8A71-0C5E91B2D003</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Agentmetry managed login items</string>
+			<key>Rules</key>
+			<array>
+				<dict>
+					<key>RuleType</key>
+					<string>Label</string>
+					<key>RuleValue</key>
+					<string>ai.agentmetry.agent</string>
+					<key>Comment</key>
+					<string>Agentmetry user agent (Aqua session hook coverage)</string>
+				</dict>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

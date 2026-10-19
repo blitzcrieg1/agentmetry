@@ -379,3 +379,21 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
     types = [unwrap_trail_record(json.loads(ln))["action"]["type"] for ln in lines]
     assert types == ["approval_request", "tool_called", "approval_response"]
     assert unwrap_trail_record(json.loads(lines[2]))["action"]["reason"] == "inferred:tool_ran_after_ask"
+
+
+def test_hook_remediation_is_not_a_tool_call():
+    """An Intune reinstall must not look like a shell the sequence rules score."""
+    out = build_external_canonical({
+        "source_app": "agentmetry",
+        "event_type": "hook_remediation",
+        "correlation_id": "sess-1",
+        "session_id": "sess-1",
+        "reason": "intune remediate reinstalled hooks",
+        "tool": {"qualified": "Shell.run", "arguments": {"command": "whoami"}},
+        "tool_qualified": "Shell.run",
+    })
+    assert out["action"]["type"] == "hook_remediation"
+    assert out["action"]["outcome"] == "success"
+    assert out["correlation_id"] == ""
+    assert out["session_id"] == ""
+    assert "tool" not in out

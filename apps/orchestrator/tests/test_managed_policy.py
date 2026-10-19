@@ -186,6 +186,34 @@ def test_plist_and_registry_lock(monkeypatch, tmp_path, trusted):
     assert layers.locked["tool_policy_mode"] == "block"
 
 
+def test_a_managed_preferences_wrapper_unwraps(monkeypatch, tmp_path, trusted):
+    plist = tmp_path / "ai.agentmetry.sensor.plist"
+    wrapped = {
+        "ai.agentmetry.sensor": {
+            "Forced": [
+                {"mcx_preference_settings": {"schema": 1, "dlp_mode": "block"}},
+            ],
+        },
+    }
+    with plist.open("wb") as fh:
+        plistlib.dump(wrapped, fh)
+    _candidates(monkeypatch, [plist])
+    assert mp.load_policy().locked["dlp_mode"] == "block"
+
+
+def test_payload_metadata_is_not_a_policy_key(monkeypatch, tmp_path, trusted):
+    plist = tmp_path / "ai.agentmetry.sensor.plist"
+    with plist.open("wb") as fh:
+        plistlib.dump(
+            {"schema": 1, "dlp_mode": "block", "PayloadUUID": "4F2A9C10-6B3E-4D55-8A71-0C5E91B2D002"},
+            fh,
+        )
+    _candidates(monkeypatch, [plist])
+    layers = mp.load_policy()
+    assert layers.locked["dlp_mode"] == "block"
+    assert layers.sources[0].unknown == ()
+
+
 def test_the_first_managed_source_wins(monkeypatch, tmp_path, trusted):
     monkeypatch.setattr(mp, "read_registry_policy", lambda: {"dlp_mode": "block", "schema": 1})
     later = tmp_path / "policy.yaml"

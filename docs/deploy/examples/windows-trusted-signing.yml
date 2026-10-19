@@ -1,0 +1,26 @@
+# Example only. This file is not a workflow until it is copied to
+# .github/workflows/. It is kept here so a push does not run a signing job
+# that has no Azure account. Do not commit a client secret. Use a federated
+# credential (OIDC) and repository variables.
+name: windows-trusted-signing
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  sign:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/trusted-signing-action@v0
+        with:
+          endpoint: https://eus.codesigning.azure.net
+          trusted-signing-account-name: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
+          files: ${{ vars.AZURE_TRUSTED_SIGNING_FILES }}

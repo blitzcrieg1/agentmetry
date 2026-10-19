@@ -38,6 +38,9 @@ _ACTION_MAP = {
     "tool_failed": ("tool_called", "error"),
     "approval_request": ("approval_request", "pending"),
     "approval_response": ("approval_response", "success"),
+    # A deployment tool reinstalled hooks. This is not a tool call: leaving it
+    # unmapped stored it as tool_called, which is what the sequence rules read.
+    "hook_remediation": ("hook_remediation", "success"),
 }
 
 
@@ -88,6 +91,11 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
 
     correlation_id = str(payload.get("correlation_id") or payload.get("thread_id") or "")
     session_id = str(payload.get("session_id") or "")
+    # A remediation notice must not join a session the agent is in, and must
+    # not carry a tool block a client attached. Sequence rules key on both.
+    if event_type == "hook_remediation":
+        correlation_id = ""
+        session_id = ""
 
     operator = operator_from_payload(payload)
     initiator_raw = payload.get("initiator")
@@ -110,6 +118,10 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         or ""
     )
     driver_name, tool_name = _split_tool(tool_qualified)
+
+    if event_type == "hook_remediation":
+        tool_qualified = ""
+        tool_block = {}
 
     args = tool_block.get("arguments")
     # A hook that hashed client-side says how; a digest computed here uses the
