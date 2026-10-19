@@ -167,12 +167,15 @@ def test_windows_trusts_a_folder_hardened_the_way_doctor_says(tmp_path):
     folder.mkdir()
     policy = folder / "policy.yaml"
     policy.write_text("dlp_mode: block\n", encoding="utf-8")
+    # The order doctor prints: owner first, then the ACL.
     for args in (
+        ["/setowner", f"*{mp.ADMINISTRATORS_SID}", "/T"],
         ["/inheritance:r", "/grant:r", f"*{mp.SYSTEM_SID}:(OI)(CI)F",
          f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX", "/T"],
-        ["/setowner", f"*{mp.ADMINISTRATORS_SID}", "/T"],
     ):
-        subprocess.run(["icacls", str(folder), *args], check=True, capture_output=True)
+        done = subprocess.run(["icacls", str(folder), *args], capture_output=True, text=True)
+        assert done.returncode == 0, f"icacls {' '.join(args)}: {done.stdout}{done.stderr}"
+    assert mp.remediation(str(policy)).index("/setowner") < mp.remediation(str(policy)).index("/grant:r")
     assert mp.read_trusted(policy) == b"dlp_mode: block\n"
 
 

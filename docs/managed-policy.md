@@ -94,13 +94,16 @@ administrator's own account. Both are refused, so harden the folder once from
 an elevated prompt:
 
 ```
-icacls "%ProgramData%\Agentmetry" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T
 icacls "%ProgramData%\Agentmetry" /setowner *S-1-5-32-544 /T
+icacls "%ProgramData%\Agentmetry" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T
 ```
+
+Run them in that order. Once the folder is locked down, the account running
+the commands may no longer be allowed to take ownership.
 
 A file that Intune, Group Policy or another management agent writes as SYSTEM
 is owned by SYSTEM already. Its folder still inherits the `Users` entry, so it
-still needs the first command.
+still needs both commands.
 
 ## When it applies, and how to check
 

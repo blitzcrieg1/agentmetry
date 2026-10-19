@@ -635,10 +635,12 @@ def remediation(location: str) -> str:
     """One line on how to make a refused file acceptable, for doctor."""
     if os.name == "nt":
         folder = str(Path(location).parent)
+        # Owner first: once the ACL is locked down, the account running this
+        # may no longer hold the right to take ownership.
         return (
-            f'From an elevated prompt: icacls "{folder}" /inheritance:r /grant:r '
-            f'*{SYSTEM_SID}:(OI)(CI)F *{ADMINISTRATORS_SID}:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T, '
-            f'then icacls "{folder}" /setowner *{ADMINISTRATORS_SID} /T.'
+            f'From an elevated prompt: icacls "{folder}" /setowner *{ADMINISTRATORS_SID} /T, '
+            f'then icacls "{folder}" /inheritance:r /grant:r *{SYSTEM_SID}:(OI)(CI)F '
+            f'*{ADMINISTRATORS_SID}:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T.'
         )
     return "Make it and every directory above it root-owned and not group or world writable."
 
