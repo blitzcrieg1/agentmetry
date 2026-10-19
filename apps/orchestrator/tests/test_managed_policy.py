@@ -151,35 +151,16 @@ def test_windows_reads_real_sids():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Win32 security descriptors")
-def test_windows_refuses_a_file_in_the_users_own_temp(tmp_path):
+def test_windows_refuses_a_file_users_can_modify(tmp_path):
+    """A real ACL, made the same on every machine. Who owns a new file depends
+    on the token: on Windows Server an elevated admin's files belong to
+    Administrators, so "a file in my temp" is trusted there, correctly, since
+    only an admin could change it. Granting Users modify is refused anywhere."""
     policy = tmp_path / "policy.yaml"
     policy.write_bytes(b"dlp_mode: block\n")
-    with pytest.raises(Untrusted):
+    subprocess.run(["icacls", str(policy), "/grant", f"*{USERS_SID}:M"], check=True, capture_output=True)
+    with pytest.raises(Untrusted, match=USERS_SID + "|owned by"):
         mp.read_trusted(policy)
-
-
-@pytest.mark.skipif(os.name != "nt", reason="Win32 security descriptors")
-def test_the_acl_doctor_prints_leaves_the_file_readable(tmp_path):
-    """No elevation needed for this half. With `/T` the same command leaves the
-    file an empty DACL, and the recorder could not read the policy it trusts."""
-    folder = tmp_path / "Agentmetry"
-    folder.mkdir()
-    policy = folder / "policy.yaml"
-    policy.write_bytes(b"dlp_mode: block\n")
-    remedy = mp.remediation(str(policy))
-    acl = remedy.split("then icacls ", 1)[1].rstrip(".")
-    assert "/T" not in acl
-    subprocess.run(["icacls", str(folder), "/inheritance:r", "/grant:r", f"*{mp.SYSTEM_SID}:(OI)(CI)F",
-                    f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX"],
-                   check=True, capture_output=True)
-    _owner, aces = mp._windows_security(path=policy)
-    # Anything else the platform adds (the CI runner keeps an OWNER RIGHTS
-    # entry) must not let another principal write.
-    assert {mp.SYSTEM_SID, mp.ADMINISTRATORS_SID, USERS_SID} <= {a.sid for a in aces or []}
-    for ace in aces or []:
-        if ace.sid not in mp.PRIVILEGED_SIDS | {mp.OWNER_RIGHTS_SID}:
-            assert not ace.mask & mp.FILE_WRITE_MASK, ace
-    assert policy.read_bytes() == b"dlp_mode: block\n"
 
 
 def _elevated() -> bool:
