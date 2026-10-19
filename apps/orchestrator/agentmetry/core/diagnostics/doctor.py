@@ -707,6 +707,57 @@ def _check_ask_gate(report: DoctorReport) -> None:
         )
 
 
+def _check_managed_policy(report: DoctorReport) -> None:
+    """Which keys a fleet locked, and every managed source that was refused.
+
+    A refused file fails rather than warns: an admin put it there to lock
+    something, and on this machine nothing it says is in force. The fix for a
+    file the developer could have edited is to take that ability away, never
+    to honour it, so the message says how.
+    """
+    from agentmetry.core import managed_policy
+
+    try:
+        policy = managed_policy.load_policy()
+    except Exception as exc:
+        report.fail("managed_policy", f"Managed policy could not be read: {exc}")
+        return
+    for source in policy.rejected:
+        hint = "" if source.location == managed_policy.REGISTRY_LOCATION else (
+            " " + managed_policy.remediation(source.location)
+        )
+        report.fail("managed_policy", f"Managed policy {source.location} {source.reason}.{hint}")
+    for source in policy.sources:
+        if source.accepted and source.unknown:
+            report.warn(
+                "managed_policy",
+                f"{source.location} sets keys this release does not know, ignored: "
+                f"{', '.join(source.unknown)}",
+            )
+    if not policy.locked:
+        if not policy.rejected:
+            report.ok("managed_policy", "No managed policy; the environment and .env apply")
+        return
+    where = ", ".join(s.location for s in policy.sources if s.accepted)
+    report.ok("managed_policy", f"Managed policy locks {', '.join(sorted(policy.locked))} ({where})")
+    for key in policy.pinned:
+        report.ok(
+            "managed_policy",
+            f"{key} pinned to the built-in manifest because {managed_policy.PINNED_BY[key]} "
+            f"is locked; lock {key} too to use another",
+        )
+    for key in managed_policy.PINNED_BY:
+        if key not in policy.locked:
+            continue
+        try:
+            managed_policy.read_trusted(Path(str(policy.locked[key])))
+        except (managed_policy.Untrusted, OSError) as exc:
+            report.warn(
+                "managed_policy",
+                f"Locked {key} is a file the developer may be able to edit: {exc}",
+            )
+
+
 def run_doctor(
     *,
     vault_path: Path | None = None,
@@ -779,6 +830,7 @@ def run_doctor(
     except OSError as exc:
         report.fail("data", f"Data directory not writable ({data_dir}): {exc}")
 
+    _check_managed_policy(report)
     _check_manifests(report)
     _check_ask_gate(report)
     _check_exposure(report)

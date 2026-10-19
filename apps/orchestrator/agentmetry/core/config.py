@@ -1,9 +1,20 @@
+import logging
 from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentmetry.core import managed_policy
 from agentmetry.core.paths import data_dir, env_file
+
+# Before anything below reads the environment: a locked data_dir decides where
+# `.env` is looked for, and every locked key must beat the `.env` Settings reads.
+# A broken policy degrades to the environment rather than stopping the
+# recorder; doctor and the heartbeat report the source it refused.
+try:
+    managed_policy.apply_locks()
+except Exception:
+    logging.getLogger(__name__).exception("Managed policy was not applied")
 
 _ORCHESTRATOR_ROOT = Path(__file__).resolve().parents[2]
 # Data and .env no longer live beside the package in an installed wheel

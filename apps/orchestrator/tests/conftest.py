@@ -6,9 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from agentmetry.core import managed_policy as _managed_policy
+
 #: Captured at import, before any fixture runs, so a test can prove the home it
 #: sees is not this one.
 REAL_HOME = Path.home()
+
+#: Before any test module imports `core.config`, which applies the host's
+#: managed policy to the environment. A fleet lock on the maintainer's machine
+#: would otherwise set the DLP mode of every test. Tests of the loader pass
+#: their own locations, registry and reader.
+_managed_policy.HOST_SOURCES = False
 
 
 @pytest.fixture(autouse=True)

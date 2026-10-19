@@ -49,7 +49,7 @@ def _api_base_url(port: int) -> str:
 
 
 def _add_dir_flags(parser: argparse.ArgumentParser) -> None:
-    """The path split. Omit both flags and nothing moves.
+    """The path split. Omit the flags and nothing moves.
 
     `SUPPRESS`, so the same flag on `agentmetry` and on the subcommand do not
     overwrite each other with a default of None.
@@ -63,6 +63,11 @@ def _add_dir_flags(parser: argparse.ArgumentParser) -> None:
         help="the developer home whose IDE configs to install into and check "
         "(env AGENTMETRY_USER_PROFILE_DIR); for a recorder run as root or LocalSystem",
     )
+    parser.add_argument(
+        "--policy-dir", default=argparse.SUPPRESS,
+        help="an extra managed policy location, checked like the platform one "
+        "(env AGENTMETRY_POLICY_DIR)",
+    )
 
 
 def _apply_dir_flags(args: argparse.Namespace) -> None:
@@ -74,12 +79,37 @@ def _apply_dir_flags(args: argparse.Namespace) -> None:
     global _DATA_DIR, _PID_FILE
     if getattr(args, "user_profile_dir", None):
         os.environ["AGENTMETRY_USER_PROFILE_DIR"] = args.user_profile_dir
+    if getattr(args, "policy_dir", None):
+        os.environ["AGENTMETRY_POLICY_DIR"] = args.policy_dir
     if getattr(args, "data_dir", None):
         os.environ["AGENTMETRY_DATA_DIR"] = args.data_dir
         # Only when the flag was given: a caller that already pointed these at
         # a temp tree must not have them recomputed under it.
         _DATA_DIR = data_dir()
         _PID_FILE = _DATA_DIR / "agentmetry.pid"
+
+
+def _apply_managed_policy(args: argparse.Namespace) -> None:
+    """Locks over flags and environment, for this process and everything it starts.
+
+    After `_apply_dir_flags`, so `--data-dir` cannot move a trail a fleet
+    locked. Says so when it overrides a flag: a silently ignored flag reads as
+    a bug.
+    """
+    global _DATA_DIR, _PID_FILE
+    from agentmetry.core import managed_policy
+
+    try:
+        policy = managed_policy.apply_locks()
+    except Exception as exc:
+        print(f"Managed policy was not applied: {exc}", file=sys.stderr)
+        return
+    if "data_dir" not in policy.locked:
+        return
+    if getattr(args, "data_dir", None):
+        print("--data-dir ignored: managed policy locks data_dir.", file=sys.stderr)
+    _DATA_DIR = data_dir()
+    _PID_FILE = _DATA_DIR / "agentmetry.pid"
 
 
 def _api_headers() -> dict[str, str]:
@@ -1749,6 +1779,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     _apply_dir_flags(args)
+    _apply_managed_policy(args)
     handlers = {
         "demo": cmd_demo,
         "start": cmd_start,
