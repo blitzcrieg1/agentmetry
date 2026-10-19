@@ -9,19 +9,30 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-10-19
+
+A fleet can lock settings a developer cannot change, and a recorder run as
+LocalSystem or root can read the developer's configs. An install without a
+managed policy and without the new flags behaves as 0.9.8 did. Two things an
+existing user may notice: `doctor` prints a `managed_policy` line, and the
+heartbeat carries two new fields, `policy_locked` and `policy_rejected`, and
+turns `degraded` when a managed policy file is refused. Deployment scripts get
+`doctor --json` and a `hook_remediation` ingest event.
+
 ### Added
 
-- **`doctor --json`, for deployment scripts.** It prints `exit_code`,
-  `orchestrator_reachable`, `hook_profile`, per-agent `hooks` coverage, the
-  managed `policy` (locked, pinned, rejected) and the findings, with a
-  `schema` number that moves only when a field changes meaning. An Intune
-  remediation or a LaunchAgent can test fields instead of parsing sentences
-  that get reworded. A service profile that cannot see any developer's
-  configuration reports every agent `unknown`, not an empty map.
-- **`hook_remediation` ingest event.** A deployment tool that reinstalled hooks
-  can say so, and it is recorded as `config_change` with no session and no
-  tool. Before, an unrecognised `event_type` was stored as `tool_called`, and
-  fifty of them in a minute raised `session-tool-burst`.
+- **`--user-profile-dir` and `--data-dir`, so a recorder run as root or
+  LocalSystem reads the developer's configs.** Under a service, `Path.home()`
+  is the service account's profile: `hooks install` wrote hooks where no IDE
+  reads them, and coverage could only say "unknown". Naming the developer's
+  home (`--user-profile-dir`, or `AGENTMETRY_USER_PROFILE_DIR`) points hook
+  install, coverage, `hooks status`, posture and the MCP inventory at that
+  person, and the heartbeat then attests `user` rather than `service`. Posture
+  ignores the service's own `APPDATA` and `XDG_CONFIG_HOME` when a profile is
+  named. `--data-dir` sets `AGENTMETRY_DATA_DIR` for that command. Both flags
+  work at the top level and on `start`, `serve`, `hooks` and `doctor`, and are
+  exported so a spawned `serve` inherits them. Unset, nothing changes.
+
 - **Managed policy: a fleet can lock settings a developer cannot change.**
   `HKLM\SOFTWARE\Policies\Agentmetry`, `%ProgramData%\Agentmetry\policy.yaml`,
   an MDM profile at `/Library/Managed Preferences/ai.agentmetry.sensor.plist`,
@@ -37,17 +48,23 @@ separately (currently `1.2.0`) and changes additively.
   the new `policy_locked` and `policy_rejected` fields. `--policy-dir` adds a
   location. See `docs/managed-policy.md`. Nothing changes without a policy.
 
-- **`--user-profile-dir` and `--data-dir`, so a recorder run as root or
-  LocalSystem reads the developer's configs.** Under a service, `Path.home()`
-  is the service account's profile: `hooks install` wrote hooks where no IDE
-  reads them, and coverage could only say "unknown". Naming the developer's
-  home (`--user-profile-dir`, or `AGENTMETRY_USER_PROFILE_DIR`) points hook
-  install, coverage, `hooks status`, posture and the MCP inventory at that
-  person, and the heartbeat then attests `user` rather than `service`. Posture
-  ignores the service's own `APPDATA` and `XDG_CONFIG_HOME` when a profile is
-  named. `--data-dir` sets `AGENTMETRY_DATA_DIR` for that command. Both flags
-  work at the top level and on `start`, `serve`, `hooks` and `doctor`, and are
-  exported so a spawned `serve` inherits them. Unset, nothing changes.
+- **`doctor --json`, for deployment scripts.** It prints `exit_code`,
+  `orchestrator_reachable`, `hook_profile`, per-agent `hooks` coverage, the
+  managed `policy` (locked, pinned, rejected) and the findings, with a
+  `schema` number that moves only when a field changes meaning. An Intune
+  remediation or a LaunchAgent can test fields instead of parsing sentences
+  that get reworded. A service profile that cannot see any developer's
+  configuration reports every agent `unknown`, not an empty map.
+
+- **`hook_remediation` ingest event.** A deployment tool that reinstalled hooks
+  can say so, and it is recorded as `config_change` with no session and no
+  tool. Before, an unrecognised `event_type` was stored as `tool_called`, and
+  fifty of them in a minute raised `session-tool-burst`.
+
+### Fixed
+
+- **SECURITY.md said authentication is off by default.** It has been on since
+  0.9.3: a per-install token, required on every route except health.
 
 ## [0.9.8] - 2026-10-18
 
@@ -2182,7 +2199,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.8...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.9...HEAD
+[0.9.9]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.5...v0.9.6
