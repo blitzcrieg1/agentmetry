@@ -484,6 +484,9 @@ SYSTEM_SID = "S-1-5-18"
 ADMINISTRATORS_SID = "S-1-5-32-544"
 TRUSTED_INSTALLER_SID = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
 PRIVILEGED_SIDS = frozenset({SYSTEM_SID, ADMINISTRATORS_SID, TRUSTED_INSTALLER_SID})
+#: OWNER RIGHTS grants to whoever owns the object. The owner has already had
+#: to be one of the SIDs above, so its ACE grants nothing to anyone else.
+OWNER_RIGHTS_SID = "S-1-3-4"
 
 _DELETE, _WRITE_DAC, _WRITE_OWNER = 0x00010000, 0x00040000, 0x00080000
 _GENERIC_ALL, _GENERIC_WRITE = 0x10000000, 0x40000000
@@ -523,7 +526,7 @@ def judge_windows(label: str, owner: str, aces: list[Ace] | None, write_mask: in
             continue
         if ace.ace_type not in _ALLOWED_TYPES:
             raise Untrusted(f"{label} has an ACE of type {ace.ace_type:#x} this check does not read")
-        if ace.sid not in PRIVILEGED_SIDS and ace.mask & write_mask:
+        if ace.sid not in PRIVILEGED_SIDS and ace.sid != OWNER_RIGHTS_SID and ace.mask & write_mask:
             raise Untrusted(f"{ace.sid} can modify {label} (access mask {ace.mask:#x})")
 
 

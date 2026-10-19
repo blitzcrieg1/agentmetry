@@ -124,6 +124,11 @@ def test_a_null_dacl_is_refused():
         mp.judge_windows("policy.yaml", mp.SYSTEM_SID, None, mp.FILE_WRITE_MASK)
 
 
+def test_owner_rights_grants_only_to_the_privileged_owner():
+    mp.judge_windows("policy.yaml", mp.SYSTEM_SID, _admin_aces(Ace(0, 0, 0x1F01FF, mp.OWNER_RIGHTS_SID)),
+                     mp.FILE_WRITE_MASK)
+
+
 def test_inherit_only_and_deny_aces_do_not_count():
     mp.judge_windows("policy.yaml", mp.ADMINISTRATORS_SID, _admin_aces(
         Ace(0, mp._INHERIT_ONLY, 0x1F01FF, "S-1-3-0"),  # CREATOR OWNER, for children
@@ -168,7 +173,12 @@ def test_the_acl_doctor_prints_leaves_the_file_readable(tmp_path):
                     f"*{mp.ADMINISTRATORS_SID}:(OI)(CI)F", f"*{USERS_SID}:(OI)(CI)RX"],
                    check=True, capture_output=True)
     _owner, aces = mp._windows_security(path=policy)
-    assert {a.sid for a in aces or []} == {mp.SYSTEM_SID, mp.ADMINISTRATORS_SID, USERS_SID}
+    # Anything else the platform adds (the CI runner keeps an OWNER RIGHTS
+    # entry) must not let another principal write.
+    assert {mp.SYSTEM_SID, mp.ADMINISTRATORS_SID, USERS_SID} <= {a.sid for a in aces or []}
+    for ace in aces or []:
+        if ace.sid not in mp.PRIVILEGED_SIDS | {mp.OWNER_RIGHTS_SID}:
+            assert not ace.mask & mp.FILE_WRITE_MASK, ace
     assert policy.read_bytes() == b"dlp_mode: block\n"
 
 
@@ -180,8 +190,15 @@ def _elevated() -> bool:
     return os.geteuid() == 0
 
 
-@pytest.mark.skipif(os.name != "nt" or not _elevated(), reason="needs an elevated Windows token")
+@pytest.mark.skipif(os.name != "nt", reason="Win32 security descriptors")
 def test_windows_trusts_a_folder_hardened_the_way_doctor_says(tmp_path):
+    """The only test that proves doctor's fix produces a file the check accepts.
+    A CI runner is elevated, so there it must run: a skip would hide the one
+    environment that can answer."""
+    if not _elevated():
+        if os.environ.get("CI"):
+            pytest.fail("the Windows CI runner is expected to be elevated")
+        pytest.skip("needs an elevated Windows token")
     folder = tmp_path / "Agentmetry"
     folder.mkdir()
     policy = folder / "policy.yaml"
