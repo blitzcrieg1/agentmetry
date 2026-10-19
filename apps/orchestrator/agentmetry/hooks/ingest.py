@@ -1977,6 +1977,16 @@ def main(argv: list[str] | None = None) -> int:
     Returns rather than calling sys.exit, because a CLI subcommand that killed
     the interpreter would take the rest of the CLI down with it.
     """
+    # Locks first, so a developer's AGENTMETRY_DLP_MODE=disable cannot undo a
+    # fleet's block for this call. The hook must not fail the tool call over
+    # it: a policy it cannot apply leaves the environment it was given, and
+    # doctor and the heartbeat say which source was refused.
+    try:
+        from agentmetry.core import managed_policy
+
+        managed_policy.apply_locks()
+    except Exception as exc:
+        print(f"Agentmetry: managed policy was not applied ({exc})", file=sys.stderr)
     args = list(sys.argv[1:] if argv is None else argv)
 
     if args and args[0] in SOURCE_APPS:

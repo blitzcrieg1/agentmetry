@@ -50,9 +50,21 @@ Out of scope:
   CASB/endpoint-DLP territory, not this product. Anyone telling you an
   agent-observability tool gives you full coverage of unmanaged AI usage is
   selling you something.
-- **Auth is off by default.** With no `AGENTMETRY_API_KEY` set, the local API is
-  unauthenticated so local dev works out of the box. Set the key before exposing
-  the port beyond localhost.
+- **Auth is on by default** (since 0.9.3). The first start writes a random
+  token to `<data dir>/api-token`, owner-only, and every route except
+  `/api/v1/health` requires it. `AGENTMETRY_API_KEY`, when set, replaces it.
+  `AGENTMETRY_AUTH_DISABLED=1` turns the check off for development: `doctor`
+  warns while it is set, and fails if the API is also bound beyond loopback.
+  A process running as the same OS user can read the token, which is the
+  same-user limit above.
+- **A managed policy is only as strong as its file permissions.** A fleet lock
+  (see [docs/managed-policy.md](docs/managed-policy.md)) is honoured only from
+  a file the developer cannot change: owned by SYSTEM, Administrators or
+  TrustedInstaller on Windows, by root elsewhere, with no other principal able
+  to write it or its folder. A file that fails the check is refused whole, and
+  `doctor` and the heartbeat report it. A developer who is a local
+  administrator can change anything, a lock included, and a developer who
+  removes the hook from their IDE is reported by hook coverage, not stopped.
 - **Redaction is best-effort.** Secrets are scrubbed by pattern matching. Novel
   credential formats can slip through into the trail. Do not treat the JSONL as
   safe to publish.

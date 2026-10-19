@@ -138,6 +138,8 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
         "hook_profile", "spool_depth", "trail_head_seq", "trail_merkle_root",
         "trail_tree_size", "mcp_config_digest", "mcp_schema_digest",
         "mcp_schema_servers", "interval_seconds",
+        # Managed policy: key names, and refused locations an admin chose.
+        "policy_locked", "policy_rejected",
     }
     # The coverage fields name agents, never paths. A beat that carried
     # `C:/Users/jane/.cursor` would be disclosing who is running what and where.

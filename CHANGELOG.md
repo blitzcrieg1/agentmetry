@@ -11,6 +11,21 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Managed policy: a fleet can lock settings a developer cannot change.**
+  `HKLM\SOFTWARE\Policies\Agentmetry`, `%ProgramData%\Agentmetry\policy.yaml`,
+  an MDM profile at `/Library/Managed Preferences/ai.agentmetry.sensor.plist`,
+  or `/etc/agentmetry/policy.yaml` locks any of twelve keys (DLP and tool
+  policy modes and rules, auth, trusted hosts, sinks, data and spool paths,
+  heartbeat interval). Locks are written into the environment at process
+  start, so they win over the environment and `.env` in the recorder, the CLI
+  and every hook. A file is honoured only when the developer cannot change it,
+  decided from SIDs and access masks on Windows and from ownership, mode and
+  ACLs elsewhere, checked on the handle it is read from. A locked mode pins
+  its rules file, and a locked `data_dir` pins the trail inside it. A refused
+  file fails `doctor` with the fix, and turns the heartbeat `degraded` with
+  the new `policy_locked` and `policy_rejected` fields. `--policy-dir` adds a
+  location. See `docs/managed-policy.md`. Nothing changes without a policy.
+
 - **`--user-profile-dir` and `--data-dir`, so a recorder run as root or
   LocalSystem reads the developer's configs.** Under a service, `Path.home()`
   is the service account's profile: `hooks install` wrote hooks where no IDE

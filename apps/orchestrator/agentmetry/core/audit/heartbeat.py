@@ -102,6 +102,30 @@ def _hook_facts() -> dict[str, Any]:
     }
 
 
+def _policy_facts() -> dict[str, Any]:
+    """What a managed policy locks here, and which managed sources were refused.
+
+    Read from disk every beat, so a policy an admin broke after the recorder
+    started shows up before the next restart would have applied it. A refused
+    source means the fleet's locks may not be in force on this machine, which
+    is a fleet-level fact to alert on, not a log line on one laptop.
+
+    Locations only, never the reason: a reason can name the SID of the user
+    who could edit the file, and the beat attests configuration, not people.
+    `doctor` gives the reason on the machine itself.
+    """
+    from agentmetry.core import managed_policy
+
+    try:
+        policy = managed_policy.load_policy()
+    except Exception as exc:
+        return {"policy_locked": [], "policy_rejected": [f"unreadable ({type(exc).__name__})"]}
+    return {
+        "policy_locked": sorted(policy.locked),
+        "policy_rejected": [s.location for s in policy.rejected],
+    }
+
+
 def _spool_depth() -> int:
     """Events buffered and not yet in the trail. Nonzero for long means capture
     is reaching the hook but not the trail, which is its own kind of blind."""
@@ -198,6 +222,7 @@ def attestation(root: tuple[str, int] | None = None) -> dict[str, Any]:
     schema_digest, schema_servers = _mcp_schema_facts()
     return {
         **_hook_facts(),
+        **_policy_facts(),
         "spool_depth": _spool_depth(),
         "trail_head_seq": _trail_head(),
         "trail_merkle_root": merkle,
@@ -226,7 +251,8 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
     # Code degrade forever, which is how a fleet learns to ignore the signal.
     # A service profile does set it: from there no developer's configuration is
     # visible at all, so a confident green would be the worst of the answers.
-    degraded = bool(uncovered) or facts["spool_depth"] > 0 or service_profile
+    rejected = facts["policy_rejected"]
+    degraded = bool(uncovered) or facts["spool_depth"] > 0 or service_profile or bool(rejected)
 
     reason = "recorder attesting"
     if service_profile:
@@ -234,6 +260,8 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
             "recorder attesting from a service profile; no developer hook "
             "configuration is visible from here, so coverage is unknown"
         )
+    elif rejected:
+        reason = f"recorder attesting; managed policy REFUSED, its locks are not in force: {', '.join(rejected)}"
     elif uncovered:
         reason = f"recorder attesting; agents present but NOT recorded: {', '.join(uncovered)}"
     elif facts["spool_depth"] > 0:
