@@ -20,6 +20,15 @@ A flight recorder for each tool call on the machine: it tags the ones it recogni
 </p>
 
 <p align="center">
+  <a href="https://www.producthunt.com/products/agentmetry?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-agentmetry" target="_blank" rel="noopener noreferrer">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1283532&theme=dark&t=1792481294388">
+      <img alt="Agentmetry - A local-first endpoint sensor for AI coding agents | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1283532&theme=light&t=1792481294388">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="docs/agentmetry-external-ingest.md"><strong>Docs</strong></a> ·
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
