@@ -141,7 +141,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-1848 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+1860 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -218,6 +218,7 @@ From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build 
 | `agentmetry dashboard` | Open the dashboard signed in. |
 | `agentmetry cloud cursor` / `cloud claude` | Poll a vendor cloud-agent API once (Cursor Cloud Agents, Claude Compliance) and record what it exposes through the same ingest as the hooks. Keys from `CURSOR_API_KEY` / `ANTHROPIC_COMPLIANCE_KEY`. |
 | `agentmetry logs` | Tail the orchestrator log. |
+| `agentmetry cloud cursor-cache` | Record Cursor cloud-agent tool calls from the Cursor desktop app's local cache, read-only: commands, file reads and edits, MCP calls, hashed like a local hook event. Only agents the app has streamed; after the fact. `--dry-run` counts without posting. |
 | `agentmetry stats` | Trail metrics. `agentmetry stats --days 7`. |
 | `agentmetry detections` | List detections for one session, via the API. |
 | `agentmetry disposition` | Set a detection's triage status. `false_positive` and `risk_accepted` require `--note`. |

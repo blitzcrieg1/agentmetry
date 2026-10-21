@@ -595,6 +595,39 @@ _HOOK_INSTALLERS = ("cursor", "claude", "codex", "qwen", "kimi", "qoder", "codeb
 
 
 
+def _cloud_cursor_cache(args: argparse.Namespace) -> int:
+    """Record Cursor cloud-agent tool calls from the desktop app's local cache.
+
+    No vendor key and no network call to Cursor: the calls are read from the
+    state database the Cursor app keeps on this machine, read-only. See
+    `core/audit/cursor_cloud_cache.py` for what that cache does and does not hold.
+    """
+    from agentmetry.core.audit.cursor_cloud_cache import STATE_FILE, default_db_path, import_cache
+    from agentmetry.core.paths import data_dir
+    from agentmetry.hooks.ingest import post_ingest
+
+    db = Path(args.db).expanduser() if args.db else default_db_path()
+    if db is None or not db.is_file():
+        print(f"No Cursor state database at {db}. Is the Cursor desktop app installed here? (--db to point at one)")
+        return 2
+
+    def post(payload: dict) -> bool:
+        # No spool: a call that did not land is simply not marked as recorded,
+        # and the next run picks it up from the cache again.
+        return post_ingest(payload, quiet=True, spool=False)
+
+    result = import_cache(db, post=post, state_path=data_dir() / STATE_FILE, dry_run=args.dry_run)
+    verb = "would record" if args.dry_run else "recorded"
+    count = result.new if args.dry_run else result.posted
+    print(f"cursor-cache: {result.agents} cloud agent conversation(s), {result.calls} finished tool call(s).")
+    print(f"  {verb} {count}, already recorded {result.already_seen}, failed {result.failed}.")
+    if result.skipped:
+        print(f"  skipped: {dict(result.skipped)}")
+    if result.tools:
+        print("  by tool: " + ", ".join(f"{name} {n}" for name, n in result.tools.most_common()))
+    return 1 if result.failed else 0
+
+
 def cmd_cloud(args: argparse.Namespace) -> int:
     """Poll a vendor cloud-agent API once and record what it exposes.
 
@@ -604,6 +637,9 @@ def cmd_cloud(args: argparse.Namespace) -> int:
     and is never logged.
     """
     import os
+
+    if args.provider == "cursor-cache":
+        return _cloud_cursor_cache(args)
 
     import httpx
 
@@ -1591,7 +1627,9 @@ def main(argv: list[str] | None = None) -> int:
     stats = sub.add_parser("stats", help="audit trail metrics for dogfood (events, detections)")
     stats.add_argument("--days", type=int, default=7)
     cloud = sub.add_parser("cloud", help="record what a vendor cloud-agent API exposes (Cursor, Claude)")
-    cloud.add_argument("provider", choices=("cursor", "claude"))
+    cloud.add_argument("provider", choices=("cursor", "claude", "cursor-cache"))
+    cloud.add_argument("--db", default="", help="cursor-cache: Cursor state database (default: the desktop app's)")
+    cloud.add_argument("--dry-run", action="store_true", help="cursor-cache: count what would be recorded, post nothing")
     cloud.add_argument("--url", default="", help="vendor API base override")
     cloud.add_argument("--limit", type=int, default=10, help="max sessions/agents per poll")
     cloud.add_argument("--skip-runs", action="store_true", help="cursor: agents only, skip per-run fetch")
