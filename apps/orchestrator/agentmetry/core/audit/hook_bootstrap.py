@@ -584,7 +584,37 @@ def install_codex_global_hooks(
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hooks_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     logger.info("Installed global Codex audit hooks -> %s", hooks_path)
+    grant_codex_sandbox_ingest()
     return hooks_path
+
+
+def grant_codex_sandbox_ingest() -> list[str]:
+    """Let Codex's Windows sandbox accounts read the ingest-only token.
+
+    Codex's default Windows sandbox runs hooks as its own local accounts. They
+    can run the hook and reach the recorder, but cannot read a token restricted
+    to the developer, so every event was refused and lost without a word
+    (#302). What they are granted is the ingest-only token: it posts events and
+    nothing else, so a sandboxed agent gains no read of the trail and no say in
+    triage. Returns the accounts granted; empty where there are none.
+    """
+    from agentmetry.core import api_token
+
+    accounts = api_token.codex_sandbox_accounts()
+    if not accounts:
+        return []
+    path = api_token.ingest_token_path()
+    try:
+        api_token.ensure_ingest_token(path)
+    except OSError as exc:
+        logger.warning("Codex sandbox: could not write the ingest-only token (%s)", exc)
+        return []
+    granted = api_token.grant_read(path, accounts)
+    if granted:
+        logger.info("Codex sandbox accounts can now send events: %s", ", ".join(granted))
+    else:
+        logger.warning("Codex sandbox: could not grant %s read on %s", ", ".join(accounts), path)
+    return granted
 
 
 # --- GitHub Copilot (CLI and VS Code agent mode, ~/.copilot/hooks/) -----------

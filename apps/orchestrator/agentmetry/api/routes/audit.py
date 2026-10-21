@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-from agentmetry.core.auth import require_api_key
+from agentmetry.core.auth import require_api_key, require_ingest_key
 from agentmetry.core.audit.detection.disposition import STATUSES, get_disposition_store
 from agentmetry.core.audit.ingest import ingest_external_event
 from agentmetry.core.config import settings
@@ -191,7 +191,7 @@ def _event_source_app(event: dict[str, Any]) -> str:
     return "agentmetry"
 
 
-@router.post("/ingest", dependencies=[Depends(require_api_key)])
+@router.post("/ingest", dependencies=[Depends(require_ingest_key)])
 async def audit_ingest(body: ExternalIngestBody):
     """Accept canonical adapter events from Cursor, Claude, MCP proxy, etc."""
     if not settings.audit_ingest_enabled:

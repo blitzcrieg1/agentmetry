@@ -266,6 +266,45 @@ def _check_hooks_installed(report: DoctorReport) -> None:
         )
 
 
+def _check_codex_sandbox(report: DoctorReport) -> None:
+    """Can Codex's sandbox accounts authenticate, where Codex records at all?
+
+    Codex's default Windows sandbox runs hooks as its own local accounts. With
+    no ingest-only token they could read, every Codex event was refused and
+    lost while `hooks` above still said Codex was installed (#302).
+    """
+    from agentmetry.core import api_token
+    from agentmetry.core.diagnostics import hook_coverage
+
+    if report.hooks.get("codex") != hook_coverage.COVERED:
+        return
+    accounts = api_token.codex_sandbox_accounts()
+    if not accounts:
+        return
+    path = api_token.ingest_token_path()
+    fix = "Run `agentmetry hooks install` to give them an ingest-only token."
+    if not api_token.read_token(path):
+        report.fail(
+            "codex_sandbox",
+            f"Codex runs hooks as its sandbox accounts ({', '.join(accounts)}), and there is "
+            f"no ingest-only token they could use, so every Codex event is refused and lost. {fix}",
+        )
+        return
+    readable = api_token.readable_by(path, accounts)
+    if readable is None:
+        report.warn("codex_sandbox", f"Could not read the ACL on {path} to check Codex's sandbox accounts.")
+        return
+    missing = [name for name in accounts if name not in readable]
+    if missing:
+        report.fail(
+            "codex_sandbox",
+            f"Codex's sandbox accounts {', '.join(missing)} cannot read the ingest-only token, "
+            f"so Codex events they send are refused and lost. {fix}",
+        )
+        return
+    report.ok("codex_sandbox", "Codex's sandbox accounts can send events with the ingest-only token")
+
+
 def _check_trail(report: DoctorReport) -> None:
     trail = Path(settings.audit_export_path)
     if not trail.is_file():
@@ -859,6 +898,7 @@ def run_doctor(
     _check_autostart(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
+    _check_codex_sandbox(report)
     _check_mcp(report)
     _check_extensions(report)
 

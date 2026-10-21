@@ -111,6 +111,20 @@ def stop_transcript_watcher(process: subprocess.Popen) -> None:
 async def lifespan(app: FastAPI):
     from agentmetry.core.audit.migrate import backfill_db_from_jsonl
 
+    # The ingest-only token, which hooks prefer and the ingest route accepts.
+    # Without it a hook running as another account (Codex's Windows sandbox)
+    # could not authenticate and every event it sent was lost (#302). Owner-
+    # only like the full token; `hooks install` widens it to Codex's sandbox
+    # accounts where they exist. A failure here costs that, never the boot.
+    from agentmetry.core import api_token
+    from agentmetry.core.auth import auth_is_disabled
+
+    if not auth_is_disabled():
+        try:
+            api_token.ensure_ingest_token()
+        except OSError:
+            logger.exception("Could not write the ingest-only token; hooks fall back to the full token")
+
     # Backfill SQLite from the existing JSONL trail. A broken or locked audit DB
     # must degrade the dashboard, never stop the daemon from booting: the
     # recorder's job is to keep recording.
