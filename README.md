@@ -216,7 +216,7 @@ From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build 
 | `agentmetry mcp` | List MCP servers configured for agents on this machine. |
 | `agentmetry posture` | Report agent settings that skip approval prompts or turn hooks off: Claude Code bypass mode, Codex with no approvals or sandbox, VS Code auto-approve. `--strict` exits 1 on a high finding. `AGENTMETRY_POSTURE=1` also sends it to the SIEM. |
 | `agentmetry dashboard` | Open the dashboard signed in. |
-| `agentmetry cloud cursor` / `cloud claude` | Poll a vendor cloud-agent API once (Cursor Cloud Agents, Claude Compliance) and record what it exposes through the same ingest as the hooks. Keys from `CURSOR_API_KEY` / `ANTHROPIC_COMPLIANCE_KEY`. |
+| `agentmetry cloud cursor` / `cloud claude` | Poll a vendor API once (Cursor Cloud Agents; Claude Compliance, which covers Claude Code CLI and desktop sessions and Cowork but not Claude Code on the web) and record what it exposes through the same ingest as the hooks. Keys from `CURSOR_API_KEY` / `ANTHROPIC_COMPLIANCE_KEY`. |
 | `agentmetry logs` | Tail the orchestrator log. |
 | `agentmetry stats` | Trail metrics. `agentmetry stats --days 7`. |
 | `agentmetry detections` | List detections for one session, via the API. |
