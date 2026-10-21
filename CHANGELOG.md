@@ -11,6 +11,29 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **Codex hooks never launched on Windows.** The installer wrote
+  `"<python.exe>" "<agentmetry_ingest.py>" codex hook <Event>`. Codex reported
+  every run as completed, yet nothing reached ingest: under `cmd /c` the leading
+  quoted token breaks cmd's quote stripping, and under PowerShell a command that
+  starts with a quoted string is a string, not a call. Both exit 1 before Python
+  starts. The dogfood machine's last Codex event was in July. Codex does not
+  document which shell it uses on Windows but accepts a `commandWindows`
+  override, so the installer now writes one with the quotes removed, a path
+  containing a space replaced by its 8.3 short name, and a path with no short
+  name left quoted rather than broken. Tests launch the generated command
+  through cmd and PowerShell, including a path with a space, and fail with the
+  old form. ([#307])
+
+  Two more things this investigation established. Approving hooks in Codex's
+  `/hooks` review applies to conversations started afterwards, not to one
+  already open, so restart open Codex conversations after approving ([#300]).
+  And editing `hooks.json` changes its hash, so Codex asks for approval again.
+
+[#307]: https://github.com/blitzcrieg1/agentmetry/issues/307
+[#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
+
+### Fixed
+
 - **Codex on Windows recorded nothing, and nothing said so.** Codex's default
   Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
   `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
