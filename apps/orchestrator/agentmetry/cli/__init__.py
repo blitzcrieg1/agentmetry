@@ -1595,6 +1595,7 @@ def main(argv: list[str] | None = None) -> int:
     cloud.add_argument("--url", default="", help="vendor API base override")
     cloud.add_argument("--limit", type=int, default=10, help="max sessions/agents per poll")
     cloud.add_argument("--skip-runs", action="store_true", help="cursor: agents only, skip per-run fetch")
+    cloud.add_argument("--remote", action="store_true", help="claude: list remote (cloud) sessions instead of local ones")
     detections = sub.add_parser("detections", help="list detections for one session")
     detections.add_argument("correlation_id", help="correlation_id / session id")
     disposition = sub.add_parser("disposition", help="close an audit detection from the shell")
