@@ -155,6 +155,82 @@ def write_ingest_token(token: str, path: Path | None = None) -> Path:
     return target
 
 
+def ensure_ingest_token(path: Path | None = None) -> str:
+    """The ingest-only token, creating it once if it does not exist yet.
+
+    The core used to leave this to Agentmetry Enterprise, which left the open
+    source install with one credential that could do everything. A hook that
+    runs as another account (Codex's Windows sandbox runs hooks as its own local
+    user) then had two choices: be handed the full key, which also reads the
+    trail and closes detections, or record nothing. It recorded nothing, and
+    nothing said so (#302). An existing token, Enterprise's included, is kept.
+    """
+    target = path or ingest_token_path()
+    existing = read_token(target)
+    if existing:
+        return existing
+    return read_token(write_ingest_token(secrets.token_urlsafe(32), target))
+
+
+#: The local accounts Codex's Windows sandbox runs commands and hooks as.
+CODEX_SANDBOX_ACCOUNTS = ("CodexSandboxOffline", "CodexSandboxOnline")
+
+
+def codex_sandbox_accounts() -> list[str]:
+    """Which of Codex's sandbox accounts exist on this Windows machine."""
+    if os.name != "nt":
+        return []
+    import subprocess  # account lookup only; the hook never calls this
+    found = []
+    for name in CODEX_SANDBOX_ACCOUNTS:
+        try:
+            probe = subprocess.run(["net", "user", name], capture_output=True, check=False, timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            found.append(name)
+    return found
+
+
+def grant_read(path: Path, accounts: list[str]) -> list[str]:
+    """Add a read entry for each account to the file's ACL. Windows only.
+
+    Only ever called on the ingest-only token: what an account gains is the
+    ability to send events, never to read the trail or close a detection.
+    """
+    if os.name != "nt" or not accounts:
+        return []
+    import subprocess  # ACL work only; the hook reads tokens on every call
+    granted = []
+    for name in accounts:
+        try:
+            done = subprocess.run(
+                ["icacls", str(path), "/grant", f"{name}:R"],
+                capture_output=True, check=False, timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if done.returncode == 0:
+            granted.append(name)
+    return granted
+
+
+def readable_by(path: Path, accounts: list[str]) -> list[str] | None:
+    """Which of these accounts hold an entry on the file's ACL, or None if it cannot be told."""
+    if os.name != "nt":
+        return None
+    import subprocess  # ACL work only; the hook reads tokens on every call
+    try:
+        out = subprocess.run(
+            ["icacls", str(path)], capture_output=True, text=True, check=False, timeout=15
+        ).stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not out:
+        return None
+    return [name for name in accounts if f"\\{name.lower()}:" in out or f" {name.lower()}:" in out]
+
+
 def auth_disabled() -> bool:
     return os.environ.get("AGENTMETRY_AUTH_DISABLED", "").strip().lower() in _TRUTHY
 

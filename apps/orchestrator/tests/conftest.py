@@ -98,6 +98,13 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     monkeypatch.setattr(
         settings, "detection_disposition_db_path", data / "detection_disposition.db"
     )
+    # The token files resolve through `data_dir()`, not `settings`, so the paths
+    # above never covered them. Once the app's startup began minting the
+    # ingest-only token (#302), a test that entered the lifespan wrote one into
+    # the maintainer's real data directory, the live hooks switched to it, and
+    # the running recorder, an older build, refused them until it was deleted.
+    monkeypatch.setenv("AGENTMETRY_API_TOKEN_FILE", str(data / "api-token"))
+    monkeypatch.setenv("AGENTMETRY_INGEST_TOKEN_FILE", str(data / "ingest-token"))
 
     _reset_singletons()
     yield

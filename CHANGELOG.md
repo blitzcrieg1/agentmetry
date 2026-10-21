@@ -9,6 +9,35 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex on Windows recorded nothing, and nothing said so.** Codex's default
+  Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
+  `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
+  the recorder, but could not read the API token, which is restricted to the
+  developer, and could not write the spool. Every Codex event was posted without
+  a key, refused, and lost, while coverage reported Codex as hooked. On the
+  dogfood machine that was a week of Codex use and zero Codex events. ([#302])
+
+  The recorder now mints an **ingest-only token** at startup (`ingest-token` in
+  the data directory, owner-only), which hooks already preferred. The ingest
+  route is the only one that accepts it: reading the trail, exporting evidence
+  and closing detections still require the full key, and a test holds each of
+  those refusing it. `hooks install` grants Codex's sandbox accounts read on that
+  token where they exist, so a sandboxed and possibly prompt-injected agent can
+  add events and cannot read or triage them. `doctor` fails when the sandbox
+  accounts exist and cannot read an ingest token. The hook's selftest reads the
+  trail back with the full token. A spool the sandbox can write is a follow-up.
+
+  The first run of this change also found a gap in the test suite: the token
+  files resolve through the data directory, which `conftest` never isolated, so a
+  test that entered the app's startup wrote an ingest token into the
+  maintainer's real data directory. Both token paths are now isolated, with a
+  test that fails if either points outside pytest's temp directory. One
+  long-standing local-only failure turned out to be the same leak.
+
+[#302]: https://github.com/blitzcrieg1/agentmetry/issues/302
+
 ## [0.9.9] - 2026-10-19
 
 A fleet can lock settings a developer cannot change, and a recorder run as
