@@ -141,6 +141,10 @@ def main() -> int:
         "AGENTMETRY_STARTUP_VAULT_INDEX": "0",
         # --live needs ingest ON to accept the synthetic stream; static demo keeps it off.
         "AGENTMETRY_AUDIT_INGEST_ENABLED": "1" if live else "0",
+        # The demo's events are seeded and synthetic. The Antigravity watcher
+        # tails the presenter's real transcripts, so it must not run here, live
+        # or not: a demo trail that picks up real agent activity is a leak.
+        "AGENTMETRY_ANTIGRAVITY_WATCHER": "0",
         # A throwaway demo trail on loopback, opened in a browser with no sign-in
         # step. Never set this on a real install; `doctor` warns when it is.
         "AGENTMETRY_AUTH_DISABLED": "1",

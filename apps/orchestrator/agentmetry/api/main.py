@@ -79,6 +79,22 @@ def _start_forwarders() -> list[asyncio.Task]:
     return tasks
 
 
+def antigravity_watcher_wanted() -> bool:
+    """Whether this recorder should tail the developer's Antigravity transcripts.
+
+    It used to start whenever the script existed, so every recorder did it,
+    including the dashboard demo, whose trail is supposed to hold seeded events
+    only. The watcher reads `~/.gemini/antigravity/brain`, the real one, so a
+    demo shown to someone could carry the presenter's actual agent activity, and
+    a second recorder doubled every Antigravity call. It now runs only where the
+    recorder accepts ingest, and `AGENTMETRY_ANTIGRAVITY_WATCHER=0` turns it off.
+    """
+    if not settings.audit_ingest_enabled:
+        return False
+    flag = os.environ.get("AGENTMETRY_ANTIGRAVITY_WATCHER", "").strip().lower()
+    return flag not in ("0", "false", "no", "off")
+
+
 def start_transcript_watcher(watcher_path: Path) -> subprocess.Popen:
     """Start the Antigravity transcript watcher, tied to this process's life.
 
@@ -225,7 +241,7 @@ async def lifespan(app: FastAPI):
     watcher_process = None
     try:
         watcher_path = Path(__file__).resolve().parents[4] / "scripts" / "antigravity_transcript_watcher.py"
-        if watcher_path.exists():
+        if watcher_path.exists() and antigravity_watcher_wanted():
             watcher_process = start_transcript_watcher(watcher_path)
             logger.info("Started Antigravity transcript watcher (PID: %s)", watcher_process.pid)
     except Exception as exc:

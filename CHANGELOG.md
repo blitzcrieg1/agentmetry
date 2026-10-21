@@ -11,6 +11,24 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **The dashboard demo could record the presenter's real agent activity.**
+  Every recorder started the Antigravity transcript watcher whenever its script
+  existed, the demo included. The watcher reads the developer's real
+  `~/.gemini/antigravity/brain`, so a demo trail meant to hold seeded,
+  synthetic events could pick up real Antigravity calls, and any second
+  recorder doubled every Antigravity call. The watcher now runs only on a
+  recorder that accepts ingest, `AGENTMETRY_ANTIGRAVITY_WATCHER=0` turns it
+  off, and `scripts/demo_dashboard.py` turns it off for both the static and the
+  live demo. A normal recorder behaves as before. Found by an outside audit's
+  walkthrough on 2026-10-21.
+- **Seeding the demo a second time produced a broken trail.** `seed_demo.py`
+  deleted the trail and its databases but not the `.chain` sidecar, so the new
+  trail continued from the old head (`expected seq 1, got 52`) and `verify`
+  failed on a fresh demo. It now removes every segment and the sidecar, and a
+  test seeds twice and verifies, failing on the old seeder with that message.
+
+### Fixed
+
 - **Codex on Windows recorded nothing, and nothing said so.** Codex's default
   Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
   `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
