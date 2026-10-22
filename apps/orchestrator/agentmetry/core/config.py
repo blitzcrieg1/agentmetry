@@ -317,6 +317,14 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("AGENTMETRY_AUTH_DISABLED"),
     )
+    # Set by scripts/demo_dashboard.py and nothing else. The dashboard labels
+    # its data as synthetic from this. It used to read `?demo=1` from the URL,
+    # so the demo called itself "This machine" and anyone could call a real
+    # trail synthetic by editing the address bar.
+    demo_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENTMETRY_DEMO_MODE"),
+    )
 
     # Demo MCP vault — doctor, drivers.json, vault_fs server (not a skill runtime).
     vault_path: Path = Path(__file__).resolve().parents[4] / "vault"

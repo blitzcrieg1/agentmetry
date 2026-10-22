@@ -12,17 +12,33 @@ import { ORCHESTRATOR_URL } from "@/lib/utils";
  */
 export type SessionState = "checking" | "signed_in" | "signed_out" | "unreachable";
 
-export async function checkSession(): Promise<SessionState> {
+/**
+ * The session, and whether the server says its trail is a demo. `demo` is
+ * null until a signed-in answer arrives: the page claims neither "this
+ * machine" nor "sample data" before the server has said which it is.
+ */
+export async function readSession(): Promise<{ state: SessionState; demo: boolean | null }> {
   try {
     const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/status`, {
       headers: apiHeaders(),
       credentials: "include",
     });
-    if (res.status === 401) return "signed_out";
-    return res.ok ? "signed_in" : "unreachable";
+    if (res.status === 401) return { state: "signed_out", demo: null };
+    if (!res.ok) return { state: "unreachable", demo: null };
+    let demo = false;
+    try {
+      demo = (await res.json())?.demo === true;
+    } catch {
+      /* an older server without the field is not a demo */
+    }
+    return { state: "signed_in", demo };
   } catch {
-    return "unreachable";
+    return { state: "unreachable", demo: null };
   }
+}
+
+export async function checkSession(): Promise<SessionState> {
+  return (await readSession()).state;
 }
 
 /**

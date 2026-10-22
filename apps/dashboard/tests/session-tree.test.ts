@@ -51,6 +51,13 @@ describe("tool families", () => {
     expect(toolFamily(node("claude.subagent.explore", { kind: "subagent_start", app: "claude" })).key).toBe("subagents");
     expect(toolFamily(node("TaskUpdate", { app: "claude" })).key).toBe("other");
   });
+
+  it("does not file session events under the tools", () => {
+    expect(toolFamily(node("", { kind: "session_start" })).key).toBe("session");
+    expect(toolFamily(node("", { kind: "session_end" })).key).toBe("session");
+    expect(toolFamily(node("", { kind: "hook_remediation" })).key).toBe("session");
+    expect(toolFamily(node("cursor.Shell", { kind: "ask" })).key).toBe("shell");
+  });
 });
 
 describe("branches", () => {
@@ -98,6 +105,13 @@ describe("folding", () => {
     const [b] = buildBranches(quiet, citedSet([]));
     const shown = foldBranch(b, citedSet([]), new Set()).filter((r) => r.type === "node");
     expect(shown).toHaveLength(2);
+  });
+
+  it("never folds away the selected call", () => {
+    const rows = foldBranch(branch, cited, new Set(), 2, 3, calls[2].id);
+    const shown = rows.flatMap((r) => (r.type === "node" ? [r.node.id] : []));
+    expect(shown).toContain(calls[2].id);
+    expect(shown).toContain(calls[10].id);
   });
 
   it("shows a small branch whole", () => {
