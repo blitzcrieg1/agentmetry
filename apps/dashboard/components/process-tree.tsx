@@ -90,7 +90,8 @@ export function ProcessTree({ events }: { events: AuditEvent[] }) {
 
     sorted.forEach((ev, idx) => {
       const type = ev.action?.type || "unknown";
-      const outcome = ev.action?.outcome || "success";
+      // A missing outcome is unknown, not a success drawn in green.
+      const outcome = ev.action?.outcome || "unknown";
       let title = type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
       let subtitle = ev.source?.app || "Agent";
 
