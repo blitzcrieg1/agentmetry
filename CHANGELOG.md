@@ -96,6 +96,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **Codex deny is verified against a live runtime, not only its parser.** The
+  0.9.5 fix was checked against Codex's parser source and the runtime was never
+  run, a caveat two outside audits repeated. On 2026-10-22, on Codex CLI
+  0.163.0-alpha.11.1 on Windows, a block-mode tool-policy rule stopped a shell
+  command before it ran: Codex reported the PreToolUse block, the file the
+  command would have written was never created (a control run without the rule
+  created it), and the trail recorded `outcome: denied` with
+  `tool_policy.blocked: true`. docs/agent-coverage.md records the run.
+  ([#316](https://github.com/blitzcrieg1/agentmetry/issues/316))
+
 - **The dashboard demo could record the presenter's real agent activity.**
   Every recorder started the Antigravity transcript watcher whenever its script
   existed, the demo included. The watcher reads the developer's real
