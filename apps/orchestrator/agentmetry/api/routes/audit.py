@@ -499,7 +499,14 @@ async def audit_status():
     from agentmetry.core.audit.trail_db import get_trail_db
     path = Path(settings.audit_export_path)
     if not settings.audit_export_enabled:
-        return {"enabled": False, "last_event_utc": None, "recent": 0, "by_source": {}, "path": str(path)}
+        return {
+            "enabled": False,
+            "last_event_utc": None,
+            "recent": 0,
+            "by_source": {},
+            "path": str(path),
+            "demo": settings.demo_mode,
+        }
 
     status_data = get_trail_db().status()
     # Pending spool depth belongs in the same payload as freshness. A feed that
@@ -516,6 +523,8 @@ async def audit_status():
         # Per SIEM: the last seq it accepted, and how long it has been failing.
         "forwarding": _forward_status(),
         "spool_oldest_age_seconds": spool_oldest_age_seconds(),
+        # A demo server's events are synthetic. The dashboard says so from here.
+        "demo": settings.demo_mode,
     }
 
 

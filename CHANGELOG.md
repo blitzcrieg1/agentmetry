@@ -9,6 +9,43 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Changed
+
+- **A detection opens as an investigation with five views.** Details, Activity
+  table, Activity tree, Activity graph and Events timeline share one selection
+  and one side panel with the selected call, why the rule fired and the triage
+  form. The cited calls are marked in every view, and a call picked in one view
+  stays visible in the others instead of being folded or filtered away. Each
+  view says when it is showing a window of a longer session, and Details says
+  when cited events are missing from the index. The tree and graph say what
+  they are: agent tool activity, not operating-system process ancestry, which
+  Agentmetry does not collect.
+
+  Lifecycle events (session start and end, and other non-tool events) were
+  labelled "Tool call" and drawn in the "Other tools" lane; they now carry their
+  own names and a "Session events" lane. A detection opened from the Overview
+  reopened itself on the next 15-second refresh after the analyst went back to
+  the list. A session view disabled by `AGENTMETRY_AUDIT_EXPORT_ENABLED=false`
+  said the session was no longer in the index. The Analytics session graph drew
+  an event with no recorded outcome as a green success. All four are fixed.
+
+- **The Overview separates "hook configured" from "events received".** An agent
+  whose hook is in its config was shown as "Recorded", which a configured hook
+  does not prove. The Overview and the machine page now say "Hook configured",
+  "Hook missing" or "Unverified", and list recent events per agent beside it.
+  An optional 3D map of the week's detections (time, severity, agent) sits behind
+  a toggle on the Overview; the 2D investigation is the default.
+
+- **The dashboard says it is a demo because the server says so.** It read
+  `?demo=1` from the address bar, so the demo server opened without it called
+  itself "This machine", and a real recorder opened with it called real events
+  synthetic. `/api/v1/audit/status` now returns `demo`, from a new
+  `AGENTMETRY_DEMO_MODE` setting that only `scripts/demo_dashboard.py` turns on.
+
+- **Type and colour.** Nothing in the investigation, Overview or sidebar is
+  smaller than 12px, and orange is kept for severity, actions and selection
+  rather than also meaning "hook configured" and the current page.
+
 ### Fixed
 
 - **Codex on Windows recorded nothing, and nothing said so.** Codex's default
