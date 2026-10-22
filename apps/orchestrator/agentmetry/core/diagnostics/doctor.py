@@ -46,6 +46,10 @@ class DoctorReport:
     policy_locked: list[str] = field(default_factory=list)
     policy_pinned: list[str] = field(default_factory=list)
     policy_rejected: list[str] = field(default_factory=list)
+    #: Newest event per configured agent, and the configured agents with none
+    #: in the observed window. Configured is a file check; these are not.
+    hooks_last_seen: dict[str, str | None] = field(default_factory=dict)
+    hooks_silent: list[str] = field(default_factory=list)
 
     def ok(self, code: str, message: str) -> None:
         self.findings.append(Finding("ok", code, message))
@@ -264,6 +268,67 @@ def _check_hooks_installed(report: DoctorReport) -> None:
             "No supported agent found on this machine, so nothing is being "
             "recorded through hooks.",
         )
+
+
+def _last_event_by_source(db_path: Path) -> dict[str, str] | None:
+    """The trail index's newest event per source, read-only, or None if unreadable."""
+    import sqlite3
+
+    if not db_path.is_file():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True, timeout=5)
+        try:
+            rows = con.execute(
+                "SELECT source_app, MAX(timestamp_utc) FROM audit_events GROUP BY source_app"
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+    return {source: ts for source, ts in rows if source and ts}
+
+
+def _check_observed(report: DoctorReport) -> None:
+    """Configured is not recorded: which hooked agents have actually sent events.
+
+    `hooks` above is a file check. Codex sat on that green line for a week while
+    recording nothing, first because its sandbox could not authenticate (#302)
+    and, independently, because Codex skips hooks the developer has not approved
+    (#300). This reads the trail index and names every configured agent with no
+    event in the observed window. A warning, not a failure: an agent nobody used
+    is silent too, and only the person at this machine can tell the two apart.
+    """
+    from datetime import datetime, timezone
+
+    from agentmetry.core.config import settings
+    from agentmetry.core.diagnostics import hook_coverage
+
+    covered = [n for n, s in report.hooks.items() if s == hook_coverage.COVERED]
+    if not covered:
+        return
+    last_seen = _last_event_by_source(Path(settings.audit_db_path))
+    if last_seen is None:
+        report.warn(
+            "hooks_observed",
+            f"No readable trail index at {settings.audit_db_path}, so nothing here can tell "
+            "whether the configured hooks are firing.",
+        )
+        return
+    report.hooks_last_seen = {name: last_seen.get(name) for name in covered}
+    report.hooks_silent = hook_coverage.silent(report.hooks, last_seen, datetime.now(timezone.utc))
+    days = hook_coverage.OBSERVED_WINDOW_DAYS
+    if report.hooks_silent:
+        report.warn(
+            "hooks_observed",
+            f"Configured but no event in {days} days: {', '.join(report.hooks_silent)}. "
+            "Either the agent was not used, or its hooks are not running. Codex skips "
+            "hooks it has not been told to trust (its /hooks prompt). Use the agent once "
+            "and run doctor again; until an event arrives, treat it as not recorded.",
+        )
+    observed = [n for n in covered if n not in report.hooks_silent]
+    if observed:
+        report.ok("hooks_observed", f"Events observed in the last {days} days from: {', '.join(observed)}")
 
 
 def _check_codex_sandbox(report: DoctorReport) -> None:
@@ -898,6 +963,7 @@ def run_doctor(
     _check_autostart(report)
     _check_health_endpoint(report)
     _check_hooks_installed(report)
+    _check_observed(report)
     _check_codex_sandbox(report)
     _check_mcp(report)
     _check_extensions(report)
@@ -938,6 +1004,8 @@ def report_payload(report: DoctorReport) -> dict:
         "orchestrator_reachable": report.orchestrator_reachable,
         "hook_profile": report.hook_profile,
         "hooks": dict(report.hooks),
+        "hooks_last_seen": dict(report.hooks_last_seen),
+        "hooks_silent": list(report.hooks_silent),
         "policy": {
             "locked": list(report.policy_locked),
             "pinned": list(report.policy_pinned),
