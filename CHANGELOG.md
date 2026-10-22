@@ -102,8 +102,6 @@ separately (currently `1.2.0`) and changes additively.
 [#307]: https://github.com/blitzcrieg1/agentmetry/issues/307
 [#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
 
-### Fixed
-
 - **Codex on Windows recorded nothing, and nothing said so.** Codex's default
   Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
   `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
