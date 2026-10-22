@@ -178,7 +178,9 @@ separately (currently `1.2.0`) and changes additively.
   answering 429 past either cap. The hook already spooled any HTTP refusal and
   the recorder drains the spool every minute with the timestamps stamped at
   capture, so a burst is late, not lost, and the refusals are counted in
-  `/api/v1/audit/status` as `ingest_throttled`. `agentmetry cloud`, which has
+  `/api/v1/audit/status` as `ingest_throttled`. The limit keys on the agent
+  name the trail records, so a client inventing a name per event shares the
+  `unknown` bucket instead of getting a fresh one. `agentmetry cloud`, which has
   no spool, waits as told and retries. The whole demo seed posts at once
   without a refusal under the shipped defaults, and a test holds that. An agent
   running as the developer can still write the spool file directly; SECURITY.md

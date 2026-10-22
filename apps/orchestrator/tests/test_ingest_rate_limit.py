@@ -125,6 +125,18 @@ def test_past_the_cap_ingest_answers_429_and_the_trail_stays_whole(client: TestC
     assert sum(1 for line in trail.read_text(encoding="utf-8").splitlines() if line.strip()) == 3
 
 
+def test_inventing_an_agent_name_per_event_does_not_get_a_fresh_bucket(client: TestClient):
+    """Unlisted names are recorded as `unknown`, and the limit keys on that.
+    Keyed on the raw name, each invented name was a new, full bucket."""
+    codes = [
+        client.post("/api/v1/audit/ingest", json={**_EVENT, "source_app": f"made-up-{i}"}).status_code
+        for i in range(5)
+    ]
+    assert codes == [200, 200, 200, 429, 429]
+    throttled = client.get("/api/v1/audit/status").json()["ingest_throttled"]
+    assert throttled["by_source"] == {"unknown": 2}
+
+
 def test_status_reports_the_throttling(client: TestClient):
     for _ in range(5):
         client.post("/api/v1/audit/ingest", json=_EVENT)

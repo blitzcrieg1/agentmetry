@@ -217,11 +217,17 @@ async def audit_ingest(body: ExternalIngestBody):
     # Rate limit per source app and per session (#312). The hook spools a 429
     # and the recorder's drain replays it with the original timestamps, so a
     # burst past the cap is late, not lost.
+    from agentmetry.core.audit.external import _resolve_source_app
     from agentmetry.core.audit.ingest_quota import get_limiter
 
+    # Keyed and logged by the name the trail will record, not the one the
+    # client sent: an unlisted name becomes `unknown`. Keyed on raw text, a
+    # flood inventing a name per event got a fresh bucket each time, and the
+    # warning wrote client text into the log.
+    source = _resolve_source_app(body.source_app)[0]
     limiter = get_limiter()
-    if not limiter.allow(body.source_app, body.session_id or body.correlation_id):
-        _warn_throttled(body.source_app)
+    if not limiter.allow(source, body.session_id or body.correlation_id):
+        _warn_throttled(source)
         raise HTTPException(
             status_code=429,
             detail="Ingest rate limit reached; the hook spools this event and the recorder replays it",
