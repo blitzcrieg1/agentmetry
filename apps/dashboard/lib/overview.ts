@@ -38,6 +38,10 @@ export interface StatsSnapshot {
 }
 
 export interface StatusSnapshot {
+  enabled?: boolean;
+  last_event_utc?: string | null;
+  recent?: number;
+  by_source?: Record<string, number>;
   spool_pending?: number;
   spool_oldest_age_seconds?: number | null;
 }
