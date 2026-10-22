@@ -9,6 +9,29 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Coverage now says which configured agents actually send events.** Hook
+  coverage was a file check: an agent whose hook entry existed was `covered`.
+  Codex sat on that line for three months on the dogfood machine while its last
+  recorded event aged, first because its Windows sandbox could not authenticate
+  ([#302]) and independently because Codex skips hooks the developer has not
+  approved ([#300]). `doctor` now reads the trail index read-only and warns on
+  every configured agent with no event in seven days, naming it, and `doctor
+  --json` gains `hooks_last_seen` and `hooks_silent`. The heartbeat carries
+  `hooks_silent` and names those agents in its reason, without turning
+  `degraded`: an agent nobody used is silent too, and a beat that degrades for
+  that teaches a fleet to ignore it. A SIEM can alert on `hooks_silent` where
+  silence is not expected. Run on the dogfood machine the day it was written,
+  it named Codex, last seen 2026-07-16, and passed Cursor, Claude Code and
+  Antigravity. Approval state itself still cannot be read from disk, so #300
+  stays open.
+- **SECURITY.md states three limits it did not.** The ingest-only token can add
+  events, and whoever holds it, Codex's sandbox included, can add false ones
+  stamped with the host's identity; Codex's sandbox cannot write the spool, so
+  its events are lost while the recorder is down; and configured is not the
+  same as recorded.
+
 ### Changed
 
 - **A detection opens as an investigation with five views.** Details, Activity
@@ -143,6 +166,7 @@ separately (currently `1.2.0`) and changes additively.
   long-standing local-only failure turned out to be the same leak.
 
 [#302]: https://github.com/blitzcrieg1/agentmetry/issues/302
+[#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
 
 ## [0.9.9] - 2026-10-19
 

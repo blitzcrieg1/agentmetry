@@ -32,6 +32,7 @@ Deny and ask are narrower than recording. `ask_honoured()` in `core/audit/tool_p
 Two lists in the code bound every "supported" claim:
 
 - `SURFACES` in `core/diagnostics/hook_coverage.py` is what `doctor` and the heartbeat attest: `cursor`, `claude`, `qwen`, `qoder`, `codebuddy`, `kimi`, `codex`, `copilot`, `antigravity`.
+- `covered` means the hook entry exists, not that the agent runs it. `doctor` and the heartbeat also list every configured agent with no event in the last seven days (`hooks_silent`), because Codex skips hooks the developer has not approved and that approval cannot be read from disk ([#300](https://github.com/blitzcrieg1/agentmetry/issues/300)). Silence is evidence, not proof: an unused agent is silent too.
 - `KNOWN_EXTERNAL_APPS` in `core/audit/external.py` is what the ingest API keeps as `source.app`: the nine above plus `mcp_proxy`, `trae`, `crewai` and `opensre`. Any other `source_app` is recorded as `unknown`, with the claimed name kept in `source.claimed_app`. A new integration still needs an allowlisted name to be attributed properly.
 
 ## A. Agentic IDEs and coding CLIs
