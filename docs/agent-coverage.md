@@ -42,7 +42,7 @@ Captured through the agent's own hooks. Detections apply: **yes** for the nine h
 | --- | --- | --- | --- |
 | Claude Code | Hooks, with deny and ask on `PreToolUse`. Second path: `agentmetry otel`, record only. | supported and tested | [Hooks](https://code.claude.com/docs/en/hooks) |
 | Cursor | Hooks. Ask honoured on `beforeShellExecution` and `beforeMCPExecution`. | supported and tested | [Hooks](https://cursor.com/docs/hooks) |
-| Codex CLI | Hooks in `~/.codex/hooks.json`, after `/hooks` trusts them. Deny, no ask. | supported and tested | [Hooks](https://developers.openai.com/codex/hooks) |
+| Codex CLI | Hooks in `~/.codex/hooks.json`, after `/hooks` trusts them. Approval applies to conversations started afterwards. On Windows the installer writes the command unquoted, and never uses Codex's `commandWindows` override, which Codex's approval never matches ([#307](https://github.com/blitzcrieg1/agentmetry/issues/307)). Deny, no ask. | supported and tested | [Hooks](https://developers.openai.com/codex/hooks) |
 | Antigravity | Hooks. Windows install script only. | supported and tested | [Hooks](https://antigravity.google/docs/hooks/) |
 | Qwen Code | Claude-shaped hooks. | supported and tested | [Hooks](https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/) |
 | Kimi Code | Hooks in `~/.kimi-code/config.toml`, plus print-mode `stream-json`. | supported and tested | [Hooks](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/hooks.html) |
