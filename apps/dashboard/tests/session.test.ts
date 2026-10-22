@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { checkSession, signOut } from "@/lib/session";
+import { checkSession, readSession, signOut } from "@/lib/session";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -37,5 +37,29 @@ describe("session", () => {
   it("does not throw when the recorder is down", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("connection refused"))));
     await expect(signOut()).resolves.toBeUndefined();
+  });
+});
+
+describe("demo label", () => {
+  const body = (status: number, json: unknown) =>
+    vi.fn(async () => new Response(JSON.stringify(json), { status }));
+
+  it("takes the demo flag from the server, not the page URL", async () => {
+    vi.stubGlobal("fetch", body(200, { demo: true }));
+    expect(await readSession()).toEqual({ state: "signed_in", demo: true });
+    vi.stubGlobal("fetch", body(200, { demo: false }));
+    expect(await readSession()).toEqual({ state: "signed_in", demo: false });
+  });
+
+  it("treats an older server without the field as live", async () => {
+    vi.stubGlobal("fetch", body(200, {}));
+    expect((await readSession()).demo).toBe(false);
+  });
+
+  it("claims neither until a signed-in answer arrives", async () => {
+    vi.stubGlobal("fetch", body(401, {}));
+    expect((await readSession()).demo).toBeNull();
+    vi.stubGlobal("fetch", body(500, {}));
+    expect((await readSession()).demo).toBeNull();
   });
 });

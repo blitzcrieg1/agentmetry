@@ -16,7 +16,7 @@
    tokens (Agentmetry tokens collection). */
 @layer base {
   :root {
-    --background: 40 20% 98%;
+    --background: 38 22% 97%;
     --foreground: 30 8% 9%;
     --card: 0 0% 100%;
     --card-foreground: 30 8% 9%;
@@ -31,10 +31,10 @@
     --subtle: 35 5% 42%;
     --accent: 40 12% 94%;
     --accent-foreground: 30 8% 9%;
-    --border: 40 8% 84%;
-    --input: 40 8% 84%;
+    --border: 34 10% 86%;
+    --input: 34 10% 86%;
     --ring: 21 90% 48%;
-    --radius: 3px;
+    --radius: 8px;
 
     --signal: 21 90% 48%;
     --danger: 2 72% 48%;
@@ -50,23 +50,23 @@
   }
 
   .dark {
-    --background: 0 0% 3%;
+    --background: 30 5% 6%;
     --foreground: 42 31% 94%;
-    --card: 30 4% 7%;
+    --card: 30 4% 9%;
     --card-foreground: 42 31% 94%;
-    --popover: 0 0% 5%;
+    --popover: 30 4% 8%;
     --popover-foreground: 42 31% 94%;
     --primary: 25 95% 53%;
     --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 8%;
+    --secondary: 30 4% 12%;
     --secondary-foreground: 42 31% 94%;
-    --muted: 30 3% 11%;
+    --muted: 30 3% 14%;
     --muted-foreground: 39 9% 72%;
     --subtle: 38 6% 56%;
-    --accent: 0 0% 8%;
+    --accent: 30 4% 12%;
     --accent-foreground: 42 31% 94%;
-    --border: 40 5% 18%;
-    --input: 40 5% 20%;
+    --border: 30 5% 21%;
+    --input: 30 5% 23%;
     --ring: 25 95% 53%;
 
     --signal: 25 95% 53%;
@@ -103,13 +103,13 @@
   }
   /* Native controls styled once, so every toolbar matches. */
   .control {
-    @apply h-9 rounded-sm border border-border bg-card px-2.5 text-[14px] text-foreground transition-colors hover:border-foreground/25 focus:border-signal/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal/30;
+    @apply h-9 rounded-md border border-border bg-card px-2.5 text-[14px] text-foreground transition-colors hover:border-foreground/25 focus:border-signal/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal/30;
   }
   .btn {
-    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-sm border border-border bg-card px-3.5 text-[14px] font-medium text-foreground transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3.5 text-[14px] font-medium text-foreground transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-40;
   }
   .btn-primary {
-    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-signal px-3.5 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-signal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-signal px-3.5 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-signal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 disabled:pointer-events-none disabled:opacity-40;
   }
   .panel {
     @apply rounded-md border border-border bg-card;

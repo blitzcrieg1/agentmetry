@@ -144,6 +144,8 @@ def main() -> int:
         # A throwaway demo trail on loopback, opened in a browser with no sign-in
         # step. Never set this on a real install; `doctor` warns when it is.
         "AGENTMETRY_AUTH_DISABLED": "1",
+        # The dashboard labels the data as synthetic from this, via /audit/status.
+        "AGENTMETRY_DEMO_MODE": "1",
     }
 
     print(f"\n  Dashboard  ->  {_BASE}/")

@@ -27,12 +27,12 @@ function StatePill({ state }: { state: MachineSnapshot["agents"][number]["state"
     state === "uncovered"
       ? "bg-danger/10 text-danger"
       : state === "covered"
-        ? "bg-secure/15 text-secure"
+        ? "bg-muted text-foreground"
         : state === "unknown"
           ? "bg-caution/15 text-caution"
           : "bg-muted text-subtle";
   return (
-    <span className={`inline-flex items-center rounded-sm px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.04em] ${tone}`}>
+    <span className={`inline-flex items-center rounded-sm px-2 py-0.5 font-mono text-[12px] font-medium uppercase tracking-[0.04em] ${tone}`}>
       {AGENT_STATE_LABEL[state]}
     </span>
   );
@@ -58,16 +58,16 @@ function HostCoverage({
   onSelect: (name: string | null) => void;
 }) {
   const installed = agents.filter((agent) => agent.state !== "absent");
-  const recorded = installed.filter((agent) => agent.state === "covered").length;
+  const configured = installed.filter((agent) => agent.state === "covered").length;
   return (
     <section className="panel shrink-0">
       <header className="border-b border-border px-4 py-3">
         <p className="eyebrow">This host</p>
         <p className="mt-1 text-[15px]">
-          <span className="font-mono font-medium">{recorded}</span>
+          <span className="font-mono font-medium">{configured}</span>
           <span className="text-muted-foreground">
             {" "}
-            of {installed.length} installed {installed.length === 1 ? "agent is" : "agents are"} recorded
+            of {installed.length} installed {installed.length === 1 ? "agent has" : "agents have"} a hook configured
           </span>
         </p>
       </header>
@@ -184,15 +184,15 @@ export function MachinePanel() {
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat
-          label="Recorded"
+          label="Hooks configured"
           value={`${covered.length}`}
-          detail={installed.length ? `of ${installed.length} installed here` : "no agent installed here"}
+          detail={installed.length ? `of ${installed.length} installed here; event capture is separate` : "no agent installed here"}
           tone={covered.length && uncovered.length === 0 ? "text-secure" : "text-foreground"}
         />
         <Stat
-          label="Not recorded"
+          label="Missing hooks"
           value={`${uncovered.length}`}
-          detail={uncovered.length ? uncovered.map((agent) => sourceLabel(agent.name)).join(", ") : "every installed agent is hooked"}
+          detail={uncovered.length ? uncovered.map((agent) => sourceLabel(agent.name)).join(", ") : "no installed agent is missing a hook"}
           tone={uncovered.length ? "text-danger" : "text-foreground"}
         />
         <Stat
@@ -263,7 +263,7 @@ export function MachinePanel() {
                   <div className="flex items-center gap-2">
                     <SeverityBadge severity={finding.severity} />
                     <span className="text-[13px] font-medium">{sourceLabel(finding.agent)}</span>
-                    <span className="font-mono text-[11px] text-subtle">{finding.scope}</span>
+                    <span className="font-mono text-[12px] text-subtle">{finding.scope}</span>
                   </div>
                   <p className="mt-1.5 font-mono text-[12px] text-foreground">
                     {finding.setting} = {finding.value}
@@ -292,7 +292,7 @@ export function MachinePanel() {
               Configured here. A listing is recorded only when the server runs behind the proxy.
             </p>
           </div>
-          <p className="font-mono text-[11px] text-subtle">
+          <p className="font-mono text-[12px] text-subtle">
             config {data.mcp.config_digest || "—"}
             {data.mcp.schema_digest ? ` · schema ${data.mcp.schema_digest}` : ""}
           </p>
@@ -344,7 +344,7 @@ export function MachinePanel() {
         <header className="border-b border-border px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-[14px] font-medium">Tool policy</h2>
-            <span className={`rounded-sm px-2 py-0.5 font-mono text-[11px] uppercase ${actionTone(data.policy.mode === "block" ? "deny" : "allow")}`}>
+            <span className={`rounded-sm px-2 py-0.5 font-mono text-[12px] uppercase ${actionTone(data.policy.mode === "block" ? "deny" : "allow")}`}>
               {data.policy.mode}
             </span>
             <span className="text-[12px] text-muted-foreground">default {data.policy.default}</span>
@@ -354,12 +354,12 @@ export function MachinePanel() {
         <ul className="divide-y divide-border">
           {data.policy.rules.map((rule) => (
             <li key={rule.id} className="flex items-start gap-3 px-4 py-2.5">
-              <span className={`mt-0.5 shrink-0 rounded-sm px-2 py-0.5 font-mono text-[11px] uppercase ${actionTone(rule.action)}`}>
+              <span className={`mt-0.5 shrink-0 rounded-sm px-2 py-0.5 font-mono text-[12px] uppercase ${actionTone(rule.action)}`}>
                 {rule.action}
               </span>
               <div className="min-w-0">
                 <p className="text-[13px]">{rule.description || rule.id}</p>
-                <p className="mt-0.5 font-mono text-[11px] text-subtle">
+                <p className="mt-0.5 font-mono text-[12px] text-subtle">
                   {rule.id}
                   {rule.matches_command ? " · matches the command" : ""}
                   {` · ${rule.tools} tool pattern${rule.tools === 1 ? "" : "s"}`}
@@ -425,7 +425,7 @@ export function MachinePanel() {
                 <p className="eyebrow mb-2">What the model was handed</p>
                 <p className="text-muted-foreground">{listingSentence(open)}</p>
                 {open.observed_at ? (
-                  <p className="mt-1 font-mono text-[11px] text-subtle">Last listed {open.observed_at}</p>
+                  <p className="mt-1 font-mono text-[12px] text-subtle">Last listed {open.observed_at}</p>
                 ) : null}
               </div>
               <p className="text-[12px] text-subtle">
