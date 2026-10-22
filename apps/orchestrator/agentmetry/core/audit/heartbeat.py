@@ -56,6 +56,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -98,8 +99,28 @@ def _hook_facts() -> dict[str, Any]:
         "hook_coverage": states,
         "hooks_uncovered": hook_coverage.uncovered(states),
         "hooks_unverified": hook_coverage.unverified(states),
+        "hooks_silent": _silent_agents(states),
         "hook_profile": hook_coverage.attestation_profile(),
     }
+
+
+def _silent_agents(states: dict[str, str]) -> list[str]:
+    """Configured agents with no event in the observed window (#300).
+
+    Its own field, not a reason to degrade: an agent nobody used is silent too,
+    and a beat that degrades for that trains a fleet to ignore it. A SIEM can
+    alert on `heartbeat.hooks_silent` where silence is not expected. An index
+    that cannot be read reports nothing rather than break the beat.
+    """
+    from agentmetry.core.audit.trail_db import get_trail_db
+    from agentmetry.core.diagnostics import hook_coverage
+
+    try:
+        last_seen = get_trail_db().last_event_by_source()
+    except Exception:  # noqa: BLE001 - the beat must go out regardless
+        logger.debug("heartbeat: could not read last event per source", exc_info=True)
+        return []
+    return hook_coverage.silent(states, last_seen, datetime.now(timezone.utc))
 
 
 def _policy_facts() -> dict[str, Any]:
@@ -270,6 +291,15 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
         # Never coverage, never silent. Codex went missing from the attestation
         # for exactly as long as nothing said its name.
         reason += f" (unverifiable: {', '.join(facts['hooks_unverified'])})"
+    if facts.get("hooks_silent") and not service_profile:
+        # Configured is not recorded. Named here so a person reading the beat
+        # sees it; kept out of `degraded` because an unused agent is silent too.
+        from agentmetry.core.diagnostics.hook_coverage import OBSERVED_WINDOW_DAYS
+
+        reason += (
+            f" (configured but not observed in {OBSERVED_WINDOW_DAYS} days: "
+            f"{', '.join(facts['hooks_silent'])})"
+        )
 
     return {
         "schema_version": SCHEMA_VERSION,
