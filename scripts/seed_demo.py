@@ -183,8 +183,15 @@ def main() -> int:
     # In-process: point the sink at a throwaway demo trail, never the real one.
     out = Path(args.path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    if out.exists():
-        out.unlink()
+    # The whole trail, not just its active file. The `.chain` sidecar holds the
+    # head sequence and hash; left behind, the next seed continued from the old
+    # head and the fresh trail verified as broken. Rotated segments go too.
+    from agentmetry.core.audit.trail_chain import chain_sidecar_path
+    from agentmetry.core.audit.trail_rotation import segments
+
+    for part in (*segments(out), chain_sidecar_path(out)):
+        if part.exists():
+            part.unlink()
 
     demo_db = out.with_suffix(".db")
     demo_live_db = out.parent / "demo-detection-live.db"
