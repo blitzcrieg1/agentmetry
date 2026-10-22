@@ -320,7 +320,24 @@ def mount_dashboard(target: FastAPI, directory: Path = _DASHBOARD_DIR) -> bool:
 
     from fastapi.staticfiles import StaticFiles
 
-    target.mount("/", StaticFiles(directory=str(directory), html=True), name="dashboard")
+    class DashboardFiles(StaticFiles):
+        """The export, with its HTML pages marked `no-cache`.
+
+        Served with no cache header at all, a browser may reuse a stale page on
+        an ordinary reload, and the page names the old scripts, so an upgraded
+        recorder kept showing the previous dashboard until a hard reload.
+        `no-cache` still lets the browser keep a copy; it only has to ask
+        whether the page changed. The scripts are not touched: their names
+        change with every build.
+        """
+
+        async def get_response(self, path: str, scope):  # type: ignore[override]
+            response = await super().get_response(path, scope)
+            if response.headers.get("content-type", "").startswith("text/html"):
+                response.headers["Cache-Control"] = "no-cache"
+            return response
+
+    target.mount("/", DashboardFiles(directory=str(directory), html=True), name="dashboard")
     logger.info("Serving dashboard from %s", directory)
     return True
 
