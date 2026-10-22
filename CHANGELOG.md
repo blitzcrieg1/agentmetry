@@ -17,12 +17,20 @@ separately (currently `1.2.0`) and changes additively.
   quoted token breaks cmd's quote stripping, and under PowerShell a command that
   starts with a quoted string is a string, not a call. Both exit 1 before Python
   starts. The dogfood machine's last Codex event was in July. Codex does not
-  document which shell it uses on Windows but accepts a `commandWindows`
-  override, so the installer now writes one with the quotes removed, a path
-  containing a space replaced by its 8.3 short name, and a path with no short
-  name left quoted rather than broken. Tests launch the generated command
-  through cmd and PowerShell, including a path with a space, and fail with the
-  old form. ([#307])
+  document which shell it uses on Windows, so on Windows the installer now
+  writes the command with the quotes removed, a path containing a space
+  replaced by its 8.3 short name, and a path with no short name left quoted
+  rather than broken. Tests launch the generated command through cmd and
+  PowerShell, including a path with a space, and fail with the old form. ([#307])
+
+  The first version of this fix put that form in Codex's `commandWindows`
+  override, and Codex then ran no hook at all. Its review dialog hashes a hook
+  without `commandWindows` and its runtime hashes it with it, so every approval
+  was stored against a hash the runtime never computes: `hooks/list` reports the
+  hooks as `modified`, and Codex skips them silently. Measured on Codex 0.163
+  with a throwaway `CODEX_HOME`: the same approvals read `trusted` once the
+  override is removed. The installer never writes `commandWindows`, and a
+  reinstall drops one left by an earlier version.
 
   Two more things this investigation established. Approving hooks in Codex's
   `/hooks` review applies to conversations started afterwards, not to one

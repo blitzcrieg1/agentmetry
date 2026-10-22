@@ -568,15 +568,19 @@ def merge_codex_hooks(
         groups = existing if isinstance(existing, list) else []
         kept = [g for g in groups if not _is_our_hook_group(g, source_app="codex")]
         command = _family_command("codex", event, python=python, ingest=ingest, repo_root=repo_root)
+        if windows if windows is not None else os.name == "nt":
+            # The unquoted form goes in `command` itself, not in Codex's
+            # `commandWindows` override. Codex's review dialog hashes a hook
+            # without `commandWindows` and its runtime hashes it with it, so a
+            # hook that carries one is "modified" after every approval and is
+            # skipped without a word. See windows_hook_command for the quoting.
+            command = windows_hook_command(command)
         handler: dict[str, Any] = {
             "type": "command",
             "command": command,
             "timeout": 10,
             "statusMessage": f"Agentmetry {event}",
         }
-        if windows if windows is not None else os.name == "nt":
-            # Codex's documented Windows override. See windows_hook_command.
-            handler["commandWindows"] = windows_hook_command(command)
         group: dict[str, Any] = {"hooks": [handler]}
         if matcher:
             group["matcher"] = matcher
