@@ -89,8 +89,6 @@ separately (currently `1.2.0`) and changes additively.
   failed on a fresh demo. It now removes every segment and the sidecar, and a
   test seeds twice and verifies, failing on the old seeder with that message.
 
-### Fixed
-
 - **Codex on Windows recorded nothing, and nothing said so.** Codex's default
   Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
   `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
