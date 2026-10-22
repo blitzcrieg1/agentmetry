@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -17,6 +18,7 @@ from agentmetry.core.audit.ingest import ingest_external_event
 from agentmetry.core.config import settings
 
 router = APIRouter(prefix="/audit", tags=["audit"])
+logger = logging.getLogger(__name__)
 
 _RUN_ACTION_TYPES = frozenset({
     "session_start",
@@ -191,6 +193,19 @@ def _event_source_app(event: dict[str, Any]) -> str:
     return "agentmetry"
 
 
+_THROTTLE_WARNED: dict[str, float] = {}
+
+
+def _warn_throttled(source_app: str) -> None:
+    """Log throttling once a minute per source, so a flood does not flood the log too."""
+    import time
+
+    now = time.monotonic()
+    if now - _THROTTLE_WARNED.get(source_app, -60.0) >= 60.0:
+        _THROTTLE_WARNED[source_app] = now
+        logger.warning("Ingest rate limit reached for source %s; events are spooled for replay", source_app or "unknown")
+
+
 @router.post("/ingest", dependencies=[Depends(require_ingest_key)])
 async def audit_ingest(body: ExternalIngestBody):
     """Accept canonical adapter events from Cursor, Claude, MCP proxy, etc."""
@@ -198,6 +213,20 @@ async def audit_ingest(body: ExternalIngestBody):
         raise HTTPException(status_code=503, detail="External audit ingest is disabled")
     if not settings.audit_export_enabled:
         raise HTTPException(status_code=503, detail="Audit export is disabled")
+
+    # Rate limit per source app and per session (#312). The hook spools a 429
+    # and the recorder's drain replays it with the original timestamps, so a
+    # burst past the cap is late, not lost.
+    from agentmetry.core.audit.ingest_quota import get_limiter
+
+    limiter = get_limiter()
+    if not limiter.allow(body.source_app, body.session_id or body.correlation_id):
+        _warn_throttled(body.source_app)
+        raise HTTPException(
+            status_code=429,
+            detail="Ingest rate limit reached; the hook spools this event and the recorder replays it",
+            headers={"Retry-After": str(limiter.retry_after())},
+        )
 
     payload = body.model_dump(exclude_none=True)
     try:
@@ -495,6 +524,7 @@ async def audit_status():
     Powers the freshness badge and `selftest` — makes silent hook failure visible
     instead of the operator falsely believing they are being audited.
     """
+    from agentmetry.core.audit.ingest_quota import get_limiter
     from agentmetry.core.audit.spool import spool_depth, spool_oldest_age_seconds
     from agentmetry.core.audit.trail_db import get_trail_db
     path = Path(settings.audit_export_path)
@@ -523,6 +553,10 @@ async def audit_status():
         # Per SIEM: the last seq it accepted, and how long it has been failing.
         "forwarding": _forward_status(),
         "spool_oldest_age_seconds": spool_oldest_age_seconds(),
+        # Events refused by the ingest rate limit since the recorder started.
+        # They went to the hook spool, so a non-zero count is late work, and a
+        # growing one is an agent sending far faster than agents do (#312).
+        "ingest_throttled": get_limiter().snapshot(),
         # A demo server's events are synthetic. The dashboard says so from here.
         "demo": settings.demo_mode,
     }
