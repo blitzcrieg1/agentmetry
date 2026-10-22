@@ -29,6 +29,31 @@ separately (currently `1.2.0`) and changes additively.
   said the session was no longer in the index. The Analytics session graph drew
   an event with no recorded outcome as a green success. All four are fixed.
 
+- **The investigation is laid out the way an EDR console is.** Every view but
+  Details now sits between a legend and a details panel. The legend counts what
+  the session holds, hides a tool category from the table, tree, graph and
+  timeline at once, and highlights cited, flagged or failed calls by dimming the
+  rest. The panel shows the selected call in sections that open and close, with
+  the command line, input hash and event IDs one click from the clipboard, the
+  other detections in the session, and the triage form. Details reads as one
+  page: what fired, in which agent on which machine, why, the cited commands,
+  and a summary column with the assignee and status. The table counts each tool
+  category and opens into its calls; the tree runs left to right from machine to
+  call and folds long categories into "+N more" without ever folding a cited
+  call; the graph draws the same hierarchy top to bottom on a canvas that zooms,
+  pans and drags; the timeline is a table with event-type chips, a "selection
+  only" switch and a sort order. The tree and graph are agent tool activity and
+  say so: there are no process IDs, DLL loads or registry events to draw, and
+  none are invented.
+
+- **An upgraded recorder no longer shows the old dashboard.** The recorder
+  served the dashboard's pages with no cache header, so a browser could reuse a
+  stale page on an ordinary reload, and that page named the previous build's
+  scripts. Seen on the dogfood machine after an upgrade: the new investigation
+  was on disk and the browser kept drawing the old one until a hard reload.
+  HTML pages are now sent with `Cache-Control: no-cache`; scripts, whose names
+  change with each build, are unchanged.
+
 - **The Overview separates "hook configured" from "events received".** An agent
   whose hook is in its config was shown as "Recorded", which a configured hook
   does not prove. The Overview and the machine page now say "Hook configured",
