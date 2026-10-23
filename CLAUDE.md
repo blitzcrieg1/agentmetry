@@ -228,6 +228,46 @@ comfortable engineering task instead.
 
 ---
 
+## Feature development is stopped
+
+**Decided by the maintainer on 2026-10-23: maintenance only, until a restart
+trigger fires.** This applies to every agent working in this repository, not
+only Claude.
+
+The same rule was set on 2026-10-03 ("no new features until a prospect
+replies") and did not hold: about twenty PRs merged before the first sales
+message went out, and four of six hiring signals went stale unsent. With zero
+users, every feature is built on a guess, and 0.10.1 left the product in a
+state where nothing shippable moves a prospect as much as one reply would.
+
+**Allowed, as maintenance:**
+
+- Weekly triage, so the dogfood gate stays green. One untriaged critical turns
+  a week red, and the site prints the streak.
+- Security alerts (code scanning, Dependabot) when they appear.
+- Bugs that a real person reports, fixed within a day. Responsiveness is part
+  of the pitch, most of all during a launch post.
+- Doc fixes when a prospect is confused by something.
+- Before any release, walking the README from a fresh environment installed
+  from PyPI, as 0.10.1 showed is necessary.
+
+**Not allowed until a trigger fires:** new commands or features, dashboard
+polish, the MCP fingerprinting backlog, refactors, the fleet items (#313,
+#314, #318), and the detection-noise pass (#172, #329, #55). That last one
+waits for outside reports to say which rules matter, and landing it resets the
+"green weeks against an unchanged ruleset" line the site shows.
+
+**Restart only when** a named person asks for something, a pilot needs it (for
+example the MSI on a real tenant), or a user reports a bug.
+
+**When asked "what next"**, lead with the commercial step. If asked for a
+feature anyway, say plainly that it breaks this rule and name the commercial
+step it displaces, then do what the maintainer decides. Measure a week by sends
+and replies, not by merged PRs. The launch post draft is
+`sales/launch-show-hn.md` in the same private repo as the outreach queue.
+
+---
+
 ## Self-improvement guardrail
 
 A reflection pass may propose edits to **process documents**: this file, the
