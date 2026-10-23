@@ -132,7 +132,7 @@ wants has moved to the bottom of the page.
 | Unattended sessions distinguishable from supervised ones | [#170](https://github.com/blitzcrieg1/agentmetry/issues/170) | An auto-mode session reads the same as one a person is watching |
 | Per-project scoping | [#37](https://github.com/blitzcrieg1/agentmetry/issues/37) | One trail currently mixes every repo on a machine |
 | Benchmark coverage for the uncovered rules | [#36](https://github.com/blitzcrieg1/agentmetry/issues/36) [#25](https://github.com/blitzcrieg1/agentmetry/issues/25) | Corpus expectations name 13 rule ids: 12 of the 14 published rules, plus the experimental rule. `host-subagent-swarm-burst` and `off-hours-activity` have no corpus case. Benign sessions harvested from the real trail beat invented ones |
-| Agent-directed technique taxonomy | [#47](https://github.com/blitzcrieg1/agentmetry/issues/47) | Partly addressed by the ATLAS layer in 0.5.0. Reassess what is genuinely still unlabelled |
+| Agent-specific detection signals | [#317](https://github.com/blitzcrieg1/agentmetry/issues/317) | Five candidate traits and rules for after the freeze: an agent editing its own hook or settings file, a write outside the workspace, a typosquatted install, a CI config edit then a push, and an MCP server called after its schema changed (ATLAS AML.T0109). The ATLAS enrichment itself shipped in 0.5.0, which is why #47 is closed |
 
 ### Held until a design partner replies
 
