@@ -39,6 +39,14 @@ LAUNCHER_ECOSYSTEM = {"npx": "npm", "pnpx": "npm", "bunx": "npm", "uvx": "pypi",
 
 #: Configuration codes from `mcp_inventory`, with the severity scan gives them.
 CONFIG_SEVERITY = {"unpinned_fetch": "medium", "auto_confirm": "low", "plaintext_http": "medium", "no_command": "low"}
+#: What to print for the codes the inventory carries no sentence for. Without
+#: it the finding's explanation was its own code: "auto_confirm".
+CONFIG_DETAIL = {
+    "auto_confirm": "launched with an auto-confirm flag (-y or --yes), so the package "
+    "manager installs and runs the package without asking first",
+    "no_command": "a stdio server with no command, so there is nothing to check about "
+    "what it launches",
+}
 
 
 @dataclass(frozen=True)
@@ -147,7 +155,10 @@ def scan_mcp_config(project: Path | None = None, known: dict[str, frozenset[str]
     for server in inv.servers:
         where = f"{server.agent}: {server.name} ({server.source})"
         for code in server.finding_codes():
-            detail = next(iter(server.findings()), code) if code in ("unpinned_fetch", "plaintext_http") else code
+            if code in ("unpinned_fetch", "plaintext_http"):
+                detail = next(iter(server.findings()), code)
+            else:
+                detail = CONFIG_DETAIL.get(code, code)
             report.findings.append(Finding("mcp_config", code, CONFIG_SEVERITY.get(code, "low"), where, detail))
         launcher = Path(server.command).stem.lower() if server.command else ""
         eco = LAUNCHER_ECOSYSTEM.get(launcher)

@@ -9,6 +9,18 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-23
+
+The dashboard is inside the package. On 0.10.0 a `pip install` had none:
+`agentmetry dashboard` signed the browser in and showed a JSON 404, and
+`agentmetry stats` and `agentmetry detections` reported an empty trail because
+they never sent the API token. Both are fixed, and CI now installs a built
+wheel and checks the dashboard loads, so the gap cannot come back unnoticed.
+Upgrade with `pip install --upgrade agentmetry` and restart the recorder.
+Also new: `agentmetry cloud cursor-cache`, which reads Cursor cloud-agent tool
+calls from the desktop app's local cache, and a fix for `cloud claude`, which
+crashed before its first request. The ruleset fingerprint is unchanged.
+
 ### Added
 
 - **`agentmetry cloud cursor-cache`: Cursor cloud-agent tool calls, read from
@@ -35,6 +47,35 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **The package had no dashboard.** The recorder looked for the dashboard's
+  static export only at `apps/dashboard/out` in a git checkout, and the wheel
+  shipped just the Python package. So on a `pip install`, `agentmetry
+  dashboard` signed the browser in and landed it on `{"detail":"Not Found"}`.
+  It worked on the maintainer's machine only because that recorder runs from a
+  checkout. The release build now bundles the export into the package as
+  `agentmetry/dashboard_static`, the recorder serves it when no checkout build
+  exists, and with neither it serves a page saying so instead of a JSON 404.
+  CI builds a wheel with the export on every change, installs it in a clean
+  environment, serves it from a directory with no checkout above it, and fails
+  if `/` is not the dashboard; the release build checks the same, and that the
+  wheel carries `index.html`. Found by installing 0.10.0 from PyPI on a clean
+  Python 3.11 environment and walking the README as a new user would.
+- **`agentmetry stats` and `agentmetry detections` printed nothing over a full
+  trail.** Neither sent the per-install token that every route but health has
+  required since 0.9.3. The recorder answered 401, and the CLI read the error
+  body as if it were the answer: `stats` printed "Events: 0" and `detections`
+  printed "No detections" for a session holding a critical detection. Both now
+  send the token, honour `AGENTMETRY_URL` as `disposition` and the hooks do,
+  and report a refusal as an error with what to do about it. Tests pin the
+  token and the refusal.
+- **`doctor` told a pip install to run scripts it does not have.** For an agent
+  installed without its hook it said to run `scripts/install_<agent>_hooks.ps1`,
+  which exist only in a checkout. It now says `agentmetry hooks install`, and
+  names the Antigravity script only when Antigravity is the agent missing,
+  since that is the one `hooks install` does not write.
+- **One `scan` finding explained itself with its own code.** An MCP server
+  launched with `-y` printed "auto_confirm" as its explanation. It now says the
+  package manager installs and runs the package without asking first.
 - **`agentmetry cloud claude` crashed before its first request.** The command
   read `args.remote` to choose between local and remote sessions, and the
   parser never defined `--remote`, so every run with

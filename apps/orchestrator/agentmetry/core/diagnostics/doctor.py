@@ -250,11 +250,20 @@ def _check_hooks_installed(report: DoctorReport) -> None:
         # health checks' answer, not this one's.
         report.ok("hooks", f"Hooks installed for: {', '.join(covered)}")
     if uncovered:
+        # It used to name scripts/install_<agent>_hooks.ps1, which exist only in a
+        # git checkout: a pip install was told to run files it does not have.
+        # `hooks install` writes every agent's hooks except Antigravity's.
+        fix = "Run `agentmetry hooks install`."
+        if "antigravity" in uncovered:
+            fix += (
+                " Antigravity's hooks come from scripts/install_antigravity_hooks.ps1 "
+                "in a clone of the repository."
+            )
         report.warn(
             "hooks",
             f"Installed on this machine but NOT recorded: {', '.join(uncovered)}. "
-            "Run scripts/install_<agent>_hooks.ps1 for each. Codex additionally "
-            "needs its /hooks trust prompt approved, or it skips them silently.",
+            f"{fix} Codex additionally needs its /hooks trust prompt approved, or it "
+            "skips them silently.",
         )
     if unverified:
         report.warn(

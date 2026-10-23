@@ -254,3 +254,30 @@ jobs:
         run: npm run test
       - name: Build dashboard
         run: npm run build
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: A wheel built with the export serves the dashboard
+        # The release build copies the export into the package. 0.10.0 shipped
+        # without it and nothing failed, so the same path runs here on every
+        # change: bundle, build, install in a clean venv, serve from a
+        # directory with no checkout above it, and check the page is the app.
+        working-directory: .
+        run: |
+          rm -rf apps/orchestrator/agentmetry/dashboard_static
+          cp -r apps/dashboard/out apps/orchestrator/agentmetry/dashboard_static
+          python -m pip install --quiet --upgrade build
+          (cd apps/orchestrator && python -m build --outdir /tmp/dist)
+          python -m venv /tmp/wheelcheck
+          /tmp/wheelcheck/bin/pip install --quiet /tmp/dist/*.whl
+          cd /tmp
+          /tmp/wheelcheck/bin/agentmetry serve --port 8799 > /tmp/serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8799/api/v1/health >/dev/null && break; sleep 1; done
+          page="$(curl -s http://127.0.0.1:8799/)"
+          kill %1 || true
+          if ! printf '%s' "$page" | grep -q "_next/"; then
+            echo "::error::a wheel built with the export does not serve the dashboard at /"
+            printf '%s\n' "$page" | head -20
+            tail -20 /tmp/serve.log
+            exit 1
+          fi

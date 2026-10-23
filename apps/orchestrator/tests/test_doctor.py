@@ -348,6 +348,26 @@ def test_hook_coverage_says_installed_not_recording(tmp_path: Path, monkeypatch)
     assert not any("Recording" in m for m in hooks), "a file check cannot see events arrive"
 
 
+def test_an_unhooked_agent_is_fixed_with_a_command_a_pip_install_has(tmp_path: Path, monkeypatch):
+    """0.10.0 told a pip install to run scripts/install_<agent>_hooks.ps1,
+    which exists only in a git checkout."""
+    from agentmetry.core.diagnostics import hook_coverage
+
+    monkeypatch.setattr(hook_coverage, "is_service_profile", lambda: False)
+    monkeypatch.setattr(hook_coverage, "coverage", lambda: {"cursor": hook_coverage.UNCOVERED})
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    msg = next(f.message for f in report.findings if "NOT recorded" in f.message)
+    assert "agentmetry hooks install" in msg
+    assert "install_<agent>" not in msg and "antigravity" not in msg.lower()
+
+    monkeypatch.setattr(
+        hook_coverage, "coverage", lambda: {"antigravity": hook_coverage.UNCOVERED}
+    )
+    report = run_doctor(vault_path=tmp_path / "no-such-vault")
+    msg = next(f.message for f in report.findings if "NOT recorded" in f.message)
+    assert "install_antigravity_hooks.ps1" in msg, "the one agent hooks install does not write"
+
+
 def test_an_empty_spool_does_not_claim_capture_works(tmp_path: Path, monkeypatch):
     from agentmetry.core.audit import spool
 

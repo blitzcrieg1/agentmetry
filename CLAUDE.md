@@ -193,16 +193,18 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-23 there are 1986 tests collected in CI, zero open
+Not code. As of 2026-10-23 there are 1993 tests collected in CI, zero open
 code scanning alerts, zero open Dependabot alerts, a dogfood gate that passed
 4 of 4 on 2026-10-02 and, after the 16 open detections were triaged on
 2026-10-23, prints "7 of 4, Gate PASSED" with every complete week green
 (triage is what keeps it that way; untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), and 0.10.0 on PyPI
-(released 2026-10-23: `agentmetry scan`, the MCP proxy's tool-description
-check, Codex hooks that work on Windows, ingest rate limits, and the
-redesigned dashboard). Check alerts with
+runnable with nothing installed (`uvx agentmetry demo`), and 0.10.1 on PyPI
+(released 2026-10-23: 0.10.0's `agentmetry scan`, MCP proxy check, Windows
+Codex hooks, ingest rate limits and redesigned dashboard, plus the dashboard
+actually inside the package; 0.10.0 had none, which only a clean-environment
+install from PyPI showed. Walk the README from a fresh venv before a release,
+not from the checkout). Check alerts with
 `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
 trusting this line. There are also **zero external users and zero
 design-partner tenants**. The first two sales messages went out on 2026-10-23

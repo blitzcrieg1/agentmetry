@@ -57,3 +57,42 @@ def test_mount_is_noop_without_build(tmp_path: Path):
     app = FastAPI()
     assert mount_dashboard(app, tmp_path / "does-not-exist") is False
     assert not any(getattr(r, "name", "") == "dashboard" for r in app.routes)
+
+
+def test_without_an_export_the_root_says_so_instead_of_a_json_404(tmp_path: Path):
+    """0.10.0 from PyPI: the sign-in link redirected to /, which had nothing
+    mounted, and the browser showed {"detail":"Not Found"}."""
+    app = FastAPI()
+
+    @app.get("/api/v1/health")
+    async def health():
+        return {"status": "ok"}
+
+    mount_dashboard(app, tmp_path / "does-not-exist")
+    client = TestClient(app)
+
+    root = client.get("/")
+    assert root.status_code == 200
+    assert root.headers["content-type"].startswith("text/html")
+    assert "Agentmetry is recording" in root.text
+    assert "pip install --upgrade agentmetry" in root.text
+    assert client.get("/api/v1/health").json() == {"status": "ok"}
+
+
+def test_the_packaged_export_is_found_when_there_is_no_checkout(tmp_path: Path, monkeypatch):
+    """An installed wheel has no apps/dashboard/out above it; the release build
+    bundles the export as agentmetry/dashboard_static instead."""
+    from agentmetry.api import main
+
+    packaged = _fake_export(tmp_path / "pkg")
+    monkeypatch.setattr(main, "_CHECKOUT_DASHBOARD_DIR", tmp_path / "no-checkout")
+    monkeypatch.setattr(main, "_PACKAGED_DASHBOARD_DIR", packaged)
+    assert main.dashboard_dir() == packaged
+
+    checkout = _fake_export(tmp_path / "checkout")
+    monkeypatch.setattr(main, "_CHECKOUT_DASHBOARD_DIR", checkout)
+    assert main.dashboard_dir() == checkout, "a checkout's own build wins"
+
+    monkeypatch.setattr(main, "_CHECKOUT_DASHBOARD_DIR", tmp_path / "none-a")
+    monkeypatch.setattr(main, "_PACKAGED_DASHBOARD_DIR", tmp_path / "none-b")
+    assert main.dashboard_dir() is None
