@@ -34,6 +34,19 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Changed
 
+- **The Overview separates alerts from risks.** "Needs attention" was one list,
+  so "4 critical detections" sat beside "policy runs in log mode" and the page
+  read as noise. It is now three things. **Top alerts** groups the week's
+  detections by rule, with how many detections, sessions and agents each
+  touched and how many are undecided; a row opens Detections filtered to that
+  rule. **Top risks** lists configuration that could let an agent act unseen or
+  unstopped: missing hooks, an agent with a hook and no events in seven days
+  (#304), settings that skip prompts, log mode, MCP servers not seen through the
+  proxy. **Recorder health** (a chain that does not verify, a backed-up spool, a
+  red beta gate) sits above both, because it decides whether the rest can be
+  trusted. Event and detection counts now say how they compare with the previous
+  seven days, computed from the 7-day and 14-day stats rather than estimated.
+
 - **A detection opens as an investigation with five views.** Details, Activity
   table, Activity tree, Activity graph and Events timeline share one selection
   and one side panel with the selected call, why the rule fired and the triage
