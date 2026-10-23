@@ -1146,6 +1146,32 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scan(args: argparse.Namespace) -> int:
+    """Check what an agent is about to depend on: MCP servers, skills, packages.
+
+    Exits 1 when anything is found and 2 when nothing could be read. Unlike
+    `mcp` and `posture`, which a health check runs in the background, this is
+    run on purpose before something is installed, so a finding should stop the
+    script that ran it. See core/scanner/scan.py.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from agentmetry.core.scanner.scan import run
+
+    report = run(
+        args.target,
+        project=_Path(args.project).resolve() if args.project else _Path.cwd(),
+        known_file=args.known,
+    )
+    if args.json:
+        print(_json.dumps(report.to_json(), indent=2))
+    else:
+        for line in report.lines():
+            print(line)
+    return report.exit_code()
+
+
 def cmd_posture(args: argparse.Namespace) -> int:
     """Report agent settings that take a human or a hook out of the loop.
 
@@ -1705,6 +1731,18 @@ def main(argv: list[str] | None = None) -> int:
     posture.add_argument(
         "--strict", action="store_true", help="exit 1 when any high-severity finding is present",
     )
+    scan = sub.add_parser(
+        "scan",
+        help="check MCP servers, skills or a package name before an agent depends on them",
+    )
+    scan.add_argument(
+        "target", nargs="?", default=None,
+        help="a file or folder (skills, rules, a saved tools/list), npm:NAME or pypi:NAME; "
+        "omit to scan the MCP servers configured on this machine",
+    )
+    scan.add_argument("--project", default=None, help="project root whose MCP config to include (default: cwd)")
+    scan.add_argument("--known", default=None, help="file of extra known package names, one per line (npm:/pypi: or bare)")
+    scan.add_argument("--json", action="store_true", help="print the report as JSON")
     otel = sub.add_parser(
         "otel", help="receive Claude Code's native OpenTelemetry stream (no hooks needed)"
     )
@@ -1817,6 +1855,7 @@ def main(argv: list[str] | None = None) -> int:
         "anchor": cmd_anchor,
         "mcp": cmd_mcp,
         "posture": cmd_posture,
+        "scan": cmd_scan,
         "dashboard": cmd_dashboard,
         "otel": cmd_otel,
         "import-agt": cmd_import_agt,

@@ -11,6 +11,29 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **`agentmetry scan`: what an agent is about to depend on, checked before it
+  runs.** With no argument it reads the MCP servers configured on the machine
+  and reports typosquatted launch packages beside the unpinned fetch-and-run
+  entries `agentmetry mcp` already knew. Given a file or folder (skills, rules,
+  CLAUDE.md, a saved `tools/list`) it reports text that instructs the model
+  rather than describing a tool: overriding instructions, hiding things from
+  the user, reaching for credential files, exfiltration, shadowing other tools,
+  and `<IMPORTANT>`-style tags (#188). `npm:NAME` or `pypi:NAME` checks one
+  name against a hand-checked list of widely used packages and MCP servers,
+  including a scoped server's name with the scope dropped. It never runs a
+  server or fetches a package, exits 1 on a finding and 2 when nothing could
+  be read, and never says "safe". Run over 362 real files full of instructions
+  (this repo's docs, a machine's 235 installed skills), the shipped version
+  reports nothing; the first draft's nine false alarms are test cases now.
+  docs/scanner.md.
+
+- **The MCP proxy checks every tool description it relays.** The same text
+  check runs on each `tools/list` through `agentmetry mcp-proxy`, and the
+  `mcp_schema` trail event carries `injection` counts per category, never the
+  text and never which tool, beside the concealed-character counts. Like those,
+  it needs no baseline, so a server hostile from its first listing is visible
+  on that listing.
+
 - **Coverage now says which configured agents actually send events.** Hook
   coverage was a file check: an agent whose hook entry existed was `covered`.
   Codex sat on that line for three months on the dogfood machine while its last

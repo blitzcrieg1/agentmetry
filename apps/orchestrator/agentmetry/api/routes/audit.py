@@ -144,6 +144,8 @@ class ExternalIngestBody(BaseModel):
     # drops what it does not know, silently, which has already cost this file
     # two shipped bugs.
     schema_concealed: dict[str, int] = Field(default_factory=dict)
+    # Model-steering text in a tool description (#188), counts per category.
+    schema_injection: dict[str, int] = Field(default_factory=dict)
     server_version: str = ""
     list_changed: bool | None = None
 
