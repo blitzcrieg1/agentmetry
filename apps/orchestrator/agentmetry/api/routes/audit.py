@@ -205,7 +205,11 @@ def _warn_throttled(source_app: str) -> None:
     now = time.monotonic()
     if now - _THROTTLE_WARNED.get(source_app, -60.0) >= 60.0:
         _THROTTLE_WARNED[source_app] = now
-        logger.warning("Ingest rate limit reached for source %s; events are spooled for replay", source_app or "unknown")
+        # The caller passes a resolved, allowlisted name, so this changes
+        # nothing today. It keeps a future caller that passes client text from
+        # forging log lines, and it is the guard code scanning can see.
+        safe = (source_app or "unknown").replace("\r", "").replace("\n", "")
+        logger.warning("Ingest rate limit reached for source %s; events are spooled for replay", safe)
 
 
 @router.post("/ingest", dependencies=[Depends(require_ingest_key)])
