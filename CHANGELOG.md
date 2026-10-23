@@ -9,6 +9,30 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **`agentmetry cloud cursor-cache`: Cursor cloud-agent tool calls, read from
+  the Cursor desktop app's own cache.** A cloud agent runs on Cursor's VM,
+  where no hook on this machine fires. When the desktop app streams one, it
+  caches the conversation in its local state database, including every tool
+  call: terminal commands, file reads and edits, searches, web fetches and MCP
+  calls, with paths under the VM's `/workspace`. The command reads that
+  database read-only, maps each finished call to the name the local Cursor
+  hooks record (`shell.run`, `cursor.Read`, `cursor.Write`,
+  `cursor.MCP:<tool>`), and runs it through the hook client's own mapper, so
+  arguments are hashed and traits and ATT&CK labels computed in-process, as
+  for a local event. Results and edit bodies are never forwarded. Events record
+  as `cursor_cloud` under `cursor-cloud-<agent id>`, the correlation id the
+  Cloud Bridge API path uses. A second run imports nothing twice, a call whose
+  post failed is retried, and `--dry-run` counts without posting. No vendor
+  key, no repository access and no request to Cursor. Run against a real
+  database on 2026-10-21: 3 cloud-agent conversations, 1,251 finished tool
+  calls, read in about six seconds from a 7.1 GB file. What it cannot see:
+  agents the desktop app never streamed; it records after the fact and blocks
+  nothing; the cache format is undocumented, so unrecognised rows are counted
+  and skipped; and the cache is a file the user can edit, so it is a claim to
+  check against Cursor's own run stream, not proof.
+
 ### Fixed
 
 - **`agentmetry cloud claude` crashed before its first request.** The command
