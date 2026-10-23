@@ -9,6 +9,19 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-23
+
+`agentmetry scan` checks what an agent is about to depend on before it runs,
+and the MCP proxy runs the same check on every tool listing. Codex hooks on
+Windows run and reach the recorder, which they had not done since July. Things an existing user will notice: ingest answers
+429 past a per-agent and per-session rate, and the hook spools those events for
+replay, so they arrive late rather than not at all; the recorder writes an
+`ingest-token` file to its data directory; `doctor` warns on a configured agent
+with no event in seven days, and the heartbeat carries `hooks_silent`; and the
+dashboard's Overview and detection view are redesigned. Codex users on Windows
+should run `agentmetry hooks install` again, approve the hooks in Codex's
+`/hooks` review, and restart open Codex conversations.
+
 ### Added
 
 - **`agentmetry scan`: what an agent is about to depend on, checked before it
@@ -231,8 +244,13 @@ separately (currently `1.2.0`) and changes additively.
   without a refusal under the shipped defaults, and a test holds that. An agent
   running as the developer can still write the spool file directly; SECURITY.md
   says so, and running the recorder under its own account is #313. ([#312])
+- **The throttle warning strips line breaks from the name it logs.** The name
+  is already resolved to a listed agent or `unknown`, so no log line could be
+  forged, but code scanning could not see that and flagged it. The guard it
+  recognises now sits at the call. ([#323])
 
 [#312]: https://github.com/blitzcrieg1/agentmetry/issues/312
+[#323]: https://github.com/blitzcrieg1/agentmetry/pull/323
 
 ## [0.9.9] - 2026-10-19
 
