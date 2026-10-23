@@ -238,7 +238,8 @@ export function attentionItems({ untriaged, stats, machine, dogfood, status }: O
   return items.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }
 
-function eventsFor(bySource: Record<string, number> | undefined, app: string): number {
+/** An agent's events in a by-source count, matching names the way the trail records them. */
+export function eventsFor(bySource: Record<string, number> | undefined, app: string): number {
   const target = displaySource(app);
   return Object.entries(bySource ?? {}).reduce((n, [source, count]) => n + (displaySource(source) === target ? count : 0), 0);
 }

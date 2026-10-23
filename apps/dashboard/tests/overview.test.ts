@@ -163,6 +163,12 @@ describe("alerts, risks and recorder health", () => {
     expect(silent?.body).not.toContain("Cursor");
   });
 
+  it("counts an agent's events under the name the trail records", async () => {
+    const { eventsFor } = await import("@/lib/overview");
+    expect(eventsFor({ claude: 5, cursor: 3 }, "claude")).toBe(5);
+    expect(eventsFor({ cursor: 3 }, "codex")).toBe(0);
+  });
+
   it("does not call anyone silent before the 7-day stats have loaded", () => {
     const items = attentionItems({ untriaged: [], stats: null, machine: machine(), dogfood: null, status: null });
     expect(items.some((i) => i.id === "silent")).toBe(false);
@@ -196,6 +202,8 @@ describe("top alerts by rule", () => {
     const rows = topRules(dets, () => true, 5);
     expect(rows).toHaveLength(5);
     expect(rows[0]).toMatchObject({ rule_id: "r", severity: "high" });
+    // The Overview takes every rule to say what the top five leave out.
+    expect(topRules(dets, () => true, Infinity)).toHaveLength(9);
   });
 });
 

@@ -8,7 +8,7 @@ import { SEVERITY_DOT, SeverityBadge, Technique } from "@/components/ui/kit";
 import { AgentTile } from "@/components/ui/agent-mark";
 import { tiltHandlers } from "@/lib/use-tilt";
 import { apiHeaders } from "@/lib/api";
-import { displaySource, sourceChartColor, sourceLabel } from "@/lib/audit-source";
+import { sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { type Disposition, dispositionKey, fetchDispositions, isTriaged } from "@/lib/disposition";
 import { type DogfoodReport, fetchDogfood } from "@/lib/dogfood";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
@@ -18,6 +18,7 @@ import {
   attentionItems,
   type AttentionTarget,
   changeSentence,
+  eventsFor,
   type RuleGroup,
   sourceBars,
   type StatsSnapshot,
@@ -28,14 +29,6 @@ import {
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
-
-function recentEventsFor(bySource: Record<string, number> | undefined, app: string): number {
-  const target = displaySource(app);
-  return Object.entries(bySource ?? {}).reduce(
-    (total, [source, count]) => total + (displaySource(source) === target ? count : 0),
-    0,
-  );
-}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${ORCHESTRATOR_URL}${path}`, { headers: apiHeaders(), credentials: "include" });
@@ -122,7 +115,8 @@ export function OverviewPanel({
     [dispositions],
   );
 
-  const rules = useMemo(() => topRules(detections ?? [], isDetectionOpen), [detections, isDetectionOpen]);
+  const allRules = useMemo(() => topRules(detections ?? [], isDetectionOpen, Infinity), [detections, isDetectionOpen]);
+  const rules = useMemo(() => allRules.slice(0, 5), [allRules]);
   const eventsChange = changeSentence(stats?.total_events, stats14?.total_events);
   const detectionsChange = changeSentence(stats?.detections, stats14?.detections);
 
@@ -290,10 +284,12 @@ export function OverviewPanel({
         <div className="flex min-w-0 flex-col gap-4">
           <TopAlerts
             rules={rules}
+            allRules={allRules}
             loading={!detections}
             change={detectionsChange}
             total={stats?.detections}
             onOpen={(rule) => onNavigate("detections", { untriaged: rule.untriaged > 0, rule: rule.rule_id })}
+            onOpenAll={() => onNavigate("detections")}
           />
           <TopRisks items={risks} loading={!machine || !stats} onNavigate={onNavigate} />
         </div>
@@ -317,7 +313,9 @@ export function OverviewPanel({
             ) : (
               <ul className="divide-y divide-border px-4">
                 {agentsByAttention(machine.agents).filter((agent) => agent.state !== "absent").slice(0, 6).map((agent) => {
-                  const observed = recentEventsFor(status?.by_source, agent.name);
+                  // The 7-day stats, not /status: its per-source counts are the last 500
+                  // events, so one busy agent made every other one read as silent.
+                  const observed = eventsFor(stats?.by_source, agent.name);
                   const stateTone = agent.state === "covered"
                     ? "border-border bg-muted/60 text-foreground"
                     : agent.state === "uncovered"
@@ -330,7 +328,7 @@ export function OverviewPanel({
                         <div className="min-w-0">
                           <p className="truncate text-[12px] font-medium">{sourceLabel(agent.name)}</p>
                           <p className="mt-0.5 text-[12px] text-muted-foreground">
-                            {status ? observed ? `${observed.toLocaleString()} recent events` : "No recent events" : failed.includes("status") ? "Event status unavailable" : "Checking event receipt…"}
+                            {stats ? observed ? `${observed.toLocaleString()} events in 7 days` : "No events in 7 days" : failed.includes("stats") ? "Event counts unavailable" : "Checking event receipt…"}
                           </p>
                         </div>
                       </div>
@@ -347,7 +345,7 @@ export function OverviewPanel({
             )}
             <div className="flex items-start gap-2 border-t border-border bg-muted/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
               <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
-              A configured hook does not prove capture. Recent event receipt is shown separately.
+              A configured hook does not prove capture. Events in the last 7 days are shown beside it.
             </div>
           </section>
 
@@ -437,17 +435,25 @@ const KIND_HEAD = "flex flex-wrap items-center justify-between gap-3 border-b bo
 /** Detections grouped by rule: what fired, how much it touched, how much is undecided. */
 function TopAlerts({
   rules,
+  allRules,
   loading,
   change,
   total,
   onOpen,
+  onOpenAll,
 }: {
   rules: RuleGroup[];
+  allRules: RuleGroup[];
   loading: boolean;
   change: string | null;
   total?: number;
   onOpen: (rule: RuleGroup) => void;
+  onOpenAll: () => void;
 }) {
+  // Say what the top five leave out, so the list never reads as everything.
+  const rest = allRules.slice(rules.length);
+  const restDetections = rest.reduce((n, r) => n + r.detections, 0);
+  const restUntriaged = rest.reduce((n, r) => n + r.untriaged, 0);
   return (
     <section className="panel min-w-0 overflow-hidden" aria-label="Top alerts">
       <header className={KIND_HEAD}>
@@ -500,6 +506,19 @@ function TopAlerts({
               </button>
             </li>
           ))}
+          {rest.length ? (
+            <li>
+              <button type="button" onClick={onOpenAll} className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-[12px] text-muted-foreground transition-colors hover:bg-muted/50">
+                <span>
+                  And {rest.length} more {rest.length === 1 ? "rule" : "rules"}: {restDetections} {restDetections === 1 ? "detection" : "detections"}
+                  {restUntriaged ? `, ${restUntriaged} untriaged` : ""}
+                </span>
+                <span className="inline-flex items-center gap-1 font-medium text-signal">
+                  All detections <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              </button>
+            </li>
+          ) : null}
         </ul>
       )}
     </section>
