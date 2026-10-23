@@ -312,16 +312,41 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _api_get_json(port: int, path: str, what: str, params: dict | None = None) -> dict | None:
+    """GET an API route with this install's token, or print why not and return None.
+
+    Every route but health has needed the per-install token since 0.9.3, and
+    `stats` and `detections` were still calling without it. The 401 body was
+    read as if it were the answer, so both printed an empty result over a trail
+    with events and a critical detection in it. A refusal is now an error.
+    """
+    try:
+        resp = httpx.get(
+            f"{_api_base_url(port)}{path}",
+            params=params,
+            headers=_api_headers(),
+            timeout=10.0,
+        )
+    except Exception:
+        print(f"Not running - start Agentmetry first ({what} reads via the API).")
+        return None
+    if resp.status_code in (401, 403):
+        print(
+            f"The recorder refused the request (HTTP {resp.status_code}): this shell has no "
+            "valid API token for it. Run it as the account that started the recorder, or "
+            "set AGENTMETRY_API_KEY."
+        )
+        return None
+    if resp.status_code >= 400:
+        print(f"FAILED: HTTP {resp.status_code} from {path}")
+        return None
+    return resp.json()
+
+
 def cmd_stats(args: argparse.Namespace) -> int:
     """Audit trail metrics over a window — dogfood weekly counts."""
-    try:
-        data = httpx.get(
-            f"{_base_url(args.port)}/api/v1/audit/stats",
-            params={"days": args.days},
-            timeout=10.0,
-        ).json()
-    except Exception:
-        print("Not running - start Agentmetry first (stats reads via the API).")
+    data = _api_get_json(args.port, "/api/v1/audit/stats", "stats", {"days": args.days})
+    if data is None:
         return 1
 
     if not data.get("enabled", True):
@@ -349,13 +374,10 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 
 def cmd_detections(args: argparse.Namespace) -> int:
-    try:
-        data = httpx.get(
-            f"{_base_url(args.port)}/api/v1/audit/detections/{args.correlation_id}",
-            timeout=10.0,
-        ).json()
-    except Exception:
-        print("Not running - start Agentmetry first (detections reads via the API).")
+    data = _api_get_json(
+        args.port, f"/api/v1/audit/detections/{args.correlation_id}", "detections"
+    )
+    if data is None:
         return 1
     if not data.get("enabled", True):
         print("Audit export is disabled, so no sessions are recorded.")

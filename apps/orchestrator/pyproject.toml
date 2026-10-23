@@ -85,6 +85,15 @@ path = "agentmetry/core/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentmetry"]
+# The dashboard's static export, copied in by the release build (release.yml).
+# It is gitignored, and hatch leaves gitignored files out unless they are named
+# as artifacts. 0.10.0 shipped without it, so a pip install had no dashboard.
+artifacts = ["agentmetry/dashboard_static/**"]
+
+[tool.hatch.build.targets.sdist]
+# `python -m build` builds the wheel from the sdist, so the export has to be in
+# the sdist too or it never reaches the wheel.
+artifacts = ["agentmetry/dashboard_static/**"]
 
 
 [tool.ruff]

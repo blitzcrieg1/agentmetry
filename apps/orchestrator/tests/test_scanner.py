@@ -186,6 +186,9 @@ def test_the_machine_scan_reads_mcp_configs_and_admits_what_it_cannot_see():
     assert ("typosquat", "scope_dropped") in kinds
     assert ("mcp_config", "unpinned_fetch") in kinds
     assert report.unobserved and "proxy" in report.unobserved[0]
+    # 0.10.0 printed the code itself as the explanation: "auto_confirm".
+    auto = next(f for f in report.findings if f.category == "auto_confirm")
+    assert auto.detail != "auto_confirm" and "auto-confirm flag" in auto.detail
 
 
 # --- the trail ---------------------------------------------------------------------

@@ -277,6 +277,7 @@ def test_stats_renders_the_window_counts(monkeypatch, capsys):
     from agentmetry import cli
 
     class Resp:
+        status_code = 200
         @staticmethod
         def json():
             return {
@@ -305,6 +306,7 @@ def test_stats_explains_a_disabled_export(monkeypatch, capsys):
     from agentmetry import cli
 
     class Resp:
+        status_code = 200
         @staticmethod
         def json():
             return {"enabled": False}
@@ -336,6 +338,7 @@ def test_detections_prints_the_ranked_api_results(monkeypatch, capsys):
     requested = []
 
     class Resp:
+        status_code = 200
         @staticmethod
         def json():
             return {
@@ -365,7 +368,9 @@ def test_detections_prints_the_ranked_api_results(monkeypatch, capsys):
 
     monkeypatch.setattr(cli.httpx, "get", get)
     assert main(["detections", "session-7"]) == 0
-    assert requested == ["http://127.0.0.1:8000/api/v1/audit/detections/session-7"]
+    # AGENTMETRY_URL wins over --port, as it does for disposition and the hooks;
+    # conftest points it at port 9 so no test can reach a real recorder.
+    assert requested == ["http://127.0.0.1:9/api/v1/audit/detections/session-7"]
     lines = capsys.readouterr().out.splitlines()
     assert "Rule" in lines[0] and "Severity" in lines[0] and "Summary" in lines[0]
     assert "credential-exfil" in lines[2]
@@ -378,6 +383,7 @@ def test_detections_reports_an_empty_session_cleanly(monkeypatch, capsys):
     from agentmetry import cli
 
     class Resp:
+        status_code = 200
         @staticmethod
         def json():
             return {
@@ -397,6 +403,7 @@ def test_detections_explains_a_disabled_export(monkeypatch, capsys):
     from agentmetry import cli
 
     class Resp:
+        status_code = 200
         @staticmethod
         def json():
             return {
@@ -422,6 +429,52 @@ def test_detections_says_so_when_the_orchestrator_is_down(monkeypatch, capsys):
     monkeypatch.setattr(cli.httpx, "get", boom)
     assert main(["detections", "session-7"]) == 1
     assert "Not running" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("argv", [["stats"], ["detections", "session-7"]])
+def test_read_commands_send_the_install_token(monkeypatch, capsys, argv):
+    """0.10.0 called both routes with no token. Every route but health has
+    needed one since 0.9.3, so a real recorder answered 401 to every call."""
+    from agentmetry import cli
+
+    seen: dict = {}
+
+    class Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"enabled": True, "detections": []}
+
+    def fake_get(url, **kwargs):
+        seen["headers"] = kwargs.get("headers") or {}
+        return Resp()
+
+    monkeypatch.setenv("AGENTMETRY_API_KEY", "install-token")
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+    assert main(argv) == 0
+    assert seen["headers"].get("X-API-Key") == "install-token"
+
+
+@pytest.mark.parametrize("argv", [["stats"], ["detections", "session-7"]])
+def test_a_refused_read_is_an_error_not_an_empty_result(monkeypatch, capsys, argv):
+    """The 401 body was read as the answer: `stats` printed "Events: 0" and
+    `detections` printed "No detections" over a trail holding both."""
+    from agentmetry import cli
+
+    class Refused:
+        status_code = 401
+
+        @staticmethod
+        def json():
+            return {"detail": "API key required"}
+
+    monkeypatch.setattr(cli.httpx, "get", lambda *_a, **_kw: Refused())
+    assert main(argv) == 1
+    out = capsys.readouterr().out
+    assert "refused the request (HTTP 401)" in out
+    assert "Events:" not in out
+    assert "No detections" not in out
 
 
 def test_disposition_posts_the_closing_decision(monkeypatch, capsys):

@@ -16,6 +16,8 @@ build/
 # Next.js
 apps/dashboard/.next/
 apps/dashboard/out/
+# The same export copied into the package by the release build, for the wheel.
+apps/orchestrator/agentmetry/dashboard_static/
 
 # Environment
 .env

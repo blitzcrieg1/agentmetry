@@ -315,23 +315,57 @@ async def websocket_endpoint(
         ws_manager.disconnect(websocket, session_id)
 
 
-_DASHBOARD_DIR = Path(__file__).resolve().parents[3] / "dashboard" / "out"
+#: A source checkout's build, which a developer rebuilds and expects to see.
+_CHECKOUT_DASHBOARD_DIR = Path(__file__).resolve().parents[3] / "dashboard" / "out"
+#: The same export, bundled inside the wheel by the release build. Until 0.10.1
+#: nothing put it there, so `pip install agentmetry`, `agentmetry dashboard`
+#: signed the browser in and landed it on a JSON 404.
+_PACKAGED_DASHBOARD_DIR = Path(__file__).resolve().parents[1] / "dashboard_static"
+
+_DASHBOARD_MISSING_PAGE = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Agentmetry</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem}
+code{background:#f2f2f2;padding:.1em .3em;border-radius:3px}</style></head>
+<body><h1>Agentmetry is recording.</h1>
+<p>The dashboard is not part of this install. Packages from 0.10.1 include it:
+<code>pip install --upgrade agentmetry</code>, then restart the recorder.</p>
+<p>Recording, detection and the trail do not depend on it. From a shell:
+<code>agentmetry stats</code>, <code>agentmetry replay &lt;session&gt;</code>,
+<code>agentmetry verify --trail</code>.</p></body></html>"""
 
 
-def mount_dashboard(target: FastAPI, directory: Path = _DASHBOARD_DIR) -> bool:
-    """Serve the dashboard's static export when it has been built.
+def dashboard_dir() -> Path | None:
+    """Where the dashboard export is: a checkout's build first, then the package's."""
+    for candidate in (_CHECKOUT_DASHBOARD_DIR, _PACKAGED_DASHBOARD_DIR):
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
 
-    Single-process mode: `npm run build` in apps/dashboard emits `out/`, which
-    the orchestrator serves at the root. Mounted last so it only catches paths
-    not already claimed by the API or WebSocket. Dev uses the :3000 dev server
-    instead, so this is a no-op when the export is absent.
+
+def mount_dashboard(target: FastAPI, directory: Path | None = None) -> bool:
+    """Serve the dashboard's static export when there is one.
+
+    Single-process mode: the orchestrator serves the export at the root,
+    mounted last so it only catches paths not already claimed by the API or
+    WebSocket. Dev uses the :3000 dev server instead. With no export, the root
+    serves a page saying so, because the sign-in link redirects there and a
+    JSON 404 reads as a broken product.
     """
-    if not directory.is_dir():
+    if directory is None:
+        directory = dashboard_dir()
+    if directory is None or not directory.is_dir():
         logger.info(
-            "Dashboard export not found at %s — run 'npm run build' in "
-            "apps/dashboard for single-process serving",
-            directory,
+            "Dashboard export not found (looked in %s and %s); serving a notice at /",
+            _CHECKOUT_DASHBOARD_DIR,
+            _PACKAGED_DASHBOARD_DIR,
         )
+        from fastapi.responses import HTMLResponse
+
+        @target.get("/", include_in_schema=False, name="dashboard-missing")
+        async def dashboard_missing() -> HTMLResponse:
+            return HTMLResponse(_DASHBOARD_MISSING_PAGE, headers={"Cache-Control": "no-cache"})
+
         return False
 
     from fastapi.staticfiles import StaticFiles
