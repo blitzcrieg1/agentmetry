@@ -58,7 +58,7 @@ Out of scope:
   A process running as the same OS user can read the token, which is the
   same-user limit above.
 - **The ingest-only token can add events, and anyone holding it can add false
-  ones.** From the release after 0.9.9 the recorder also writes `<data dir>/ingest-token`. It is
+  ones.** From 0.10.0 the recorder also writes `<data dir>/ingest-token`. It is
   accepted on `POST /api/v1/audit/ingest` and nowhere else: it cannot read the
   trail, export evidence or close a detection, and tests hold each of those
   routes refusing it. Hooks prefer it. Whoever can read it, which includes
