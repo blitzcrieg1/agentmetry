@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-10-15.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-23.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -35,18 +35,18 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-10-15
+## Where this actually is, on 2026-10-23
 
 | | |
 |---|---|
-| Version | 0.9.7 on PyPI, released 2026-10-15: Cloud Bridge ([#267](https://github.com/blitzcrieg1/agentmetry/pull/267)), ZCode as a source ([#264](https://github.com/blitzcrieg1/agentmetry/pull/264), [#265](https://github.com/blitzcrieg1/agentmetry/pull/265), [#266](https://github.com/blitzcrieg1/agentmetry/pull/266)), the dashboard page for this machine ([#257](https://github.com/blitzcrieg1/agentmetry/pull/257)), the Copilot CLI deny run live ([#256](https://github.com/blitzcrieg1/agentmetry/pull/256)), and evidence pack schema 2.2 ([#255](https://github.com/blitzcrieg1/agentmetry/pull/255)). Since 0.9.4, `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
+| Version | 0.10.0 on PyPI, released 2026-10-23: `agentmetry scan` and the MCP proxy's check on every tool description ([#322](https://github.com/blitzcrieg1/agentmetry/pull/322)), Codex hooks that launch on Windows and stay trusted once approved ([#307](https://github.com/blitzcrieg1/agentmetry/issues/307), [#308](https://github.com/blitzcrieg1/agentmetry/pull/308)), an ingest-only token for Codex's sandbox ([#302](https://github.com/blitzcrieg1/agentmetry/issues/302)), ingest rate limits ([#312](https://github.com/blitzcrieg1/agentmetry/issues/312)), and the redesigned Overview and investigation ([#309](https://github.com/blitzcrieg1/agentmetry/pull/309), [#310](https://github.com/blitzcrieg1/agentmetry/pull/310), [#321](https://github.com/blitzcrieg1/agentmetry/pull/321)). 0.9.8 and 0.9.9, between it and 0.9.7, brought the first Overview and managed policy for fleets. Since 0.9.4, `pip install agentmetry && agentmetry demo` shows a detection fire and an edited trail fail `verify`, with no clone |
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 57 recorded sessions, 26 attack and 31 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1716 passed and 8 skipped in the 0.9.7 release verify job (2026-10-15), 1724 collected. 82% coverage was measured on the same code in [#255](https://github.com/blitzcrieg1/agentmetry/pull/255). A 78% floor is enforced in CI |
-| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. As of 2026-10-15 `dogfood` prints 0 of 4 consecutive because week 6 is red on one untriaged `session-tool-burst`. A red week from untriaged detections can be rescued at any time |
-| Own trail | 61,099 hash-chained lines, counted on the maintainer's machine on 2026-10-15 (`agentmetry verify --trail`). The default anchor log is empty: verify prints `anchors: none` |
-| Adoption | Public alpha. No design partner tenant yet, no reference customer, no sales message sent. 15 GitHub stars on 2026-10-15 |
+| Tests | 1953 passed and 19 skipped in the 0.10.0 release verify job (2026-10-23), 1972 collected. A 78% coverage floor is enforced in CI; the last measured figure, 82%, was on 0.9.7 code ([#255](https://github.com/blitzcrieg1/agentmetry/pull/255)) |
+| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. As of 2026-10-23 `dogfood` prints 0 of 4 consecutive: weeks 6 and 7 are red on 1 and 7 untriaged critical or high detections, and week 8, in progress, has 8 more. A red week from untriaged detections can be rescued at any time |
+| Own trail | 74,923 hash-chained lines, all verified on the maintainer's machine on 2026-10-23 (`agentmetry verify --trail`). 256 anchor checkpoints cover records 1 to 74,704; the 219 newer records are chain-verified only until the next checkpoint |
+| Adoption | Public alpha. No design partner tenant yet and no reference customer. The first two sales messages went out on 2026-10-23, with no reply yet. 15 GitHub stars on 2026-10-23 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
@@ -96,9 +96,10 @@ the most important one on the page.
 
 | Item | Issue | Why now |
 |---|---|---|
-| **First design partner contact** | none, tracked in the enterprise repo | Zero messages sent against ten researched accounts. The dogfood gate passing is the checkable fact the openers were missing. Nothing else on this list matters as much |
-| The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has now passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass |
-| `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Every detection that held a week at red in the run was this rule, on intended work. A rule change, so it belongs in the same pass as #55 |
+| **First design partner contact** | none, tracked in the enterprise repo | Two messages sent on 2026-10-23, follow-ups due around 2026-10-28. Four of the six hiring signals the pipeline was built on in August had closed by the time they were checked in late October: a signal is perishable, so send within days of finding one. Nothing else on this list matters as much |
+| The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass. Whether the freeze ends for it is the maintainer's call and has not been made |
+| `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Seven of every ten triage items when the issue was filed, on intended work, and the rule that held weeks 2 and 4 of the passing run at red. A rule change, so it belongs in the same pass as #55. The agent-specific signals in [#317](https://github.com/blitzcrieg1/agentmetry/issues/317) come after that pass, not in it |
+| Decide the two cloud PRs | [#298](https://github.com/blitzcrieg1/agentmetry/pull/298), [#299](https://github.com/blitzcrieg1/agentmetry/pull/299) | A Cloud Bridge crash fix and Cursor cloud-agent capture, open since 2026-10-21 while later work merged around them. Merge or close; do not let them drift |
 | Finish removing the old runtime | [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) | Boot no longer mounts the driver host unless `AGENTMETRY_LEGACY_DRIVERS=1`, and `replay` reads the trail. What remains is the outbox, the vault demo, and the `mcp<2` pin those leftovers still require |
 
 **The freeze held for the run that passed.** The ruleset fingerprint covers
@@ -109,7 +110,7 @@ matters again only when a new run starts.
 
 ---
 
-## Next (September to October 2026)
+## Next (October to November 2026)
 
 Reordered 2026-08-23 around one test: **does this item make the sensor land in
 somebody else's SIEM?** The three at the top are what a security team touches
@@ -120,7 +121,12 @@ wants has moved to the bottom of the page.
 |---|---|---|
 | **Splunk TA through AppInspect and a Splunkbase listing** | [enterprise #8](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/8) | The TA works and has tests. It is a directory you copy onto a search head, which is a different conversation from a listing a security team can find. No public copy claims certification until it exists |
 | **Per-host identity on a fleet trail** | [enterprise #1](https://github.com/blitzcrieg1/agentmetry-enterprise/issues/1) | First cut shipped: the sensor exposes a signing extension point (`register_event_signer()`, tested), the enterprise layer holds the Ed25519 device key, and the console refuses unsigned or foreign-signed events. Remaining: the key moves into the OS keystore instead of a file, replay hardening, and a run on a real fleet. Until that run, treat attribution as demonstrated, not proven at fleet scale |
-| OTLP **export** | none yet | The other direction from `agentmetry otel`, which shipped in 0.9.0 as ingest. Table stakes for teams standardised on a collector |
+| Run the recorder under its own account | [#313](https://github.com/blitzcrieg1/agentmetry/issues/313) | The recorder runs as the developer, so the developer's agent can read the full API token, read the trail and close its own detections; SECURITY.md says so. Hooks already send with the ingest-only token; the recorder is the remaining gap |
+| HMAC argument hashing on fleet installs | [#314](https://github.com/blitzcrieg1/agentmetry/issues/314) | Arguments are plain SHA-256 unless a hash key is set, so anyone with SIEM read access can confirm a guessable argument by hashing it. On a fleet install, `doctor` should fail without a key |
+| Heartbeat degrades on a stale anchor or a broken chain | [#318](https://github.com/blitzcrieg1/agentmetry/issues/318) | The heartbeat exists; it does not yet say when the trail's own guarantees have lapsed |
+| Run every surface that was built from docs | [#316](https://github.com/blitzcrieg1/agentmetry/issues/316) | Codex deny was run live on 2026-10-22. Copilot deny in VS Code's agent host, the Sentinel sink against a real workspace, and hooks on macOS have not been |
+| Coverage cannot see Codex's approval state | [#300](https://github.com/blitzcrieg1/agentmetry/issues/300) | `doctor` now names an agent that is configured and silent, which catches it after the fact. Reading approval directly is still open |
+| OTLP **export** | [#315](https://github.com/blitzcrieg1/agentmetry/issues/315) | The other direction from `agentmetry otel`, which shipped in 0.9.0 as ingest. Table stakes for teams standardised on a collector |
 | Tool response sizes in the trail | [#45](https://github.com/blitzcrieg1/agentmetry/issues/45) | The trail cannot tell a config lookup from a database dump. Claude Code's OTel stream carries `tool_result_size_bytes`, which the receiver does not map yet |
 | Unwrapped MCP servers have no fingerprint | [#169](https://github.com/blitzcrieg1/agentmetry/issues/169) | Part 1 shipped in 0.9.2: the inventory reaches the SIEM as an opt-in `mcp_inventory` event. A server in a config file but not behind the proxy is still listed and not fingerprinted |
 | Unattended sessions distinguishable from supervised ones | [#170](https://github.com/blitzcrieg1/agentmetry/issues/170) | An auto-mode session reads the same as one a person is watching |
@@ -140,6 +146,10 @@ so they wait in this order. None touches a frozen detection file.
 | Rebuild past sessions from the agents' own logs | [#231](https://github.com/blitzcrieg1/agentmetry/issues/231) | The largest gap on the list: it is what answers "before install, or with hooks off". Labelled as reconstructed, never as live capture |
 | Import Numbat and AgentSight output | [#232](https://github.com/blitzcrieg1/agentmetry/issues/232) | Adapters like the AGT importer. Puts the trail and the SIEM output under them instead of competing for the install |
 | Signed standalone binaries | [#233](https://github.com/blitzcrieg1/agentmetry/issues/233) | After EV signing, and only if the hook's cold start does not get slower |
+| An MCP server's blast radius, not only its presence | [#292](https://github.com/blitzcrieg1/agentmetry/issues/292) | Filed 2026-10-20 with the three below |
+| Local honeytokens | [#293](https://github.com/blitzcrieg1/agentmetry/issues/293) | Decoy credentials whose use is a near-certain finding |
+| Guardrail receipts | [#294](https://github.com/blitzcrieg1/agentmetry/issues/294) | Other guardrails' allow and deny decisions, recorded in the trail |
+| Time and token breakdown by task, agent and tool | [#295](https://github.com/blitzcrieg1/agentmetry/issues/295) | A cost view, not a security one, which is why it is last |
 
 ---
 
@@ -147,8 +157,9 @@ so they wait in this order. None touches a frozen detection file.
 
 - `EventStore` protocol before a second storage backend
   ([#35](https://github.com/blitzcrieg1/agentmetry/issues/35))
-- Windsurf and VS Code Copilot hook installers
-  ([#7](https://github.com/blitzcrieg1/agentmetry/issues/7))
+- A Windsurf hook installer
+  ([#7](https://github.com/blitzcrieg1/agentmetry/issues/7)). Copilot's
+  shipped in 0.9.6
 - MCP audit proxy over SSE and streamable HTTP, not only stdio
 - STIX/TAXII export of detections
 - DLP beyond regex. Real, and it waits for revenue
