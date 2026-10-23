@@ -682,7 +682,15 @@ def post_ingest(payload: dict[str, Any], *, quiet: bool = False, spool: bool = T
 def _get_tail(source_app: str, *, limit: int = 50) -> dict[str, Any]:
     url = f"{_base_url()}/api/v1/audit/tail?sources={source_app}&limit={limit}&scope=all"
     headers = {}
-    api_key = _api_key()
+    # Reading the trail needs the full key. The ingest-only token, which
+    # `_api_key` prefers, is refused here by design, so the selftest reads with
+    # the full token whenever this account can open it.
+    api_key = (
+        os.environ.get("AGENTMETRY_API_KEY", "").strip()
+        or _read_repo_env("AGENTMETRY_API_KEY").strip()
+        or read_token()
+        or _api_key()
+    )
     if api_key:
         headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers, method="GET")  # noqa: S310

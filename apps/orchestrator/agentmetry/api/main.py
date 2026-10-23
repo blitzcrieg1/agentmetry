@@ -79,6 +79,22 @@ def _start_forwarders() -> list[asyncio.Task]:
     return tasks
 
 
+def antigravity_watcher_wanted() -> bool:
+    """Whether this recorder should tail the developer's Antigravity transcripts.
+
+    It used to start whenever the script existed, so every recorder did it,
+    including the dashboard demo, whose trail is supposed to hold seeded events
+    only. The watcher reads `~/.gemini/antigravity/brain`, the real one, so a
+    demo shown to someone could carry the presenter's actual agent activity, and
+    a second recorder doubled every Antigravity call. It now runs only where the
+    recorder accepts ingest, and `AGENTMETRY_ANTIGRAVITY_WATCHER=0` turns it off.
+    """
+    if not settings.audit_ingest_enabled:
+        return False
+    flag = os.environ.get("AGENTMETRY_ANTIGRAVITY_WATCHER", "").strip().lower()
+    return flag not in ("0", "false", "no", "off")
+
+
 def start_transcript_watcher(watcher_path: Path) -> subprocess.Popen:
     """Start the Antigravity transcript watcher, tied to this process's life.
 
@@ -110,6 +126,20 @@ def stop_transcript_watcher(process: subprocess.Popen) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from agentmetry.core.audit.migrate import backfill_db_from_jsonl
+
+    # The ingest-only token, which hooks prefer and the ingest route accepts.
+    # Without it a hook running as another account (Codex's Windows sandbox)
+    # could not authenticate and every event it sent was lost (#302). Owner-
+    # only like the full token; `hooks install` widens it to Codex's sandbox
+    # accounts where they exist. A failure here costs that, never the boot.
+    from agentmetry.core import api_token
+    from agentmetry.core.auth import auth_is_disabled
+
+    if not auth_is_disabled():
+        try:
+            api_token.ensure_ingest_token()
+        except OSError:
+            logger.exception("Could not write the ingest-only token; hooks fall back to the full token")
 
     # Backfill SQLite from the existing JSONL trail. A broken or locked audit DB
     # must degrade the dashboard, never stop the daemon from booting: the
@@ -211,7 +241,7 @@ async def lifespan(app: FastAPI):
     watcher_process = None
     try:
         watcher_path = Path(__file__).resolve().parents[4] / "scripts" / "antigravity_transcript_watcher.py"
-        if watcher_path.exists():
+        if watcher_path.exists() and antigravity_watcher_wanted():
             watcher_process = start_transcript_watcher(watcher_path)
             logger.info("Started Antigravity transcript watcher (PID: %s)", watcher_process.pid)
     except Exception as exc:
@@ -306,7 +336,24 @@ def mount_dashboard(target: FastAPI, directory: Path = _DASHBOARD_DIR) -> bool:
 
     from fastapi.staticfiles import StaticFiles
 
-    target.mount("/", StaticFiles(directory=str(directory), html=True), name="dashboard")
+    class DashboardFiles(StaticFiles):
+        """The export, with its HTML pages marked `no-cache`.
+
+        Served with no cache header at all, a browser may reuse a stale page on
+        an ordinary reload, and the page names the old scripts, so an upgraded
+        recorder kept showing the previous dashboard until a hard reload.
+        `no-cache` still lets the browser keep a copy; it only has to ask
+        whether the page changed. The scripts are not touched: their names
+        change with every build.
+        """
+
+        async def get_response(self, path: str, scope):  # type: ignore[override]
+            response = await super().get_response(path, scope)
+            if response.headers.get("content-type", "").startswith("text/html"):
+                response.headers["Cache-Control"] = "no-cache"
+            return response
+
+    target.mount("/", DashboardFiles(directory=str(directory), html=True), name="dashboard")
     logger.info("Serving dashboard from %s", directory)
     return True
 

@@ -57,6 +57,28 @@ Out of scope:
   warns while it is set, and fails if the API is also bound beyond loopback.
   A process running as the same OS user can read the token, which is the
   same-user limit above.
+- **The ingest-only token can add events, and anyone holding it can add false
+  ones.** From 0.10.0 the recorder also writes `<data dir>/ingest-token`. It is
+  accepted on `POST /api/v1/audit/ingest` and nowhere else: it cannot read the
+  trail, export evidence or close a detection, and tests hold each of those
+  routes refusing it. Hooks prefer it. Whoever can read it, which includes
+  Codex's Windows sandbox accounts once `hooks install` grants them read, can
+  post events that the recorder stamps with this host's identity. The hash
+  chain then records them faithfully: it proves the trail was not edited after
+  the fact, not that an event describes something that happened. A sandboxed,
+  prompt-injected agent can therefore add fabricated events to its own record,
+  but cannot read, delete or triage the record.
+- **Codex's sandbox cannot use the spool.** Codex's Windows sandbox accounts
+  cannot write the data directory, so a Codex event sent while the recorder is
+  down is lost rather than queued for replay. Other agents' hooks, which run as
+  the developer, spool as before. A spool location the sandbox can write is
+  tracked in [#302](https://github.com/blitzcrieg1/agentmetry/issues/302).
+- **Configured is not the same as recorded.** Hook coverage checks that each
+  agent's hook entry exists. An agent can still skip it (Codex runs no hook
+  the developer has not approved in its `/hooks` prompt), and that cannot be
+  read from disk. `doctor` and the heartbeat therefore also name every
+  configured agent with no event in the last seven days (`hooks_silent`). That
+  is evidence, not proof: an agent nobody used is silent too.
 - **A managed policy is only as strong as its file permissions.** A fleet lock
   (see [docs/managed-policy.md](docs/managed-policy.md)) is honoured only from
   a file the developer cannot change: owned by SYSTEM, Administrators or
@@ -65,6 +87,15 @@ Out of scope:
   `doctor` and the heartbeat report it. A developer who is a local
   administrator can change anything, a lock included, and a developer who
   removes the hook from their IDE is reported by hook coverage, not stopped.
+- **Ingest is rate limited, not walled.** `POST /api/v1/audit/ingest` takes a
+  burst of 500 events and then 20 a second per source app, and 300 and then 10
+  a second per session ([#312](https://github.com/blitzcrieg1/agentmetry/issues/312)).
+  Past either cap it answers 429; the hook spools the event and the recorder
+  replays it within a minute with its original timestamp, and the refusals are
+  counted in `/api/v1/audit/status` as `ingest_throttled`. That caps how fast
+  one agent can write through the API and makes a flood visible. It does not
+  stop an agent running as the developer from writing the hook spool directly;
+  the spool's 32 MB cap bounds that path, per drain, instead.
 - **Redaction is best-effort.** Secrets are scrubbed by pattern matching. Novel
   credential formats can slip through into the trail. Do not treat the JSONL as
   safe to publish.

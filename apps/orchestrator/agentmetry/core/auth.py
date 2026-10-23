@@ -100,6 +100,26 @@ async def require_api_key(
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
+async def require_ingest_key(
+    request: Request,
+    api_key: str | None = Security(_api_key_header),
+) -> None:
+    """`require_api_key`, plus the ingest-only token. For the ingest route alone.
+
+    A hook that runs as another account cannot be given the full key without
+    also being given the trail and the triage queue. The ingest-only token
+    (`api_token.ensure_ingest_token`) can post events and nothing else, because
+    this is the only dependency that accepts it: every other route keeps
+    `require_api_key`, which never reads that file.
+    """
+    if getattr(request.state, "principal", None) is None and effective_key():
+        ingest = api_token.read_token(api_token.ingest_token_path())
+        if _token_matches(_presented_token(request, api_key), ingest):
+            request.state.auth = ("ingest", "")
+            return
+    await require_api_key(request, api_key)
+
+
 def verify_ws_token(query_token: str | None, request: Request) -> bool:
     """Authenticate a WebSocket: token in the query or headers, or a dashboard session."""
     if getattr(request.state, "principal", None) is not None:

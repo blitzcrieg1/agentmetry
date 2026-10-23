@@ -135,6 +135,9 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
     facts = hb.build_heartbeat_event("t")["heartbeat"]
     assert set(facts) == {
         "hooks", "hook_coverage", "hooks_uncovered", "hooks_unverified",
+        # Agent names whose hooks are configured but sent nothing lately (#300).
+        # Which agents, never when or what: no timestamp, no count, no path.
+        "hooks_silent",
         "hook_profile", "spool_depth", "trail_head_seq", "trail_merkle_root",
         "trail_tree_size", "mcp_config_digest", "mcp_schema_digest",
         "mcp_schema_servers", "interval_seconds",
@@ -145,6 +148,7 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
     # `C:/Users/jane/.cursor` would be disclosing who is running what and where.
     assert all(isinstance(v, str) and "/" not in v and "\\" not in v
                for v in facts["hook_coverage"].values())
+    assert all(name in facts["hook_coverage"] for name in facts["hooks_silent"])
     assert isinstance(facts["mcp_config_digest"], str)
     assert isinstance(facts["mcp_schema_digest"], str)
     assert facts["mcp_schema_servers"] == 0

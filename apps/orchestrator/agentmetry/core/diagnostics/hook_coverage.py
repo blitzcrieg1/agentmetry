@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from agentmetry.core.paths import named_user_profile, user_profile_dir
@@ -270,6 +271,46 @@ def unverified(states: dict[str, str] | None = None) -> list[str]:
     """
     states = states if states is not None else coverage()
     return sorted(n for n, s in states.items() if s == UNKNOWN)
+
+
+#: How long a configured agent may go without an event before coverage stops
+#: taking the configuration's word for it.
+OBSERVED_WINDOW_DAYS = 7
+
+
+def silent(
+    states: dict[str, str],
+    last_seen: dict[str, str],
+    now: datetime,
+    days: int = OBSERVED_WINDOW_DAYS,
+) -> list[str]:
+    """Agents whose hooks are configured but whose events have not arrived.
+
+    `covered` is a file check: the hook entry exists. It does not say the agent
+    ran the hook. Codex skips a configured hook until the developer approves
+    it, and its Windows sandbox once could not authenticate (#300, #302); both
+    looked covered for a week while nothing was recorded. An agent nobody used
+    is silent too, which is why this is its own list and not a failure: the
+    honest claim is "configured, not observed", never "recorded".
+
+    `last_seen` maps a source app to its newest event timestamp; a surface is
+    matched to the source app of the same name.
+    """
+    cutoff = now - timedelta(days=days)
+    out = []
+    for name, state in states.items():
+        if state != COVERED:
+            continue
+        raw = last_seen.get(name)
+        try:
+            seen = datetime.fromisoformat(raw.replace("Z", "+00:00")) if raw else None
+        except ValueError:
+            seen = None
+        if seen is not None and seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        if seen is None or seen < cutoff:
+            out.append(name)
+    return sorted(out)
 
 
 def summary_lines(states: dict[str, str] | None = None) -> list[str]:

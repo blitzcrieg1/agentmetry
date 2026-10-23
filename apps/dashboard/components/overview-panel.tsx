@@ -1,9 +1,10 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { Activity, ArrowUpRight, Box, ChevronDown, ChevronUp, CircleAlert, FileCheck2, Laptop, Radio, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { type AuditEvent, type Detection, detectionsFromEvents } from "@/components/flight-recorder-panel";
-import { EmptyState, SEVERITY_DOT, SeverityBadge, Technique } from "@/components/ui/kit";
+import { DetectionTopology } from "@/components/detection-topology";
+import { SEVERITY_DOT, SeverityBadge, Technique } from "@/components/ui/kit";
 import { AgentTile } from "@/components/ui/agent-mark";
 import { tiltHandlers } from "@/lib/use-tilt";
 import { apiHeaders } from "@/lib/api";
@@ -11,14 +12,19 @@ import { sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { type Disposition, dispositionKey, fetchDispositions, isTriaged } from "@/lib/disposition";
 import { type DogfoodReport, fetchDogfood } from "@/lib/dogfood";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
-import type { MachineSnapshot } from "@/lib/machine";
+import { AGENT_STATE_LABEL, agentsByAttention, type MachineSnapshot } from "@/lib/machine";
 import {
+  type AttentionItem,
+  attentionItems,
   type AttentionTarget,
+  changeSentence,
+  eventsFor,
+  type RuleGroup,
+  sourceBars,
   type StatsSnapshot,
   type StatusSnapshot,
-  attentionItems,
-  sourceBars,
   techniqueCounts,
+  topRules,
 } from "@/lib/overview";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 
@@ -35,14 +41,26 @@ async function getJson<T>(path: string): Promise<T> {
  * can be trusted. Each source loads on its own, so one failing call degrades
  * one tile instead of blanking the page.
  */
-export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTarget, opts?: { untriaged?: boolean }) => void }) {
+type NavigateOpts = { untriaged?: boolean; rule?: string; detection?: { correlationId: string; ruleId: string } };
+
+export function OverviewPanel({
+  onNavigate,
+  demo = false,
+}: {
+  onNavigate: (target: AttentionTarget, opts?: NavigateOpts) => void;
+  /** From the server's `demo` flag. The events are synthetic; the machine snapshot is not. */
+  demo?: boolean;
+}) {
   const [detections, setDetections] = useState<Detection[] | null>(null);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
   const [stats, setStats] = useState<StatsSnapshot | null>(null);
+  // The 14-day window, so the previous 7 days are a subtraction, not a guess.
+  const [stats14, setStats14] = useState<StatsSnapshot | null>(null);
   const [machine, setMachine] = useState<MachineSnapshot | null>(null);
   const [dogfood, setDogfood] = useState<DogfoodReport | null>(null);
   const [status, setStatus] = useState<StatusSnapshot | null>(null);
   const [failed, setFailed] = useState<string[]>([]);
+  const [showInvestigationMap, setShowInvestigationMap] = useState(false);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({
@@ -58,6 +76,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
       }],
       ["triage", async () => setDispositions(await fetchDispositions())],
       ["stats", async () => setStats(await getJson<StatsSnapshot>("/api/v1/audit/stats?days=7"))],
+      ["trend", async () => setStats14(await getJson<StatsSnapshot>("/api/v1/audit/stats?days=14"))],
       ["machine", async () => setMachine(await getJson<MachineSnapshot>("/api/v1/audit/machine"))],
       ["gate", async () => setDogfood(await fetchDogfood())],
       ["status", async () => setStatus(await getJson<StatusSnapshot>("/api/v1/audit/status"))],
@@ -80,6 +99,8 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
     () => attentionItems({ untriaged, stats, machine, dogfood, status }),
     [untriaged, stats, machine, dogfood, status],
   );
+  const health = useMemo(() => items.filter((i) => i.kind === "health"), [items]);
+  const risks = useMemo(() => items.filter((i) => i.kind === "risk"), [items]);
   const bars = useMemo(() => sourceBars(stats?.by_source), [stats]);
   const techniques = useMemo(() => techniqueCounts(detections ?? []), [detections]);
   const bySeverity = useMemo(() => {
@@ -89,10 +110,20 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
     for (const d of untriaged) open[d.severity] = (open[d.severity] ?? 0) + 1;
     return { all, open };
   }, [detections, untriaged]);
+  const isDetectionOpen = useCallback(
+    (detection: Detection) => !isTriaged(dispositions[dispositionKey(detection.correlation_id, detection.rule_id)]),
+    [dispositions],
+  );
+
+  const allRules = useMemo(() => topRules(detections ?? [], isDetectionOpen, Infinity), [detections, isDetectionOpen]);
+  const rules = useMemo(() => allRules.slice(0, 5), [allRules]);
+  const eventsChange = changeSentence(stats?.total_events, stats14?.total_events);
+  const detectionsChange = changeSentence(stats?.detections, stats14?.detections);
 
   const installed = machine?.agents.filter((a) => a.state === "covered" || a.state === "uncovered") ?? [];
   const covered = installed.filter((a) => a.state === "covered").length;
-  const absent = machine?.agents.filter((a) => a.state === "absent").length ?? 0;
+  const missingHooks = machine?.agents.filter((a) => a.state === "uncovered").length ?? 0;
+  const unverifiedHooks = machine?.agents.filter((a) => a.state === "unknown").length ?? 0;
   const maxSeverity = Math.max(1, ...SEVERITIES.map((s) => bySeverity.all[s]));
   const critOpen = bySeverity.open.critical;
   const highOpen = bySeverity.open.high;
@@ -101,6 +132,41 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3.5 shadow-[inset_0_1px_0_var(--edge),var(--elev-1)]" aria-label="Dashboard scope">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+            <Laptop className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 className="text-[13px] font-semibold">{demo ? "Demonstration overview" : "Local host overview"}</h2>
+              <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[12px] uppercase tracking-[0.06em] text-subtle">
+                {demo ? "Sample data" : "Single machine"}
+              </span>
+            </div>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+              {demo
+                ? "Events, detections and the trail are synthetic, from a demo trail. Hook configuration is read from the machine running the demo."
+                : "Local install · This view reflects one machine. Hook configuration and observed events are reported separately."}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="whitespace-nowrap font-mono text-[12px] uppercase tracking-[0.08em] text-subtle">Activity window · 7 days</span>
+          <button
+            type="button"
+            className="btn"
+            aria-expanded={showInvestigationMap}
+            aria-controls="overview-investigation-map"
+            onClick={() => setShowInvestigationMap((visible) => !visible)}
+          >
+            <Box className="h-3.5 w-3.5" />
+            {showInvestigationMap ? "Hide 3D map" : "Show 3D map"}
+            {showInvestigationMap ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      </section>
+
       {failed.length ? (
         <div className="flex items-center justify-between gap-3 rounded-sm border border-caution/40 bg-caution/[0.06] px-3 py-2 text-[12px] text-caution">
           <span>Could not load: {failed.join(", ")}. The rest of the page is current.</span>
@@ -109,6 +175,27 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
             Retry
           </button>
         </div>
+      ) : null}
+
+      {health.length ? (
+        <section className="space-y-2" aria-label="Recorder health">
+          {health.map((item) => (
+            <div
+              key={item.id}
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
+                item.severity === "critical" ? "border-danger/40 bg-danger/[0.06]" : "border-caution/40 bg-caution/[0.06]"
+              }`}
+            >
+              <div className="min-w-0">
+                <p className={`text-[13px] font-semibold ${item.severity === "critical" ? "text-danger" : "text-caution"}`}>{item.title}</p>
+                <p className="mt-0.5 max-w-[80ch] text-[12px] leading-relaxed text-muted-foreground">{item.body}</p>
+              </div>
+              <button type="button" className="btn h-8 text-[12px]" onClick={() => onNavigate(item.target)}>
+                {item.cta} <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </section>
       ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Summary">
@@ -126,15 +213,19 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
           onClick={() => onNavigate("detections", { untriaged: true })}
         />
         <Tile
-          label="Agents recorded"
+          label="Hooks configured"
           value={machine ? `${covered}` : "…"}
           unit={machine ? `of ${installed.length}` : undefined}
           sub={
             machine
-              ? `${covered === installed.length ? "Every installed agent is hooked." : `${installed.length - covered} installed agent${installed.length - covered === 1 ? " is" : "s are"} not hooked.`} ${absent} supported agent${absent === 1 ? " is" : "s are"} not installed.`
+              ? installed.length === 0
+                ? "No supported agent is installed here."
+                : missingHooks || unverifiedHooks
+                  ? `${missingHooks} missing · ${unverifiedHooks} unverified. Event receipt is separate.`
+                  : "All installed agents have hooks configured. Event receipt is separate."
               : "Loading"
           }
-          tone={machine && covered < installed.length ? "alert" : "default"}
+          tone={missingHooks > 0 ? "alert" : "default"}
           onClick={() => onNavigate("machine")}
           extra={
             installed.length ? (
@@ -149,11 +240,15 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
         <Tile
           label="Activity, 7 days"
           value={stats?.total_events != null ? stats.total_events.toLocaleString() : "…"}
-          sub={stats?.sessions != null ? `events in ${stats.sessions.toLocaleString()} session${stats.sessions === 1 ? "" : "s"}` : "Loading"}
+          sub={
+            stats?.sessions != null
+              ? `events in ${stats.sessions.toLocaleString()} session${stats.sessions === 1 ? "" : "s"}${eventsChange ? `, ${eventsChange}` : ""}`
+              : "Loading"
+          }
           onClick={() => onNavigate("recorder")}
         />
         <Tile
-          label="Enforcement"
+          label="Policy mode"
           value={mode ? (mode === "block" ? "Block" : mode === "disable" ? "Off" : "Log") : "…"}
           unit={mode ? "mode" : undefined}
           sub={
@@ -164,7 +259,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
           onClick={() => onNavigate("machine")}
         />
         <Tile
-          label="Trail"
+          label="Local trail"
           value={dogfood ? (dogfood.chain_ok ? "Verified" : "Broken") : "…"}
           sub={dogfood ? `${dogfood.chain_message}${spooled ? `. ${spooled} waiting in the spool` : ""}` : "Loading"}
           tone={dogfood && (!dogfood.chain_ok || spooled > 0) ? "alert" : "default"}
@@ -172,43 +267,92 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
         />
       </section>
 
-      <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <section className="panel min-w-0 p-4" aria-label="Needs attention">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-[17px] font-semibold">Needs attention</h2>
-            <span className="text-[12px] text-muted-foreground">Worst first. Each one opens where it gets fixed.</span>
-          </div>
-          {items.length === 0 ? (
-            <EmptyState icon={<ShieldCheck className="h-6 w-6" />}>
-              {detections && machine && dogfood ? "Nothing needs a person right now." : "Loading…"}
-            </EmptyState>
-          ) : (
-            <ul>
-              {items.map((item) => (
-                <li key={item.id} className="flex flex-wrap items-center gap-3 border-t border-border py-3.5 first:border-t-0">
-                  <div className="min-w-0 flex-[1_1_20rem] space-y-1">
-                    <SeverityBadge severity={item.severity} />
-                    <p className="text-[15px] font-semibold leading-snug">{item.title}</p>
-                    <p className="text-[14px] leading-relaxed text-muted-foreground">{item.body}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn shrink-0"
-                    onClick={() => onNavigate(item.target, { untriaged: item.target === "detections" })}
-                  >
-                    {item.cta}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+      {showInvestigationMap ? (
+        <div id="overview-investigation-map">
+          <DetectionTopology
+            detections={detections ?? []}
+            isOpen={isDetectionOpen}
+            onInvestigate={(detection) => onNavigate("detections", {
+              untriaged: isDetectionOpen(detection),
+              detection: { correlationId: detection.correlation_id, ruleId: detection.rule_id },
+            })}
+          />
+        </div>
+      ) : null}
+
+      <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.95fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <TopAlerts
+            rules={rules}
+            allRules={allRules}
+            loading={!detections}
+            change={detectionsChange}
+            total={stats?.detections}
+            onOpen={(rule) => onNavigate("detections", { untriaged: rule.untriaged > 0, rule: rule.rule_id })}
+            onOpenAll={() => onNavigate("detections")}
+          />
+          <TopRisks items={risks} loading={!machine || !stats} onNavigate={onNavigate} />
+        </div>
 
         <div className="flex min-w-0 flex-col gap-4">
+          <section className="panel overflow-hidden" aria-label="Hook configuration and recent event receipt">
+            <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3.5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-md bg-muted text-muted-foreground"><Radio className="h-4 w-4" /></span>
+                <div>
+                  <h2 className="text-[14px] font-semibold">Capture status</h2>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">Configured hooks and observed events</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => onNavigate("machine")} className="text-[12px] font-medium text-signal hover:underline">
+                Details <ArrowUpRight className="ml-0.5 inline h-3 w-3" />
+              </button>
+            </header>
+            {!machine ? (
+              <p className="px-4 py-4 text-[12px] text-muted-foreground">{failed.includes("machine") ? "Hook configuration is unavailable." : "Reading hook configuration…"}</p>
+            ) : (
+              <ul className="divide-y divide-border px-4">
+                {agentsByAttention(machine.agents).filter((agent) => agent.state !== "absent").slice(0, 6).map((agent) => {
+                  // The 7-day stats, not /status: its per-source counts are the last 500
+                  // events, so one busy agent made every other one read as silent.
+                  const observed = eventsFor(stats?.by_source, agent.name);
+                  const stateTone = agent.state === "covered"
+                    ? "border-border bg-muted/60 text-foreground"
+                    : agent.state === "uncovered"
+                      ? "border-danger/20 bg-danger/5 text-danger"
+                      : "border-caution/20 bg-caution/5 text-caution";
+                  return (
+                    <li key={agent.name} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <AgentTile app={agent.name} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-medium">{sourceLabel(agent.name)}</p>
+                          <p className="mt-0.5 text-[12px] text-muted-foreground">
+                            {stats ? observed ? `${observed.toLocaleString()} events in 7 days` : "No events in 7 days" : failed.includes("stats") ? "Event counts unavailable" : "Checking event receipt…"}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`whitespace-nowrap rounded-full border px-2 py-1 text-[12px] font-medium ${stateTone}`}>
+                        {AGENT_STATE_LABEL[agent.state]}
+                      </span>
+                    </li>
+                  );
+                })}
+                {machine.agents.every((agent) => agent.state === "absent") ? (
+                  <li className="py-4 text-[12px] text-muted-foreground">No supported agent is installed on this machine.</li>
+                ) : null}
+              </ul>
+            )}
+            <div className="flex items-start gap-2 border-t border-border bg-muted/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
+              <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
+              A configured hook does not prove capture. Events in the last 7 days are shown beside it.
+            </div>
+          </section>
+
           <section className="panel p-4" aria-label="Events by agent">
             <div className="mb-3 flex items-baseline justify-between gap-2">
-              <h2 className="text-[14px] font-semibold">Events by agent</h2>
-              <span className="text-[12px] text-muted-foreground">last 7 days</span>
+              <h2 className="text-[14px] font-semibold">Activity by agent</h2>
+              <span className="text-[12px] uppercase tracking-[0.06em] text-subtle">last 7 days</span>
             </div>
             {bars.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">{stats ? "No events in the last 7 days." : "Loading…"}</p>
@@ -243,7 +387,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
                   <button
                     type="button"
                     onClick={() => onNavigate("detections")}
-                    className="grid w-full grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-sm text-left hover:bg-muted/50"
+                    className="grid w-full grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-muted/50"
                   >
                     <span className="text-[13px] capitalize">{sev}</span>
                     <span className="h-2 overflow-hidden rounded-full bg-muted">
@@ -274,7 +418,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
                 {techniques.map((t) => (
                   <span key={t.id} className="inline-flex items-center gap-1.5">
                     <Technique id={t.id} />
-                    <span className="font-mono text-[11px] text-subtle">{t.n}</span>
+                    <span className="font-mono text-[12px] text-subtle">{t.n}</span>
                   </span>
                 ))}
               </div>
@@ -283,6 +427,155 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (target: AttentionTa
         </div>
       </div>
     </div>
+  );
+}
+
+const KIND_HEAD = "flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4";
+
+/** Detections grouped by rule: what fired, how much it touched, how much is undecided. */
+function TopAlerts({
+  rules,
+  allRules,
+  loading,
+  change,
+  total,
+  onOpen,
+  onOpenAll,
+}: {
+  rules: RuleGroup[];
+  allRules: RuleGroup[];
+  loading: boolean;
+  change: string | null;
+  total?: number;
+  onOpen: (rule: RuleGroup) => void;
+  onOpenAll: () => void;
+}) {
+  // Say what the top five leave out, so the list never reads as everything.
+  const rest = allRules.slice(rules.length);
+  const restDetections = rest.reduce((n, r) => n + r.detections, 0);
+  const restUntriaged = rest.reduce((n, r) => n + r.untriaged, 0);
+  return (
+    <section className="panel min-w-0 overflow-hidden" aria-label="Top alerts">
+      <header className={KIND_HEAD}>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-danger/10 text-danger">
+            <CircleAlert className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold">Top alerts</h2>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Detections by rule, last 7 days{total != null ? `: ${total.toLocaleString()} in all` : ""}
+              {change ? `, ${change}` : ""}
+            </p>
+          </div>
+        </div>
+      </header>
+      {rules.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[12px] text-muted-foreground">
+          {loading ? "Loading detections…" : "No detections in the last 7 days."}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rules.map((rule) => (
+            <li key={rule.rule_id}>
+              <button
+                type="button"
+                onClick={() => onOpen(rule)}
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 text-left transition-colors hover:bg-muted/50"
+              >
+                <SeverityBadge severity={rule.severity} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold">{rule.title}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
+                    <span className="font-mono text-subtle">{rule.rule_id}</span>
+                    <span>
+                      {rule.detections} {rule.detections === 1 ? "detection" : "detections"} · {rule.sessions}{" "}
+                      {rule.sessions === 1 ? "session" : "sessions"}
+                      {rule.agents.length ? ` · ${rule.agents.map(sourceLabel).join(", ")}` : ""}
+                    </span>
+                  </span>
+                </span>
+                {rule.untriaged ? (
+                  <span className="shrink-0 rounded-sm bg-caution/15 px-2 py-0.5 text-[12px] font-medium text-caution">
+                    {rule.untriaged} untriaged
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[12px] text-subtle">all triaged</span>
+                )}
+                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {rest.length ? (
+            <li>
+              <button type="button" onClick={onOpenAll} className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-[12px] text-muted-foreground transition-colors hover:bg-muted/50">
+                <span>
+                  And {rest.length} more {rest.length === 1 ? "rule" : "rules"}: {restDetections} {restDetections === 1 ? "detection" : "detections"}
+                  {restUntriaged ? `, ${restUntriaged} untriaged` : ""}
+                </span>
+                <span className="inline-flex items-center gap-1 font-medium text-signal">
+                  All detections <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Configuration that could let something happen unseen or unstopped. */
+function TopRisks({
+  items,
+  loading,
+  onNavigate,
+}: {
+  items: AttentionItem[];
+  loading: boolean;
+  onNavigate: (target: AttentionTarget, opts?: NavigateOpts) => void;
+}) {
+  return (
+    <section className="panel min-w-0 overflow-hidden" aria-label="Top risks">
+      <header className={KIND_HEAD}>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-caution/10 text-caution">
+            <SlidersHorizontal className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold">Top risks</h2>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">Configuration that could let an agent act unseen or unstopped</p>
+          </div>
+        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 font-mono text-[12px] ${items.length ? "bg-caution/10 text-caution" : "bg-muted text-muted-foreground"}`}
+        >
+          {items.length} {items.length === 1 ? "risk" : "risks"}
+        </span>
+      </header>
+      {items.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[12px] text-muted-foreground">
+          {loading ? "Reading this machine's configuration…" : "No configuration risks found on this machine."}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {items.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[item.severity]}`} aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold leading-snug">{item.title}</p>
+                  <p className="mt-0.5 max-w-[62ch] text-[12px] leading-relaxed text-muted-foreground">{item.body}</p>
+                </div>
+              </div>
+              <button type="button" className="btn h-8 shrink-0 text-[12px]" onClick={() => onNavigate(item.target)}>
+                {item.cta} <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -303,21 +596,35 @@ function Tile({
   onClick: () => void;
   extra?: ReactNode;
 }) {
+  const icons = {
+    "Needs triage": CircleAlert,
+    "Hooks configured": Radio,
+    "Activity, 7 days": Activity,
+    "Policy mode": SlidersHorizontal,
+    "Local trail": FileCheck2,
+  } as const;
+  const Icon = icons[label as keyof typeof icons] ?? Activity;
+
   return (
     <button
       type="button"
       onClick={onClick}
       {...tiltHandlers()}
-      className={`panel tilt flex min-w-0 flex-col gap-1.5 px-5 py-4 text-left hover:border-foreground/30 ${
+      className={`panel tilt flex min-w-0 flex-col gap-2.5 rounded-lg px-4 py-4 text-left hover:border-foreground/30 ${
         tone === "alert" ? "border-danger/50 bg-danger/[0.06]" : ""
       }`}
     >
-      <span className="eyebrow">{label}</span>
-      <span className="text-[34px] font-semibold leading-none tracking-tight tabular-nums">
-        {value}
-        {unit ? <span className="ml-1.5 text-[16px] font-medium text-muted-foreground">{unit}</span> : null}
+      <span className="flex items-center justify-between gap-2">
+        <span className="eyebrow">{label}</span>
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-md ${tone === "alert" ? "bg-danger/10 text-danger" : "bg-muted text-subtle"}`}>
+          <Icon className="h-4 w-4" />
+        </span>
       </span>
-      <span className="text-[13px] leading-snug text-muted-foreground">{sub}</span>
+      <span className="text-[28px] font-semibold leading-none tracking-tight tabular-nums">
+        {value}
+        {unit ? <span className="ml-1.5 text-[13px] font-medium text-muted-foreground">{unit}</span> : null}
+      </span>
+      <span className="text-[12px] leading-relaxed text-muted-foreground">{sub}</span>
       {extra}
     </button>
   );

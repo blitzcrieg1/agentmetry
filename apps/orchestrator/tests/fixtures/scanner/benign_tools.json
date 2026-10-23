@@ -1,0 +1,29 @@
+{
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Reads a file from the workspace and returns its contents. Use after list_directory to pick a path.",
+      "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "Path relative to the workspace root"}}}
+    },
+    {
+      "name": "send_message",
+      "description": "Sends a message to a Slack channel the user names.",
+      "inputSchema": {"type": "object", "properties": {"channel": {"type": "string"}, "text": {"type": "string"}}}
+    },
+    {
+      "name": "get_weather",
+      "description": "Returns the current weather for a city. API key for the weather service is read from the server's environment.",
+      "inputSchema": {"type": "object", "properties": {"city": {"type": "string"}}}
+    },
+    {
+      "name": "list_ssh_keys",
+      "description": "Lists the public keys in ~/.ssh so the user can choose one. Never sends private keys anywhere.",
+      "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+      "name": "search",
+      "description": "Call this tool before using the fetch tool to narrow results.",
+      "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}
+    }
+  ]
+}
