@@ -9,6 +9,29 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`agentmetry cloud claude` crashed before its first request.** The command
+  read `args.remote` to choose between local and remote sessions, and the
+  parser never defined `--remote`, so every run with
+  `ANTHROPIC_COMPLIANCE_KEY` set raised `AttributeError`. The flag now exists:
+  local sessions by default, `--remote` for the API's remote ones. The tests
+  covered the mappers and never ran the command; two new tests drive it end to
+  end with the vendor API and the ingest stubbed, and both fail on the old
+  parser.
+- **`cloud claude` does not see Claude Code cloud sessions, and the 0.9.7 entry
+  implied it did.** Anthropic's Compliance API covers Claude Code in the CLI and
+  desktop app, and Cowork, and its announcement of 2026-08-11 says the beta
+  "doesn't include Claude Code on the web". So `cloud claude` records sessions
+  that ran on a developer's machine (which the hooks already see live) and
+  Cowork, not agents running on Anthropic's infrastructure. The 0.9.7 entry is
+  corrected in place.
+- **The 0.9.7 entry for Cloud Bridge claimed Cursor's live tool-call stream.**
+  `map_cursor_stream_tool_call` shipped, but no code fetches the stream, so
+  `agentmetry cloud cursor` records agent lifecycle and runs (status, duration,
+  pushed branches, PR) and no tool calls. The 0.9.7 entry is corrected in
+  place. Neither path has yet been run against a live vendor key.
+
 ## [0.10.0] - 2026-10-23
 
 `agentmetry scan` checks what an agent is about to depend on before it runs,
@@ -487,11 +510,15 @@ hash-chain record format and the event schema version (1.2.0; `cursor_cloud`,
   command polls the vendor API once and records what it exposes through the
   same external ingest as the hook client. Cursor Cloud Agents
   (`api.cursor.com`, key in `CURSOR_API_KEY`): agent lifecycle, runs with the
-  branch they pushed and the PR they opened, and the tool calls on a run's live
-  stream (name, status, arguments, result). Claude Compliance API
+  branch they pushed and the PR they opened. (This entry originally also
+  claimed the tool calls on a run's live stream. Only the mapper for that
+  stream shipped; nothing fetches it. See the Fixed notes of the release after
+  0.9.9.) Claude Compliance API
   (`api.anthropic.com`, key in `ANTHROPIC_COMPLIANCE_KEY`, a Compliance Access
   Key with `read:compliance_user_data`, not an admin key): session lists and
-  transcripts, keeping only `tool_use` blocks. `tool_use.input` arrives as a
+  transcripts, keeping only `tool_use` blocks. (Corrected after 0.9.9: those are
+  Claude Code CLI and desktop sessions and Cowork. The API excludes Claude Code
+  on the web, so this half is not cloud-agent capture.) `tool_use.input` arrives as a
   JSON-encoded string and is decoded before classification; text, thinking and
   system content never reach a payload. Tool arguments become the same redacted
   canonical SHA-256 the hook client produces, and a test holds the two digests

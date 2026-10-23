@@ -161,3 +161,60 @@ def test_hash_arguments_matches_the_hook_client():
 
     args = {"command": "git push origin main", "path": "src/x.py"}
     assert hash_arguments(args) == hook_hash(args)
+
+
+# --- The command itself ---------------------------------------------------------
+
+
+def _drive_cloud_claude(monkeypatch, argv):
+    """Run `agentmetry cloud claude` with the vendor and the ingest stubbed out.
+
+    The mapper tests above never reached the command, which is how it shipped
+    reading an `args.remote` the parser did not define: every run with a key
+    set raised AttributeError before the first request.
+    """
+    import httpx
+
+    import agentmetry.core.audit.cloud_bridge as bridge
+    from agentmetry.cli import main
+
+    kinds: list[str] = []
+
+    def fake_sessions(api_key, kind="local", base=bridge.CLAUDE_DEFAULT_BASE, limit=20):
+        kinds.append(kind)
+        return [{"id": "sess-1", "created_at": "2026-10-20T09:00:00Z"}]
+
+    def fake_messages(api_key, kind, session_id, base=bridge.CLAUDE_DEFAULT_BASE, limit=500):
+        return {"data": [{"content": [{"type": "tool_use", "name": "Bash", "input": '{"command": "ls"}'}]}]}
+
+    posted: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+        text = ""
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        posted.append(json)
+        return _Resp()
+
+    monkeypatch.setenv("ANTHROPIC_COMPLIANCE_KEY", "test-compliance-key")
+    monkeypatch.setattr(bridge, "fetch_claude_sessions", fake_sessions)
+    monkeypatch.setattr(bridge, "fetch_claude_messages", fake_messages)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    return main(argv), kinds, posted
+
+
+def test_cloud_claude_runs_and_reads_local_sessions_by_default(monkeypatch):
+    code, kinds, posted = _drive_cloud_claude(monkeypatch, ["cloud", "claude"])
+    assert code == 0
+    assert kinds == ["local"]
+    # The outbound poll, the session, and its one tool call.
+    assert [p["event_type"] for p in posted] == ["tool_called", "session_start", "tool_called"]
+    assert "test-compliance-key" not in json.dumps(posted)
+
+
+def test_cloud_claude_remote_flag_reads_remote_sessions(monkeypatch):
+    code, kinds, posted = _drive_cloud_claude(monkeypatch, ["cloud", "claude", "--remote"])
+    assert code == 0
+    assert kinds == ["remote"]
+    assert posted[0]["tool"]["command"].endswith("/v1/compliance/apps/sessions/remote")
