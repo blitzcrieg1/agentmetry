@@ -168,6 +168,7 @@ class _SchemaFields(NamedTuple):
     list_changed: bool | None
     tool_digests: dict[str, str]
     concealed: dict[str, int]
+    injection: dict[str, int]
 
 
 def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
@@ -189,6 +190,12 @@ def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
         if isinstance(raw_concealed, dict)
         else {}
     )
+    raw_injection = payload.get("schema_injection")
+    injection = (
+        {str(k): int(v) for k, v in raw_injection.items() if isinstance(v, int)}
+        if isinstance(raw_injection, dict)
+        else {}
+    )
     raw_digests = payload.get("schema_tool_digests")
     tool_digests = (
         {str(k): str(v) for k, v in raw_digests.items() if isinstance(v, str)}
@@ -197,7 +204,7 @@ def _schema_payload_fields(payload: dict[str, Any]) -> _SchemaFields:
     )
     return _SchemaFields(
         server, fingerprint, tool_count, source, server_version, list_changed,
-        tool_digests, concealed,
+        tool_digests, concealed, injection,
     )
 
 
@@ -261,6 +268,11 @@ def build_schema_canonical(
         # clears a ZWJ. Reporting it beside real concealment would make an
         # operator who reads one finding distrust the next.
         **({"formatting": _formatting} if _formatting else {}),
+        # A description that instructs the model instead of describing a tool
+        # (#188): override, conceal, reach for a secret file, exfiltrate,
+        # shadow another tool. Counts per category, never the text, and like
+        # concealment it needs no baseline, so it rides on every status.
+        **({"injection": dict(fields.injection)} if fields.injection else {}),
         # Only a schema that MOVED is the technique. `new` is the first
         # sight of a server and `same` is a quiet reconnect; tagging either
         # as a rug pull would put a Defense Evasion label on installing a

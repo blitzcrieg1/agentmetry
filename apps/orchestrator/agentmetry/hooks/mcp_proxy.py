@@ -44,6 +44,7 @@ from agentmetry.core.diagnostics.mcp_schema import (
     fingerprint_tools,
     parse_initialize_result,
 )
+from agentmetry.core.scanner.injection import scan_tools_injection
 
 # Per-process session id — ties every tool call in this MCP connection together.
 _SESSION_ID = uuid.uuid4().hex
@@ -89,6 +90,11 @@ def build_schema_payload(
     concealed = scan_concealed_text(tools)
     if concealed:
         payload["schema_concealed"] = concealed
+    # Model-steering text written in plain sight (#188), the case concealment
+    # is optional for. Counts per category, never the text, never which tool.
+    injection = scan_tools_injection(tools)
+    if injection:
+        payload["schema_injection"] = injection
     if server_version:
         payload["server_version"] = server_version
     if list_changed is not None:
