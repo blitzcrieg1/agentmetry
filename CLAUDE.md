@@ -114,7 +114,7 @@ stale and should be fixed.
 
 1. **The code**, and a command you can run
 2. **`CHANGELOG.md`**, what shipped, per release
-3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-10-08
+3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-10-23
 4. **Open GitHub issues**
 5. Everything else
 
@@ -143,6 +143,21 @@ cd apps/orchestrator
 .venv/Scripts/python.exe -m agentmetry.cli stats --days 7
 .venv/Scripts/python.exe -m agentmetry.cli verify --trail data/agentmetry-trail.jsonl
 ```
+
+**On the dogfood machine, three tests fail locally and pass in CI.** The
+README count is 2 high because of gitignored launch entries, and
+`apps/orchestrator/.env` turns on full-argument capture and an anchor log that
+the test setup does not pin. So "plaintext arguments must not leave the
+receiver" in `test_otel_ingest.py` and a `verify` failure in
+`test_trail_chain.py` are this machine's settings, not a leak: move the `.env`
+aside and they pass. Anything else that fails is real. Verifying the full
+trail takes several minutes; run it in the background.
+
+**A release is the tag plus a GitHub Release.** Pushing `v*` publishes to
+PyPI through `release.yml`, which creates no Release page. 0.9.8 and 0.9.9 went
+out as bare tags and the Releases page showed 0.9.7 as latest for a week. After
+the tag, run `gh release create vX.Y.Z --verify-tag --latest` with that
+version's CHANGELOG section as the notes.
 
 Dashboard is `apps/dashboard` (Next 16, React 19, npm, `output: "export"`).
 The marketing site is a **separate repo** at `../ai-audit-watch` and uses
@@ -178,18 +193,20 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-19 there are 1848 tests collected in CI, zero open
+Not code. As of 2026-10-23 there are 1972 tests collected in CI, zero open
 code scanning alerts, zero open Dependabot alerts, a dogfood gate that passed
 4 of 4 on 2026-10-02 (`dogfood` currently prints 0 of 4 consecutive: weeks 6
-and 7 are red on untriaged critical and high detections, which triage can
-still rescue), `agentmetry demo` runnable with nothing installed
-(`uvx agentmetry demo`), and 0.9.9 on PyPI (released 2026-10-19: managed
-policy, `--user-profile-dir` and `--data-dir` for a recorder run as a service,
-`doctor --json`, and the `hook_remediation` event). Check alerts with
+and 7 are red on untriaged critical and high detections, and week 8 is
+heading the same way, all of which triage can still rescue), `agentmetry demo`
+runnable with nothing installed (`uvx agentmetry demo`), and 0.10.0 on PyPI
+(released 2026-10-23: `agentmetry scan`, the MCP proxy's tool-description
+check, Codex hooks that work on Windows, ingest rate limits, and the
+redesigned dashboard). Check alerts with
 `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
-trusting this line. There are also **zero external users, zero design-partner
-tenants, and zero sent sales messages**: four recipients in the queue are marked
-Ready and none has been contacted.
+trusting this line. There are also **zero external users and zero
+design-partner tenants**. The first two sales messages went out on 2026-10-23
+with follow-ups due around 2026-10-28; four more are drafted and wait on
+finding the person who joined in each closed role.
 
 The fleet installers Cursor drafted in #282 are parked as
 agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
@@ -199,7 +216,9 @@ Do not merge Dependabot's `mcp <3` widening (#184 and its successors). CI passes
 on it because no test imports the file the pin protects; see #174.
 
 When asked "what next", the honest answer is almost always the commercial one,
-and the queue is in `agentmetry-enterprise/sales/outreach-log.md` (private, checked out beside this repo as `../agentmetry-enterprise`). It moved out of this repo
+and the queue is in `agentmetry-enterprise/sales/outreach-log.md` (private, checked out beside this repo as `../agentmetry-enterprise`), with the account
+state in `sales/pipeline.md` and the send-ready text in
+`sales/first-touch-drafts.md`. It moved out of this repo
 on 2026-10-10 because it names real recipients; do not bring names or contact
 details back into a public file. Say so plainly rather than offering a
 comfortable engineering task instead.

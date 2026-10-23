@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
@@ -35,13 +35,22 @@ function shortSession(id: string): string {
   return id.length > 20 ? `${id.slice(0, 12)}…${id.slice(-4)}` : id;
 }
 
-export function DetectionsPanel({ initialTriage = "all" }: { initialTriage?: string }) {
+export function DetectionsPanel({
+  initialTriage = "all",
+  initialRule = "all",
+  initialDetection,
+}: {
+  initialTriage?: string;
+  /** Opened from a rule on the Overview's top alerts. */
+  initialRule?: string;
+  initialDetection?: { correlationId: string; ruleId: string };
+}) {
   const requestPinnedDetection = useAgentStore((s) => s.requestPinnedDetection);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [ruleFilter, setRuleFilter] = useState<string>("all");
+  const [ruleFilter, setRuleFilter] = useState<string>(initialRule);
   const [triageFilter, setTriageFilter] = useState<string>(initialTriage);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
@@ -102,6 +111,19 @@ export function DetectionsPanel({ initialTriage = "all" }: { initialTriage?: str
       return (b.last_seen_utc ?? "").localeCompare(a.last_seen_utc ?? "");
     });
   }, [events]);
+
+  // Open the detection the Overview asked for once. `detections` is rebuilt on
+  // every 15-second refresh, so without the guard "All detections" lasted until
+  // the next poll and the investigation reopened under the analyst.
+  const appliedInitial = useRef(false);
+  useEffect(() => {
+    if (!initialDetection || loading || appliedInitial.current) return;
+    const match = detections.find(
+      (d) => d.correlation_id === initialDetection.correlationId && d.rule_id === initialDetection.ruleId,
+    );
+    appliedInitial.current = true;
+    if (match) setSelectedKey(detectionKey(match));
+  }, [detections, initialDetection, loading]);
 
   const ruleIds = useMemo(
     () => Array.from(new Set(detections.map((d) => d.rule_id))).sort(),

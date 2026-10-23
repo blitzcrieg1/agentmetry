@@ -1,0 +1,120 @@
+"""Widely used package names a typosquat would imitate.
+
+A curated list, not a ranked top-N: each name is one a squatter has a reason to
+copy, either because it is everywhere or because it is the package an MCP
+setup guide tells people to run. It is deliberately short and checked by hand,
+so a name here is a real package. `agentmetry scan --known FILE` adds names
+for an estate's own internal packages.
+
+Kept per ecosystem because the same name means different things in each:
+`request` is a long-standing npm package and, on PyPI, a name one letter away
+from `requests`.
+"""
+
+from __future__ import annotations
+
+NPM: frozenset[str] = frozenset({
+    # MCP servers and SDKs that setup guides name, so the ones worth squatting.
+    "@modelcontextprotocol/sdk",
+    "@modelcontextprotocol/inspector",
+    "@modelcontextprotocol/server-filesystem",
+    "@modelcontextprotocol/server-memory",
+    "@modelcontextprotocol/server-everything",
+    "@modelcontextprotocol/server-sequential-thinking",
+    "@modelcontextprotocol/server-github",
+    "@modelcontextprotocol/server-gitlab",
+    "@modelcontextprotocol/server-puppeteer",
+    "@modelcontextprotocol/server-brave-search",
+    "@modelcontextprotocol/server-slack",
+    "@modelcontextprotocol/server-postgres",
+    "@modelcontextprotocol/server-google-maps",
+    "@modelcontextprotocol/server-gdrive",
+    "@playwright/mcp",
+    "@upstash/context7-mcp",
+    "@notionhq/notion-mcp-server",
+    "@supabase/mcp-server-supabase",
+    "@browserbasehq/mcp-server-browserbase",
+    "mcp-remote",
+    "firecrawl-mcp",
+    "@anthropic-ai/sdk",
+    "openai",
+    # General packages squatted for their reach.
+    "react",
+    "react-dom",
+    "next",
+    "vue",
+    "lodash",
+    "express",
+    "axios",
+    "typescript",
+    "chalk",
+    "commander",
+    "dotenv",
+    "debug",
+    "uuid",
+    "yargs",
+    "request",
+    "moment",
+    "webpack",
+    "eslint",
+    "prettier",
+    "jest",
+    "cross-env",
+    "nodemon",
+    "body-parser",
+    "mongoose",
+    "socket.io",
+    "zod",
+    "ws",
+})
+
+PYPI: frozenset[str] = frozenset({
+    # MCP servers and SDKs that setup guides name.
+    "mcp",
+    "fastmcp",
+    "mcp-server-fetch",
+    "mcp-server-git",
+    "mcp-server-time",
+    "anthropic",
+    "openai",
+    # General packages squatted for their reach.
+    "requests",
+    "urllib3",
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "boto3",
+    "boto",
+    "botocore",
+    "setuptools",
+    "certifi",
+    "idna",
+    "charset-normalizer",
+    "python-dateutil",
+    "six",
+    "pyyaml",
+    "typing-extensions",
+    "packaging",
+    "cryptography",
+    "django",
+    "flask",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-core",
+    "pydantic-settings",
+    "sqlalchemy",
+    "pytest",
+    "jinja2",
+    "click",
+    "httpx",
+    "aiohttp",
+    "pillow",
+    "rich",
+    "tqdm",
+    "beautifulsoup4",
+    "selenium",
+    "colorama",
+    "attrs",
+})

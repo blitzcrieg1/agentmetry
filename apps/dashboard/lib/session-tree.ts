@@ -59,7 +59,7 @@ export interface SessionTreePayload {
   truncated: boolean;
 }
 
-export type Family = "shell" | "files" | "web" | "mcp" | "subagents" | "other";
+export type Family = "shell" | "files" | "web" | "mcp" | "subagents" | "session" | "other";
 
 export interface Branch {
   key: string;
@@ -81,6 +81,7 @@ const FILES = new Set([
   "read_file", "edit_file", "search_replace", "file_search", "codebase_search",
 ]);
 const WEB = new Set(["webfetch", "websearch", "search_web", "read_url_content", "fetch", "web_search"]);
+const TOOL_KINDS = new Set(["call", "ask", "denied"]);
 
 /** The tool name without the agent prefix: `cursor.Shell` → `Shell`. */
 export function shortTool(node: SessionNode): string {
@@ -95,6 +96,9 @@ export function toolFamily(node: SessionNode): { key: string; label: string; fam
   if (node.kind === "subagent_start" || node.kind === "subagent_stop") {
     return { key: "subagents", label: "Subagents", family: "subagents" };
   }
+  // Session start and end, and any other non-tool event, are not tools. The
+  // tree leaves them out; the graph gives them their own lane.
+  if (!TOOL_KINDS.has(node.kind)) return { key: "session", label: "Session events", family: "session" };
   const q = node.tool.qualified || node.tool.name;
   if (q.startsWith("mcp__")) {
     const server = q.split("__")[1] || "server";
@@ -160,7 +164,8 @@ export function buildBranches(nodes: SessionNode[], cited: Set<string>): Branch[
  * What a branch shows: every cited node and every flagged one, `context`
  * neighbours either side of a cited node, and the rest folded into runs a
  * click opens. A branch nothing in it is cited by shows its flagged nodes
- * only, unless it is small enough to show whole.
+ * only, unless it is small enough to show whole. The selected node is never
+ * folded: picked in the table or graph, it must still be there in the tree.
  */
 export function foldBranch(
   branch: Branch,
@@ -168,6 +173,7 @@ export function foldBranch(
   expanded: ReadonlySet<string>,
   context = 2,
   smallBranch = 3,
+  selectedId: string | null = null,
 ): Row[] {
   const { nodes } = branch;
   if (expanded.has(`${branch.key}:*`) || nodes.length <= smallBranch) {
@@ -175,7 +181,7 @@ export function foldBranch(
   }
   const keep = new Array<boolean>(nodes.length).fill(false);
   nodes.forEach((node, i) => {
-    if (isFlagged(node)) keep[i] = true;
+    if (isFlagged(node) || node.id === selectedId) keep[i] = true;
     if (isCited(node, cited)) {
       for (let j = Math.max(0, i - context); j <= Math.min(nodes.length - 1, i + context); j++) keep[j] = true;
     }

@@ -64,10 +64,12 @@ export type MachineSnapshot = {
 };
 
 export const AGENT_STATE_LABEL: Record<AgentState, string> = {
-  covered: "Recorded",
-  uncovered: "Not recorded",
+  // `covered` means the hook is present in the agent's config. It does not
+  // prove the agent has actually emitted an event in this session.
+  covered: "Hook configured",
+  uncovered: "Hook missing",
   absent: "Not installed",
-  unknown: "Unknown",
+  unknown: "Unverified",
 };
 
 const STATE_RANK: Record<AgentState, number> = {

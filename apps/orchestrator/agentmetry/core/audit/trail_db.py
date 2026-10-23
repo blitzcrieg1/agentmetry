@@ -463,6 +463,19 @@ class AuditTrailDB:
             "by_source": by_source,
         }
 
+    def last_event_by_source(self) -> dict[str, str]:
+        """The newest event timestamp per source app, over the whole index.
+
+        Coverage reads this to tell an agent whose hooks are configured from one
+        whose events actually arrive (#300). A file check cannot see the
+        difference, and once could not for a week.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT source_app, MAX(timestamp_utc) AS last_ts FROM audit_events GROUP BY source_app"
+        ).fetchall()
+        return {row["source_app"]: row["last_ts"] for row in rows if row["source_app"] and row["last_ts"]}
+
     def stats(self, window_days: int = 7) -> dict[str, Any]:
         """Aggregate audit metrics for dogfood / operator dashboards."""
         days = max(1, min(window_days, 90))

@@ -33,6 +33,272 @@ separately (currently `1.2.0`) and changes additively.
   and skipped; and the cache is a file the user can edit, so it is a claim to
   check against Cursor's own run stream, not proof.
 
+### Fixed
+
+- **`agentmetry cloud claude` crashed before its first request.** The command
+  read `args.remote` to choose between local and remote sessions, and the
+  parser never defined `--remote`, so every run with
+  `ANTHROPIC_COMPLIANCE_KEY` set raised `AttributeError`. The flag now exists:
+  local sessions by default, `--remote` for the API's remote ones. The tests
+  covered the mappers and never ran the command; two new tests drive it end to
+  end with the vendor API and the ingest stubbed, and both fail on the old
+  parser.
+- **`cloud claude` does not see Claude Code cloud sessions, and the 0.9.7 entry
+  implied it did.** Anthropic's Compliance API covers Claude Code in the CLI and
+  desktop app, and Cowork, and its announcement of 2026-08-11 says the beta
+  "doesn't include Claude Code on the web". So `cloud claude` records sessions
+  that ran on a developer's machine (which the hooks already see live) and
+  Cowork, not agents running on Anthropic's infrastructure. The 0.9.7 entry is
+  corrected in place.
+- **The 0.9.7 entry for Cloud Bridge claimed Cursor's live tool-call stream.**
+  `map_cursor_stream_tool_call` shipped, but no code fetches the stream, so
+  `agentmetry cloud cursor` records agent lifecycle and runs (status, duration,
+  pushed branches, PR) and no tool calls. The 0.9.7 entry is corrected in
+  place. Neither path has yet been run against a live vendor key.
+
+## [0.10.0] - 2026-10-23
+
+`agentmetry scan` checks what an agent is about to depend on before it runs,
+and the MCP proxy runs the same check on every tool listing. Codex hooks on
+Windows run and reach the recorder, which they had not done since July. Things an existing user will notice: ingest answers
+429 past a per-agent and per-session rate, and the hook spools those events for
+replay, so they arrive late rather than not at all; the recorder writes an
+`ingest-token` file to its data directory; `doctor` warns on a configured agent
+with no event in seven days, and the heartbeat carries `hooks_silent`; and the
+dashboard's Overview and detection view are redesigned. Codex users on Windows
+should run `agentmetry hooks install` again, approve the hooks in Codex's
+`/hooks` review, and restart open Codex conversations.
+
+### Added
+
+- **`agentmetry scan`: what an agent is about to depend on, checked before it
+  runs.** With no argument it reads the MCP servers configured on the machine
+  and reports typosquatted launch packages beside the unpinned fetch-and-run
+  entries `agentmetry mcp` already knew. Given a file or folder (skills, rules,
+  CLAUDE.md, a saved `tools/list`) it reports text that instructs the model
+  rather than describing a tool: overriding instructions, hiding things from
+  the user, reaching for credential files, exfiltration, shadowing other tools,
+  and `<IMPORTANT>`-style tags (#188). `npm:NAME` or `pypi:NAME` checks one
+  name against a hand-checked list of widely used packages and MCP servers,
+  including a scoped server's name with the scope dropped. It never runs a
+  server or fetches a package, exits 1 on a finding and 2 when nothing could
+  be read, and never says "safe". Run over 362 real files full of instructions
+  (this repo's docs, a machine's 235 installed skills), the shipped version
+  reports nothing; the first draft's nine false alarms are test cases now.
+  docs/scanner.md.
+
+- **The MCP proxy checks every tool description it relays.** The same text
+  check runs on each `tools/list` through `agentmetry mcp-proxy`, and the
+  `mcp_schema` trail event carries `injection` counts per category, never the
+  text and never which tool, beside the concealed-character counts. Like those,
+  it needs no baseline, so a server hostile from its first listing is visible
+  on that listing.
+
+- **Coverage now says which configured agents actually send events.** Hook
+  coverage was a file check: an agent whose hook entry existed was `covered`.
+  Codex sat on that line for three months on the dogfood machine while its last
+  recorded event aged, first because its Windows sandbox could not authenticate
+  ([#302]) and independently because Codex skips hooks the developer has not
+  approved ([#300]). `doctor` now reads the trail index read-only and warns on
+  every configured agent with no event in seven days, naming it, and `doctor
+  --json` gains `hooks_last_seen` and `hooks_silent`. The heartbeat carries
+  `hooks_silent` and names those agents in its reason, without turning
+  `degraded`: an agent nobody used is silent too, and a beat that degrades for
+  that teaches a fleet to ignore it. A SIEM can alert on `hooks_silent` where
+  silence is not expected. Run on the dogfood machine the day it was written,
+  it named Codex, last seen 2026-07-16, and passed Cursor, Claude Code and
+  Antigravity. Approval state itself still cannot be read from disk, so #300
+  stays open.
+- **SECURITY.md states three limits it did not.** The ingest-only token can add
+  events, and whoever holds it, Codex's sandbox included, can add false ones
+  stamped with the host's identity; Codex's sandbox cannot write the spool, so
+  its events are lost while the recorder is down; and configured is not the
+  same as recorded.
+
+### Changed
+
+- **The Overview separates alerts from risks.** "Needs attention" was one list,
+  so "4 critical detections" sat beside "policy runs in log mode" and the page
+  read as noise. It is now three things. **Top alerts** groups the week's
+  detections by rule, with how many detections, sessions and agents each
+  touched and how many are undecided; a row opens Detections filtered to that
+  rule. **Top risks** lists configuration that could let an agent act unseen or
+  unstopped: missing hooks, an agent with a hook and no events in seven days
+  (#304), settings that skip prompts, log mode, MCP servers not seen through the
+  proxy. **Recorder health** (a chain that does not verify, a backed-up spool, a
+  red beta gate) sits above both, because it decides whether the rest can be
+  trusted. Event and detection counts now say how they compare with the previous
+  seven days, computed from the 7-day and 14-day stats rather than estimated.
+
+- **A detection opens as an investigation with five views.** Details, Activity
+  table, Activity tree, Activity graph and Events timeline share one selection
+  and one side panel with the selected call, why the rule fired and the triage
+  form. The cited calls are marked in every view, and a call picked in one view
+  stays visible in the others instead of being folded or filtered away. Each
+  view says when it is showing a window of a longer session, and Details says
+  when cited events are missing from the index. The tree and graph say what
+  they are: agent tool activity, not operating-system process ancestry, which
+  Agentmetry does not collect.
+
+  Lifecycle events (session start and end, and other non-tool events) were
+  labelled "Tool call" and drawn in the "Other tools" lane; they now carry their
+  own names and a "Session events" lane. A detection opened from the Overview
+  reopened itself on the next 15-second refresh after the analyst went back to
+  the list. A session view disabled by `AGENTMETRY_AUDIT_EXPORT_ENABLED=false`
+  said the session was no longer in the index. The Analytics session graph drew
+  an event with no recorded outcome as a green success. All four are fixed.
+
+- **The investigation is laid out the way an EDR console is.** Every view but
+  Details now sits between a legend and a details panel. The legend counts what
+  the session holds, hides a tool category from the table, tree, graph and
+  timeline at once, and highlights cited, flagged or failed calls by dimming the
+  rest. The panel shows the selected call in sections that open and close, with
+  the command line, input hash and event IDs one click from the clipboard, the
+  other detections in the session, and the triage form. Details reads as one
+  page: what fired, in which agent on which machine, why, the cited commands,
+  and a summary column with the assignee and status. The table counts each tool
+  category and opens into its calls; the tree runs left to right from machine to
+  call and folds long categories into "+N more" without ever folding a cited
+  call; the graph draws the same hierarchy top to bottom on a canvas that zooms,
+  pans and drags; the timeline is a table with event-type chips, a "selection
+  only" switch and a sort order. The tree and graph are agent tool activity and
+  say so: there are no process IDs, DLL loads or registry events to draw, and
+  none are invented.
+
+- **An upgraded recorder no longer shows the old dashboard.** The recorder
+  served the dashboard's pages with no cache header, so a browser could reuse a
+  stale page on an ordinary reload, and that page named the previous build's
+  scripts. Seen on the dogfood machine after an upgrade: the new investigation
+  was on disk and the browser kept drawing the old one until a hard reload.
+  HTML pages are now sent with `Cache-Control: no-cache`; scripts, whose names
+  change with each build, are unchanged.
+
+- **The Overview separates "hook configured" from "events received".** An agent
+  whose hook is in its config was shown as "Recorded", which a configured hook
+  does not prove. The Overview and the machine page now say "Hook configured",
+  "Hook missing" or "Unverified", and list recent events per agent beside it.
+  An optional 3D map of the week's detections (time, severity, agent) sits behind
+  a toggle on the Overview; the 2D investigation is the default.
+
+- **The dashboard says it is a demo because the server says so.** It read
+  `?demo=1` from the address bar, so the demo server opened without it called
+  itself "This machine", and a real recorder opened with it called real events
+  synthetic. `/api/v1/audit/status` now returns `demo`, from a new
+  `AGENTMETRY_DEMO_MODE` setting that only `scripts/demo_dashboard.py` turns on.
+
+- **Type and colour.** Nothing in the investigation, Overview or sidebar is
+  smaller than 12px, and orange is kept for severity, actions and selection
+  rather than also meaning "hook configured" and the current page.
+
+### Fixed
+
+- **Codex deny is verified against a live runtime, not only its parser.** The
+  0.9.5 fix was checked against Codex's parser source and the runtime was never
+  run, a caveat two outside audits repeated. On 2026-10-22, on Codex CLI
+  0.163.0-alpha.11.1 on Windows, a block-mode tool-policy rule stopped a shell
+  command before it ran: Codex reported the PreToolUse block, the file the
+  command would have written was never created (a control run without the rule
+  created it), and the trail recorded `outcome: denied` with
+  `tool_policy.blocked: true`. docs/agent-coverage.md records the run.
+  ([#316](https://github.com/blitzcrieg1/agentmetry/issues/316))
+
+- **The dashboard demo could record the presenter's real agent activity.**
+  Every recorder started the Antigravity transcript watcher whenever its script
+  existed, the demo included. The watcher reads the developer's real
+  `~/.gemini/antigravity/brain`, so a demo trail meant to hold seeded,
+  synthetic events could pick up real Antigravity calls, and any second
+  recorder doubled every Antigravity call. The watcher now runs only on a
+  recorder that accepts ingest, `AGENTMETRY_ANTIGRAVITY_WATCHER=0` turns it
+  off, and `scripts/demo_dashboard.py` turns it off for both the static and the
+  live demo. A normal recorder behaves as before. Found by an outside audit's
+  walkthrough on 2026-10-21.
+- **Seeding the demo a second time produced a broken trail.** `seed_demo.py`
+  deleted the trail and its databases but not the `.chain` sidecar, so the new
+  trail continued from the old head (`expected seq 1, got 52`) and `verify`
+  failed on a fresh demo. It now removes every segment and the sidecar, and a
+  test seeds twice and verifies, failing on the old seeder with that message.
+- **Codex hooks never launched on Windows.** The installer wrote
+  `"<python.exe>" "<agentmetry_ingest.py>" codex hook <Event>`. Codex reported
+  every run as completed, yet nothing reached ingest: under `cmd /c` the leading
+  quoted token breaks cmd's quote stripping, and under PowerShell a command that
+  starts with a quoted string is a string, not a call. Both exit 1 before Python
+  starts. The dogfood machine's last Codex event was in July. Codex does not
+  document which shell it uses on Windows, so on Windows the installer now
+  writes the command with the quotes removed, a path containing a space
+  replaced by its 8.3 short name, and a path with no short name left quoted
+  rather than broken. Tests launch the generated command through cmd and
+  PowerShell, including a path with a space, and fail with the old form. ([#307])
+
+  The first version of this fix put that form in Codex's `commandWindows`
+  override, and Codex then ran no hook at all. Its review dialog hashes a hook
+  without `commandWindows` and its runtime hashes it with it, so every approval
+  was stored against a hash the runtime never computes: `hooks/list` reports the
+  hooks as `modified`, and Codex skips them silently. Measured on Codex 0.163
+  with a throwaway `CODEX_HOME`: the same approvals read `trusted` once the
+  override is removed. The installer never writes `commandWindows`, and a
+  reinstall drops one left by an earlier version.
+
+  Two more things this investigation established. Approving hooks in Codex's
+  `/hooks` review applies to conversations started afterwards, not to one
+  already open, so restart open Codex conversations after approving ([#300]).
+  And editing `hooks.json` changes its hash, so Codex asks for approval again.
+
+[#307]: https://github.com/blitzcrieg1/agentmetry/issues/307
+[#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
+
+- **Codex on Windows recorded nothing, and nothing said so.** Codex's default
+  Windows sandbox runs hooks as its own local accounts (`CodexSandboxOffline`,
+  `CodexSandboxOnline`). Run inside that sandbox, the hook could start and reach
+  the recorder, but could not read the API token, which is restricted to the
+  developer, and could not write the spool. Every Codex event was posted without
+  a key, refused, and lost, while coverage reported Codex as hooked. On the
+  dogfood machine that was a week of Codex use and zero Codex events. ([#302])
+
+  The recorder now mints an **ingest-only token** at startup (`ingest-token` in
+  the data directory, owner-only), which hooks already preferred. The ingest
+  route is the only one that accepts it: reading the trail, exporting evidence
+  and closing detections still require the full key, and a test holds each of
+  those refusing it. `hooks install` grants Codex's sandbox accounts read on that
+  token where they exist, so a sandboxed and possibly prompt-injected agent can
+  add events and cannot read or triage them. `doctor` fails when the sandbox
+  accounts exist and cannot read an ingest token. The hook's selftest reads the
+  trail back with the full token. A spool the sandbox can write is a follow-up.
+
+  The first run of this change also found a gap in the test suite: the token
+  files resolve through the data directory, which `conftest` never isolated, so a
+  test that entered the app's startup wrote an ingest token into the
+  maintainer's real data directory. Both token paths are now isolated, with a
+  test that fails if either points outside pytest's temp directory. One
+  long-standing local-only failure turned out to be the same leak.
+
+[#302]: https://github.com/blitzcrieg1/agentmetry/issues/302
+[#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
+
+### Security
+
+- **Ingest is rate limited per source app and per session.** Ingest accepted
+  events as fast as they arrived, so one runaway or prompt-injected agent
+  holding the ingest token could write without limit and bury every other
+  agent's events in the trail and the index. It now takes a burst of 500 and
+  then 20 a second per source app, and 300 and then 10 a second per session,
+  answering 429 past either cap. The hook already spooled any HTTP refusal and
+  the recorder drains the spool every minute with the timestamps stamped at
+  capture, so a burst is late, not lost, and the refusals are counted in
+  `/api/v1/audit/status` as `ingest_throttled`. The limit keys on the agent
+  name the trail records, so a client inventing a name per event shares the
+  `unknown` bucket instead of getting a fresh one. `agentmetry cloud`, which has
+  no spool, waits as told and retries. The whole demo seed posts at once
+  without a refusal under the shipped defaults, and a test holds that. An agent
+  running as the developer can still write the spool file directly; SECURITY.md
+  says so, and running the recorder under its own account is #313. ([#312])
+- **The throttle warning strips line breaks from the name it logs.** The name
+  is already resolved to a listed agent or `unknown`, so no log line could be
+  forged, but code scanning could not see that and flagged it. The guard it
+  recognises now sits at the call. ([#323])
+
+[#312]: https://github.com/blitzcrieg1/agentmetry/issues/312
+[#323]: https://github.com/blitzcrieg1/agentmetry/pull/323
+
 ## [0.9.9] - 2026-10-19
 
 A fleet can lock settings a developer cannot change, and a recorder run as
@@ -268,11 +534,15 @@ hash-chain record format and the event schema version (1.2.0; `cursor_cloud`,
   command polls the vendor API once and records what it exposes through the
   same external ingest as the hook client. Cursor Cloud Agents
   (`api.cursor.com`, key in `CURSOR_API_KEY`): agent lifecycle, runs with the
-  branch they pushed and the PR they opened, and the tool calls on a run's live
-  stream (name, status, arguments, result). Claude Compliance API
+  branch they pushed and the PR they opened. (This entry originally also
+  claimed the tool calls on a run's live stream. Only the mapper for that
+  stream shipped; nothing fetches it. See the Fixed notes of the release after
+  0.9.9.) Claude Compliance API
   (`api.anthropic.com`, key in `ANTHROPIC_COMPLIANCE_KEY`, a Compliance Access
   Key with `read:compliance_user_data`, not an admin key): session lists and
-  transcripts, keeping only `tool_use` blocks. `tool_use.input` arrives as a
+  transcripts, keeping only `tool_use` blocks. (Corrected after 0.9.9: those are
+  Claude Code CLI and desktop sessions and Cowork. The API excludes Claude Code
+  on the web, so this half is not cloud-agent capture.) `tool_use.input` arrives as a
   JSON-encoded string and is decoded before classification; text, thinking and
   system content never reach a payload. Tool arguments become the same redacted
   canonical SHA-256 the hook client produces, and a test holds the two digests

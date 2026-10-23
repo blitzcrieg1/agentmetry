@@ -40,6 +40,19 @@ def test_mount_serves_index_and_assets(tmp_path: Path):
     assert client.get("/api/v1/health").json() == {"status": "ok"}
 
 
+def test_pages_must_be_revalidated_and_scripts_are_left_alone(tmp_path: Path):
+    """An upgraded recorder kept serving the old dashboard to an open browser:
+    the page carried no cache header, so an ordinary reload could reuse it, and
+    it named the previous build's scripts."""
+    app = FastAPI()
+    mount_dashboard(app, _fake_export(tmp_path))
+    client = TestClient(app)
+
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert client.get("/index.html").headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/_next/app.js").headers
+
+
 def test_mount_is_noop_without_build(tmp_path: Path):
     app = FastAPI()
     assert mount_dashboard(app, tmp_path / "does-not-exist") is False

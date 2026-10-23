@@ -98,6 +98,18 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory):
     monkeypatch.setattr(
         settings, "detection_disposition_db_path", data / "detection_disposition.db"
     )
+    # The token files resolve through `data_dir()`, not `settings`, so the paths
+    # above never covered them. Once the app's startup began minting the
+    # ingest-only token (#302), a test that entered the lifespan wrote one into
+    # the maintainer's real data directory, the live hooks switched to it, and
+    # the running recorder, an older build, refused them until it was deleted.
+    monkeypatch.setenv("AGENTMETRY_API_TOKEN_FILE", str(data / "api-token"))
+    monkeypatch.setenv("AGENTMETRY_INGEST_TOKEN_FILE", str(data / "ingest-token"))
+    # The ingest rate limit (#312) is one bucket per process, and the suite
+    # posts thousands of events in seconds. Off by default; the limiter's own
+    # tests turn it on.
+    monkeypatch.setattr(settings, "audit_ingest_source_rate", 0.0)
+    monkeypatch.setattr(settings, "audit_ingest_session_rate", 0.0)
 
     _reset_singletons()
     yield
@@ -108,6 +120,7 @@ def _reset_singletons() -> None:
     from agentmetry.core.audit.detection.disposition import reset_disposition_store
     from agentmetry.core.audit.detection.live_store import reset_live_store_singleton
     from agentmetry.core.audit.ingest import reset_ingest_sink_cache, reset_pending_approvals
+    from agentmetry.core.audit.ingest_quota import reset_limiter
     from agentmetry.core.audit.trail_db import reset_trail_db
 
     reset_trail_db()
@@ -115,3 +128,4 @@ def _reset_singletons() -> None:
     reset_disposition_store()
     reset_ingest_sink_cache()
     reset_pending_approvals()
+    reset_limiter()

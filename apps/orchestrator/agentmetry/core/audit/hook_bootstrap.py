@@ -258,6 +258,47 @@ def hook_command(
     return f'"{py}" "{script}" {source_app} hook {event}'
 
 
+def _short_path(path: str) -> str:
+    """The 8.3 short form of a Windows path, or the path unchanged."""
+    if os.name != "nt":
+        return path
+    try:
+        import ctypes
+
+        size = ctypes.windll.kernel32.GetShortPathNameW(path, None, 0)
+        if not size:
+            return path
+        buf = ctypes.create_unicode_buffer(size)
+        if not ctypes.windll.kernel32.GetShortPathNameW(path, buf, size):
+            return path
+        return buf.value or path
+    except (AttributeError, OSError):
+        return path
+
+
+def windows_hook_command(command: str) -> str:
+    """`command` in a form that runs whichever way Codex launches it on Windows.
+
+    `hook_command` quotes every path. Codex on Windows ran that form as
+    "completed" and nothing arrived: under `cmd /c` the quoted first token
+    breaks cmd's quote stripping, and under PowerShell a command that starts
+    with a quoted string is a string, not a call. Both exit 1 and the hook
+    never reaches ingest. The unquoted form runs under cmd, PowerShell and
+    direct execution alike, which matters because Codex does not document
+    which it uses. A path with a space is replaced by its 8.3 short name; one
+    that has none keeps its quotes, and is still no worse than before.
+    """
+    out = []
+    for token in re.findall(r'"[^"]*"|\S+', command):
+        if token.startswith('"') and token.endswith('"'):
+            inner = token[1:-1]
+            if " " in inner:
+                inner = _short_path(inner)
+            token = inner if " " not in inner else f'"{inner}"'
+        out.append(token)
+    return " ".join(out)
+
+
 def _claude_command(
     event: str, *, python: str, ingest: Path, repo_root: Path | None = None
 ) -> str:
@@ -504,7 +545,12 @@ CODEX_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
 
 
 def merge_codex_hooks(
-    doc: dict[str, Any], *, python: str, ingest: Path, repo_root: Path | None = None
+    doc: dict[str, Any],
+    *,
+    python: str,
+    ingest: Path,
+    repo_root: Path | None = None,
+    windows: bool | None = None,
 ) -> dict[str, Any]:
     """Merge our groups into a Codex hooks document, non-destructively.
 
@@ -521,18 +567,21 @@ def merge_codex_hooks(
         existing = hooks.get(event)
         groups = existing if isinstance(existing, list) else []
         kept = [g for g in groups if not _is_our_hook_group(g, source_app="codex")]
-        group: dict[str, Any] = {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": _family_command(
-                        "codex", event, python=python, ingest=ingest, repo_root=repo_root
-                    ),
-                    "timeout": 10,
-                    "statusMessage": f"Agentmetry {event}",
-                }
-            ]
+        command = _family_command("codex", event, python=python, ingest=ingest, repo_root=repo_root)
+        if windows if windows is not None else os.name == "nt":
+            # The unquoted form goes in `command` itself, not in Codex's
+            # `commandWindows` override. Codex's review dialog hashes a hook
+            # without `commandWindows` and its runtime hashes it with it, so a
+            # hook that carries one is "modified" after every approval and is
+            # skipped without a word. See windows_hook_command for the quoting.
+            command = windows_hook_command(command)
+        handler: dict[str, Any] = {
+            "type": "command",
+            "command": command,
+            "timeout": 10,
+            "statusMessage": f"Agentmetry {event}",
         }
+        group: dict[str, Any] = {"hooks": [handler]}
         if matcher:
             group["matcher"] = matcher
         kept.append(group)
@@ -584,7 +633,37 @@ def install_codex_global_hooks(
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hooks_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     logger.info("Installed global Codex audit hooks -> %s", hooks_path)
+    grant_codex_sandbox_ingest()
     return hooks_path
+
+
+def grant_codex_sandbox_ingest() -> list[str]:
+    """Let Codex's Windows sandbox accounts read the ingest-only token.
+
+    Codex's default Windows sandbox runs hooks as its own local accounts. They
+    can run the hook and reach the recorder, but cannot read a token restricted
+    to the developer, so every event was refused and lost without a word
+    (#302). What they are granted is the ingest-only token: it posts events and
+    nothing else, so a sandboxed agent gains no read of the trail and no say in
+    triage. Returns the accounts granted; empty where there are none.
+    """
+    from agentmetry.core import api_token
+
+    accounts = api_token.codex_sandbox_accounts()
+    if not accounts:
+        return []
+    path = api_token.ingest_token_path()
+    try:
+        api_token.ensure_ingest_token(path)
+    except OSError as exc:
+        logger.warning("Codex sandbox: could not write the ingest-only token (%s)", exc)
+        return []
+    granted = api_token.grant_read(path, accounts)
+    if granted:
+        logger.info("Codex sandbox accounts can now send events: %s", ", ".join(granted))
+    else:
+        logger.warning("Codex sandbox: could not grant %s read on %s", ", ".join(accounts), path)
+    return granted
 
 
 # --- GitHub Copilot (CLI and VS Code agent mode, ~/.copilot/hooks/) -----------
