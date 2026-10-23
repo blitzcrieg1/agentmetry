@@ -628,7 +628,14 @@ def cmd_cloud(args: argparse.Namespace) -> int:
         headers = {"Content-Type": "application/json"}
         if key:
             headers["Authorization"] = f"Bearer {key}"
-        resp = httpx.post(f"{url}/api/v1/audit/ingest", json=payload, headers=headers, timeout=15)
+        # A 429 is the ingest rate limit (#312). Unlike a hook, this importer
+        # has no spool, so it waits as told and tries again rather than drop
+        # the event.
+        for _ in range(6):
+            resp = httpx.post(f"{url}/api/v1/audit/ingest", json=payload, headers=headers, timeout=15)
+            if resp.status_code != 429:
+                break
+            time.sleep(min(30.0, float(resp.headers.get("Retry-After", "1") or 1)))
         ok = resp.status_code < 300
         if ok:
             posted += 1

@@ -178,6 +178,26 @@ separately (currently `1.2.0`) and changes additively.
 [#302]: https://github.com/blitzcrieg1/agentmetry/issues/302
 [#300]: https://github.com/blitzcrieg1/agentmetry/issues/300
 
+### Security
+
+- **Ingest is rate limited per source app and per session.** Ingest accepted
+  events as fast as they arrived, so one runaway or prompt-injected agent
+  holding the ingest token could write without limit and bury every other
+  agent's events in the trail and the index. It now takes a burst of 500 and
+  then 20 a second per source app, and 300 and then 10 a second per session,
+  answering 429 past either cap. The hook already spooled any HTTP refusal and
+  the recorder drains the spool every minute with the timestamps stamped at
+  capture, so a burst is late, not lost, and the refusals are counted in
+  `/api/v1/audit/status` as `ingest_throttled`. The limit keys on the agent
+  name the trail records, so a client inventing a name per event shares the
+  `unknown` bucket instead of getting a fresh one. `agentmetry cloud`, which has
+  no spool, waits as told and retries. The whole demo seed posts at once
+  without a refusal under the shipped defaults, and a test holds that. An agent
+  running as the developer can still write the spool file directly; SECURITY.md
+  says so, and running the recorder under its own account is #313. ([#312])
+
+[#312]: https://github.com/blitzcrieg1/agentmetry/issues/312
+
 ## [0.9.9] - 2026-10-19
 
 A fleet can lock settings a developer cannot change, and a recorder run as

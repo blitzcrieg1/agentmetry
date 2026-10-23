@@ -87,6 +87,15 @@ Out of scope:
   `doctor` and the heartbeat report it. A developer who is a local
   administrator can change anything, a lock included, and a developer who
   removes the hook from their IDE is reported by hook coverage, not stopped.
+- **Ingest is rate limited, not walled.** `POST /api/v1/audit/ingest` takes a
+  burst of 500 events and then 20 a second per source app, and 300 and then 10
+  a second per session ([#312](https://github.com/blitzcrieg1/agentmetry/issues/312)).
+  Past either cap it answers 429; the hook spools the event and the recorder
+  replays it within a minute with its original timestamp, and the refusals are
+  counted in `/api/v1/audit/status` as `ingest_throttled`. That caps how fast
+  one agent can write through the API and makes a flood visible. It does not
+  stop an agent running as the developer from writing the hook spool directly;
+  the spool's 32 MB cap bounds that path, per drain, instead.
 - **Redaction is best-effort.** Secrets are scrubbed by pattern matching. Novel
   credential formats can slip through into the trail. Do not treat the JSONL as
   safe to publish.

@@ -95,6 +95,15 @@ class Settings(BaseSettings):
 
     audit_ingest_enabled: bool = True
     audit_ingest_url: str = "http://127.0.0.1:8000"
+    # Ingest rate limit (core/audit/ingest_quota.py), events per second with a
+    # burst allowance, per source app and per session. Past either cap ingest
+    # answers 429 and the hook spools for the next drain. 0 turns a bucket off.
+    # The bursts sit above the largest built-in demo session, and far above
+    # what an agent at work sends.
+    audit_ingest_source_rate: float = 20.0
+    audit_ingest_source_burst: float = 500.0
+    audit_ingest_session_rate: float = 10.0
+    audit_ingest_session_burst: float = 300.0
 
     # Forward sinks (all optional; file is the default and never a cloud ledger).
     audit_sink: str = Field(
