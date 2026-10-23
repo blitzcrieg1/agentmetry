@@ -9,6 +9,18 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-23
+
+The dashboard is inside the package. On 0.10.0 a `pip install` had none:
+`agentmetry dashboard` signed the browser in and showed a JSON 404, and
+`agentmetry stats` and `agentmetry detections` reported an empty trail because
+they never sent the API token. Both are fixed, and CI now installs a built
+wheel and checks the dashboard loads, so the gap cannot come back unnoticed.
+Upgrade with `pip install --upgrade agentmetry` and restart the recorder.
+Also new: `agentmetry cloud cursor-cache`, which reads Cursor cloud-agent tool
+calls from the desktop app's local cache, and a fix for `cloud claude`, which
+crashed before its first request. The ruleset fingerprint is unchanged.
+
 ### Added
 
 - **`agentmetry cloud cursor-cache`: Cursor cloud-agent tool calls, read from
