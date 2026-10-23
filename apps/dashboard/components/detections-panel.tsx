@@ -37,9 +37,12 @@ function shortSession(id: string): string {
 
 export function DetectionsPanel({
   initialTriage = "all",
+  initialRule = "all",
   initialDetection,
 }: {
   initialTriage?: string;
+  /** Opened from a rule on the Overview's top alerts. */
+  initialRule?: string;
   initialDetection?: { correlationId: string; ruleId: string };
 }) {
   const requestPinnedDetection = useAgentStore((s) => s.requestPinnedDetection);
@@ -47,7 +50,7 @@ export function DetectionsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [ruleFilter, setRuleFilter] = useState<string>("all");
+  const [ruleFilter, setRuleFilter] = useState<string>(initialRule);
   const [triageFilter, setTriageFilter] = useState<string>(initialTriage);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});

@@ -8,30 +8,27 @@ import { SEVERITY_DOT, SeverityBadge, Technique } from "@/components/ui/kit";
 import { AgentTile } from "@/components/ui/agent-mark";
 import { tiltHandlers } from "@/lib/use-tilt";
 import { apiHeaders } from "@/lib/api";
-import { displaySource, sourceChartColor, sourceLabel } from "@/lib/audit-source";
+import { sourceChartColor, sourceLabel } from "@/lib/audit-source";
 import { type Disposition, dispositionKey, fetchDispositions, isTriaged } from "@/lib/disposition";
 import { type DogfoodReport, fetchDogfood } from "@/lib/dogfood";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 import { AGENT_STATE_LABEL, agentsByAttention, type MachineSnapshot } from "@/lib/machine";
 import {
+  type AttentionItem,
+  attentionItems,
   type AttentionTarget,
+  changeSentence,
+  eventsFor,
+  type RuleGroup,
+  sourceBars,
   type StatsSnapshot,
   type StatusSnapshot,
-  attentionItems,
-  sourceBars,
   techniqueCounts,
+  topRules,
 } from "@/lib/overview";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
-
-function recentEventsFor(bySource: Record<string, number> | undefined, app: string): number {
-  const target = displaySource(app);
-  return Object.entries(bySource ?? {}).reduce(
-    (total, [source, count]) => total + (displaySource(source) === target ? count : 0),
-    0,
-  );
-}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${ORCHESTRATOR_URL}${path}`, { headers: apiHeaders(), credentials: "include" });
@@ -44,17 +41,21 @@ async function getJson<T>(path: string): Promise<T> {
  * can be trusted. Each source loads on its own, so one failing call degrades
  * one tile instead of blanking the page.
  */
+type NavigateOpts = { untriaged?: boolean; rule?: string; detection?: { correlationId: string; ruleId: string } };
+
 export function OverviewPanel({
   onNavigate,
   demo = false,
 }: {
-  onNavigate: (target: AttentionTarget, opts?: { untriaged?: boolean; detection?: { correlationId: string; ruleId: string } }) => void;
+  onNavigate: (target: AttentionTarget, opts?: NavigateOpts) => void;
   /** From the server's `demo` flag. The events are synthetic; the machine snapshot is not. */
   demo?: boolean;
 }) {
   const [detections, setDetections] = useState<Detection[] | null>(null);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
   const [stats, setStats] = useState<StatsSnapshot | null>(null);
+  // The 14-day window, so the previous 7 days are a subtraction, not a guess.
+  const [stats14, setStats14] = useState<StatsSnapshot | null>(null);
   const [machine, setMachine] = useState<MachineSnapshot | null>(null);
   const [dogfood, setDogfood] = useState<DogfoodReport | null>(null);
   const [status, setStatus] = useState<StatusSnapshot | null>(null);
@@ -75,6 +76,7 @@ export function OverviewPanel({
       }],
       ["triage", async () => setDispositions(await fetchDispositions())],
       ["stats", async () => setStats(await getJson<StatsSnapshot>("/api/v1/audit/stats?days=7"))],
+      ["trend", async () => setStats14(await getJson<StatsSnapshot>("/api/v1/audit/stats?days=14"))],
       ["machine", async () => setMachine(await getJson<MachineSnapshot>("/api/v1/audit/machine"))],
       ["gate", async () => setDogfood(await fetchDogfood())],
       ["status", async () => setStatus(await getJson<StatusSnapshot>("/api/v1/audit/status"))],
@@ -97,6 +99,8 @@ export function OverviewPanel({
     () => attentionItems({ untriaged, stats, machine, dogfood, status }),
     [untriaged, stats, machine, dogfood, status],
   );
+  const health = useMemo(() => items.filter((i) => i.kind === "health"), [items]);
+  const risks = useMemo(() => items.filter((i) => i.kind === "risk"), [items]);
   const bars = useMemo(() => sourceBars(stats?.by_source), [stats]);
   const techniques = useMemo(() => techniqueCounts(detections ?? []), [detections]);
   const bySeverity = useMemo(() => {
@@ -110,6 +114,11 @@ export function OverviewPanel({
     (detection: Detection) => !isTriaged(dispositions[dispositionKey(detection.correlation_id, detection.rule_id)]),
     [dispositions],
   );
+
+  const allRules = useMemo(() => topRules(detections ?? [], isDetectionOpen, Infinity), [detections, isDetectionOpen]);
+  const rules = useMemo(() => allRules.slice(0, 5), [allRules]);
+  const eventsChange = changeSentence(stats?.total_events, stats14?.total_events);
+  const detectionsChange = changeSentence(stats?.detections, stats14?.detections);
 
   const installed = machine?.agents.filter((a) => a.state === "covered" || a.state === "uncovered") ?? [];
   const covered = installed.filter((a) => a.state === "covered").length;
@@ -168,6 +177,27 @@ export function OverviewPanel({
         </div>
       ) : null}
 
+      {health.length ? (
+        <section className="space-y-2" aria-label="Recorder health">
+          {health.map((item) => (
+            <div
+              key={item.id}
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
+                item.severity === "critical" ? "border-danger/40 bg-danger/[0.06]" : "border-caution/40 bg-caution/[0.06]"
+              }`}
+            >
+              <div className="min-w-0">
+                <p className={`text-[13px] font-semibold ${item.severity === "critical" ? "text-danger" : "text-caution"}`}>{item.title}</p>
+                <p className="mt-0.5 max-w-[80ch] text-[12px] leading-relaxed text-muted-foreground">{item.body}</p>
+              </div>
+              <button type="button" className="btn h-8 text-[12px]" onClick={() => onNavigate(item.target)}>
+                {item.cta} <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Summary">
         <Tile
           label="Needs triage"
@@ -210,7 +240,11 @@ export function OverviewPanel({
         <Tile
           label="Activity, 7 days"
           value={stats?.total_events != null ? stats.total_events.toLocaleString() : "…"}
-          sub={stats?.sessions != null ? `events in ${stats.sessions.toLocaleString()} session${stats.sessions === 1 ? "" : "s"}` : "Loading"}
+          sub={
+            stats?.sessions != null
+              ? `events in ${stats.sessions.toLocaleString()} session${stats.sessions === 1 ? "" : "s"}${eventsChange ? `, ${eventsChange}` : ""}`
+              : "Loading"
+          }
           onClick={() => onNavigate("recorder")}
         />
         <Tile
@@ -247,59 +281,18 @@ export function OverviewPanel({
       ) : null}
 
       <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.95fr)]">
-        <section className="panel min-w-0 overflow-hidden" aria-label="Needs attention">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-md bg-danger/10 text-danger">
-                <CircleAlert className="h-4 w-4" />
-              </span>
-              <div>
-                <h2 className="text-[15px] font-semibold">Needs attention</h2>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">Prioritized items with a direct next step</p>
-              </div>
-            </div>
-            <span className={`rounded-full px-2.5 py-1 font-mono text-[12px] ${items.length ? "bg-danger/10 text-danger" : "bg-muted text-muted-foreground"}`}>
-              {items.length} {items.length === 1 ? "item" : "items"}
-            </span>
-          </header>
-          {items.length === 0 ? (
-            <div className="px-5 py-10 text-center">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-secure/10 text-secure">
-                <ShieldCheck className="h-5 w-5" />
-              </span>
-              <h3 className="mt-3 text-[14px] font-semibold">No open items</h3>
-              <p className="mx-auto mt-1 max-w-[28rem] text-[12px] leading-relaxed text-muted-foreground">
-                {detections && machine && dogfood ? "No current detections or local health findings need a decision." : "Loading the local investigation queue…"}
-              </p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-border px-5">
-              {items.map((item) => (
-                <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[item.severity]}`} />
-                    <div className="min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <SeverityBadge severity={item.severity} />
-                        <span className="text-[12px] uppercase tracking-[0.06em] text-subtle">{item.target === "detections" ? "Investigation" : item.target === "machine" ? "Host configuration" : item.target === "analytics" ? "Evidence health" : "Capture health"}</span>
-                      </div>
-                      <p className="text-[14px] font-semibold leading-snug">{item.title}</p>
-                      <p className="max-w-[58ch] text-[12px] leading-relaxed text-muted-foreground">{item.body}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[12px] font-medium transition-colors hover:border-signal/40 hover:bg-signal/5"
-                    onClick={() => onNavigate(item.target, { untriaged: item.target === "detections" })}
-                  >
-                    {item.cta}
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <div className="flex min-w-0 flex-col gap-4">
+          <TopAlerts
+            rules={rules}
+            allRules={allRules}
+            loading={!detections}
+            change={detectionsChange}
+            total={stats?.detections}
+            onOpen={(rule) => onNavigate("detections", { untriaged: rule.untriaged > 0, rule: rule.rule_id })}
+            onOpenAll={() => onNavigate("detections")}
+          />
+          <TopRisks items={risks} loading={!machine || !stats} onNavigate={onNavigate} />
+        </div>
 
         <div className="flex min-w-0 flex-col gap-4">
           <section className="panel overflow-hidden" aria-label="Hook configuration and recent event receipt">
@@ -320,7 +313,9 @@ export function OverviewPanel({
             ) : (
               <ul className="divide-y divide-border px-4">
                 {agentsByAttention(machine.agents).filter((agent) => agent.state !== "absent").slice(0, 6).map((agent) => {
-                  const observed = recentEventsFor(status?.by_source, agent.name);
+                  // The 7-day stats, not /status: its per-source counts are the last 500
+                  // events, so one busy agent made every other one read as silent.
+                  const observed = eventsFor(stats?.by_source, agent.name);
                   const stateTone = agent.state === "covered"
                     ? "border-border bg-muted/60 text-foreground"
                     : agent.state === "uncovered"
@@ -333,7 +328,7 @@ export function OverviewPanel({
                         <div className="min-w-0">
                           <p className="truncate text-[12px] font-medium">{sourceLabel(agent.name)}</p>
                           <p className="mt-0.5 text-[12px] text-muted-foreground">
-                            {status ? observed ? `${observed.toLocaleString()} recent events` : "No recent events" : failed.includes("status") ? "Event status unavailable" : "Checking event receipt…"}
+                            {stats ? observed ? `${observed.toLocaleString()} events in 7 days` : "No events in 7 days" : failed.includes("stats") ? "Event counts unavailable" : "Checking event receipt…"}
                           </p>
                         </div>
                       </div>
@@ -350,7 +345,7 @@ export function OverviewPanel({
             )}
             <div className="flex items-start gap-2 border-t border-border bg-muted/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
               <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
-              A configured hook does not prove capture. Recent event receipt is shown separately.
+              A configured hook does not prove capture. Events in the last 7 days are shown beside it.
             </div>
           </section>
 
@@ -432,6 +427,155 @@ export function OverviewPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+const KIND_HEAD = "flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4";
+
+/** Detections grouped by rule: what fired, how much it touched, how much is undecided. */
+function TopAlerts({
+  rules,
+  allRules,
+  loading,
+  change,
+  total,
+  onOpen,
+  onOpenAll,
+}: {
+  rules: RuleGroup[];
+  allRules: RuleGroup[];
+  loading: boolean;
+  change: string | null;
+  total?: number;
+  onOpen: (rule: RuleGroup) => void;
+  onOpenAll: () => void;
+}) {
+  // Say what the top five leave out, so the list never reads as everything.
+  const rest = allRules.slice(rules.length);
+  const restDetections = rest.reduce((n, r) => n + r.detections, 0);
+  const restUntriaged = rest.reduce((n, r) => n + r.untriaged, 0);
+  return (
+    <section className="panel min-w-0 overflow-hidden" aria-label="Top alerts">
+      <header className={KIND_HEAD}>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-danger/10 text-danger">
+            <CircleAlert className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold">Top alerts</h2>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Detections by rule, last 7 days{total != null ? `: ${total.toLocaleString()} in all` : ""}
+              {change ? `, ${change}` : ""}
+            </p>
+          </div>
+        </div>
+      </header>
+      {rules.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[12px] text-muted-foreground">
+          {loading ? "Loading detections…" : "No detections in the last 7 days."}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rules.map((rule) => (
+            <li key={rule.rule_id}>
+              <button
+                type="button"
+                onClick={() => onOpen(rule)}
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 text-left transition-colors hover:bg-muted/50"
+              >
+                <SeverityBadge severity={rule.severity} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold">{rule.title}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
+                    <span className="font-mono text-subtle">{rule.rule_id}</span>
+                    <span>
+                      {rule.detections} {rule.detections === 1 ? "detection" : "detections"} · {rule.sessions}{" "}
+                      {rule.sessions === 1 ? "session" : "sessions"}
+                      {rule.agents.length ? ` · ${rule.agents.map(sourceLabel).join(", ")}` : ""}
+                    </span>
+                  </span>
+                </span>
+                {rule.untriaged ? (
+                  <span className="shrink-0 rounded-sm bg-caution/15 px-2 py-0.5 text-[12px] font-medium text-caution">
+                    {rule.untriaged} untriaged
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[12px] text-subtle">all triaged</span>
+                )}
+                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {rest.length ? (
+            <li>
+              <button type="button" onClick={onOpenAll} className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-[12px] text-muted-foreground transition-colors hover:bg-muted/50">
+                <span>
+                  And {rest.length} more {rest.length === 1 ? "rule" : "rules"}: {restDetections} {restDetections === 1 ? "detection" : "detections"}
+                  {restUntriaged ? `, ${restUntriaged} untriaged` : ""}
+                </span>
+                <span className="inline-flex items-center gap-1 font-medium text-signal">
+                  All detections <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Configuration that could let something happen unseen or unstopped. */
+function TopRisks({
+  items,
+  loading,
+  onNavigate,
+}: {
+  items: AttentionItem[];
+  loading: boolean;
+  onNavigate: (target: AttentionTarget, opts?: NavigateOpts) => void;
+}) {
+  return (
+    <section className="panel min-w-0 overflow-hidden" aria-label="Top risks">
+      <header className={KIND_HEAD}>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-caution/10 text-caution">
+            <SlidersHorizontal className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold">Top risks</h2>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">Configuration that could let an agent act unseen or unstopped</p>
+          </div>
+        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 font-mono text-[12px] ${items.length ? "bg-caution/10 text-caution" : "bg-muted text-muted-foreground"}`}
+        >
+          {items.length} {items.length === 1 ? "risk" : "risks"}
+        </span>
+      </header>
+      {items.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[12px] text-muted-foreground">
+          {loading ? "Reading this machine's configuration…" : "No configuration risks found on this machine."}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {items.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[item.severity]}`} aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold leading-snug">{item.title}</p>
+                  <p className="mt-0.5 max-w-[62ch] text-[12px] leading-relaxed text-muted-foreground">{item.body}</p>
+                </div>
+              </div>
+              <button type="button" className="btn h-8 shrink-0 text-[12px]" onClick={() => onNavigate(item.target)}>
+                {item.cta} <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

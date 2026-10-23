@@ -142,13 +142,15 @@ export function MissionControl() {
   const [detectionsView, setDetectionsView] = useState<{
     key: number;
     triage: string;
+    rule?: string;
     selection?: { correlationId: string; ruleId: string };
   }>({ key: 0, triage: "all" });
-  const navigate = (target: Tab, opts?: { untriaged?: boolean; detection?: { correlationId: string; ruleId: string } }) => {
+  const navigate = (target: Tab, opts?: { untriaged?: boolean; rule?: string; detection?: { correlationId: string; ruleId: string } }) => {
     if (target === "detections") {
       setDetectionsView((v) => ({
         key: v.key + 1,
         triage: opts?.untriaged ? "untriaged" : "all",
+        rule: opts?.rule,
         selection: opts?.detection,
       }));
     }
@@ -338,6 +340,7 @@ export function MissionControl() {
             <DetectionsPanel
               key={detectionsView.key}
               initialTriage={detectionsView.triage}
+              initialRule={detectionsView.rule}
               initialDetection={detectionsView.selection}
             />
           ) : (
