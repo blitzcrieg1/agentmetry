@@ -78,6 +78,16 @@ throwaway environment.
 
 `agentmetry benchmark` replays the detection corpus through the real rule engine and exits non-zero on a miss or a false positive. The figures it prints are below.
 
+To check what the agents on this machine are about to depend on, before anything runs:
+
+```bash
+agentmetry scan                    # the MCP servers your agents launch: typosquatted packages, unpinned fetch-and-run
+agentmetry scan ~/.claude/skills   # skills, rules and CLAUDE.md files: text that instructs the model instead of describing a tool
+agentmetry scan npm:NAME           # one package name, before you install it
+```
+
+It reads files and nothing else: it never starts a server or fetches a package. It exits 1 on a finding, and "no findings" means these checks found nothing, never that something is safe. The checks and their limits are in [docs/scanner.md](docs/scanner.md).
+
 `agentmetry demo --scenario hf` replays the HF July 2026 patterns (`credential-read-then-cloud-api` and `remote-staging-then-execute`). `--scenario all` runs both.
 
 An installed package keeps its trail, indexes, and API token in the user data directory: `%LOCALAPPDATA%\Agentmetry` on Windows, `~/.local/share/agentmetry` on Linux, `~/Library/Application Support/Agentmetry` on macOS. A git checkout keeps `apps/orchestrator/data`. `AGENTMETRY_DATA_DIR` overrides both. `doctor` prints the directory in use.
@@ -100,7 +110,7 @@ agentmetry dashboard
 | Cursor | Tool calls and inferred approvals | `agentmetry hooks install` |
 | Codex | Same. Codex skips untrusted hooks until its `/hooks` prompt is approved. | `agentmetry hooks install` |
 | Qwen, Kimi, Qoder, CodeBuddy | Tool calls and inferred approvals | `agentmetry hooks install` |
-| GitHub Copilot (CLI and VS Code agent mode) | Tool calls, with deny. One hooks file in `~/.copilot/hooks/` serves both. VS Code hooks are a preview feature an organisation can turn off. | `agentmetry hooks install`, or `--managed` for the CLI's policy hooks |
+| GitHub Copilot (CLI and VS Code agent mode) | Tool calls, with deny. Deny has been run live on the CLI; VS Code's agent host has not yet been ([#316](https://github.com/blitzcrieg1/agentmetry/issues/316)). One hooks file in `~/.copilot/hooks/` serves both. VS Code hooks are a preview feature an organisation can turn off. | `agentmetry hooks install`, or `--managed` for the CLI's policy hooks |
 | Antigravity | Tool calls and inferred approvals | `scripts/install_antigravity_hooks.ps1` on Windows. `hooks install` and `scripts/install.sh` do not write these. |
 | MCP servers | Every stdio `tools/call`, plus a `tools/list` fingerprint | `agentmetry mcp-proxy -- <server command>` |
 | CrewAI, OpenSRE | Framework adapters | [adapters/crewai](adapters/crewai/), [adapters/opensre](adapters/opensre/) |
@@ -119,6 +129,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 ## What you get
 
 - **Sequence detections.** Fourteen published rules, plus one experimental rule (`autonomous-unapproved-write`) that stays registered and is not part of the published set: no IDE capture surface produces the signal it reads, and it is not exported to Sigma. Rules match ordered steps inside a session. `credential-exfil` is credential access, then network egress. Reversed, it does not fire. The list is [docs/detection-rules.md](docs/detection-rules.md).
+- **A check before anything runs.** `agentmetry scan` reads the MCP configs, skills and rules files an agent will load and reports typosquatted package names and text that steers the model: overriding instructions, hiding things from the user, reaching for credential files, exfiltration, shadowing other tools. The MCP proxy runs the same text check on every `tools/list` it relays and records the counts per category on the trail, never the text.
 - **MITRE ATT&CK tags** on tool calls the mapper recognises (`agentmetry/core/audit/mitre.py`). A call it does not recognise carries no tag.
 - **MITRE ATLAS labels** on the subset where ATLAS says something ATT&CK cannot (`agentmetry/core/audit/atlas.py`, content release 2026.07). Five techniques are emitted: indirect prompt injection (`AML.T0051.001`), agent-tool credential harvesting (`AML.T0098`), exfiltration via tool invocation (`AML.T0086`), destruction via tool invocation (`AML.T0101`), and MCP supply-chain rug pull (`AML.T0109`). `AML.T0050` and `AML.T0053` are deliberately not emitted.
 - **Canonical events, schema 1.2.0.** SHA-256 argument hashes by default. The secret value is not stored. Schema: [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md).
@@ -141,7 +152,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-1986 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). A full run on Python 3.12 reported 1692 passed and 8 skipped, and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+1986 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-23, reported 1967 passed and 19 skipped on Linux and macOS, 1980 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -193,7 +204,7 @@ Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma p
 
 </div>
 
-`agentmetry dashboard` signs a browser in to the console for this machine. The Overview lists what needs a person, worst first. A detection opens as a tree of the session: the machine, the agent, the session, then every tool call, with the calls the detection cites lit. This machine shows which agents are recorded.
+`agentmetry dashboard` signs a browser in to the console for this machine. The Overview separates **alerts** (the week's detections, grouped by rule, with how many are undecided) from **risks** (configuration that lets an agent act unseen, such as a configured agent that has sent nothing). A detection opens as an investigation with five views: details, the session's activity as a table, a tree and a graph, and an events timeline, sharing one selection, with the calls the detection cites marked in each. This machine shows which agents are recorded. The video above predates that redesign.
 
 From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build `apps/dashboard` first (`npm install && npm run build`). The script says so if the export is missing.
 

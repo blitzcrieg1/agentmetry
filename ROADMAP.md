@@ -43,8 +43,8 @@ Two rules, so it does not happen again.
 | Canonical event schema | 1.2.0, additive |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 57 recorded sessions, 26 attack and 31 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 1953 passed and 19 skipped in the 0.10.0 release verify job (2026-10-23), 1972 collected. A 78% coverage floor is enforced in CI; the last measured figure, 82%, was on 0.9.7 code ([#255](https://github.com/blitzcrieg1/agentmetry/pull/255)) |
-| Dogfood gate | **4 of 4, passed 2026-10-02.** Run started 2026-08-30. As of 2026-10-23 `dogfood` prints 0 of 4 consecutive: weeks 6 and 7 are red on 1 and 7 untriaged critical or high detections, and week 8, in progress, has 8 more. A red week from untriaged detections can be rescued at any time |
+| Tests | 1986 collected. CI on 2026-10-23: 1967 passed and 19 skipped on Linux and macOS, 1980 passed and 6 skipped on Windows, 82% line coverage against a 78% floor |
+| Dogfood gate | **Passed 2026-10-02, and still passing.** Run started 2026-08-30. Weeks 6 and 7 were red on 1 and 7 untriaged critical or high detections until all 16 open ones were triaged on 2026-10-23; `dogfood` then printed every complete week green, "7 of 4, Gate PASSED". The three false-positive shapes that triage found are [#329](https://github.com/blitzcrieg1/agentmetry/issues/329) |
 | Own trail | 74,923 hash-chained lines, all verified on the maintainer's machine on 2026-10-23 (`agentmetry verify --trail`). 256 anchor checkpoints cover records 1 to 74,704; the 219 newer records are chain-verified only until the next checkpoint |
 | Adoption | Public alpha. No design partner tenant yet and no reference customer. The first two sales messages went out on 2026-10-23, with no reply yet. 15 GitHub stars on 2026-10-23 |
 
