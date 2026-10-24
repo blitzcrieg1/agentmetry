@@ -144,16 +144,16 @@ modelling and sandboxing, and none of those are a recorder's job.
 |---|---|---|
 | **AST05** Untrusted External Instructions | **Covered** | `untrusted-input-then-risky-action` is this risk as a rule. MCP schema fingerprinting is the same risk one layer down: a server changing the instructions it hands the model between sessions |
 | **AST09** No Governance | **Covered** | Inventory is the coverage heartbeat, four states per agent surface. Approval workflow is `approval_request` and `approval_response`, with inferred approvals labelled as inferred. Audit logging is the hash-chained trail itself |
-| **AST01** Malicious Skills | Partial | Detected by behaviour at runtime, never by inspecting a registry. A poisoned skill is caught when it reads a credential and then reaches the network, not when it is installed |
-| **AST02** Supply Chain Compromise | Partial | `remote-staging-then-execute` and `encoded-command-download` catch the execution half. The install half, an agent following a documentation file to a package nobody owns, is recorded but not detected |
-| **AST10** Cross-Platform Reuse | Partial | Normalising six agent surfaces into one canonical event is the direct counter to security metadata being lost when work moves between ecosystems. Not a detection, an architectural answer |
+| **AST01** Malicious Skills | Partial | Detected by behaviour at runtime, never by inspecting a registry. A poisoned skill is caught when it reads a credential and then reaches the network. Since 0.10.0, `agentmetry scan` also reads an installed `SKILL.md` for the instruction shapes a payload takes (reading a credential file, sending to a URL, keeping it from the user), so a skill written that way is flagged before it runs |
+| **AST02** Supply Chain Compromise | Partial | `remote-staging-then-execute` and `encoded-command-download` catch the execution half. Of the install half, `agentmetry scan` flags a typosquatted or unpinned package an MCP config launches. A skill's nested dependencies are not read, and an agent following a documentation file to a package nobody owns is recorded but not detected |
+| **AST08** Poor Scanning | Partial | `agentmetry scan` reads the natural-language layer of installed skills, rules files and saved `tools/list` results, and can be re-run whenever you like, which are two of the mitigations this risk names. It is also exactly the kind of scanner this risk is about: fixed patterns, so prose phrased unlike them, an encoded payload, invisible characters in a file, or a payload at a URL it never fetches all pass it. Invisible characters are caught only in descriptions a live server sends through the MCP proxy |
+| **AST10** Cross-Platform Reuse | Partial | Normalising nine agents and the MCP proxy into one canonical event is the direct counter to security metadata being lost when work moves between ecosystems. Not a detection, an architectural answer |
 | **AST03** Over-Privileged Skills | **None** | Nothing here evaluates whether a skill asked for more permission than it needs |
 | **AST04** Insecure Metadata | **None** | This risk is manifest deserialization. `mcp_config_digest` notices a config file changing, which is a different question from parsing one unsafely |
 | **AST06** Weak Isolation | **None**, by decision | Agentmetry is not a sandbox. Isolation is in the "not building" list in `ROADMAP.md` and stays there |
 | **AST07** Update Drift | **None** | This risk is patch lag on known vulnerabilities. Detecting that a server changed what it advertises is a different thing, and mapping the rug pull here would be a stretch that flatters us |
-| **AST08** Poor Scanning | **None** | Registry and install-time scanning happens before anything this project can see |
 
-**Two covered, three partial, five not covered.** The five are the reason to
+**Two covered, four partial, four not covered.** The four are the reason to
 believe the two. A tool that claimed coverage of all ten would be claiming to be
 a sandbox, a registry scanner and a permission model at once.
 
