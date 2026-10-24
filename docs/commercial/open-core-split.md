@@ -29,26 +29,39 @@ enterprise = "agentmetry_enterprise.register:register"
 | **Detection core** | Sequence-rule executor, live detection engine, community rule pack |
 | **Native YAML rules** | `agentmetry/policies/detection/manifest.yaml` spec — thresholds, session count rules, hot-reload |
 | **DLP & tool policy** | Regex DLP manifest, tool allow/deny YAML, hook-boundary enforcement |
-| **Storage** | SQLite index, JSONL hash chain, evidence export |
+| **Storage and evidence** | SQLite index, JSONL hash chain, Merkle inclusion proofs (`prove`), external anchors (`anchor`), evidence pack and compliance digest exports |
+| **Scanner** | `agentmetry scan`: instruction-shaped text in MCP tool descriptions, skills and rules files; typosquatted package names. The MCP proxy runs the same check on every `tools/list` |
+| **Fleet basics** | Managed policy (settings a developer cannot change), `doctor --json`, `--user-profile-dir` / `--data-dir` for a recorder run as a service, the heartbeat's uncovered and silent agents, an ingest-only token, per-source and per-session ingest rate limits |
 | **Forwarders** | File, webhook, Splunk HEC, Elastic ECS, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), CloudEvents as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. API key or token auth over HTTPS |
 | **Sigma export** | SIEM pack for forwarding Agentmetry events to existing Sigma pipelines |
-| **Dashboard** | Local Flight Recorder UI (single-operator hunt layout) |
-| **CLI** | `start`, `stop`, `status`, `doctor`, `stats`, `export`, `verify` |
+| **Dashboard** | Local dashboard for one machine (Overview, detections, investigation) |
+| **CLI** | `demo`, `doctor`, `benchmark`, `hooks`, `start`, `stop`, `status`, `scan`, `posture`, `mcp`, `mcp-proxy`, `otel`, `stats`, `detections`, `disposition`, `replay`, `export`, `verify`, `prove`, `anchor`, `trail`, `dashboard` |
 
 ## Enterprise / ELv2 (private `agentmetry-enterprise`)
 
-| Area | What ships | First SKU |
-|------|------------|-----------|
-| **Certified fleet installers** | Single binary (Nuitka/PyInstaller), `.msi`, `.pkg`, brew tap | SKU 1 |
-| **Enterprise support & SLA** | Priority support, Splunk/Elastic onboarding | SKU 1 |
-| **Sigma dialect import** | Parser: standard Sigma YAML → Agentmetry rules (not native YAML) | SKU 2 |
-| **Scoped auth** | `ingest` / `read` / `admin` tokens, rate limiting | SKU 1–2 |
-| **mTLS forwarders** | Client cert auth to customer Splunk/Elastic/Loki | SKU 1–2 |
-| **Compliance packs** | Evidence templates for SOC 2, ISO 27001, EU AI Act | SKU 2 |
-| **Premium sinks** | Rekor/Trillian transparency log, optional TPM local signing | SKU 2 |
-| **Customer-owned rule distribution** | Pull rules from a repo or bucket **the customer controls** | SKU 2 |
-| **Advanced DLP** | Shannon entropy detectors, YARA payload scanning | SKU 2 |
-| **eBPF sidecar adapter** | Tetragon/tracee → canonical schema as optional Tier-D | Design partner |
+Status as of 2026-10-24, checked against the code in `agentmetry-enterprise`.
+"Built" means the code exists; none of it has run on a customer fleet yet. The
+same table, in buyer's words, is on agentmetry.ai/pilot.
+
+| Area | What ships | Status |
+|------|------------|--------|
+| **Windows fleet install** | Silent `.msi`, the service running as a virtual account | Built and tested in CI; not EV-signed, not yet on a customer tenant |
+| **Intune deployment** | Detection and Remediation script pairs for user and managed hooks | Built, not yet run on a customer tenant |
+| **Splunk** | TA-agentmetry (search-time fields, CIM aliases, saved searches) and an app with a fleet dashboard | Built, not on Splunkbase, not AppInspected |
+| **Per-host signing** | Ed25519 signatures on forwarded events, verified against each host's registered key | Built, not yet run on a customer fleet |
+| **Scoped auth** | `ingest` / `read` / `admin` tokens | Built. (Per-source ingest rate limits and an ingest-only token now ship in the open-source sensor) |
+| **Hosted fleet console** | Per-host tokens, tenant-scoped ingest, fleet, triage and coverage views | Built and run locally, not deployed |
+| **Enterprise support** | Implementation support, Splunk onboarding, the maintainer's time | Offered in the design-partner pilot |
+| **macOS and other installers** | `.pkg`, brew tap, single binary for macOS | Planned (agentmetry-enterprise#33) |
+| **Sigma dialect import** | Parser: standard Sigma YAML → Agentmetry rules (not native YAML) | Planned, empty package |
+| **mTLS forwarders** | Client cert auth to customer Splunk/Elastic/Loki | Planned |
+| **Compliance packs** | Evidence templates for SOC 2, ISO 27001, EU AI Act | Planned, empty package |
+| **Premium sinks** | Rekor/Trillian transparency log, optional TPM local signing | Planned, empty package |
+| **Customer-owned rule distribution** | Pull rules from a repo or bucket **the customer controls** | Planned, empty package |
+| **Advanced DLP** | Shannon entropy detectors, YARA payload scanning | Planned |
+| **eBPF sidecar adapter** | Tetragon/tracee → canonical schema as optional Tier-D | Planned, only if a design partner needs it |
+
+"Planned" items are built when a pilot needs them, not before.
 
 ## Critical boundary: native YAML vs. Sigma import
 
@@ -92,4 +105,4 @@ and optional enterprise path.
 
 ## Contact
 
-Commercial inquiries: **legal@agentmetry.ai**
+Commercial inquiries: **contact@agentmetry.ai**
