@@ -46,7 +46,7 @@ Two rules, so it does not happen again.
 | Tests | 1986 collected. CI on 2026-10-23: 1967 passed and 19 skipped on Linux and macOS, 1980 passed and 6 skipped on Windows, 82% line coverage against a 78% floor |
 | Dogfood gate | **Passed 2026-10-02, and still passing.** Run started 2026-08-30. Weeks 6 and 7 were red on 1 and 7 untriaged critical or high detections until all 16 open ones were triaged on 2026-10-23; `dogfood` then printed every complete week green, "7 of 4, Gate PASSED". The three false-positive shapes that triage found are [#329](https://github.com/blitzcrieg1/agentmetry/issues/329) |
 | Own trail | 74,923 hash-chained lines, all verified on the maintainer's machine on 2026-10-23 (`agentmetry verify --trail`). 256 anchor checkpoints cover records 1 to 74,704; the 219 newer records are chain-verified only until the next checkpoint |
-| Adoption | Public alpha. No design partner tenant yet and no reference customer. The first two sales messages went out on 2026-10-23, with no reply yet. 15 GitHub stars on 2026-10-23 |
+| Adoption | Public alpha. No design partner tenant yet and no reference customer. No sales message has gone out yet: the first ones are drafted and re-verified against live postings on 2026-10-24. 15 GitHub stars on 2026-10-23 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
@@ -96,7 +96,7 @@ the most important one on the page.
 
 | Item | Issue | Why now |
 |---|---|---|
-| **First design partner contact** | none, tracked in the enterprise repo | Two messages sent on 2026-10-23, follow-ups due around 2026-10-28. Four of the six hiring signals the pipeline was built on in August had closed by the time they were checked in late October: a signal is perishable, so send within days of finding one. Nothing else on this list matters as much |
+| **First design partner contact** | none, tracked in the enterprise repo | No message sent yet. The first two are drafted and their postings re-checked live on 2026-10-24; a third (a new signal) and two peer critique-asks are ready. Four of the six hiring signals the pipeline was built on in August had closed by the time they were checked in late October: a signal is perishable, so send within days of finding one. Nothing else on this list matters as much |
 | The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass. Whether the freeze ends for it is the maintainer's call and has not been made |
 | `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Seven of every ten triage items when the issue was filed, on intended work, and the rule that held weeks 2 and 4 of the passing run at red. A rule change, so it belongs in the same pass as #55. The agent-specific signals in [#317](https://github.com/blitzcrieg1/agentmetry/issues/317) come after that pass, not in it |
 | Decide the two cloud PRs | [#298](https://github.com/blitzcrieg1/agentmetry/pull/298), [#299](https://github.com/blitzcrieg1/agentmetry/pull/299) | A Cloud Bridge crash fix and Cursor cloud-agent capture, open since 2026-10-21 while later work merged around them. Merge or close; do not let them drift |

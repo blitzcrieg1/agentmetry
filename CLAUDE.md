@@ -207,9 +207,11 @@ install from PyPI showed. Walk the README from a fresh venv before a release,
 not from the checkout). Check alerts with
 `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
 trusting this line. There are also **zero external users and zero
-design-partner tenants**. The first two sales messages went out on 2026-10-23
-with follow-ups due around 2026-10-28; four more are drafted and wait on
-finding the person who joined in each closed role.
+design-partner tenants**, and no sales message has gone out yet. The first
+two were recorded as sent on 2026-10-23 and had not been; check with the
+maintainer before treating a pipeline row as sent. Those two, a third from a
+new signal and two peer critique-asks are drafted and verified; four more wait
+on finding the person who joined in each closed role.
 
 The fleet installers Cursor drafted in #282 are parked as
 agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
