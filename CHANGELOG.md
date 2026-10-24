@@ -9,6 +9,14 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Changed
+
+- **The OWASP Agentic Skills Top 10 table counts `agentmetry scan`.** It
+  predated 0.10.0 and still said nothing here scans before an agent runs.
+  AST08 Poor Scanning moves from none to partial, with the bypasses it does not
+  catch listed beside it, and AST01 and AST02 say what `scan` adds. Two
+  covered, four partial, four not covered.
+
 ## [0.10.1] - 2026-10-23
 
 The dashboard is inside the package. On 0.10.0 a `pip install` had none:
