@@ -32,7 +32,7 @@ enterprise = "agentmetry_enterprise.register:register"
 | **Storage** | SQLite index, JSONL hash chain, evidence export |
 | **Forwarders** | File, webhook, Splunk HEC, Elastic ECS, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), CloudEvents as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. API key or token auth over HTTPS |
 | **Sigma export** | SIEM pack for forwarding Agentmetry events to existing Sigma pipelines |
-| **Dashboard** | Local Flight Recorder UI (single-operator hunt layout) |
+| **Dashboard** | Local dashboard for one machine (Overview, detections, investigation) |
 | **CLI** | `start`, `stop`, `status`, `doctor`, `stats`, `export`, `verify` |
 
 ## Enterprise / ELv2 (private `agentmetry-enterprise`)

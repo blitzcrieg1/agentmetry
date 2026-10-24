@@ -1,7 +1,7 @@
 [project]
 name = "agentmetry"
 dynamic = ["version"]
-description = "Local-first endpoint sensor for AI coding agents: hash-chained audit trail, MITRE-mapped sequence detection, DLP"
+description = "Open-source security for AI coding agents: record, detect and block at the tool boundary, with a verifiable audit trail and SIEM forwarding"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Ioannis L." }]

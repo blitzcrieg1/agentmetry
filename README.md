@@ -9,8 +9,8 @@
 
 <h1>Agentmetry</h1>
 
-<p><strong>A local-first endpoint sensor for AI coding agents.</strong><br/>
-A flight recorder for each tool call on the machine: it tags the ones it recognises, and can forward that trail to a SIEM you already run.</p>
+<p><strong>Open-source security for AI coding agents.</strong><br/>
+It records every tool call an agent makes on the machine, flags risky sequences, can block a call your policy forbids before it runs, and keeps a record a third party can verify, forwarded to the SIEM you already run.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
