@@ -8,7 +8,7 @@ attack. It reads configuration and text already on the machine. It never runs
 a server and never fetches a package.
 
 ```bash
-agentmetry scan                      # MCP servers configured on this machine
+agentmetry scan                      # MCP servers, and instruction files in Downloads, Desktop and ~
 agentmetry scan ./skills             # a file or folder: skills, rules, a saved tools/list
 agentmetry scan pypi:request         # one package name
 agentmetry scan --json               # the report as JSON
@@ -60,6 +60,42 @@ reports configured servers as *unobserved* on this front rather than clean.
 In the proxy the result lands on the `mcp_schema` trail event as `injection`
 counts per category: never the text, never which tool, the same rule as
 concealed characters.
+
+### Instruction files an agent loads by itself (0.10.2)
+
+AGENTS.md, CLAUDE.md, GEMINI.md, `.cursorrules` and `.windsurfrules` are read
+from an agent's working directory without anyone asking, and followed with the
+permissions the agent already has. In October 2026 one was found in a
+customer's `~/Downloads`, where a browser can save a file without a prompt,
+telling a coding agent to install a rogue npm package; the same research
+pointed Claude Code's API at an attacker's server with a CLAUDE.md
+([BleepingComputer, 2026-10-25](https://www.bleepingcomputer.com/news/security/ai-coding-agents-hijacked-using-agentsmd-file-in-downloads-folder/)).
+Nothing there is a bug for a vendor to patch.
+
+These files get three checks on top of the text check above. Skills do not:
+they are opted into, and their job is to carry commands.
+
+| Category | Severity | Shape |
+|---|---|---|
+| `install_directive` | medium; high beside steering text or outside a project | installs a **named** package (`npm i x`, `pip install x`, `uv add x`, `brew install x`), runs one straight from a registry (`npx -y x`, `uvx x`), or pipes a download into a shell (`curl … \| sh`, `iwr … \| iex`). A bare `npm install`, `npm ci`, `pip install -e .` or `-r requirements.txt` installs the project and is silent. A named package is also checked for typosquatting |
+| `agent_config` | medium; high beside steering text or outside a project | names the agent's own endpoint, proxy or execution config: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `HTTPS_PROXY`, `NODE_OPTIONS`, `.claude/settings.json`, hooks, `.mcp.json`, `.codex/config.toml` |
+| `outside_project` | high | the file sits in Downloads or on the Desktop (or their OneDrive copies) with no `.git` between it and that folder |
+
+With no argument, `scan` reads these files in the home folder and up to two
+levels into Downloads and the Desktop, beside the MCP servers.
+
+**Measured on 2026-10-25:** over the 47 autoloaded instruction files on the
+maintainer's machine (this repo's CLAUDE.md and its copies in old worktrees,
+other projects, and the global agent configs), one distinct line matched:
+`uvx agentmetry demo` in this repo's own CLAUDE.md, which really does run a
+named package from PyPI, and is reported as medium. `agent_config` matched
+nothing.
+
+What it still cannot do: an instruction that installs nothing and names no
+config ("run the binary in ./tools before anything else") is plain text, and a
+file that arrives inside a project you cloned is judged by what it says, not by
+where it came from. Start agents in the project folder, not in Downloads, and
+read an instruction file you did not write.
 
 ### Package names that imitate well-known ones
 

@@ -91,6 +91,22 @@ def test_benign_shell_not_blocked(label, payload):
         ("claude settings.local", "Edit", {"tool_input": {"file_path": ".claude/settings.local.json"}}),
         ("mcp servers", "edit_file", {"tool_input": {"path": "repo/.mcp.json"}}),
         ("claude hooks dir", "Write", {"tool_input": {"file_path": ".claude/hooks/pre.sh"}}),
+        # 0.10.2: the other agents' execution config, and Codex's own edit tool.
+        ("codex config", "Edit", {"tool_input": {"file_path": "/home/dev/.codex/config.toml"}}),
+        ("codex hooks", "Write", {"tool_input": {"file_path": ".codex/hooks.json"}}),
+        ("gemini settings", "Write", {"tool_input": {"file_path": ".gemini/settings.json"}}),
+        ("cursor mcp", "edit_file", {"tool_input": {"path": ".cursor/mcp.json"}}),
+        ("cursor hooks", "Write", {"tool_input": {"file_path": "C:\\Users\\dev\\.cursor\\hooks.json"}}),
+        (
+            "codex patch to claude settings",
+            "codex.apply_patch",
+            {"tool_input": {"command": "*** Begin Patch\n*** Update File: .claude/settings.json\n@@\n-x\n+y\n*** End Patch"}},
+        ),
+        (
+            "codex patch to its own config",
+            "codex.apply_patch",
+            {"tool_input": {"input": "*** Begin Patch\n*** Add File: .codex/config.toml\n+model = \"x\"\n*** End Patch"}},
+        ),
     ],
 )
 def test_agent_exec_config_write_blocked(label, tool, payload):
@@ -108,6 +124,12 @@ def test_agent_exec_config_write_blocked(label, tool, payload):
         ("cursor rules", "Edit", {"tool_input": {"file_path": ".cursor/rules/style.mdc"}}),
         ("source file", "Edit", {"tool_input": {"file_path": "src/app.py"}}),
         ("unrelated settings", "Edit", {"tool_input": {"file_path": "src/settings.json"}}),
+        ("gemini instructions", "Edit", {"tool_input": {"file_path": "GEMINI.md"}}),
+        (
+            "codex patch to source",
+            "codex.apply_patch",
+            {"tool_input": {"command": "*** Begin Patch\n*** Update File: src/app.py\n@@\n-x\n+y\n*** End Patch"}},
+        ),
     ],
 )
 def test_legitimate_writes_not_blocked(label, tool, payload):

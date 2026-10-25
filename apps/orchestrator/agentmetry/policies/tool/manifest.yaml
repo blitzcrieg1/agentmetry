@@ -81,6 +81,10 @@ rules:
   # MCP server definitions, env overrides. Deliberately excludes CLAUDE.md and
   # .cursor/rules — agents edit those legitimately, and the real threat there is
   # hidden Unicode, which the invisible_unicode_instructions DLP rule catches.
+  # Codex edits files through apply_patch, whose path sits inside the patch text
+  # after "*** Update File: ", so a space also counts as the start of a path.
+  # Until 0.10.2 neither Codex's edits nor its own config.toml and hooks.json
+  # were covered, nor Gemini's settings or Cursor's mcp.json and hooks.json.
   - id: block_agent_exec_config_write
     action: deny
     description: Block writes to agent execution config (hooks, MCP servers, env)
@@ -92,7 +96,9 @@ rules:
       - "str_replace_editor"
       - "*.write_file"
       - "*.edit_file"
-    command_pattern: '(?i)(^|[\\/])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml)'
+      - "apply_patch"
+      - "codex.apply_patch"
+    command_pattern: '(?i)(^|[\\/\s])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml|\.codex[\\/](config\.toml|hooks\.json)|\.gemini[\\/]settings\.json|\.cursor[\\/](mcp|hooks)\.json)'
 
   # Git hook persistence: agent plants .git/hooks/* or repoints core.hooksPath.
   # Deny only on pre-hooks when AGENTMETRY_TOOL_POLICY_MODE=block.
