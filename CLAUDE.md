@@ -193,13 +193,15 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-23 there are 1993 tests collected in CI, zero open
+Not code. As of 2026-10-25 there are 2025 tests collected in CI, zero open
 code scanning alerts, zero open Dependabot alerts, a dogfood gate that passed
 4 of 4 on 2026-10-02 and, after the 16 open detections were triaged on
 2026-10-23, prints "7 of 4, Gate PASSED" with every complete week green
 (triage is what keeps it that way; untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), and 0.10.1 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.10.2 on PyPI
+(released 2026-10-25: `scan` reads the AGENTS.md and CLAUDE.md files an agent
+loads by itself, and the config block rule covers Codex), and 0.10.1 before it
 (released 2026-10-23: 0.10.0's `agentmetry scan`, MCP proxy check, Windows
 Codex hooks, ingest rate limits and redesigned dashboard, plus the dashboard
 actually inside the package; 0.10.0 had none, which only a clean-environment
