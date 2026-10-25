@@ -7,10 +7,14 @@ Targets, in the order people reach for them:
   `agentmetry mcp` already knows (unpinned fetch-and-run, plaintext http) are
   reported beside them. Descriptions are not readable here: a live server
   hands them to the model at `tools/list`, which only the MCP proxy sees, so
-  servers are reported as unobserved on that front rather than as clean.
+  servers are reported as unobserved on that front rather than as clean. It
+  also reads the instruction files an agent loads by itself (AGENTS.md,
+  CLAUDE.md and their siblings) in Downloads, on the Desktop and in the home
+  folder, where a browser can leave one (`instruction_files.py`).
 - **a file or folder**: skills, rules files, CLAUDE.md and AGENTS.md, and any
   saved `tools/list` result (`{"tools": [...]}` or a list of tool objects),
-  checked for model-steering text.
+  checked for model-steering text. Instruction files an agent loads by itself
+  are also checked for install directives and for where they sit.
 - **`npm:NAME` or `pypi:NAME`**: one package name, checked for typosquatting.
 
 Output never contains the word "safe". "No findings" means these checks found
@@ -25,7 +29,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agentmetry.core.scanner import injection, typosquat
+from agentmetry.core.paths import user_profile_dir
+from agentmetry.core.scanner import injection, instruction_files, typosquat
 
 #: Files read as model-visible text when a folder is scanned.
 TEXT_SUFFIXES = (".md", ".mdc", ".txt")
@@ -51,7 +56,7 @@ CONFIG_DETAIL = {
 
 @dataclass(frozen=True)
 class Finding:
-    check: str  # injection | typosquat | mcp_config
+    check: str  # injection | instruction_file | typosquat | mcp_config
     category: str
     severity: str  # high | medium | low
     where: str
@@ -193,12 +198,50 @@ def _excerpt(text: str, start: int, end: int, width: int = 100) -> str:
     return line if len(line) <= width else line[: width - 1] + "…"
 
 
-def _scan_text_file(path: Path, report: ScanReport) -> None:
+def _scan_text_file(path: Path, report: ScanReport, known: dict[str, frozenset[str]] | None = None) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
-    for hit in injection.find_in_text(text):
+    hits = injection.find_in_text(text)
+    for hit in hits:
         line = text.count("\n", 0, hit.start) + 1
         report.findings.append(
             Finding("injection", hit.category, hit.severity, f"{path}:{line}", _excerpt(text, hit.start, hit.end))
+        )
+    if path.name in instruction_files.AUTOLOAD_NAMES:
+        _check_instruction_file(path, text, bool(hits), report, known or {})
+
+
+def _check_instruction_file(
+    path: Path, text: str, steering: bool, report: ScanReport, known: dict[str, frozenset[str]]
+) -> None:
+    """Where an autoloaded instruction file sits, and whether it installs anything."""
+    place = instruction_files.outside_project(path, user_profile_dir())
+    if place:
+        report.findings.append(
+            Finding(
+                "instruction_file", "outside_project", "high", str(path),
+                f"an agent started here loads this file and follows it, and it sits in {place} with "
+                "no repository around it, where a browser or an unzipped archive leaves files. Read "
+                "it before starting an agent in this folder, and delete it if you did not put it there",
+            )
+        )
+    for hit in instruction_files.find_installs(text):
+        line = text.count("\n", 0, hit.start) + 1
+        where = f"{path}:{line}"
+        # Alone, a named package is a line to read. Beside text that steers the
+        # model, or in a folder no project lives in, it is the payload.
+        severity = "high" if steering or place else "medium"
+        report.findings.append(
+            Finding("instruction_file", "install_directive", severity, where, _excerpt(text, hit.start, hit.end))
+        )
+        if hit.ecosystem in typosquat.ECOSYSTEMS and hit.name:
+            squat = typosquat.check(hit.name, hit.ecosystem, known.get(hit.ecosystem, frozenset()))
+            if squat:
+                report.findings.append(Finding("typosquat", squat.kind, "high", where, squat.sentence()))
+    for start, end in instruction_files.find_agent_config(text):
+        line = text.count("\n", 0, start) + 1
+        severity = "high" if steering or place else "medium"
+        report.findings.append(
+            Finding("instruction_file", "agent_config", severity, f"{path}:{line}", _excerpt(text, start, end))
         )
 
 
@@ -228,7 +271,7 @@ def _candidate_files(root: Path) -> list[Path]:
     return found
 
 
-def scan_path(target: Path) -> ScanReport:
+def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> ScanReport:
     report = ScanReport(target=str(target))
     if not target.exists():
         report.errors.append(f"{target}: no such file or folder")
@@ -250,7 +293,7 @@ def scan_path(target: Path) -> ScanReport:
                 _scan_tools_file(path, tools, report)
             else:
                 report.scanned += 1
-                _scan_text_file(path, report)
+                _scan_text_file(path, report, known)
         except OSError as exc:
             report.errors.append(f"{path}: {exc.strerror or exc}")
     return report
@@ -260,7 +303,26 @@ def run(target: str | None, *, project: Path | None = None, known_file: str | No
     """Dispatch on the target's shape."""
     known = _load_known(known_file)
     if not target:
-        return scan_mcp_config(project, known)
+        return scan_machine(project, known)
     if target.startswith(("npm:", "pypi:")):
         return scan_package(target, known)
-    return scan_path(Path(target))
+    return scan_path(Path(target), known)
+
+
+def scan_machine(project: Path | None = None, known: dict[str, frozenset[str]] | None = None) -> ScanReport:
+    """The MCP servers configured here, and the instruction files a browser could have left."""
+    report = scan_mcp_config(project, known)
+    report.target = (
+        "this machine: MCP servers, and agent instruction files in Downloads, on the Desktop "
+        "and in the home folder"
+    )
+    for path in instruction_files.machine_files(user_profile_dir()):
+        try:
+            if path.stat().st_size > MAX_FILE_BYTES:
+                report.errors.append(f"{path}: larger than {MAX_FILE_BYTES:,} bytes, skipped")
+                continue
+            report.scanned += 1
+            _scan_text_file(path, report, known)
+        except OSError as exc:
+            report.errors.append(f"{path}: {exc.strerror or exc}")
+    return report

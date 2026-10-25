@@ -9,6 +9,48 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-25
+
+`agentmetry scan` checks the instruction files an agent loads by itself. On
+2026-10-25 BleepingComputer reported an AGENTS.md left in a customer's
+~/Downloads, where a web page can save a file without asking, telling a coding
+agent to install a rogue npm package; a CLAUDE.md in the same research pointed
+Claude Code's API at the attacker. Tried against both that day, 0.10.1 caught
+the versions that also said "do not mention this" or "ignore previous
+instructions", and missed the plain ones. The block-mode policy also missed
+Codex entirely, because Codex edits files with `apply_patch`. The ruleset
+fingerprint is unchanged.
+
+### Added
+
+- **Instruction-file checks in `agentmetry scan`.** AGENTS.md, CLAUDE.md,
+  GEMINI.md, `.cursorrules` and `.windsurfrules`, the files an agent reads from
+  its working directory unasked, now get three more questions:
+  `install_directive` (installs a named package, runs one straight from a
+  registry with `npx -y` or `uvx`, or pipes a download into a shell; a bare
+  `npm install` or `pip install -e .` is the project itself and stays silent),
+  `agent_config` (names the agent's own endpoint, proxy or execution config,
+  such as `ANTHROPIC_BASE_URL` or `.claude/settings.json`), and
+  `outside_project` (the file sits in Downloads or on the Desktop with no
+  repository around it). The first two are medium alone and high beside text
+  that steers the model or in such a folder; the third is high. An installed
+  name also gets the typosquat check. Skills are not held to this: they are
+  opted into and carry commands by design.
+- **`agentmetry scan` with no argument also reads those folders.** Besides the
+  MCP servers configured on the machine, it reads autoloaded instruction files
+  in the home folder and up to two levels into Downloads and the Desktop,
+  including their OneDrive copies.
+
+### Fixed
+
+- **The agent-config block rule covers Codex, Gemini and Cursor.** In block
+  mode, `block_agent_exec_config_write` now denies writes to
+  `.codex/config.toml`, `.codex/hooks.json`, `.gemini/settings.json`,
+  `.cursor/mcp.json` and `.cursor/hooks.json`, and it reads Codex's
+  `apply_patch`, whose target path is inside the patch text. Before, a Codex
+  session could rewrite any agent's execution config, Claude Code's included,
+  with the rule on.
+
 ### Changed
 
 - **The OWASP Agentic Skills Top 10 table counts `agentmetry scan`.** It

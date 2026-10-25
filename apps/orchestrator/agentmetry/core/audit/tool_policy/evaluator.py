@@ -98,6 +98,14 @@ def _extract_command(hook_data: dict[str, Any] | str, qualified: str = "") -> st
         val = hook_data.get("value")
         if val is not None and str(val).strip():
             return str(val)
+    # Codex's apply_patch carries its target paths inside the patch text, not
+    # under a path key, so a config-write rule needs the patch itself.
+    if q.endswith("apply_patch"):
+        for container in (hook_data, *nested):
+            for key in ("patch", "input"):
+                val = container.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
 
     # Path fallback: lets a rule deny writes to agent-execution config.
     for container in (hook_data, *nested):

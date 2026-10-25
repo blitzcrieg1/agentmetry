@@ -1799,7 +1799,8 @@ def main(argv: list[str] | None = None) -> int:
     scan.add_argument(
         "target", nargs="?", default=None,
         help="a file or folder (skills, rules, a saved tools/list), npm:NAME or pypi:NAME; "
-        "omit to scan the MCP servers configured on this machine",
+        "omit to scan the MCP servers configured on this machine and the agent "
+        "instruction files in Downloads, on the Desktop and in the home folder",
     )
     scan.add_argument("--project", default=None, help="project root whose MCP config to include (default: cwd)")
     scan.add_argument("--known", default=None, help="file of extra known package names, one per line (npm:/pypi: or bare)")
