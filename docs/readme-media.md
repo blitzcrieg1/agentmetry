@@ -12,19 +12,24 @@ checked-in GIFs as the 0.9.4 transcript until they are re-rendered from it.
 
 ## Console tour
 
-The README's "The console" section is the one-minute console tour: a poster
+The README's "The console" section is the 84-second console tour: a poster
 served by agentmetry.ai (`/video/agentmetry-console-poster.jpg`) linking to the
 player at https://agentmetry.ai/#console. The MP4 lives in the site repo under
-`public/video/agentmetry-console-58s.mp4`.
+`public/video/agentmetry-console-84s.mp4`. The poster keeps its name so links
+already published (PyPI's copy of this README) show the current tour; bump the
+`?v=` on the README's image URL when it changes, because GitHub's image proxy
+caches by URL.
 
-Every screen in it was captured from the sessions `agentmetry demo` writes, on a
-machine named `dev-laptop` and a user named `demo`, by driving a headless browser
-over the dashboard of a throwaway orchestrator. Nothing of a real machine is in
-it. The composition is a HyperFrames HTML file rendered locally with
-`npx hyperframes render`; the music is synthesised for it, so nothing is
-licensed. Re-capture the screens when the dashboard changes visibly.
+It follows one detection from the Overview to a triage decision, then tool
+policy and `agentmetry verify`. Every screen is the 0.10.1 dashboard captured at
+2x over a synthetic trail seeded by `scripts/seed_demo.py` (host `demo-laptop`),
+with the dashboard's "Sample data" badge on screen. Nothing of a real machine is
+in it. The composition is a HyperFrames project rendered locally with
+`npx hyperframes render`, narrated by a local Kokoro voice, with no music. The
+site copy is re-encoded from the master render (H.264, CRF 26, faststart) to
+about 7 MB. Re-capture the screens when the dashboard changes visibly.
 
-It replaced an inline recording of the earlier dashboard. To make the tour an
+It replaced the one-minute tour of the earlier dashboard. To make the tour an
 inline player in the README too, upload it the way the next section describes
 and put the bare `user-attachments` URL in the section.
 

@@ -54,7 +54,7 @@ Public alpha. Capture, sequence detection, and SIEM forwarding work. APIs and ho
 
 Security engineers and developers who want a record of what a coding agent did at the tool boundary: which agent, which session, which call, in what order.
 
-It is a sensor. The open-source package is not a console. `agentmetry dashboard` reads the trail on this machine. Fleet questions are answered in the SIEM you forward to. A hosted fleet console is allowed for Agentmetry Enterprise and is not built. The sensor never needs that service to record or to forward. See [open-core split](docs/commercial/open-core-split.md).
+It is a sensor. The open-source package is not a console. `agentmetry dashboard` reads the trail on this machine. Fleet questions are answered in the SIEM you forward to. A hosted fleet console is allowed for Agentmetry Enterprise. It exists as a prototype that runs on localhost and is not offered as a hosted service. The sensor never needs that service to record or to forward. See [open-core split](docs/commercial/open-core-split.md).
 
 It does not see an unmanaged browser chat, an IDE with hooks off, or an MCP server reached over HTTP instead of the stdio proxy. That is CASB or gateway territory.
 
@@ -198,13 +198,13 @@ Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma p
 
 <div align="center">
 
-<a href="https://agentmetry.ai/#console"><img src="https://agentmetry.ai/video/agentmetry-console-poster.jpg" alt="The one-minute console tour: what agents do on a machine, what Agentmetry records and how, then the Overview, agent marks, detections, and a finding opened as a process tree" width="720" /></a>
+<a href="https://agentmetry.ai/#console"><img src="https://agentmetry.ai/video/agentmetry-console-poster.jpg?v=2" alt="The console tour: the Overview, one credential-exfil detection opened as a table, tree, graph and timeline, a triage decision with its note, tool policy, and agentmetry verify over the trail" width="720" /></a>
 
-<p><em>One minute: what it records, then the console you read it in. Captured from the sessions <code>agentmetry demo</code> writes.<br/><a href="https://agentmetry.ai/#console">Watch it on agentmetry.ai</a>.</em></p>
+<p><em>Under a minute and a half: one detection, from the alert to the decision. Captured on a synthetic sample trail.<br/><a href="https://agentmetry.ai/#console">Watch it on agentmetry.ai</a>.</em></p>
 
 </div>
 
-`agentmetry dashboard` signs a browser in to the console for this machine. The Overview separates **alerts** (the week's detections, grouped by rule, with how many are undecided) from **risks** (configuration that lets an agent act unseen, such as a configured agent that has sent nothing). A detection opens as an investigation with five views: details, the session's activity as a table, a tree and a graph, and an events timeline, sharing one selection, with the calls the detection cites marked in each. This machine shows which agents are recorded. The video above predates that redesign.
+`agentmetry dashboard` signs a browser in to the console for this machine. The Overview separates **alerts** (the week's detections, grouped by rule, with how many are undecided) from **risks** (configuration that lets an agent act unseen, such as a configured agent that has sent nothing). A detection opens as an investigation with five views: details, the session's activity as a table, a tree and a graph, and an events timeline, sharing one selection, with the calls the detection cites marked in each. This machine shows which agents are recorded.
 
 From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build `apps/dashboard` first (`npm install && npm run build`). The script says so if the export is missing.
 
