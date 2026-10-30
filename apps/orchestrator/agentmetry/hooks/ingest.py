@@ -90,6 +90,14 @@ REDACT_KEYS = frozenset({
 
 COMMAND_MAX_LEN = 4096
 
+#: How much of a command the hook classifies. Storage keeps COMMAND_MAX_LEN;
+#: classification used to see only that same 4,096-character prefix, so a
+#: credential read and an upload at the end of an ordinary long build script
+#: carried no traits and fired nothing (audit PUB-01, 2026-10-30). The
+#: classifier costs about 2 ms per KiB and runs before the tool does, so the
+#: whole command is read up to this size, and past it the head and the tail.
+CLASSIFY_MAX_LEN = 65536
+
 CURSOR_BEFORE = frozenset({
     "beforeShellExecution", "beforeMCPExecution", "preToolUse", "beforeReadFile",
 })
@@ -373,25 +381,42 @@ def _log_full_args_enabled() -> bool:
     return False
 
 
-def extract_command(args: Any, qualified: str = "") -> str | None:
-    """Pull shell command text from tool args (Bash, run_command, shell.run, etc.)."""
+def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_MAX_LEN) -> str | None:
+    """Pull shell command text from tool args (Bash, run_command, shell.run, etc.).
+
+    `limit` bounds what is stored and displayed. Pass `limit=None` for the full
+    text, which is what classification needs (see CLASSIFY_MAX_LEN).
+    """
     if isinstance(args, dict):
         for key in ("command", "cmd", "script", "CommandLine"):
             val = args.get(key)
             if val is not None and str(val).strip():
-                return str(val).strip()[:COMMAND_MAX_LEN]
-        
+                return str(val).strip()[:limit]
+
         for key in ("path", "filepath", "file_path", "AbsolutePath", "TargetFile", "target_path"):
             val = args.get(key)
             if val is not None and str(val).strip():
-                return str(val).strip()[:COMMAND_MAX_LEN]
+                return str(val).strip()[:limit]
     q = (qualified or "").lower()
     if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
         if isinstance(args, dict):
             val = args.get("value")
             if val is not None and str(val).strip():
-                return str(val).strip()[:COMMAND_MAX_LEN]
+                return str(val).strip()[:limit]
     return None
+
+
+def _classification_text(command: str) -> str:
+    """The part of a command the classifier reads: all of it, or its two ends.
+
+    Past CLASSIFY_MAX_LEN the middle is skipped. A script's payload is usually
+    at its start or its end; a command built to hide something in the middle of
+    64 KiB of padding is still a gap, and a smaller one than a 4 KiB prefix.
+    """
+    if len(command) <= CLASSIFY_MAX_LEN:
+        return command
+    half = CLASSIFY_MAX_LEN // 2
+    return command[:half] + "\n" + command[-half:]
 
 
 def redact_arguments(args: Any) -> dict[str, Any]:
@@ -483,19 +508,22 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
                 tool["input_hash_alg"] = "hmac-sha256"
 
         cmd = extract_command(args, qualified)
+        full = extract_command(args, qualified, limit=None)
+        analysed = _classification_text(full) if full else None
 
         # Detection features, computed while the plaintext is still visible.
         # Only category labels and ATT&CK ids leave this process — never the
         # command text. Without these, the default hashed-only config left
         # every command-based sequence rule (credential-exfil, the HF chains,
         # download cradles) blind on real traffic: the demo injected `command`,
-        # production events had nothing to match.
-        if classify_command and cmd:
-            traits = classify_command(cmd)
+        # production events had nothing to match. They read `analysed`, not
+        # the stored `cmd`: see CLASSIFY_MAX_LEN.
+        if classify_command and analysed:
+            traits = classify_command(analysed)
             if traits:
                 tool["traits"] = traits
         if get_mitre_mapping and not tool.get("mitre"):
-            evidence = cmd or (args if isinstance(args, dict) else None)
+            evidence = analysed or (args if isinstance(args, dict) else None)
             mitre = get_mitre_mapping(qualified, evidence)
             if mitre:
                 tool["mitre"] = mitre
