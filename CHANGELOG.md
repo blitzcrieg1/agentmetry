@@ -9,6 +9,46 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-30
+
+Fixes from an external audit of the 0.10.2 source, each reproduced before it
+was fixed. The most consequential: a credential read and an upload at the end of
+an ordinary long script fired nothing, because the hook classified only the
+first 4,096 characters of a command. Nobody had to hide it on purpose. The
+ruleset fingerprint is unchanged.
+
+### Fixed
+
+- **Long commands are classified in full.** The hook classified the same
+  4,096-character prefix it stores, so the end of a long build script, or a
+  command padded on purpose, carried no traits and no ATT&CK mapping, and fired
+  no sequence rule. It now classifies the whole command up to 64 KiB, and past
+  that its first and last 32 KiB. The stored command is still bounded at 4,096
+  characters, and DLP and tool policy, which already read the full command,
+  are unchanged.
+- **Secrets in error reasons are scrubbed.** `action.reason` was stored as
+  sent, so an MCP server's error that echoed the request it failed on, bearer
+  token included, put that token into the trail, the index, evidence packs and
+  the SIEM. It is now scrubbed like `command` and bounded at 4,096 characters.
+  The prefixes the rules read (`inferred:`, `subagent_start:`) are unchanged.
+- **Only the dashboard's own origin can use a dashboard session.** CORS trusted
+  every loopback port with credentials, and the WebSocket check every loopback
+  page. Cookies ignore ports, so a page served on another local port could read
+  the API and triage detections as the signed-in operator. Both now allow the
+  dashboard's own origin and the Next.js dev server only. The page still needs
+  to be on this machine; a remote site was never allowed.
+- **The README no longer overstates `anchor`.** It said the command publishes
+  a checkpoint the host cannot rewrite. The default anchor file is local; a
+  checkpoint protects against a rewrite of the whole trail only once a copy
+  lives somewhere this host cannot write.
+
+### Known, not fixed in this release
+
+- A credential read and a network call that were both **denied** still fire a
+  critical `credential-exfil` whose summary says both happened. The rule is in
+  a file under the detection freeze, so the fix lands with the next ruleset
+  change.
+
 ## [0.10.2] - 2026-10-25
 
 `agentmetry scan` checks the instruction files an agent loads by itself. On
