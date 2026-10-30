@@ -194,6 +194,48 @@ def test_a_foreign_page_cannot_ride_the_session_cookie_onto_a_websocket(client: 
             ws.receive_text()
 
 
+@pytest.mark.parametrize(
+    ("origin", "host", "allowed"),
+    [
+        ("http://127.0.0.1:8000", "127.0.0.1:8000", True),   # the recorder's own dashboard
+        ("http://localhost:8000", "127.0.0.1:8000", True),   # same port, other loopback name
+        ("http://localhost:3000", "127.0.0.1:8000", True),   # the Next.js dev server
+        ("http://localhost:9876", "127.0.0.1:8000", False),  # another local app's page
+        ("https://evil.example", "127.0.0.1:8000", False),
+        ("", "127.0.0.1:8000", False),
+    ],
+)
+def test_which_pages_may_use_the_session(origin: str, host: str, allowed: bool):
+    """PUB-02: cookies ignore ports, so "any loopback origin" let a page on
+    another local port open the live feed as the signed-in operator."""
+    from agentmetry.core.auth import dashboard_origin_allowed
+
+    assert dashboard_origin_allowed(origin, host) is allowed
+
+
+# --- CORS -------------------------------------------------------------------
+
+
+def _preflight(client: TestClient, origin: str):
+    return client.options(_DISPOSITION_URL, headers={
+        "Origin": origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": f"content-type,{CSRF_HEADER}",
+    })
+
+
+def test_another_local_port_is_not_a_trusted_origin(client: TestClient):
+    """PUB-02: the CSRF header only works if a foreign page cannot send it."""
+    resp = _preflight(client, "http://localhost:9876")
+    assert resp.headers.get("access-control-allow-origin") is None
+
+
+def test_the_dashboard_dev_server_is_still_a_trusted_origin(client: TestClient):
+    resp = _preflight(client, "http://localhost:3000")
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert resp.headers.get("access-control-allow-credentials") == "true"
+
+
 # --- the dashboard sign-in ---------------------------------------------------
 
 

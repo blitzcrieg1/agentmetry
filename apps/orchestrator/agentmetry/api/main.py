@@ -18,7 +18,7 @@ from agentmetry.api.trusted_host import TrustedHostMiddleware
 from agentmetry.api.routes.audit import router as audit_router
 from agentmetry.api.websocket import ws_manager
 from agentmetry.api.ws_bridge import ws_event_bridge
-from agentmetry.core.auth import verify_ws_token
+from agentmetry.core.auth import DASHBOARD_DEV_ORIGINS, verify_ws_token
 from agentmetry.core.bus.audit_exporter import audit_exporter
 from agentmetry.core.bus.bridges import outbox_persister
 from agentmetry.core.bus.bus import bus
@@ -268,14 +268,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://dashboard:3000",
-    ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # The dev server only. The built dashboard is same-origin and needs no CORS;
+    # "any loopback port" let another local page use the session (PUB-02).
+    allow_origins=list(DASHBOARD_DEV_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

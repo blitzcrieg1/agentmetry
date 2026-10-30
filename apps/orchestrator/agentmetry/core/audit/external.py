@@ -102,7 +102,11 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         # Anything else is not a confirmed success, and a fleet alerting on
         # failed remediations must not have one hidden by a spelling.
         outcome = "error"
-    reason = str(payload.get("reason") or "")
+    # Scrubbed and bounded like `command`: a reason is free text from the
+    # capture side, and an MCP server's error can echo the request it failed
+    # on, bearer token included (audit PUB-04, 2026-10-30). Prefixes the rules
+    # read (`inferred:`, `subagent_start:`) survive the scrubber.
+    reason = scrub_secrets(str(payload.get("reason") or ""))[:4096]
 
     correlation_id = str(payload.get("correlation_id") or payload.get("thread_id") or "")
     session_id = str(payload.get("session_id") or "")

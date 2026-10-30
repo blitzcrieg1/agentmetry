@@ -32,6 +32,38 @@ from agentmetry.core.dashboard_session import CSRF_HEADER, SESSION_COOKIE, sessi
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+_LOOPBACK = ("localhost", "127.0.0.1", "::1")
+
+#: Origins other than the recorder's own that may use a dashboard session: the
+#: Next.js dev server. The built dashboard is served by the recorder itself, so
+#: it is same-origin and needs no entry here. This replaced "any loopback port"
+#: (audit PUB-02, 2026-10-30): cookies ignore ports, so a page on another local
+#: port could read the API and triage as the signed-in operator.
+DASHBOARD_DEV_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://dashboard:3000",
+)
+
+
+def dashboard_origin_allowed(origin: str, host: str) -> bool:
+    """May a page at `origin` use the session cookie on a request to `host`?
+
+    Yes for the dev server, and for a loopback page on the port this request
+    arrived on, which is the recorder serving its own dashboard. When the
+    request's Host carries no port (port 80, or a test client) only the
+    hostname can be checked.
+    """
+    if origin in DASHBOARD_DEV_ORIGINS:
+        return True
+    page = urlparse(origin)
+    if page.hostname not in _LOOPBACK:
+        return False
+    served = urlparse(f"//{host}")
+    return served.port is None or page.port == served.port
+
 
 def auth_is_disabled() -> bool:
     return bool(getattr(settings, "auth_disabled", False)) or api_token.auth_disabled()
@@ -133,5 +165,5 @@ def verify_ws_token(query_token: str | None, request: Request) -> bool:
     if sessions.operator(request.cookies.get(SESSION_COOKIE)) is None:
         return False
     # A cookie rides along on any WebSocket the browser opens, so the page
-    # opening it must be one of ours: loopback origins only.
-    return urlparse(request.headers.get("origin", "")).hostname in ("localhost", "127.0.0.1", "::1")
+    # opening it must be one of ours: the dashboard's own origin, or dev.
+    return dashboard_origin_allowed(request.headers.get("origin", ""), request.headers.get("host", ""))

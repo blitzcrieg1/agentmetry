@@ -135,7 +135,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 - **Canonical events, schema 1.2.0.** SHA-256 argument hashes by default. The secret value is not stored. Schema: [docs/agentmetry-event-schema.md](docs/agentmetry-event-schema.md).
 - **SIEM and webhook export.** File (default, hash-chained JSONL), generic webhook, Elastic ECS, Splunk HEC, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), and CloudEvents v1.0 as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. The same list is in the table below.
 - **Claude Code OpenTelemetry ingest.** `agentmetry otel` is a loopback OTLP/HTTP JSON receiver. It shipped in 0.9.0. It does not export Agentmetry's own events as OTLP. That direction is not built.
-- **Evidence.** `agentmetry verify --trail` checks the hash chain. `agentmetry anchor` publishes a checkpoint the host cannot rewrite. `agentmetry prove` is an inclusion proof for one event. `agentmetry export --evidence` writes an evidence pack. `agentmetry export --compliance-digest` is a period summary.
+- **Evidence.** `agentmetry verify --trail` checks the hash chain. `agentmetry anchor` records a checkpoint; it protects against a rewrite of the whole trail only once a copy lives somewhere this host cannot write, because the default anchor file is local ([anchoring](docs/anchoring.md)). `agentmetry prove` is an inclusion proof for one event. `agentmetry export --evidence` writes an evidence pack. `agentmetry export --compliance-digest` is a period summary.
 
 ## Checked claims
 
@@ -152,7 +152,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2025 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+2040 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -166,7 +166,7 @@ The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audi
 
 **Approvals are mostly inferred.** A tool that runs after a prompt is marked `inferred:*` and is not a record of a click. Claude Code's OTel stream is the exception: a person's yes is stored as an observed approval (`otel_decision:*`).
 
-**The chain is not attribution.** Verification catches in-place edits, inserted or reordered lines, and forged appends. Anyone who can rewrite the file and the sidecar can produce a trail that verifies. `agentmetry anchor` is the check for that. The chain also does not prove who wrote a line.
+**The chain is not attribution.** Verification catches in-place edits, inserted or reordered lines, and forged appends. Anyone who can rewrite the file and the sidecar can produce a trail that verifies. A checkpoint from `agentmetry anchor`, kept somewhere that person cannot also rewrite, is the check for that. The chain also does not prove who wrote a line.
 
 What a token holder can and cannot claim is narrower than it sounds. `ExternalIngestBody` in `agentmetry/api/routes/audit.py` has no `host_id` or `fleet_id` field, and `agentmetry/core/audit/identity.py` stamps each event with the receiving orchestrator's hostname and its configured `fleet_id`. A client cannot claim to be another machine. It can claim another user: the hook reports the account that ran the agent, and `initiator.operator_source` says whether that id came from the caller (`hook_os`, `hook_configured`, `client`) or from the orchestrator. Anyone holding the API token can inject events that arrive stamped as the machine that accepted them.
 
