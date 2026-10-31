@@ -59,6 +59,10 @@ updates:
   # A pinned action is a dependency with code execution in a job that holds an
   # OIDC token good enough to publish to PyPI. This is the highest-value
   # ecosystem on the list and the easiest one to forget exists.
+  #
+  # Every `uses:` is pinned to a full commit SHA with the version in a trailing
+  # comment. A tag can be moved to other code after the fact; a SHA cannot.
+  # Dependabot bumps both the SHA and the comment, so the pin does not rot.
   - package-ecosystem: github-actions
     directory: /
     schedule:
