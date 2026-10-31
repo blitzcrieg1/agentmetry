@@ -140,14 +140,21 @@ rules:
   - id: "markdown_image_exfil"
     name: "Markdown Image Exfiltration"
     description: "Markdown image URL with long encoded query parameter (data exfil channel)"
-    pattern: "(?i)!\\[[^\\]]*\\]\\(\\s*https?://[^)\\s]*[?&][^)\\s]*=[A-Za-z0-9+/=_%\\-]{32,}"
+    # Query parameters are matched as delimiter-led segments, so no two runs can
+    # trade characters. The earlier `[^)\s]*[?&][^)\s]*=` could, and backtracked
+    # cubically on a long URL. `[` ends a run so one image cannot scan into the
+    # next; an IPv6 literal host is the one URL that loses.
+    pattern: "(?i)!\\[[^\\]\\[]*\\]\\(\\s*https?://[^)\\s?&\\[]*(?:[?&][^)\\s?&\\[]*)*?[?&][^)\\s?&=\\[]*=[A-Za-z0-9+/=_%\\-]{32,}"
     category: "exfiltration"
     severity: "critical"
 
   - id: "image_proxy_exfil_host"
     name: "Image Proxy Exfil Host"
     description: "Signed image-proxy hosts used in CamoLeak-style character-by-character exfil"
-    pattern: "(?i)https?://[^\\s\"')]*\\b(camo\\.githubusercontent\\.com|\\.blob\\.core\\.windows\\.net)\\b"
+    # Anchored on the URL's host. The earlier `https?://[^\s"')]*\b(...)` rescanned
+    # from every `http://` to the end of the run, so a long run of them was
+    # quadratic: 64 KiB took ten seconds in the hook, and DLP input is unbounded.
+    pattern: "(?i)https?://(?:[^\\s\"'/)@]*@)?(?:[\\w-]+\\.)*(camo\\.githubusercontent\\.com|blob\\.core\\.windows\\.net)\\b"
     category: "exfiltration"
     severity: "high"
 

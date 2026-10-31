@@ -205,6 +205,9 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             traits = [str(t) for t in traits_raw if t]
             if traits:
                 event["tool"]["traits"] = traits
+        # The hook classified only the two ends of an oversized command (#348).
+        if tool_block.get("classification") == "partial":
+            event["tool"]["classification"] = "partial"
 
         # Prefer the hook's MITRE mapping: it saw the plaintext command before
         # hashing, so its content upgrade (e.g. a key-file read → T1552) is

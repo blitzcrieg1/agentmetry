@@ -93,10 +93,43 @@ COMMAND_MAX_LEN = 4096
 #: How much of a command the hook classifies. Storage keeps COMMAND_MAX_LEN;
 #: classification used to see only that same 4,096-character prefix, so a
 #: credential read and an upload at the end of an ordinary long build script
-#: carried no traits and fired nothing (audit PUB-01, 2026-10-30). The
-#: classifier costs about 2 ms per KiB and runs before the tool does, so the
-#: whole command is read up to this size, and past it the head and the tail.
-CLASSIFY_MAX_LEN = 65536
+#: carried no traits and fired nothing (audit PUB-01, 2026-10-30). The whole
+#: command is read up to this size, and past it the head and the tail.
+#:
+#: 0.10.3 set this to 64 KiB, which was too much. Several frozen patterns are
+#: quadratic on contrived input: a keyword-led alternative such as
+#: PIPE_TO_SHELL's `\bcurl\b[^|;&]*[|]` scans from every keyword to the end
+#: when no separator follows, and the classifier runs before the tool does. At
+#: 64 KiB, `printenv ` repeated took 34 s; at 8 KiB the worst shape found takes
+#: about 0.55 s for traits and ATT&CK together, under 0.10.2's 4 KiB worst
+#: case. A hook that outlasts the agent's timeout records nothing and blocks
+#: nothing, which is worse than reading less and saying so. Anchoring the
+#: patterns belongs to the next ruleset change; then this can grow again.
+CLASSIFY_MAX_LEN = 8192
+
+#: Longest unbroken run of path-like characters the classifier is handed. Two
+#: frozen patterns (ENV_FILE and PRIVATE_KEY_PATH, in traits.py and mitre.py)
+#: open with an unanchored `[\w.~$-]*[/\\]`, which rescans a run from every
+#: position in it: 16 KiB of one token with no slash took 4.7 s per pass. A
+#: run past this keeps its two ends, and the event is marked partial.
+#: ENV_FILE's `^\s*\.env` is quadratic the same way on a long run of blank
+#: lines, so whitespace runs are shortened too. That drops nothing a pattern
+#: reads, so it does not mark the event partial.
+CLASSIFY_MAX_RUN = 128
+_PATHLIKE_RUN = re.compile(r"[\w.~$-]+")
+_SPACE_RUN = re.compile(r"\s+")
+
+
+def _shorten_space(m: re.Match[str]) -> str:
+    """A long whitespace run as at most two line breaks and the last line's indent."""
+    run = m.group(0)
+    if len(run) <= CLASSIFY_MAX_RUN:
+        return run
+    last = run.rfind("\n")
+    if last < 0:
+        return run[:CLASSIFY_MAX_RUN]
+    breaks = "\n\n" if run.count("\n") > 1 else "\n"
+    return breaks + run[last + 1 :][-CLASSIFY_MAX_RUN:]
 
 CURSOR_BEFORE = frozenset({
     "beforeShellExecution", "beforeMCPExecution", "preToolUse", "beforeReadFile",
@@ -406,17 +439,67 @@ def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_
     return None
 
 
-def _classification_text(command: str) -> str:
-    """The part of a command the classifier reads: all of it, or its two ends.
+def _classification_text(command: str) -> tuple[str, bool]:
+    """The part of a command the classifier reads, and whether any was skipped.
 
     Past CLASSIFY_MAX_LEN the middle is skipped. A script's payload is usually
     at its start or its end; a command built to hide something in the middle of
-    64 KiB of padding is still a gap, and a smaller one than a 4 KiB prefix.
+    padding is still a gap, which is why the event is marked partial.
+    A run longer than CLASSIFY_MAX_RUN loses its middle too. Either way the
+    second value is True, so the event can say so and block mode can ask.
     """
-    if len(command) <= CLASSIFY_MAX_LEN:
-        return command
-    half = CLASSIFY_MAX_LEN // 2
-    return command[:half] + "\n" + command[-half:]
+    partial = False
+    if len(command) > CLASSIFY_MAX_LEN:
+        half = CLASSIFY_MAX_LEN // 2
+        command = command[:half] + "\n" + command[-half:]
+        partial = True
+
+    def _shorten(m: re.Match[str]) -> str:
+        nonlocal partial
+        run = m.group(0)
+        if len(run) <= CLASSIFY_MAX_RUN:
+            return run
+        partial = True
+        half = CLASSIFY_MAX_RUN // 2
+        return run[:half] + run[-half:]
+
+    command = _SPACE_RUN.sub(_shorten_space, command)
+    return _PATHLIKE_RUN.sub(_shorten, command), partial
+
+
+def _bounded_evidence(value: Any, budget: list[int] | None = None) -> tuple[Any, bool]:
+    """Structured tool arguments, bounded the way _classification_text bounds a command.
+
+    The MITRE mapper reads the raw arguments when a call carries no command or
+    path, and nothing bounded them: a single long `file` value reached the
+    quadratic patterns at whatever size the agent sent. Every string is bounded
+    on its own, and all of them together share CLASSIFY_MAX_LEN.
+    """
+    if budget is None:
+        budget = [CLASSIFY_MAX_LEN]
+    if isinstance(value, str):
+        if budget[0] <= 0:
+            return "", bool(value)
+        text, partial = _classification_text(value[: budget[0]])
+        partial = partial or len(value) > budget[0]
+        budget[0] -= len(text)
+        return text, partial
+    if isinstance(value, dict):
+        out: dict[Any, Any] = {}
+        partial = False
+        for key, item in value.items():
+            out[key], skipped = _bounded_evidence(item, budget)
+            partial = partial or skipped
+        return out, partial
+    if isinstance(value, (list, tuple)):
+        items = []
+        partial = False
+        for item in value:
+            bounded, skipped = _bounded_evidence(item, budget)
+            items.append(bounded)
+            partial = partial or skipped
+        return items, partial
+    return value, False
 
 
 def redact_arguments(args: Any) -> dict[str, Any]:
@@ -509,7 +592,7 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
 
         cmd = extract_command(args, qualified)
         full = extract_command(args, qualified, limit=None)
-        analysed = _classification_text(full) if full else None
+        analysed, partial = _classification_text(full) if full else (None, False)
 
         # Detection features, computed while the plaintext is still visible.
         # Only category labels and ATT&CK ids leave this process — never the
@@ -523,10 +606,18 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
             if traits:
                 tool["traits"] = traits
         if get_mitre_mapping and not tool.get("mitre"):
-            evidence = analysed or (args if isinstance(args, dict) else None)
+            evidence: Any = analysed
+            if not evidence and isinstance(args, dict):
+                evidence, skipped = _bounded_evidence(args)
+                partial = partial or skipped
             mitre = get_mitre_mapping(qualified, evidence)
             if mitre:
                 tool["mitre"] = mitre
+        # Part of the input was skipped (see _classification_text). Say so on
+        # the event, so an empty trait list is not read as a clean command, and
+        # so block mode can refuse to treat what it did not read as safe (#348).
+        if partial:
+            tool["classification"] = "partial"
         # Same defensive shape as the imports above: the hook runs inside the
         # agent's interpreter and must degrade to an unenriched but valid event
         # rather than take the tool call down with it.
@@ -1865,6 +1956,7 @@ def hook_main(hook_name: str) -> int:
             # trail and a false prevention guarantee. See core/audit/policy.py.
             blocking = _is_blocking_hook(hook_name, data)
 
+            tp_verdict = None
             if tool_policy_eval:
                 tp_verdict = tool_policy_eval(tool_name, data, server=server)
                 if tp_verdict.matched:
@@ -1944,6 +2036,32 @@ def hook_main(hook_name: str) -> int:
                     payload["reason"] = (
                         f"{payload.get('reason', '')};dlp_block_observed:{dlp_verdict.match.rule_id}"
                     ).strip(";")
+
+            # Fail closed on what the classifier could not read (#348). Past
+            # CLASSIFY_MAX_LEN, or inside a run past CLASSIFY_MAX_RUN, only the
+            # two ends were classified, so in block mode a human decides, even
+            # over an allow rule: an allow pattern matched on the first line
+            # says nothing about the skipped middle.
+            # Deny and DLP blocks above still win. Log mode is unchanged.
+            if (
+                blocking
+                and tool_block.get("classification") == "partial"
+                and tp_verdict is not None
+                and tp_verdict.mode == "block"
+            ):
+                reason = "tool_policy:classification_partial"
+                if ask_honoured(_source_app(), hook_name):
+                    payload["event_type"] = "approval_request"
+                    payload["outcome"] = "pending"
+                    payload["reason"] = reason
+                    post_ingest(payload, quiet=True)
+                    print(json.dumps(_decision_output(hook_name, "ask", reason)))
+                    return 0
+                payload["outcome"] = "denied"
+                payload["event_type"] = "tool_called"
+                payload["reason"] = f"{reason};ask_unsupported:{_source_app()}/{hook_name}"
+                post_ingest(payload, quiet=True)
+                return _emit_block_decision(hook_name, payload["reason"])
 
         post_ingest(payload, quiet=True)
 

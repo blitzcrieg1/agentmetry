@@ -9,6 +9,58 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Changed
+
+- **The hook classifies 8 KiB of a command, not 64 KiB, and says when it read
+  less.** 0.10.3 raised the bound from 4 KiB to 64 KiB. That was too much:
+  several frozen patterns are quadratic on contrived input, and the
+  classifier runs before the tool does. A keyword-led alternative such as
+  `PIPE_TO_SHELL`'s `\bcurl\b[^|;&]*[|]` scans from every keyword to the end
+  of the text when no separator follows, so `printenv ` repeated to 64 KiB
+  held the hook for 34 s. An agent that times its hook out runs the call with
+  nothing recorded and nothing blocked, because the hook posts the event only
+  after classifying it. At 8 KiB the worst shape found takes about 0.55 s for
+  traits and ATT&CK together, under 0.10.2's worst case. Past the bound the
+  hook still reads the first and last 4 KiB, so a payload at the end of a
+  long script (audit PUB-01) is still caught, and the event now carries
+  `tool.classification: "partial"` in any mode, so an empty trait list is not
+  read as a clean command. Anchoring the patterns belongs to the next ruleset
+  change, after which the bound can grow again.
+- **Block mode asks on a command it could not classify in full**
+  ([#348](https://github.com/blitzcrieg1/agentmetry/issues/348)). With
+  `tool_policy_mode: block`, a command built to hide something in the skipped
+  middle was allowed without being read. A partial call now gets `ask` on a
+  pre-execution hook, recorded as an `approval_request` with reason
+  `tool_policy:classification_partial`, and a deny where the agent is not
+  known to honour an ask. An allow rule does not waive it; a deny rule or a
+  DLP block still wins. Log mode and after-hooks only record. Raised by a
+  reader on r/ClaudeCode.
+
+### Fixed
+
+- **One long token no longer stalls the hook.** `ENV_FILE` and
+  `PRIVATE_KEY_PATH`, in frozen `traits.py` and `mitre.py`, open with an
+  unanchored `[\w.~$-]*[/\]`, which is quadratic on a long run of those
+  characters with no slash: 4 KiB took 0.3 s per pass and 16 KiB took 4.7 s,
+  so at 0.10.3's bound a single long hex string kept the hook busy for
+  minutes. Arguments with no command or path key reached the same patterns
+  with no bound at all, in every earlier release. The hook now shortens any
+  such run longer than 128 characters to its two ends and marks the event
+  partial, and bounds structured arguments to 8 KiB in total before the
+  ATT&CK mapper reads them. Long whitespace runs, which made `ENV_FILE`'s
+  `^\s*\.env` quadratic on blank lines, are shortened too, keeping the line
+  breaks, without marking anything partial. A 1 MiB command of any shape
+  tested classifies in under a second. The patterns themselves are
+  unchanged, so the ruleset fingerprint is too.
+- **Two DLP patterns were quadratic or worse, and DLP input is unbounded.**
+  `image_proxy_exfil_host` rescanned from every `http://`, which took ten
+  seconds on 64 KiB of them; it is now anchored on the URL's host.
+  `markdown_image_exfil` could trade characters between two runs in the
+  query and backtracked cubically; its parameters are now matched as
+  delimiter-led segments. On 1 MiB of each shape that was slow, no shipped
+  DLP rule now takes more than 0.2 s. An IPv6 literal host is the one URL the
+  markdown rule no longer reads.
+
 ## [0.10.3] - 2026-10-30
 
 Fixes from an external audit of the 0.10.2 source, each reproduced before it
