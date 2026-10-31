@@ -16,7 +16,8 @@ It records every tool call an agent makes on the machine, flags risky sequences,
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="Apache 2.0 License"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
-  <img src="https://img.shields.io/badge/CI-Windows%20%7C%20Linux%20%7C%20macOS%20preview-lightgrey?style=for-the-badge" alt="CI: Windows and Linux, macOS in preview">
+  <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/ci.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/ci.yml?branch=master&style=for-the-badge&label=CI" alt="CI status on master (Windows and Linux required, macOS in preview)"></a>
+  <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/codeql.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/codeql.yml?branch=master&style=for-the-badge&label=CodeQL" alt="CodeQL scan status on master"></a>
 </p>
 
 <p align="center">
