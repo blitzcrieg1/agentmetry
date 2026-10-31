@@ -5,15 +5,20 @@ on:
   pull_request_target:
     types: [opened, closed, synchronize]
 
-permissions:
-  actions: read
-  contents: write
-  pull-requests: write
-  statuses: write
+# Nothing at the top level; the one job below asks for what it uses. The writes
+# are real: signatures are committed to the cla-signatures branch, the bot
+# comments on the PR, and the result is a commit status. Granting them to the
+# whole workflow is what OpenSSF Scorecard's Token-Permissions check scores 0.
+permissions: {}
 
 jobs:
   CLAAssistant:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+      statuses: write
     steps:
       - name: "CLA Assistant"
         if: >

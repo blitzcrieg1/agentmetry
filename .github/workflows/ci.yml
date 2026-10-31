@@ -35,6 +35,15 @@ on:
 #
 # Read them back with:
 #   gh api repos/blitzcrieg1/agentmetry/branches/master/protection/required_status_checks --jq .contexts
+
+# Read-only, stated rather than inherited. The repository default is already
+# read, but a workflow that names nothing gets whatever the setting says on the
+# day, and OpenSSF Scorecard scores that as unrestricted. pull-requests: read
+# is for gitleaks, which lists a PR's commits through the API.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   orchestrator:
     # Agentmetry is installed on Windows first. Running the suite only on Linux

@@ -18,6 +18,7 @@ It records every tool call an agent makes on the machine, flags risky sequences,
   <a href="https://github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/badge/status-public%20alpha-orange?style=for-the-badge" alt="Project status: public alpha"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/ci.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/ci.yml?branch=master&style=for-the-badge&label=CI" alt="CI status on master (Windows and Linux required, macOS in preview)"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/codeql.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/codeql.yml?branch=master&style=for-the-badge&label=CodeQL" alt="CodeQL scan status on master"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/ossf-scorecard/github.com/blitzcrieg1/agentmetry?style=for-the-badge&label=OpenSSF%20Scorecard" alt="OpenSSF Scorecard score"></a>
 </p>
 
 <p align="center">
