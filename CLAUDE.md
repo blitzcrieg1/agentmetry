@@ -114,7 +114,7 @@ stale and should be fixed.
 
 1. **The code**, and a command you can run
 2. **`CHANGELOG.md`**, what shipped, per release
-3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-10-23
+3. **`ROADMAP.md`**, what is being worked on. Refreshed 2026-10-23, status table 2026-10-31
 4. **Open GitHub issues**
 5. Everything else
 
@@ -193,17 +193,21 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-30 there are 2040 tests collected in CI, zero open
-code scanning alerts, zero open Dependabot alerts, a dogfood gate that passed
-4 of 4 on 2026-10-02 and, after the 16 open detections were triaged on
-2026-10-23, prints "7 of 4, Gate PASSED" with every complete week green
-(triage is what keeps it that way; untriaged criticals turn a week red),
+Not code. As of 2026-10-31 there are 2069 tests collected in CI, zero open
+code scanning alerts, five open Dependabot alerts (`fast-uri` and
+`body-parser` in the dashboard's lockfile, open since 2026-10-25), a dogfood
+gate that passed 4 of 4 on 2026-10-02 and now prints "8 of 4, Gate PASSED"
+with every complete week green (triage is what keeps it that way; untriaged
+criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), 0.10.3 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.10.4 on PyPI
+(released 2026-10-31: the hook classifies 8 KiB of a command, because 0.10.3's
+64 KiB let one crafted command hold the hook for 30 s or more, and block mode
+asks on a command it could not classify in full), 0.10.3 before it
 (released 2026-10-30: the external audit's whole-command classification,
-scrubbed error reasons and dashboard-origin fixes), 0.10.2 before it
+scrubbed error reasons and dashboard-origin fixes), 0.10.2 before that
 (released 2026-10-25: `scan` reads the AGENTS.md and CLAUDE.md files an agent
-loads by itself, and the config block rule covers Codex), and 0.10.1 before that
+loads by itself, and the config block rule covers Codex), and 0.10.1 earlier
 (released 2026-10-23: 0.10.0's `agentmetry scan`, MCP proxy check, Windows
 Codex hooks, ingest rate limits and redesigned dashboard, plus the dashboard
 actually inside the package; 0.10.0 had none, which only a clean-environment
