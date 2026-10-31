@@ -9,6 +9,15 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-31
+
+0.10.3 raised the hook's classification bound to 64 KiB, and a crafted command
+could then hold the hook for 30 seconds or more before the tool ran. An agent
+that times its hook out runs the call with nothing recorded and nothing
+blocked. This release bounds that, and makes block mode ask on what it skipped.
+The ruleset fingerprint is unchanged.
+
+
 ### Changed
 
 - **The hook classifies 8 KiB of a command, not 64 KiB, and says when it read
@@ -40,7 +49,7 @@ separately (currently `1.2.0`) and changes additively.
 
 - **One long token no longer stalls the hook.** `ENV_FILE` and
   `PRIVATE_KEY_PATH`, in frozen `traits.py` and `mitre.py`, open with an
-  unanchored `[\w.~$-]*[/\]`, which is quadratic on a long run of those
+  unanchored `[\w.~$-]*[/\\]`, which is quadratic on a long run of those
   characters with no slash: 4 KiB took 0.3 s per pass and 16 KiB took 4.7 s,
   so at 0.10.3's bound a single long hex string kept the hook busy for
   minutes. Arguments with no command or path key reached the same patterns
