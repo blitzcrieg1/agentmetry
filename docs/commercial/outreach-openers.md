@@ -73,16 +73,17 @@ trust. **Trigger:** their own post. This is the warmest of the six.
 
 > **Subject: the postmark-mcp gap, in one field**
 >
-> You wrote about postmark-mcp. The part that stuck with me: fifteen clean
-> releases, and then 1.0.16 shipped a single added line that BCC'd a third
-> party on every send. No announcement, and the interface a user approves
-> never moved.
+> You wrote about postmark-mcp. The part that stuck with me: between 1.0.15
+> and 1.0.18 the only notable diff was one added Bcc line. No announcement,
+> and the tools a user had approved looked exactly the same.
 >
-> I fingerprint the `tools/list` schema per session and flag unpinned package
-> launchers, because that incident had two halves and point-in-time scans see
-> neither. A listing that moves while the config holds still is the rug pull,
-> and an unpinned `npx` launch is what let 1.0.16 land silently. Either way it
-> is an event rather than a blog post. MITRE ATLAS calls it AML.T0109.
+> I fingerprint what `tools/list` returns as it passes through an MCP proxy,
+> and flag unpinned package launchers, because that incident had two halves
+> and a point-in-time scan of the config sees neither. A listing that moves
+> while the config holds still is the rug pull, and an unpinned `npx` launch
+> is what let the change land silently. Either way it shows up on the machine
+> as something you can alert on, rather than in a blog post later. MITRE ATLAS
+> calls it AML.T0109.
 >
 > Not selling you anything in this message. If the detection logic is wrong I
 > would rather hear it from you than from a customer.
@@ -144,8 +145,8 @@ prospect.
 > control, then an already-risky action. It cannot prove intent and the label
 > does not claim to.
 >
-> I mapped 5 ATLAS techniques out of 178. About 3%, published as 3%, because a
-> sensor that labels everything has labels that mean nothing.
+> I emit 5 of the 221 techniques in ATLAS 2026.10, about 2%, on purpose,
+> because a sensor that labels everything has labels that mean nothing.
 >
 > Would value you telling me the mapping is wrong.
 
