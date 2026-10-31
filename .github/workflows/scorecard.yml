@@ -1,0 +1,61 @@
+name: Scorecard
+
+# OpenSSF Scorecard: a public score out of 10 for the repository's security
+# habits (branch protection, pinned dependencies, token permissions, review,
+# and so on). Security reviewers at companies look it up, so it should be a
+# number anyone can reproduce rather than one we describe.
+#
+# `publish_results: true` sends the result to the OpenSSF API, which is what
+# the badge and https://scorecard.dev/viewer read. That makes it public, and it
+# is meant to be: a score shown only when it flatters is not worth showing.
+#
+# No SARIF upload to code scanning, deliberately. Scorecard's findings would
+# land as code scanning alerts, and "zero open code scanning alerts" is a
+# number CLAUDE.md and ROADMAP.md quote. The checks read habits, not
+# vulnerabilities, so they would muddy the one count that means "CodeQL found
+# something". The full results stay downloadable as the run's artifact.
+#
+# Not a required status check. It runs on master, weekly, and when branch
+# protection changes, since that is one of the things it scores.
+#
+# The action verifies this file before it publishes: read-only top-level
+# permissions, no top-level env or defaults, and only its allowlisted actions
+# as steps. Adding a step outside that list makes the publish fail.
+
+on:
+  push:
+    branches: [master]
+  branch_protection_rule:
+  schedule:
+    # Monday 06:30 UTC, half an hour after CodeQL, so the week's security
+    # reading still arrives together.
+    - cron: "30 6 * * 1"
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Signs the published result, so the API can tell it came from this repo.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Keep the results
+        uses: actions/upload-artifact@v7
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 30
