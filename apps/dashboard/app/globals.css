@@ -1,9 +1,9 @@
-/* Explicit paths into dist/ rather than the bare package names.
-   Both packages expose their CSS through an "exports" -> "style"
+/* An explicit path into dist/ rather than the bare package name.
+   tw-animate-css exposes its CSS through an "exports" -> "style"
    condition. webpack resolved that; Turbopack, which Next 16 uses for
    builds by default, does not, and fails with Module not found. */
 @import "../node_modules/tw-animate-css/dist/tw-animate.css";
-@import "../node_modules/shadcn/dist/tailwind.css";
+@import "./shadcn-tailwind.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
