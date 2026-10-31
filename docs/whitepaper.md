@@ -76,6 +76,8 @@ different thing from either half.
 The engine ships **15 published rules** and one experimental rule (section 9).
 Most rules evaluate an ordered session. Literal Hugging Face token exposure
 can be identified from a single observed command input.
+So the detection unit is an ordered session, and the engine ships **16 published
+sequence rules**, plus one held back as experimental (section 9).
 
 Ordering is explicit: events are sorted by timestamp, with a deterministic
 tie-break, because "did A happen before B" is the question every rule asks and
@@ -250,6 +252,7 @@ Enterprise and is not built. The sensor does not need it. See
 Forwarders ship for **Splunk HEC**, **Elastic ECS**, **Google SecOps UDM**,
 **Microsoft Sentinel** (not yet run against a live workspace), **CloudEvents**,
 and Loki via Alloy. All fifteen published detections are also
+and Loki via Alloy. All sixteen published detections are also
 exported as **Sigma rules**, generated from the engine by replaying the
 benchmark corpus and reading the `Detection` objects it emits, so a severity
 that changes in the rules changes in the Sigma pack on the next run and a test
@@ -272,6 +275,11 @@ why you should believe the numbers.
 across 42 attack cases and no findings across 45 benign cases. The corpus
 includes 13 of the 15 published rules and the experimental rule.
 Two published rules have no corpus case
+**A benchmark anyone can run in about ten seconds.** 62 recorded sessions, 29
+attack and 33 benign. Current result: 31 of 31 expected detections fire, 0
+missed, 0 false positives. The benchmark's "rules covered 15" counts rule ids
+named in corpus expectations: 14 of the 16 published rules, plus the
+experimental rule. Two published rules have no corpus case
 (`host-subagent-swarm-burst`, `off-hours-activity`). They are named in the
 Sigma generator rather than omitted from the pack.
 

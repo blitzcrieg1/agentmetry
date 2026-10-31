@@ -22,6 +22,7 @@ intact, did an MCP schema move, is anybody triaging. Useful, and none of it is
 the product.
 
 `agentmetry_rule_*.yml` covers the sixteen **published detections**,
+`agentmetry_rule_*.yml` covers the sixteen **published sequence detections**,
 which are what a SOC actually routes on. The experimental rule is not exported.
 One file per rule, except the split noted below, matching the detection event
 in the trail:
@@ -47,6 +48,12 @@ Sigma file and pins `action.outcome`. The high-severity
 literal Hugging Face token. The `rapid-tool-denials` finding rule pins
 `action.outcome: high` so a lower-severity rule from a replacement
 manifest keeps its own routing.
+Seventeen files for sixteen rules. `encoded-command-download` is deliberately two
+detections: `critical` for remote code fetched and executed, `low` for local
+content piped into an interpreter, where `rules.py` says the low one exists "so
+it stops drowning the criticals". A single Sigma `level` would either page on
+the quiet variant or stay silent on the loud one, so each gets a rule and the
+selection pins `action.outcome`.
 
 ### Do not hand-edit these
 
@@ -67,6 +74,9 @@ generated, so a consumer who pinned one keeps working.
 Sigma rule survives a deleted rule, or if a severity here disagrees with the
 engine. `off-hours-activity` uses an explicit generator entry while its
 corpus coverage is tracked in [issue #36](https://github.com/blitzcrieg1/agentmetry/issues/36).
+engine. Two of the sixteen (`host-subagent-swarm-burst`, `off-hours-activity`)
+have no corpus case and carry an explicit entry in the generator, which is
+tracked in [issue #36](https://github.com/blitzcrieg1/agentmetry/issues/36).
 
 ## Field mapping — read before deploying
 

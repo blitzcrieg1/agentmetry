@@ -135,7 +135,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 
 ## What you get
 
-- **Detections.** Sixteen published rules and one experimental rule (`autonomous-unapproved-write`). Sequence rules match ordered steps inside a session. A single observed command can flag literal Hugging Face token exposure. The experimental rule requires a signal available outside IDE capture and stays out of the Sigma pack. See [Detection rules](docs/detection-rules.md).
+- **Detections.** Eighteen published rules and one experimental rule (`autonomous-unapproved-write`). Sequence rules match ordered steps inside a session. A single observed command can flag literal Hugging Face token exposure. The experimental rule requires a signal available outside IDE capture and stays out of the Sigma pack. See [Detection rules](docs/detection-rules.md).
 - **A check before anything runs.** `agentmetry scan` reads the MCP configs, skills and rules files an agent will load and reports typosquatted package names and text that steers the model: overriding instructions, hiding things from the user, reaching for credential files, exfiltration, shadowing other tools. The MCP proxy runs the same text check on every `tools/list` it relays and records the counts per category on the trail, never the text.
 - **MITRE ATT&CK tags** on tool calls the mapper recognises (`agentmetry/core/audit/mitre.py`). A call it does not recognise carries no tag.
 - **MITRE ATLAS labels** on the subset where ATLAS says something ATT&CK cannot (`agentmetry/core/audit/atlas.py`, content release 2026.07). Five built-in technique and sub-technique IDs are emitted: indirect prompt injection (`AML.T0051.001`), agent-tool credential harvesting (`AML.T0098`), exfiltration via tool invocation (`AML.T0086`), destruction via tool invocation (`AML.T0101`), and MCP supply-chain rug pull (`AML.T0109`). `AML.T0050` and `AML.T0053` are deliberately not emitted.
@@ -151,21 +151,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            107 (54 attack, 53 benign)
-  rules covered    16
-  expected firings 56
-  detected         56
+  cases            112 (57 attack, 55 benign)
+  rules covered    18
+  expected firings 61
+  detected         61
   missed           0
   false positives  0
 ```
 
-Run `agentmetry benchmark` to check these expectations. The 15 rule IDs in the corpus include 14 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
+Run `agentmetry benchmark` to check these expectations. The 18 rule IDs in the corpus are the published rules; the Sigma pack ships 28 rules including the experimental ones (`host-subagent-swarm-burst`, `off-hours-activity`).
 
-3013 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
-[detection pass CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/44312544675)
-reported 2885 passed and 19 skipped on Linux, 2898 passed and 6 skipped on Windows,
-and 84% line coverage on Linux
-(`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+3034 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -207,7 +203,7 @@ The JSONL trail is the system of record. Network sinks tail it from a cursor and
 | AiSOC | Not a sink mode. The webhook sink with the default `canonical` format, pointed at an AiSOC inbox URL minted with its Agentmetry template. Only `canonical` works: the template does not unwrap the `batch` or `cloudevents` envelopes. Built and maintained by AiSOC: [connector docs](https://beenuar.github.io/AiSOC/docs/connectors/agentmetry/). Run live end to end on 2026-11-02 (AiSOC v21, Agentmetry 0.10.4): detections arrived as critical alerts with their ATT&CK techniques, and tool calls raised none. |
 | Tenzir | Not a sink mode. The `agentmetry` package in the [Tenzir Library](https://github.com/tenzir/library/tree/main/agentmetry) maps events to OCSF 1.9.0 from the trail file or from the webhook sink (`accept_http`). Built in [tenzir/library#211](https://github.com/tenzir/library/pull/211), reviewed and merged by Tenzir. Its tests pass on recorded events. The webhook path was run on 2026-11-14 (Agentmetry 0.12.0 from PyPI, package v0.1.0, Tenzir 6.22.0): every event the recorder wrote arrived through `accept_http` and mapped to OCSF, detections as Detection Findings with their tool calls as evidence. The sessions were replayed rather than from a live agent. |
 
-Guides: [docs/integrations/](docs/integrations/). The [Sigma pack](docs/integrations/sigma/README.md) (26 rules) includes 18 generated files for the 16 published detections, plus 8 rules for recorder health and triage. `encoded-command-download` and `session-tool-burst` each ship two severity variants.
+Guides: [docs/integrations/](docs/integrations/). The [Sigma pack](docs/integrations/sigma/README.md) (28 rules) includes 20 generated files for the 18 published detections, plus 8 rules for recorder health and triage. `encoded-command-download` and `session-tool-burst` each ship two severity variants.
 
 `agentmetry otel` receives Claude Code's stream. It does not replace hooks for policy. Mapped today: `tool_result` becomes `tool_called` or `tool_failed` (arguments only if `OTEL_LOG_TOOL_DETAILS=1`); a person's yes on `tool_decision` becomes an observed approval. Other documented types are counted, not dropped silently. Prompts are not forwarded. `--print-env` and `--print-mapping` print the rest.
 

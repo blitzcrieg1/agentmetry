@@ -4,7 +4,7 @@ ATT&CK describes what one tool call did. ATLAS at the detection level describes
 the adversary technique the sequence is evidence of, which is a claim only a
 rule is in a position to make.
 
-The mapping is deliberately one rule wide. Of the fourteen published rules, one
+The mapping is deliberately one rule wide. Of the published rules, one
 describes an ATLAS technique; the rest are host and operations behaviour that
 ATT&CK already covers, and labelling those would put an AI-threat technique on
 a shell command. Most of this file exists to hold that line, because the
@@ -192,6 +192,8 @@ def test_a_host_behaviour_rule_fires_with_no_atlas_key():
         "autonomous-unapproved-write",
         "credential-read-then-cloud-api",
         "host-subagent-swarm-burst",
+        "decode-pipe-to-shell",
+        "script-write-then-execute",
     ],
 )
 def test_no_other_built_in_rule_is_mapped(rule_id: str):
