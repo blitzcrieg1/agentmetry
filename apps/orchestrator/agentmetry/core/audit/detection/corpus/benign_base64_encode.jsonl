@@ -1,0 +1,1 @@
+{"action": {"type": "tool_called", "outcome": "success", "reason": ""}, "correlation_id": "b346", "event_id": "b346-1", "timestamp_utc": "2026-10-31T12:10:00+00:00", "initiator": {"actor_type": "agent", "trigger": "manual", "operator_id": "corpus"}, "tool": {"qualified": "shell.run", "command": "echo hello | base64", "traits": []}}

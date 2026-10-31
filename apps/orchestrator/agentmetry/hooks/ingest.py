@@ -76,10 +76,16 @@ except ImportError:  # pragma: no cover - the package always ships it
 # trait/MITRE tagging, which only needs the stdlib.
 try:
     from agentmetry.core.audit.atlas import attach_atlas
-    from agentmetry.core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.detection.traits import (
+        classify_command,
+        clean_script_names,
+        executed_script_names,
+    )
     from agentmetry.core.audit.mitre import get_mitre_mapping
 except ImportError:
     classify_command = None
+    clean_script_names = None
+    executed_script_names = None
     get_mitre_mapping = None
     attach_atlas = None
 
@@ -414,6 +420,67 @@ def _log_full_args_enabled() -> bool:
     return False
 
 
+_SCRIPT_SUFFIXES = (
+    ".sh", ".bash", ".zsh", ".ksh", ".ps1", ".psm1", ".py", ".pyw",
+    ".pl", ".rb", ".js", ".mjs", ".cjs", ".php", ".command",
+)
+_SCRIPT_BODY_KEYS = ("contents", "content", "new_string", "new_str", "file_text", "fileText")
+_SCRIPT_PATH_KEYS = (
+    "path", "filepath", "file_path", "filePath", "AbsolutePath",
+    "TargetFile", "target_path", "target_file",
+)
+# A read that echoes the file back is not a write. Classifying it as one would
+# pair "the agent looked at run.sh" with a later run of run.sh.
+_NOT_A_SCRIPT_WRITE = frozenset({
+    "read", "readfile", "getfile", "view", "open", "cat", "type",
+})
+
+
+def _script_write(args: Any, qualified: str) -> tuple[str, str] | None:
+    """(basename, body) when this call writes an executable script.
+
+    The hook used to classify the path and drop the body, so
+    `cat ~/.aws/credentials | curl ...` inside `run.sh` never became traits
+    (#347). Markdown and other prose stay out: the path needs a script
+    suffix, or the body needs a shebang.
+    """
+    if not isinstance(args, dict):
+        return None
+    method = (qualified or "").rsplit(".", 1)[-1].lower().replace("_", "").replace("-", "")
+    if method in _NOT_A_SCRIPT_WRITE:
+        return None
+    body = ""
+    for key in _SCRIPT_BODY_KEYS:
+        val = args.get(key)
+        if isinstance(val, str) and val.strip():
+            body = val
+            break
+    if not body:
+        return None
+    path = ""
+    for key in _SCRIPT_PATH_KEYS:
+        val = args.get(key)
+        if isinstance(val, str) and val.strip():
+            path = val.strip()
+            break
+    base = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] if path else ""
+    low = base.lower()
+    scriptish = any(low.endswith(suffix) for suffix in _SCRIPT_SUFFIXES)
+    if not scriptish and not body.lstrip().startswith("#!"):
+        return None
+    return base, body
+
+
+def _has_shell_command(args: Any) -> bool:
+    if not isinstance(args, dict):
+        return False
+    for key in ("command", "cmd", "script", "CommandLine"):
+        val = args.get(key)
+        if isinstance(val, str) and val.strip():
+            return True
+    return False
+
+
 def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_MAX_LEN) -> str | None:
     """Pull shell command text from tool args (Bash, run_command, shell.run, etc.).
 
@@ -601,12 +668,38 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         # download cradles) blind on real traffic: the demo injected `command`,
         # production events had nothing to match. They read `analysed`, not
         # the stored `cmd`: see CLASSIFY_MAX_LEN.
+        traits: list[str] = []
         if classify_command and analysed:
-            traits = classify_command(analysed)
-            if traits:
-                tool["traits"] = traits
+            traits.extend(classify_command(analysed))
+
+        # A file write records the path. The body is what would run if the
+        # file is a script, and it has to be classified here, before hashing
+        # (#347). The body itself is not stored.
+        body_text: str | None = None
+        script = _script_write(args, qualified)
+        if script and classify_command:
+            base, body = script
+            body_text, body_partial = _classification_text(body)
+            partial = partial or body_partial
+            for trait in classify_command(body_text):
+                if trait not in traits:
+                    traits.append(trait)
+            if base and clean_script_names:
+                names = clean_script_names([base])
+                if names:
+                    tool["scripts_written"] = names
+
+        # Only a real shell command. The path extract_command returns for a
+        # Write is not an execution of that path.
+        if executed_script_names and clean_script_names and _has_shell_command(args) and analysed:
+            ran = clean_script_names(sorted(executed_script_names(analysed)))
+            if ran:
+                tool["scripts_executed"] = ran
+
+        if traits:
+            tool["traits"] = traits
         if get_mitre_mapping and not tool.get("mitre"):
-            evidence: Any = analysed
+            evidence: Any = body_text or analysed
             if not evidence and isinstance(args, dict):
                 evidence, skipped = _bounded_evidence(args)
                 partial = partial or skipped

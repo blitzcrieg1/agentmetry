@@ -18,7 +18,10 @@ module owns the regexes so the hook and the rules cannot drift apart.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
+from typing import NamedTuple
 
 # A raw-IP URL and a download/execute verb in the same command is a classic
 # malware download cradle. Legit tooling uses domains and package managers.
@@ -214,6 +217,74 @@ def executed_files(command: str) -> set[str]:
             if value:
                 found.add(value.rsplit("/", 1)[-1].rsplit("\\", 1)[-1])
     return found
+
+
+# Suffixes a later `bash file` / `./file` is executing, not mentioning.
+# `chmod +x` is deliberately absent: making a file executable is not running it.
+_SCRIPT_SUFFIXES = (
+    ".sh", ".bash", ".zsh", ".ksh", ".ps1", ".psm1", ".py", ".pyw",
+    ".pl", ".rb", ".js", ".mjs", ".cjs", ".php", ".command",
+)
+
+
+def _script_token(token: str) -> str | None:
+    token = token.strip("'\"")
+    if not token or token.startswith("-") or token.startswith("("):
+        return None
+    base = _basename(token)
+    low = base.lower()
+    if any(low.endswith(suffix) for suffix in _SCRIPT_SUFFIXES):
+        return base
+    return None
+
+
+def executed_script_names(command: str) -> set[str]:
+    """Basenames a command actually runs, including `./script.sh`.
+
+    `executed_files` requires an interpreter word (`bash file.sh`). Agents also
+    run `./file.sh` with no interpreter word, and a write-then-exec rule that
+    missed that form would miss the way a shell script is usually started.
+    `chmod +x` is not included: the execution is the later invocation.
+    """
+    text = command or ""
+    found: set[str] = set()
+    for m in EXECUTE_FILE.finditer(text):
+        for group in ("path", "path2", "path3"):
+            value = m.group(group)
+            if value:
+                found.add(_basename(value.strip("'\"")))
+    for segment in re.split(r"[|;&\n]", text):
+        parts = segment.split()
+        if not parts:
+            continue
+        base = _script_token(parts[0])
+        if base:
+            found.add(base)
+    return found
+
+
+_SCRIPT_NAME = re.compile(r"^[A-Za-z0-9._-]{1,255}$")
+
+
+def clean_script_names(names: list[str] | set[str]) -> list[str]:
+    """Basenames safe to store on an event. Content never is.
+
+    A slash would mean a path survived the basename split. A space or newline
+    would mean a body did. Eight names is enough for one tool call.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        base = str(raw).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].strip()
+        if not base or base in (".", "..") or not _SCRIPT_NAME.match(base):
+            continue
+        if base in seen:
+            continue
+        seen.add(base)
+        out.append(base)
+        if len(out) >= 8:
+            break
+    return out
 
 
 # An interpreter that speaks HTTP is a network client, whatever it is called.
@@ -503,11 +574,507 @@ KNOWN_TRAITS = frozenset({
     "private_key",
     "net_egress",
     "fetch_to_file",
+    "decode_pipe",
 })
 
 
 # A heredoc opener: `<<EOF`, `<<-EOF`, `<< 'PY'`, `<<"SQL"`.
 _HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+# Interpreters whose stdin is the program when no script file and no -c/-e
+# is given. Shells execute a heredoc (`bash <<EOF`). python/node do too when
+# the program is `-` or absent (`python - <<PY`, `python <<PY`), and do not
+# when a filename or -c/-e already supplied the program: that heredoc is data.
+_SHELLS = frozenset({
+    "bash", "sh", "zsh", "dash", "ksh", "ash", "pwsh", "powershell",
+})
+_LANGS = frozenset({"node", "nodejs", "perl", "ruby", "php"})
+_WRAPPERS = frozenset({
+    "sudo", "doas", "command", "exec", "env", "time", "nohup", "nice",
+    "stdbuf", "builtin", "busybox",
+})
+
+# Traits worth reading out of a language program (python/node/...). A shell
+# heredoc is itself shell, so the ordinary classifier sees it. A python body
+# is not, and running every shell rule over it flags comments (`# gh pr merge`)
+# as merges. Credential reads and network calls are the part that was bypassed.
+_LANG_PROGRAM_TRAITS_FROM_BODY = frozenset({
+    "credential_access", "private_key", "net_egress", "decode_pipe",
+    "encoded_cmd", "risky_exec",
+})
+
+# Same calls INTERPRETER_NETWORK looks for, without requiring the interpreter
+# word on the same line. A heredoc body is the program; the `python` word is
+# on the line above it. One alternation, no nested quantifiers.
+# `fetch(` cannot sit in the same trailing `\b` as `urlopen`: the parenthesis
+# is not a word character, so a boundary after it never matches.
+_LANG_NET = re.compile(
+    r"\b(?:urlopen|urllib|requests\.(?:get|post|put|patch|request)|httpx|"
+    r"http\.client|aiohttp|socket\.(?:socket|create_connection)|"
+    r"net/http|open-uri|Net::HTTP|LWP::|axios|XMLHttpRequest|"
+    r"file_get_contents|curl_exec|invoke-webrequest|invoke-restmethod)\b|"
+    r"\bfetch\s*\(|\biwr\b|\bcurl\b|\bwget\b",
+    re.IGNORECASE,
+)
+
+# Inline blobs only. A longer token is past the classification budget; the
+# pipe shape is still flagged, the bytes are not decoded.
+_B64_TOKEN = re.compile(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{16,8192}={0,2}(?![A-Za-z0-9+/=])")
+_HEX_TOKEN = re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{16,8192}(?![0-9A-Fa-f])")
+
+
+class ExecutedHeredoc(NamedTuple):
+    kind: str
+    interpreter: str
+    body: str
+    opener: int
+
+
+def _prog(token: str) -> str:
+    base = token.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
+    if base.endswith(".exe"):
+        base = base[:-4]
+    return base
+
+
+def _is_python(name: str) -> bool:
+    if name == "python":
+        return True
+    if not name.startswith("python"):
+        return False
+    rest = name[6:]
+    return bool(rest) and all(ch.isdigit() or ch == "." for ch in rest)
+
+
+def _is_lang(name: str) -> bool:
+    return _is_python(name) or name in _LANGS
+
+
+def _command_tokens(segment: str) -> list[str]:
+    """Whitespace tokens, quotes peeled off a token that is entirely quoted.
+
+    A redirection (`2>&1`, `>file`) is not a program name and not a script
+    file. Splitting on whitespace is linear. A quote that contains a space
+    splits, which only matters for deciding whether stdin is the program,
+    and `-c` / a filename still show up as their own tokens in the forms
+    people actually type.
+    """
+    out: list[str] = []
+    for tok in segment.replace("\t", " ").split(" "):
+        if not tok:
+            continue
+        if len(tok) >= 2 and tok[0] in "'\"" and tok[-1] == tok[0]:
+            tok = tok[1:-1]
+        if not tok:
+            continue
+        if tok[0] in "<>" or (tok[0].isdigit() and ">" in tok):
+            continue
+        out.append(tok)
+    return out
+
+
+def _strip_wrappers(tokens: list[str]) -> list[str]:
+    i = 0
+    while i < len(tokens):
+        prog = _prog(tokens[i])
+        if prog not in _WRAPPERS:
+            break
+        i += 1
+        if prog in ("sudo", "doas"):
+            while i < len(tokens) and tokens[i].startswith("-"):
+                flag = tokens[i]
+                i += 1
+                if flag in ("-u", "-g", "--user", "--group") and i < len(tokens):
+                    i += 1
+            while i < len(tokens) and "=" in tokens[i] and not tokens[i].startswith("-"):
+                i += 1
+        elif prog == "env":
+            while i < len(tokens) and (
+                tokens[i].startswith("-") or ("=" in tokens[i] and not tokens[i].startswith("-"))
+            ):
+                i += 1
+        elif prog == "nice":
+            while i < len(tokens) and tokens[i].startswith("-"):
+                flag = tokens[i]
+                i += 1
+                if flag in ("-n", "--adjustment") and i < len(tokens):
+                    i += 1
+        elif prog in ("command", "stdbuf"):
+            while i < len(tokens) and tokens[i].startswith("-"):
+                i += 1
+    return tokens[i:]
+
+
+def _shell_reads_stdin(prog: str, args: list[str]) -> bool:
+    """True when this shell invocation executes stdin as its program."""
+    saw_s = False
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        low = arg.lower()
+        if prog in ("pwsh", "powershell"):
+            if low in ("-command", "-c", "-file", "-f"):
+                nxt = args[i + 1] if i + 1 < len(args) else ""
+                return nxt == "-"
+            if low.startswith("-command:") or low.startswith("-file:"):
+                return low.rsplit(":", 1)[-1] == "-"
+            if low.startswith("-enc"):
+                return False
+            if arg.startswith("-"):
+                i += 1
+                continue
+            return False
+        if low in ("-c", "--command", "-n", "--syntax-check", "--noexec"):
+            return False
+        if arg == "--":
+            rest = args[i + 1:]
+            if saw_s:
+                return True
+            return not any(not item.startswith("-") for item in rest)
+        if arg.startswith("-"):
+            if not arg.startswith("--"):
+                cluster = arg[1:]
+                if "c" in cluster or "C" in cluster:
+                    return False
+                if "n" in cluster and "s" not in cluster and "S" not in cluster:
+                    return False
+                if "s" in cluster or "S" in cluster:
+                    saw_s = True
+            i += 1
+            continue
+        if saw_s:
+            return True
+        return False
+    return True
+
+
+def _lang_reads_stdin(prog: str, args: list[str]) -> bool:
+    """True when python/node/perl/ruby/php will execute stdin as the program."""
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        low = arg.lower()
+        if low in ("-c", "-e", "-E", "-r", "--eval", "--execute", "-command"):
+            return False
+        if _is_python(prog) and low == "-m":
+            return False
+        if arg == "-":
+            i += 1
+            continue
+        if arg.startswith("-"):
+            if _is_python(prog) and low in ("-W", "-X") and i + 1 < len(args):
+                i += 2
+                continue
+            i += 1
+            continue
+        return False
+    return True
+
+
+def _heredoc_consumer(segment: str) -> tuple[str, str]:
+    """('shell'|'lang', program) when this simple command executes a heredoc."""
+    tokens = _strip_wrappers(_command_tokens(segment))
+    if not tokens:
+        return "", ""
+    prog = _prog(tokens[0])
+    args = tokens[1:]
+    if prog in _SHELLS and _shell_reads_stdin(prog, args):
+        return "shell", prog
+    if _is_lang(prog) and _lang_reads_stdin(prog, args):
+        return "lang", prog
+    return "", ""
+
+
+def _heredoc_span(command: str, match: re.Match[str]) -> tuple[int, int, int]:
+    """body_start, body_end, resume. resume is where a skip should continue."""
+    delimiter = match.group(2)
+    newline = command.find("\n", match.end())
+    if newline == -1:
+        return match.end(), match.end(), match.end()
+    body_start = newline + 1
+    body_end = len(command)
+    resume = len(command)
+    for line_start, line in _iter_lines(command, body_start):
+        if line.strip() == delimiter:
+            body_end = line_start
+            resume = line_start
+            break
+    return body_start, body_end, resume
+
+
+def executed_heredocs(command: str) -> list[ExecutedHeredoc]:
+    """Heredocs an interpreter will execute, not heredocs that are data.
+
+    `bash <<EOF` runs the body. `cat > file <<EOF` and `git commit -F - <<EOF`
+    do not: the body is text being written, which is why it stays masked
+    (#41, #44). `python script.py <<EOF` is data passed to the script.
+    `python - <<PY` is the program.
+    """
+    if not command or "<<" not in command:
+        return []
+    found: list[ExecutedHeredoc] = []
+    n = len(command)
+    i = 0
+    quote: str | None = None
+    simple_start = 0
+    while i < n:
+        ch = command[i]
+        if quote is None:
+            if ch in "|&;\n":
+                simple_start = i + 1
+                i += 1
+                continue
+            match = _HEREDOC_OPEN.match(command, i)
+            if match:
+                kind, interp = _heredoc_consumer(command[simple_start:i])
+                body_start, body_end, resume = _heredoc_span(command, match)
+                if kind and body_start < body_end:
+                    found.append(ExecutedHeredoc(
+                        kind, interp, command[body_start:body_end], match.start(),
+                    ))
+                if kind == "shell":
+                    # Scan the body so a nested heredoc is judged on its own.
+                    i = match.end()
+                    continue
+                i = resume
+                continue
+            if ch in "'\"":
+                quote = ch
+            i += 1
+            continue
+        if ch == "\\" and quote == '"' and i + 1 < n:
+            i += 2
+            continue
+        if ch == quote:
+            quote = None
+        i += 1
+    return found
+
+
+def _short_cluster_has(flag: str, letter: str) -> bool:
+    return flag.startswith("-") and not flag.startswith("--") and letter.lower() in flag[1:].lower()
+
+
+def _base64_decode_flag(args: list[str]) -> bool:
+    for arg in args:
+        low = arg.lower()
+        if low in ("-d", "-D", "--decode"):
+            return True
+        if _short_cluster_has(arg, "d"):
+            return True
+    return False
+
+
+def _segment_decoder(segment: str) -> str | None:
+    """'b64', 'hex', or 'opaque' when this pipeline segment decodes.
+
+    Encoding is not decoding. `echo hello | base64` (no `-d`) is how people
+    wrap a blob, and flagging it would fire on ordinary scripts.
+    """
+    tokens = _strip_wrappers(_command_tokens(segment))
+    if not tokens:
+        return None
+    prog = _prog(tokens[0])
+    args = tokens[1:]
+    low = [arg.lower() for arg in args]
+    if prog in ("base64", "basenc"):
+        if prog == "basenc" and "--base64" not in low and "-base64" not in low:
+            return None
+        return "b64" if _base64_decode_flag(args) else None
+    if prog == "openssl":
+        if "-d" not in low and "--decode" not in low:
+            return None
+        if "base64" in low or any(arg in ("-a", "-base64", "--base64") for arg in low):
+            return "b64"
+        return "opaque"
+    if prog == "xxd":
+        reversing = any(arg in ("-r", "--reverse") or _short_cluster_has(arg, "r") for arg in args)
+        if not reversing:
+            return None
+        plain = any(arg in ("-p", "--plain") or _short_cluster_has(arg, "p") for arg in args)
+        return "hex" if plain else "opaque"
+    if prog == "certutil":
+        if any(arg == "-decodehex" or arg.startswith("-decodehex") for arg in low):
+            return "hex"
+        if any(arg == "-decode" or (arg.startswith("-decode") and "hex" not in arg) for arg in low):
+            return "b64"
+        return None
+    if _is_python(prog) and "-m" in low and "base64" in low and _base64_decode_flag(args):
+        return "b64"
+    return None
+
+
+def _segment_is_interpreter(segment: str) -> bool:
+    tokens = _strip_wrappers(_command_tokens(segment))
+    if not tokens:
+        return False
+    prog = _prog(tokens[0])
+    args = tokens[1:]
+    if prog in _SHELLS and _shell_reads_stdin(prog, args):
+        return True
+    if prog in ("eval", "iex", "invoke-expression"):
+        return True
+    if _is_lang(prog) and _lang_reads_stdin(prog, args):
+        return True
+    return False
+
+
+def _pipelines(text: str) -> list[list[str]]:
+    """Pipelines split on a single `|`. `||` and `;` end a pipeline.
+
+    A character scan, not a regex, so a long command cannot backtrack.
+    """
+    pipelines: list[list[str]] = []
+    parts: list[str] = []
+    buf: list[str] = []
+    i = 0
+    n = len(text)
+
+    def flush() -> None:
+        parts.append("".join(buf))
+        buf.clear()
+        cleaned = [part.strip() for part in parts if part.strip()]
+        if len(cleaned) >= 2:
+            pipelines.append(cleaned)
+        parts.clear()
+
+    while i < n:
+        ch = text[i]
+        if ch == "|" and i + 1 < n and text[i + 1] == "|":
+            flush()
+            i += 2
+            continue
+        if ch == "|":
+            parts.append("".join(buf))
+            buf.clear()
+            i += 1
+            continue
+        if ch in ";&\n":
+            flush()
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    flush()
+    return pipelines
+
+
+def _decode_pipe_kind(written: str) -> str | None:
+    """How a decoder reaches an interpreter, or None.
+
+    The interpreter has to be downstream of the decoder. `bash | base64 -d`
+    is the other direction. An intermediate `tr` is allowed: the bytes still
+    arrive at the shell.
+    """
+    if not written:
+        return None
+    rank = {"b64": 3, "hex": 2, "opaque": 1}
+    best: str | None = None
+    for pipeline in _pipelines(written):
+        kinds: list[tuple[int, str]] = []
+        interpreters: list[int] = []
+        for index, segment in enumerate(pipeline):
+            kind = _segment_decoder(segment)
+            if kind:
+                kinds.append((index, kind))
+            if _segment_is_interpreter(segment):
+                interpreters.append(index)
+        if not kinds or not interpreters:
+            continue
+        for index, kind in kinds:
+            if any(later > index for later in interpreters):
+                if best is None or rank[kind] > rank[best]:
+                    best = kind
+    return best
+
+
+def decode_piped_to_interpreter(command: str) -> bool:
+    """True when a decoder's output is piped into a shell or interpreter.
+
+    Quoted text is masked first, so `echo 'base64 -d | sh'` does not match.
+    """
+    if not command:
+        return False
+    return _decode_pipe_kind(mask_literals(command)) is not None
+
+
+def inline_decoded_commands(command: str) -> list[str]:
+    """Plaintext of inline blobs a decode-pipe would feed to an interpreter.
+
+    Empty when the shape is absent, the blob is not inline, or it does not
+    decode to text. At most two payloads, each at most 8 KiB.
+    """
+    if not command:
+        return []
+    kind = _decode_pipe_kind(mask_literals(command))
+    if kind not in ("b64", "hex"):
+        return []
+    return _inline_decoded(command, kind)
+
+
+def _decode_token(token: str, kind: str) -> str | None:
+    if kind == "b64":
+        pad = "=" * ((-len(token)) % 4)
+        try:
+            data = base64.b64decode(token + pad, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+    else:
+        if len(token) % 2:
+            return None
+        try:
+            data = bytes.fromhex(token)
+        except ValueError:
+            return None
+    if not data or len(data) > 8192 or b"\x00" in data:
+        return None
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if not text.strip():
+        return None
+    return text
+
+
+def _inline_decoded(command: str, kind: str) -> list[str]:
+    """At most two inline payloads. The pipe shape is the signal; decoding
+    is extra, and only while the blob is in the command and bounded."""
+    pattern = _B64_TOKEN if kind == "b64" else _HEX_TOKEN
+    found: list[str] = []
+    for match in pattern.finditer(command):
+        text = _decode_token(match.group(0), kind)
+        if not text:
+            continue
+        found.append(text)
+        if len(found) >= 2:
+            break
+    return found
+
+
+def _language_program_traits(body: str) -> list[str]:
+    """Traits of a python/node/perl/ruby/php program passed via heredoc."""
+    traits: list[str] = []
+    written = mask_literals(body)
+    literal = mask_literals(body, include_double=False)
+    if (
+        CREDENTIAL_PATH.search(literal)
+        or ENV_FILE.search(literal)
+        or CREDENTIAL_ENV.search(body)
+        or CREDENTIAL_ENV_DUMP.search(written)
+        or CREDENTIAL_CLI.search(written)
+    ):
+        traits.append("credential_access")
+    if PRIVATE_KEY_PATH.search(literal):
+        traits.append("private_key")
+    if _LANG_NET.search(body) and reaches_remote_host(body):
+        traits.append("net_egress")
+    kind = _decode_pipe_kind(written)
+    if kind:
+        traits.append("decode_pipe")
+        traits.append("encoded_cmd")
+        traits.append("risky_exec")
+    return [trait for trait in traits if trait in _LANG_PROGRAM_TRAITS_FROM_BODY]
 
 
 def mask_literals(command: str, *, include_double: bool = True) -> str:
@@ -547,14 +1114,26 @@ def mask_literals(command: str, *, include_double: bool = True) -> str:
     i = 0
     n = len(command)
     quote: str | None = None
+    # A heredoc fed to an interpreter is the program (#345). Blanking it hid
+    # `bash <<EOF` / `python - <<PY` the same way it correctly hides
+    # `git commit -F - <<EOF`. Only the shell case stays visible here, so the
+    # command-word patterns see the body. A python/node body is not shell and
+    # is classified on its own; leaving it visible would flag comments.
+    shell_heredocs = {
+        item.opener for item in executed_heredocs(command) if item.kind == "shell"
+    }
 
     while i < n:
         ch = command[i]
 
         if quote is None:
-            # A heredoc body is content by definition, whatever it contains.
+            # A heredoc body is content by definition, whatever it contains,
+            # unless an interpreter is going to execute it.
             m = _HEREDOC_OPEN.match(command, i)
             if m:
+                if m.start() in shell_heredocs:
+                    i = m.end()
+                    continue
                 delimiter = m.group(2)
                 body_start = command.find("\n", m.end())
                 if body_start == -1:
@@ -640,8 +1219,12 @@ def pipes_only_loopback(command: str) -> bool:
     return all(LOOPBACK_HOST.match(h) for h in hosts)
 
 
-def classify_command(command: str) -> list[str]:
+def classify_command(command: str, *, _depth: int = 0) -> list[str]:
     """Map a plaintext command to detection trait labels (never the text itself).
+
+    `_depth` stops a decoded payload from being decoded again. One inline
+    decode is enough; a second layer still carries `decode_pipe` from the
+    outer shape.
 
     Three views of the same string, because "does this command do X" and "does
     this command mention X" are different questions and the regexes cannot tell
@@ -668,20 +1251,24 @@ def classify_command(command: str) -> list[str]:
     is simply how people write it. Trading a visible false positive for an
     invisible false negative is a bad trade for a recorder.
     """
-    if not command or not isinstance(command, str):
+    if _depth > 2 or not command or not isinstance(command, str):
         return []
     traits: list[str] = []
 
     spoken = command
     written = mask_literals(command)
     literal = mask_literals(command, include_double=False)
+    # Only the outer command is decoded. The payload is classified once.
+    decode_kind = _decode_pipe_kind(written) if _depth == 0 else None
 
     # The IP may legitimately sit inside quotes; the fetch verb may not.
     remote_ips = [ip for ip in RAW_IP_URL.findall(spoken) if not LOOPBACK_IP.match(ip)]
     if remote_ips and DOWNLOAD_EXEC.search(written):
         traits.append("raw_ip_fetch")
-    if ENCODED_CMD.search(written):
+    if ENCODED_CMD.search(written) or decode_kind:
         traits.append("encoded_cmd")
+    if decode_kind:
+        traits.append("decode_pipe")
     cradle = PIPE_TO_SHELL.search(written) or PROC_SUBST_EXEC.search(written)
     if cradle:
         traits.append(
@@ -696,7 +1283,7 @@ def classify_command(command: str) -> list[str]:
     ):
         traits.append("staging_fetch")
     if not BENIGN_AFTER_STAGING.search(written) and (
-        cradle or RISKY_EXEC_AFTER_STAGING.search(written)
+        cradle or RISKY_EXEC_AFTER_STAGING.search(written) or decode_kind
     ):
         traits.append("risky_exec")
     if DELETE_COMMAND.search(written):
@@ -750,4 +1337,17 @@ def classify_command(command: str) -> list[str]:
         traits.append("pr_commit")
     if PR_MERGE_COMMAND.search(written):
         traits.append("pr_merge")
+
+    if _depth == 0:
+        for heredoc in executed_heredocs(command):
+            if heredoc.kind != "lang" or not heredoc.body:
+                continue
+            for trait in _language_program_traits(heredoc.body):
+                if trait not in traits:
+                    traits.append(trait)
+        if decode_kind in ("b64", "hex"):
+            for payload in inline_decoded_commands(command):
+                for trait in classify_command(payload, _depth=_depth + 1):
+                    if trait not in traits:
+                        traits.append(trait)
     return traits

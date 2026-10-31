@@ -130,7 +130,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 
 ## What you get
 
-- **Sequence detections.** Fourteen published rules, plus one experimental rule (`autonomous-unapproved-write`) that stays registered and is not part of the published set: no IDE capture surface produces the signal it reads, and it is not exported to Sigma. Rules match ordered steps inside a session. `credential-exfil` is credential access, then network egress. Reversed, it does not fire. The list is [docs/detection-rules.md](docs/detection-rules.md).
+- **Sequence detections.** Sixteen published rules, plus one experimental rule (`autonomous-unapproved-write`) that stays registered and is not part of the published set: no IDE capture surface produces the signal it reads, and it is not exported to Sigma. Rules match ordered steps inside a session. `credential-exfil` is credential access, then network egress. Reversed, it does not fire. The list is [docs/detection-rules.md](docs/detection-rules.md).
 - **A check before anything runs.** `agentmetry scan` reads the MCP configs, skills and rules files an agent will load and reports typosquatted package names and text that steers the model: overriding instructions, hiding things from the user, reaching for credential files, exfiltration, shadowing other tools. The MCP proxy runs the same text check on every `tools/list` it relays and records the counts per category on the trail, never the text.
 - **MITRE ATT&CK tags** on tool calls the mapper recognises (`agentmetry/core/audit/mitre.py`). A call it does not recognise carries no tag.
 - **MITRE ATLAS labels** on the subset where ATLAS says something ATT&CK cannot (`agentmetry/core/audit/atlas.py`, content release 2026.07). Five techniques are emitted: indirect prompt injection (`AML.T0051.001`), agent-tool credential harvesting (`AML.T0098`), exfiltration via tool invocation (`AML.T0086`), destruction via tool invocation (`AML.T0101`), and MCP supply-chain rug pull (`AML.T0109`). `AML.T0050` and `AML.T0053` are deliberately not emitted.
@@ -144,17 +144,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            57 (26 attack, 31 benign)
-  rules covered    13
-  expected firings 26
-  detected         26
+  cases            62 (29 attack, 33 benign)
+  rules covered    15
+  expected firings 31
+  detected         31
   missed           0
   false positives  0
 ```
 
-That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
+That block is what `agentmetry benchmark` printed from this tree. "Rules covered 15" counts rule ids named in corpus expectations. Fourteen of those are published rules. The fifteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2069 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+2090 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -192,7 +192,7 @@ The JSONL trail is the system of record. Network sinks tail it from a cursor and
 | Microsoft Sentinel | `AGENTMETRY_AUDIT_SINK=sentinel`. [Setup](docs/integrations/sentinel.md). Not yet run against a live workspace. |
 | Loki | Not a sink mode. Grafana Alloy tails the JSONL. [Homelab notes](docs/integrations/loki-homelab.md). |
 
-Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (23 rules): 15 generated files for the 14 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
+Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (25 rules): 17 generated files for the 16 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
 
 `agentmetry otel` receives Claude Code's stream. It does not replace hooks for policy. Mapped today: `tool_result` becomes `tool_called` or `tool_failed` (arguments only if `OTEL_LOG_TOOL_DETAILS=1`); a person's yes on `tool_decision` becomes an observed approval. Other documented types are counted, not dropped silently. Prompts are not forwarded. `--print-env` and `--print-mapping` print the rest.
 

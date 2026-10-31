@@ -74,6 +74,8 @@ sequenceDiagram
 | `subagent-swarm-burst` | high | ≥5 subagent starts in one session (Kimi AgentSwarm, Qwen Agent Teams) |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
+| `decode-pipe-to-shell` | high | A decoder (`base64 -d`, `xxd -r`, `openssl enc -d`, and the same shape) piped into a shell or interpreter. T1027, T1059. An inline bounded payload is classified as well, so the decoded command can still raise `credential-exfil` |
+| `script-write-then-execute` | high | A script write whose body classified as a payload (credential read, pipe to shell, encoded command), then a later execution of that same file in the session. The body is hashed; only traits and the basename are kept |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
 | `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
 | `destructive-delete-burst` | high | 5+ deletions in one session, by technique or command (`rm -rf`) |
