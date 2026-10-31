@@ -44,13 +44,14 @@
   "overrides": {
     "sharp": "^0.35.5",
     "@hono/node-server": "^1.19.17",
-    "fast-uri": "^3.1.7",
+    "fast-uri": "^3.1.9",
+    "body-parser": "^2.4.0",
     "postcss-selector-parser": "7.1.6"
   },
   "overridesNote": {
     "reason": "sharp is an optional transitive of next. Its only caller is the image optimizer, which next.config.js disables (images.unoptimized) and which cannot run in a static export anyway, so the libvips advisory is unreachable here. The override originally closed that alert without taking Next 16, which is what Dependabot's sharp PR actually proposed at the time. Next 16 has since been taken and now declares sharp ^0.35.4 as its own optional dependency, so this entry is redundant and resolves to the same 0.35.4 with or without it. It is safe to delete in a change that regenerates the lockfile.",
     "remove_when": "Met on 2026-09-12: next 16.3.4 depends on sharp ^0.35.4 itself. The entry is kept only until a change that regenerates package-lock.json can drop it.",
-    "transitive_advisories": "@hono/node-server, brace-expansion and fast-uri are pinned forward here because each is a transitive dependency whose parent has not cut a release. Dependabot opened one PR per package and each invalidated the others' lockfile on merge, so they are done once, together. Remove an entry when its parent ships a version that satisfies the advisory on its own.",
+    "transitive_advisories": "@hono/node-server, brace-expansion, fast-uri and body-parser are pinned forward here because each is a transitive dependency whose parent has not cut a release. fast-uri and body-parser (2026-10-31, five alerts) come in through shadcn's @modelcontextprotocol/sdk, ajv and express; express 5.2.1 asks for body-parser ^2.2.1, so ^2.4.0 stays inside its range, and fast-uri stays on 3.x for ajv. Dependabot opened one PR per package and each invalidated the others' lockfile on merge, so they are done once, together. Remove an entry when its parent ships a version that satisfies the advisory on its own.",
     "postcss_not_overridden": "Resolved. This used to say next 15.5.21 pinned postcss to exactly 8.4.31 and bundled it, so the advisory stayed open rather than force a version past a framework's exact pin. The Next 16 migration named in remove_when has since happened: next is 16.3.4 and postcss resolves to 8.5.28 on its own. No override was ever needed and none is used. Kept as a record because the original note outlived the fact it described and would have told the next reader to leave open something already closed.",
     "postcss_selector_parser": "GHSA-rj75-hqrm-r3gf flags every release below 7.1.6. shadcn resolved 7.1.4. tailwindcss and postcss-nested resolve 6.1.4, and 6.x has no patched release, so the override forces 7.1.6 for both. Remove it when those parents depend on >= 7.1.6 themselves.",
     "braces_unfixed": "GHSA-vfj7-8cjw-p6xm covers braces <= 3.0.3 and names no patched release. npm still has nothing past 3.0.3. The only callers in this tree are tailwindcss dev dependencies (micromatch and chokidar), which expand the content globs in tailwind.config.js. An override cannot close the alert until a release exists outside that range."
