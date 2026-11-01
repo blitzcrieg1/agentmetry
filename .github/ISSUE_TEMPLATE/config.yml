@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/blitzcrieg1/agentmetry/security/advisories/new
+    about: Private vulnerability reporting. Please do not open a public issue for security bugs.
+  - name: Questions and ideas
+    url: https://github.com/blitzcrieg1/agentmetry/discussions
+    about: Ask how something works or share an idea before it becomes an issue.

@@ -1,0 +1,28 @@
+name: Feature or integration request
+description: Ask for something Agentmetry does not do yet
+title: "request: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New work is driven by people who need it, so the most useful part of this form is
+        what you are trying to do and where you would use it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. For example, "see which MCP servers my team's agents called last week".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: A command, a sink, an agent to support, a detection. Rough is fine.
+  - type: input
+    id: context
+    attributes:
+      label: Where you would use it
+      description: Optional. Personal machine, a team, a SOC, a product you build.

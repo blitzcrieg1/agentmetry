@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Agentmetry does not work as documented
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Bugs from real users are fixed first.
+
+        **Do not paste secrets or raw trail contents.** Tool arguments can hold credentials.
+        A security vulnerability goes through private reporting instead (see SECURITY.md), not a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Agentmetry version
+      description: 'Run: python -c "import agentmetry; print(agentmetry.__version__)"'
+      placeholder: "0.10.4"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Python version
+      placeholder: "Windows 11, Python 3.12"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent or integration involved
+      description: The coding agent, MCP proxy, or SIEM/webhook sink where it happened.
+      placeholder: "Claude Code hook, Cursor, Codex, MCP proxy, Splunk sink, ..."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. agentmetry ...
+        2. ...
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output or error
+      description: Error text, a stack trace, or `agentmetry doctor` output. Remove anything secret first.
+      render: text
