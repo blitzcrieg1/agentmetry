@@ -337,7 +337,7 @@ agentmetry export --evidence ...  # Batch compliance pack (separate format)
 
 ### Fields an outside consumer maps
 
-AiSOC's bundled `agentmetry` template reads these canonical fields: `action.type`, `action.outcome`, `agent.name`, `actor.id`, `host_id`, `source.app`, `event_id`, `correlation_id`, `timestamp_utc`, `model.id`, `model.provider`, `tool.name`, `tool.qualified`, `tool.input_hash`, `tool.command`, `tool.mitre.technique_id`, `tool.atlas.technique_id`, `dlp.rule_id`, `detection.severity`, `detection.title`, `detection.summary`, `detection.rule_id`, `detection.technique_ids`, `detection.atlas.technique_id`. The schema changes additively, so none of these is renamed or moved within 1.x. A change that would touch one is announced in [AiSOC Discussion #1577](https://github.com/beenuar/AiSOC/discussions/1577) before it ships.
+AiSOC's bundled `agentmetry` template reads these canonical fields: `action.type`, `action.outcome`, `agent.name`, `actor.id`, `host_id`, `source.app`, `event_id`, `correlation_id`, `timestamp_utc`, `model.id`, `model.provider`, `tool.name`, `tool.qualified`, `tool.input_hash`, `tool.command`, `tool.mitre.technique_id`, `tool.atlas.technique_id`, `dlp.rule_id`, `detection.severity`, `detection.title`, `detection.summary`, `detection.rule_id`, `detection.technique_ids`, `detection.atlas.technique_id`. The schema changes additively, so none of these is renamed or moved within 1.x. A change that would touch one is announced in [AiSOC Discussion #1577](https://github.com/beenuar/AiSOC/discussions/1577) before it ships. The template reads the record as `canonical` posts it, so keep `AGENTMETRY_AUDIT_WEBHOOK_FORMAT` at its default: the `batch` and `cloudevents` envelopes are not unwrapped.
 
 ## Limitations (Tier C)
 
