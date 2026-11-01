@@ -34,7 +34,9 @@ from .traits import (
     LOOPBACK_IP as _LOOPBACK_IP,
     PIPE_TO_SHELL as _PIPE_TO_SHELL,
     PROC_SUBST_EXEC as _PROC_SUBST_EXEC,
+    decode_piped_to_interpreter as _decode_piped_to_interpreter,
     executed_files as _executed_files,
+    executed_script_names as _executed_script_names,
     fetched_files as _fetched_files,
     mask_literals as _mask_literals,
     pipes_only_loopback as _pipes_only_loopback,
@@ -1069,6 +1071,116 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
     return []
 
 
+def _name_list(event: dict[str, Any], key: str) -> set[str]:
+    tool = event.get("tool")
+    if not isinstance(tool, dict):
+        return set()
+    raw = tool.get(key)
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if item}
+
+
+def rule_decode_pipe_to_shell(events: list[dict[str, Any]]) -> list[Detection]:
+    """A decoder's output is piped into a shell or interpreter.
+
+    `echo <blob> | base64 -d | sh`, `xxd -r -p | bash`, `openssl enc -d -base64
+    | sh`. PowerShell `-EncodedCommand` is a different shape and stays on
+    `encoded_cmd` alone: this rule is the POSIX decode-and-execute pipe (#346).
+    The decoded text, when it is inline and bounded, is classified as well, so
+    a credential read inside the blob still raises `credential-exfil`. This
+    rule is the shape itself, including when the payload cannot be decoded.
+    """
+    for event in events:
+        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            continue
+        cmd = _command(event)
+        if cmd:
+            hit = _decode_piped_to_interpreter(cmd)
+        else:
+            hit = _has_trait(event, "decode_pipe")
+        if not hit:
+            continue
+        return [
+            Detection(
+                rule_id="decode-pipe-to-shell",
+                title="Decoded payload piped into an interpreter",
+                severity="high",
+                summary=(
+                    f"{_tool_qualified(event) or 'A command'} decoded a payload and "
+                    "piped it into a shell or interpreter."
+                ),
+                correlation_id=_correlation_id(events),
+                tactic_ids=["TA0002", "TA0005"],
+                technique_ids=["T1059", "T1027"],
+                event_ids=[_event_id(event)],
+                first_seen_utc=_ts(event),
+                last_seen_utc=_ts(event),
+            )
+        ]
+    return []
+
+
+# Traits that mean the bytes written into a script are themselves an attack
+# step. `net_egress` alone is not enough: a deploy script that curls a registry
+# is a normal working day, and this rule would then fire every time it was run.
+_SCRIPT_PAYLOAD_TRAITS = frozenset({
+    "credential_access",
+    "private_key",
+    "pipe_to_shell",
+    "encoded_cmd",
+    "decode_pipe",
+    "raw_ip_fetch",
+})
+
+
+def rule_script_write_then_execute(events: list[dict[str, Any]]) -> list[Detection]:
+    """A script whose body was classified is later executed in the same session.
+
+    The write carries traits from the body and `scripts_written` (basenames
+    only; the body is hashed with the rest of the arguments). A later command
+    that runs that basename closes the chain (#347). A script with no payload
+    traits, or a different file, does not.
+    """
+    for index, write in enumerate(events):
+        if _action_type(write) != "tool_called" or _outcome(write) != "success":
+            continue
+        written = _name_list(write, "scripts_written")
+        if not written or not (_traits(write) & _SCRIPT_PAYLOAD_TRAITS):
+            continue
+        for later in events[index + 1:]:
+            if _action_type(later) != "tool_called" or _outcome(later) != "success":
+                continue
+            executed = _name_list(later, "scripts_executed")
+            cmd = _command(later)
+            if cmd:
+                executed |= _executed_script_names(cmd)
+            shared = written & executed
+            if not shared:
+                continue
+            name = sorted(shared)[0]
+            return [
+                Detection(
+                    rule_id="script-write-then-execute",
+                    title="Written script executed in the same session",
+                    severity="high",
+                    summary=(
+                        f"{_tool_qualified(write) or 'A tool'} wrote `{name}` with "
+                        "a classified payload, then "
+                        f"{_tool_qualified(later) or 'a tool'} executed that file "
+                        "in the same session."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0002"],
+                    technique_ids=["T1059"],
+                    event_ids=[_event_id(write), _event_id(later)],
+                    first_seen_utc=_ts(write),
+                    last_seen_utc=_ts(later),
+                )
+            ]
+    return []
+
+
 def _parse_ts(ts: str) -> datetime | None:
     if not ts:
         return None
@@ -1259,6 +1371,8 @@ REGISTRY = [
     rule_credential_read_then_cloud_api,
     rule_dotfile_read_then_git_push,
     rule_remote_staging_then_execute,
+    rule_decode_pipe_to_shell,
+    rule_script_write_then_execute,
     rule_subagent_swarm_burst,
     rule_session_tool_burst,
 ]
@@ -1307,6 +1421,8 @@ BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "credential-read-then-cloud-api",
     "dotfile-read-then-git-push",
     "remote-staging-then-execute",
+    "decode-pipe-to-shell",
+    "script-write-then-execute",
     "subagent-swarm-burst",
     "session-tool-burst",
     "host-subagent-swarm-burst",

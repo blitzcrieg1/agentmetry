@@ -91,15 +91,17 @@ fingerprint has not moved before opening any PR that touches
 
 ```bash
 apps/orchestrator/.venv/Scripts/python.exe -c "from agentmetry.core.audit.dogfood import ruleset_fingerprint; print(ruleset_fingerprint()[:16])"
-# expect 15846a0915769d4a
+# expect ecccbe61f732071d
 ```
 
 Four of the five parked detection-precision bugs were fixed in 0.7.0 and are
 closed: #44, #49, #50, #51. Fixing them is why the clock restarted.
 
-**Still parked: [#55](https://github.com/blitzcrieg1/agentmetry/issues/55)
-alone.** It is the last change that will move the fingerprint, so land it in
-one pass rather than piecemeal, and expect another restart when it lands.
+#345, #346 and #347 landed together and moved the fingerprint from
+`15846a0915769d4a` to `ecccbe61f732071d`. That restarts the dogfood clock.
+**Still parked: [#55](https://github.com/blitzcrieg1/agentmetry/issues/55).**
+It will move the fingerprint again, so land it in one pass rather than
+piecemeal, and expect another restart when it lands.
 
 Files in `detection/` that are **not** frozen and are safe to edit:
 `disposition.py`, `live.py`, `live_store.py`, `benchmark.py`, `yaml_rules.py`,
