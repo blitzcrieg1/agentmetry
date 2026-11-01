@@ -191,6 +191,7 @@ The JSONL trail is the system of record. Network sinks tail it from a cursor and
 | Google SecOps | `AGENTMETRY_AUDIT_SINK=chronicle` |
 | Microsoft Sentinel | `AGENTMETRY_AUDIT_SINK=sentinel`. [Setup](docs/integrations/sentinel.md). Not yet run against a live workspace. |
 | Loki | Not a sink mode. Grafana Alloy tails the JSONL. [Homelab notes](docs/integrations/loki-homelab.md). |
+| AiSOC | Not a sink mode. The webhook sink with the default `canonical` format, pointed at an AiSOC inbox URL minted with its Agentmetry template. Built and maintained by AiSOC: [connector docs](https://beenuar.github.io/AiSOC/docs/connectors/agentmetry/). Not yet run live end to end. |
 
 Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (23 rules): 15 generated files for the 14 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
 
