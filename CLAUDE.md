@@ -193,9 +193,10 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-10-31 there are 2069 tests collected in CI, zero open
-code scanning alerts, five open Dependabot alerts (`fast-uri` and
-`body-parser` in the dashboard's lockfile, open since 2026-10-25), a dogfood
+Not code. As of 2026-11-01 there are 2069 tests collected in CI, zero open
+code scanning alerts, one open Dependabot alert (`minimatch`, dev-only under
+eslint in the dashboard's lockfile; why it stays open is in that
+`package.json`'s `overridesNote`), OpenSSF Scorecard 7.8, a dogfood
 gate that passed 4 of 4 on 2026-10-02 and now prints "8 of 4, Gate PASSED"
 with every complete week green (triage is what keeps it that way; untriaged
 criticals turn a week red),
@@ -215,11 +216,25 @@ install from PyPI showed. Walk the README from a fresh venv before a release,
 not from the checkout). Check alerts with
 `gh api repos/blitzcrieg1/agentmetry/dependabot/alerts?state=open` rather than
 trusting this line. There are also **zero external users and zero
-design-partner tenants**, and no sales message has gone out yet. The first
-two were recorded as sent on 2026-10-23 and had not been; check with the
-maintainer before treating a pipeline row as sent. Those two, a third from a
-new signal and two peer critique-asks are drafted and verified; four more wait
-on finding the person who joined in each closed role.
+design-partner tenants**. The first outreach went out on 2026-10-31: two
+critique-asks by email, and integration questions posted as GitHub
+Discussions on AiSOC, Shuffle, SigmaHQ and Velociraptor. Recipients and
+replies are in the private log. Two earlier sends were recorded on 2026-10-23
+and had not happened, so check with the maintainer before treating a pipeline
+row as sent. The buyer first-touches for live postings are drafted and not
+sent; four more wait on finding the person who joined in each closed role.
+
+**The first outside integration.** AiSOC, the open-source AI SOC led by
+Cyble's CEO, shipped a bundled Agentmetry ingest template on 2026-10-31
+([beenuar/AiSOC#1580](https://github.com/beenuar/AiSOC/pull/1580)), four and a
+half hours after the question in
+[Discussion #1577](https://github.com/beenuar/AiSOC/discussions/1577). It is
+their code, not ours, and the live path (a real orchestrator posting to a real
+AiSOC) has not been run. It is not a user either: nobody is known to run
+Agentmetry into AiSOC. What it does change is the schema's status: the 24
+canonical fields that template reads are listed in
+`docs/agentmetry-event-schema.md`, they are not renamed or moved within 1.x,
+and a change touching one is announced in that discussion before it ships.
 
 The fleet installers Cursor drafted in #282 are parked as
 agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
