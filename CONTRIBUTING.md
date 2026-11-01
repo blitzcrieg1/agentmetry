@@ -16,6 +16,13 @@ These are small, self-contained, and testable. The best way in:
 | A **hook adapter** for a new IDE | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
 | A **Sigma rule** | [docs/integrations/sigma/](docs/integrations/sigma/) |
 
+**The built-in detection ruleset is frozen for now.** `rules.py`, `traits.py`,
+`engine.py`, `core/audit/mitre.py` and `policies/detection/manifest.yaml` are
+hashed into a published fingerprint, and the "green weeks against an unchanged
+ruleset" claim depends on it not moving. A new rule or a change to an existing
+one is welcome as an issue first, with the event sequence it should catch;
+it lands with the next planned ruleset change rather than on its own.
+
 ## Development setup
 
 ```bash
