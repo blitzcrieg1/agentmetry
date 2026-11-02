@@ -229,9 +229,13 @@ Cyble's CEO, shipped a bundled Agentmetry ingest template on 2026-10-31
 ([beenuar/AiSOC#1580](https://github.com/beenuar/AiSOC/pull/1580)), four and a
 half hours after the question in
 [Discussion #1577](https://github.com/beenuar/AiSOC/discussions/1577). It is
-their code, not ours, and the live path (a real orchestrator posting to a real
-AiSOC) has not been run. It is not a user either: nobody is known to run
-Agentmetry into AiSOC. What it does change is the schema's status: the 24
+their code, not ours. The live path was run on 2026-11-02: 0.10.4 from PyPI
+posting into a local AiSOC v21 stack in a Codespace, where both detections
+became critical alerts and tool calls raised none (README and #367). That run
+was the maintainer's, so it is still not a user: nobody is known to run
+Agentmetry into AiSOC. An audit on the same day read the older wording of this
+paragraph and reported the run as contradicted, which is the stale-document
+trap described under "Where truth lives". What it does change is the schema's status: the 24
 canonical fields that template reads are listed in
 `docs/agentmetry-event-schema.md`, they are not renamed or moved within 1.x,
 and a change touching one is announced in that discussion before it ships.
