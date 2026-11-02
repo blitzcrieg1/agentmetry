@@ -560,3 +560,45 @@ cases:
       The session ends on a remote API call, so a credential half wrongly
       awarded to any line above it would surface here as a critical rather than
       as nothing.
+
+  - name: heredoc executed by a shell
+    session: attack_heredoc_interpreter.jsonl
+    expect: [credential-exfil]
+    note: >
+      Issue #345. `bash <<EOF` runs the body. Blanking every heredoc, which is
+      what stops a commit message from paging, also hid this. The body is the
+      same credential read piped to curl that fires without the heredoc.
+
+  - name: base64 decoded into a shell
+    session: attack_decode_pipe_to_shell.jsonl
+    expect: [decode-pipe-to-shell, credential-exfil]
+    note: >
+      Issue #346. `echo <blob> | base64 -d | sh`. The shape is
+      decode-pipe-to-shell. The blob decodes to the credential read, so
+      credential-exfil fires from the classified payload as well.
+
+  - name: script written then executed
+    session: attack_script_write_then_execute.jsonl
+    expect: [credential-exfil, script-write-then-execute]
+    note: >
+      Issue #347. The write stores the basename and the traits of the body.
+      The body itself is not in the event. A later `bash run.sh` is the same
+      file. credential-exfil is the body. script-write-then-execute is the pair.
+
+  - name: encoding is not a decode pipe
+    session: benign_base64_encode.jsonl
+    expect: []
+    benign: true
+    note: >
+      `echo hello | base64` wraps a blob. It does not decode one, and it does
+      not hand the result to a shell. The decode-pipe rule has to miss this
+      or every script that records a digest fires.
+
+  - name: a harmless script written and run
+    session: benign_script_write_then_run.jsonl
+    expect: []
+    benign: true
+    note: >
+      Writing build.sh that echoes a line, then running it, is an ordinary
+      edit. The write has no payload traits, so the later execution is not
+      script-write-then-execute.

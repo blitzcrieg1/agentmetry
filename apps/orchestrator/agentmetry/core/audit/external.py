@@ -89,6 +89,15 @@ def _resolve_source_app(raw: Any) -> tuple[str, str]:
     return UNKNOWN_APP, _CLAIMED_APP_UNSAFE.sub("", source_app)[:64]
 
 
+def _script_names(raw: Any) -> list[str]:
+    """Basenames the hook attached. Anything else is dropped, not stored."""
+    if not isinstance(raw, list):
+        return []
+    from agentmetry.core.audit.detection.traits import clean_script_names
+
+    return clean_script_names([str(item) for item in raw if item])
+
+
 def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize an adapter payload into canonical v1.1 JSON."""
     source_app, claimed_app = _resolve_source_app(payload.get("source_app"))
@@ -208,6 +217,12 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         # The hook classified only the two ends of an oversized command (#348).
         if tool_block.get("classification") == "partial":
             event["tool"]["classification"] = "partial"
+        # Basenames only, set by the hook while it could still see the body.
+        # The body is hashed with the arguments and does not survive.
+        for key in ("scripts_written", "scripts_executed"):
+            names = _script_names(tool_block.get(key))
+            if names:
+                event["tool"][key] = names
 
         # Prefer the hook's MITRE mapping: it saw the plaintext command before
         # hashing, so its content upgrade (e.g. a key-file read → T1552) is

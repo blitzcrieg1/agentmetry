@@ -23,7 +23,7 @@ grep catching a rename:
 
 ```bash
 cd apps/orchestrator && .venv/Scripts/python.exe -c "from agentmetry.core.audit.dogfood import ruleset_fingerprint; print(ruleset_fingerprint()[:16])"
-# expect 56ad3de1ad8533cf
+# expect ecccbe61f732071d
 ```
 
 ## 2. Tests, lint, benchmark
