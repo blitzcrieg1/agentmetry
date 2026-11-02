@@ -154,7 +154,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2069 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+2084 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
@@ -218,7 +218,7 @@ From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build 
 | Command | What it does |
 | --- | --- |
 | `agentmetry demo` | Replay an attack session in-process, then tamper with the trail and show `verify` catch it. `--scenario hf` or `--scenario all`. Nothing is kept. |
-| `agentmetry doctor` | Preflight. `--fix` creates a portable `drivers.json` in a checkout. |
+| `agentmetry doctor` | Preflight. A trail over 32 MB has its newest 5,000 records checked; `--full` walks the whole chain. `--fix` creates a portable `drivers.json` in a checkout. |
 | `agentmetry benchmark` | Replay the detection corpus and score the rules. |
 | `agentmetry start` / `agentmetry stop` / `agentmetry status` | Run the orchestrator detached, stop it, or check health. |
 | `agentmetry serve` | Foreground process that autostart registers. |
