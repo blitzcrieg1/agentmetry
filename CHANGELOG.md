@@ -27,6 +27,26 @@ separately (currently `1.2.0`) and changes additively.
   not check the trail index or Codex's token on that install's behalf.
   `doctor --json` carries both facts as `other_install_trail` and
   `trail_scope`.
+- **The partial-classification marker and the HMAC label survive HTTP
+  ingest.** The hook set `tool.classification: "partial"` (0.10.4) and
+  `tool.input_hash_alg: "hmac-sha256"` (0.9.3), and `external.py` read both,
+  but the ingest model did not declare them, so pydantic dropped them at the
+  receiver. A stored event therefore never said that only part of a command
+  had been classified, and a keyed fingerprint was labelled `hash` rather than
+  `hmac`. The digest itself was always keyed, and block mode's ask on a
+  partial command ran in the hook before the loss, so nothing was let through.
+  The tests for both called the canonical builder directly and skipped the
+  model; `test_ingest_roundtrip.py` now builds real hook payloads and fails on
+  any tool key the model drops, as it already did for the MCP proxy. This is
+  the third time this model has dropped a field. Found by an outside audit.
+- **Full-argument capture redacts secrets at every depth.** With
+  `AGENTMETRY_LOG_FULL_ARGS` on, key redaction and pattern scrubbing stopped at
+  the top level of the arguments, so `{"nested": {"token": ...}}` was stored
+  and forwarded as sent. Both now walk nested objects and lists, in the hook
+  and again on the receiver, and the receiver also redacts sensitive keys sent
+  by clients other than the hook. Default hashed capture was never affected,
+  and argument fingerprints do not change. Pattern scrubbing remains best
+  effort. Found by an outside audit.
 
 ## [0.10.4] - 2026-10-31
 
