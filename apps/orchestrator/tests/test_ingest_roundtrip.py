@@ -161,3 +161,83 @@ def test_client_cannot_assert_identity():
     )
     assert "host_id" not in kept
     assert "fleet_id" not in kept
+
+
+# ---------------------------------------------------------------------------
+# The hook's payloads. The third dropped-field bug was here: `classification`
+# and `input_hash_alg` were set by the hook and read by external.py, and the
+# tests for both called build_external_canonical with the hook's dict, which
+# skipped this model. An outside audit found it over HTTP on 2026-11-02.
+# ---------------------------------------------------------------------------
+
+#: Keys the hook may send that the orchestrator recomputes rather than reads,
+#: so dropping them at the model loses nothing. ATLAS is derived from `mitre`
+#: on the receiving side (external.py), and an adapter's own value is not
+#: honoured over HTTP.
+_RECOMPUTED_TOOL_KEYS = frozenset({"atlas"})
+
+#: Long enough to pass the hook's classification bound, so it is marked partial.
+_OVERSIZED = "echo " + "z " * 5000
+
+
+@pytest.fixture
+def keyed_hook(monkeypatch: pytest.MonkeyPatch):
+    from agentmetry.hooks import ingest
+
+    monkeypatch.setattr(ingest, "_read_repo_env", lambda _key: "")
+    monkeypatch.setenv("AGENTMETRY_HASH_KEY", "fleet-secret")
+    monkeypatch.setenv("AGENTMETRY_LOG_FULL_ARGS", "1")
+    return ingest
+
+
+def _hook_payload(ingest, command: str) -> dict:
+    payload = ingest.map_claude_hook(
+        "PostToolUse",
+        {
+            "session_id": "roundtrip",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "tool_response": "ok",
+        },
+    )
+    assert payload is not None
+    return ingest._hash_tool_args(payload)
+
+
+def test_every_tool_key_the_hook_emits_survives_ingest(keyed_hook):
+    """The structural guard for the hook, as the proxy tests above are for MCP.
+
+    Keyed, full-argument, oversized: the configuration that sets the most keys.
+    """
+    payload = _hook_payload(keyed_hook, _OVERSIZED + " && cat ~/.aws/credentials")
+    kept = _survives(payload)
+    missing = sorted(k for k in payload if k not in kept)
+    assert not missing, f"the hook sends {missing} and ExternalIngestBody drops them."
+    tool_missing = sorted(
+        k for k in payload["tool"] if k not in kept.get("tool", {}) and k not in _RECOMPUTED_TOOL_KEYS
+    )
+    assert not tool_missing, (
+        f"the hook sends tool.{tool_missing} and IngestToolBody drops them. "
+        "Declare the field on the model, or stop sending it."
+    )
+
+
+def test_partial_classification_reaches_the_stored_event(keyed_hook):
+    """#348's marker, over the model: an empty trait list must not read as clean."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    payload = _hook_payload(keyed_hook, _OVERSIZED)
+    assert payload["tool"]["classification"] == "partial"
+    event = build_external_canonical(_survives(payload))
+    assert event["tool"]["classification"] == "partial"
+
+
+def test_a_keyed_digest_is_labelled_hmac_after_ingest(keyed_hook):
+    """The digest was always keyed; the label said `hash` once it crossed HTTP."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    payload = _hook_payload(keyed_hook, "git status")
+    assert payload["tool"]["input_hash_alg"] == "hmac-sha256"
+    event = build_external_canonical(_survives(payload))
+    assert event["tool"]["input_redaction"].split("+")[0] == "hmac"
+    assert event["tool"]["input_hash"] == payload["tool"]["input_hash"]
