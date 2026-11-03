@@ -486,3 +486,116 @@ def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
         head_seq=expected_seq,
         head_sha256=prev,
     )
+
+
+def _last_lines(path: Path, count: int, block: int = 1 << 20) -> list[str]:
+    """The last `count` non-empty lines of a file, read from the end.
+
+    Reading forward would cost as much as verifying, which is the cost this
+    exists to avoid.
+    """
+    with path.open("rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        data = b""
+        while pos > 0 and data.count(b"\n") <= count:
+            step = min(block, pos)
+            pos -= step
+            fh.seek(pos)
+            data = fh.read(step) + data
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    if pos > 0:
+        # The first line read from the middle of the file is a fragment.
+        lines = lines[1:]
+    return [line for line in lines if line.strip()][-count:]
+
+
+def verify_trail_tail(trail_path: Path, records: int) -> TrailVerifyResult:
+    """Verify the newest `records` lines of the trail, not the whole chain.
+
+    `verify_trail_file` walks from genesis, which on a trail of months takes
+    minutes. This checks what a health check needs in a second: that the newest
+    records link to each other, that each hash recomputes, and that the file
+    still ends where the sidecar says the writer stopped. It cannot see an edit
+    older than the window, because the first record in the window is trusted
+    for its `prev_sha256`. The message says how far it looked, so nobody reads
+    it as a full verification.
+    """
+    if not trail_path.is_file():
+        return TrailVerifyResult(False, f"no such file: {trail_path}")
+    try:
+        lines = _last_lines(trail_path, records)
+    except OSError as exc:
+        return TrailVerifyResult(False, f"read failed: {exc}")
+
+    prev: str | None = None
+    first_seq = expected_seq = 0
+    chained = legacy = 0
+    for offset, line in enumerate(lines, start=1):
+        where = f"record {offset} of the last {len(lines)}"
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            return TrailVerifyResult(False, f"invalid JSON at {where}", len(lines), chained, legacy)
+        if not isinstance(record, dict) or not is_chained_record(record):
+            if chained > 0:
+                return TrailVerifyResult(
+                    False,
+                    f"unchained line after chained records at {where} (forged append?)",
+                    len(lines),
+                    chained,
+                    legacy,
+                )
+            legacy += 1
+            continue
+        trail = record["trail"]
+        seq = int(trail.get("seq", -1))
+        prev_sha = str(trail.get("prev_sha256", ""))
+        if prev is None:
+            first_seq = seq
+        else:
+            if seq != expected_seq + 1:
+                return TrailVerifyResult(
+                    False,
+                    f"sequence break at {where}: expected seq {expected_seq + 1}, got {seq}",
+                    len(lines),
+                    chained,
+                    legacy,
+                )
+            if prev_sha != prev:
+                return TrailVerifyResult(False, f"prev_sha256 mismatch at {where}", len(lines), chained, legacy)
+        record_sha = str(trail.get("record_sha256", ""))
+        if record_sha != compute_record_sha256(prev_sha, record["event"]):
+            return TrailVerifyResult(
+                False, f"record_sha256 mismatch at {where} (tampered?)", len(lines), chained, legacy
+            )
+        chained += 1
+        expected_seq = seq
+        prev = record_sha
+
+    if prev is None:
+        return TrailVerifyResult(True, "no chained records in the newest lines", len(lines), 0, legacy)
+
+    sidecar_head = _load_sidecar(chain_sidecar_path(trail_path))
+    if sidecar_head is not None and sidecar_head.seq > expected_seq:
+        return TrailVerifyResult(
+            False,
+            f"trail ends at seq {expected_seq} but sidecar records seq {sidecar_head.seq} (truncated?)",
+            len(lines),
+            chained,
+            legacy,
+        )
+    if sidecar_head is not None and sidecar_head.seq == expected_seq and sidecar_head.last_sha256 != prev:
+        return TrailVerifyResult(
+            False,
+            f"sidecar head hash does not match the last chained record at seq {expected_seq}",
+            len(lines),
+            chained,
+            legacy,
+        )
+    message = f"newest {chained} record(s) verified, seq {first_seq} to {expected_seq}"
+    if sidecar_head is None:
+        message += "; no sidecar head found, so tail truncation cannot be ruled out"
+    return TrailVerifyResult(
+        True, message, len(lines), chained, legacy, head_seq=expected_seq, head_sha256=prev
+    )

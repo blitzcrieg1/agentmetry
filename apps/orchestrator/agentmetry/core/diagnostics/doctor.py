@@ -50,6 +50,13 @@ class DoctorReport:
     #: in the observed window. Configured is a file check; these are not.
     hooks_last_seen: dict[str, str | None] = field(default_factory=dict)
     hooks_silent: list[str] = field(default_factory=list)
+    #: The trail the recorder answering on the configured port writes, when it
+    #: is not this install's. Checks that read install-local state then describe
+    #: this install, not the recorder that is running (#340).
+    other_install_trail: str = ""
+    #: `full` walked the chain from genesis; `tail` checked the newest records
+    #: of a trail too large to walk inside a health check (#366).
+    trail_scope: str = ""
 
     def ok(self, code: str, message: str) -> None:
         self.findings.append(Finding("ok", code, message))
@@ -67,22 +74,50 @@ class DoctorReport:
         return 0
 
 
+def _same_path(a: str, b: str) -> bool:
+    try:
+        return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+    except (OSError, ValueError):
+        return a == b
+
+
 def _check_health_endpoint(report: DoctorReport) -> None:
-    """Is the orchestrator up? A recorder that is not running records nothing."""
+    """Is the orchestrator up? A recorder that is not running records nothing.
+
+    It also asks whose recorder it is. A second install on the same machine, a
+    `pip install` beside a checkout, finds the checkout's recorder on the port
+    and used to report on its own empty data directory as if it were that
+    recorder's: a false FAIL that the token Codex needs was missing (#340).
+    """
     import urllib.request
 
     url = settings.audit_ingest_url.rstrip("/") + "/api/v1/health"
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
-            if resp.status == 200:
-                report.orchestrator_reachable = True
-                report.ok("orchestrator_up", f"Orchestrator responding at {url}")
+            if resp.status != 200:
+                report.warn("orchestrator_up", f"Orchestrator returned HTTP {resp.status} at {url}")
                 return
-            report.warn("orchestrator_up", f"Orchestrator returned HTTP {resp.status} at {url}")
+            body = resp.read()
     except Exception:
         report.warn(
             "orchestrator_up",
             f"Orchestrator not reachable at {url} - start it with `agentmetry start`",
+        )
+        return
+    report.orchestrator_reachable = True
+    report.ok("orchestrator_up", f"Orchestrator responding at {url}")
+    try:
+        theirs = str(json.loads(body)["audit_export"]["path"] or "")
+    except (ValueError, KeyError, TypeError):
+        return
+    ours = str(settings.audit_export_path)
+    if theirs and not _same_path(theirs, ours):
+        report.other_install_trail = theirs
+        report.warn(
+            "other_install",
+            f"The recorder at {url} writes {theirs}, not this install's {ours}, so it belongs "
+            "to a different install. The checks below that read this install's files describe "
+            "this install, not that recorder. Run doctor from the install that started it.",
         )
 
 
@@ -314,7 +349,9 @@ def _check_observed(report: DoctorReport) -> None:
     from agentmetry.core.diagnostics import hook_coverage
 
     covered = [n for n, s in report.hooks.items() if s == hook_coverage.COVERED]
-    if not covered:
+    if not covered or report.other_install_trail:
+        # Another install's recorder writes another index; this one would only
+        # report that this install has recorded nothing.
         return
     last_seen = _last_event_by_source(Path(settings.audit_db_path))
     if last_seen is None:
@@ -356,6 +393,16 @@ def _check_codex_sandbox(report: DoctorReport) -> None:
     if not accounts:
         return
     path = api_token.ingest_token_path()
+    if report.other_install_trail:
+        # The sandbox authenticates to the running recorder with that install's
+        # token, which this install cannot see. Its own token proves nothing
+        # either way.
+        report.warn(
+            "codex_sandbox",
+            "Not checked: the running recorder belongs to another install, whose ingest-only "
+            "token Codex's sandbox uses. Run doctor from that install to check it.",
+        )
+        return
     fix = "Run `agentmetry hooks install` to give them an ingest-only token."
     if not api_token.read_token(path):
         report.fail(
@@ -379,7 +426,15 @@ def _check_codex_sandbox(report: DoctorReport) -> None:
     report.ok("codex_sandbox", "Codex's sandbox accounts can send events with the ingest-only token")
 
 
-def _check_trail(report: DoctorReport) -> None:
+#: Above this, doctor checks the newest records instead of walking the chain
+#: from genesis. A trail of months walked for minutes with nothing printed, and
+#: read as a hung command (#366).
+TRAIL_FULL_VERIFY_BYTES = 32 * 1024 * 1024
+#: How many of the newest records the quick check covers.
+TRAIL_TAIL_RECORDS = 5000
+
+
+def _check_trail(report: DoctorReport, *, full: bool = False) -> None:
     trail = Path(settings.audit_export_path)
     if not trail.is_file():
         report.warn(
@@ -388,8 +443,25 @@ def _check_trail(report: DoctorReport) -> None:
             "agent session, and `agentmetry demo` shows one without touching this machine",
         )
         return
-    from agentmetry.core.audit.trail_chain import verify_trail_file
+    from agentmetry.core.audit.trail_chain import verify_trail_file, verify_trail_tail
+    from agentmetry.core.audit.trail_rotation import segments
 
+    size = sum(p.stat().st_size for p in segments(trail) if p.is_file())
+    if not full and size > TRAIL_FULL_VERIFY_BYTES:
+        report.trail_scope = "tail"
+        tail = verify_trail_tail(trail, TRAIL_TAIL_RECORDS)
+        if not tail.ok:
+            report.fail("trail", f"Trail chain BROKEN: {tail.message}")
+            return
+        report.ok(
+            "trail",
+            f"Trail chain: {tail.message}. The trail is {size // (1024 * 1024)} MB, so the "
+            "whole chain and its anchors were not walked here; `agentmetry doctor --full` or "
+            "`agentmetry verify --trail` does that and takes minutes.",
+        )
+        return
+
+    report.trail_scope = "full"
     result = verify_trail_file(trail)
     if result.ok:
         report.ok("trail", f"Trail chain verified: {result.message}")
@@ -892,6 +964,7 @@ def run_doctor(
     *,
     vault_path: Path | None = None,
     fix_drivers: bool = False,
+    full_trail: bool = False,
 ) -> DoctorReport:
     """SIEM preflight. The recorder is the product; the demo vault is optional.
 
@@ -966,7 +1039,7 @@ def run_doctor(
     _check_exposure(report)
     _check_trusted_hosts(report)
     _check_hashing(report)
-    _check_trail(report)
+    _check_trail(report, full=full_trail)
     _check_triage(report)
     _check_spool(report)
     _check_autostart(report)
@@ -1015,6 +1088,8 @@ def report_payload(report: DoctorReport) -> dict:
         "hooks": dict(report.hooks),
         "hooks_last_seen": dict(report.hooks_last_seen),
         "hooks_silent": list(report.hooks_silent),
+        "other_install_trail": report.other_install_trail,
+        "trail_scope": report.trail_scope,
         "policy": {
             "locked": list(report.policy_locked),
             "pinned": list(report.policy_pinned),
@@ -1040,8 +1115,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agentmetry-doctor")
     parser.add_argument("--fix", action="store_true", help="rewrite drivers.json to portable tokens")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    parser.add_argument("--full", action="store_true", help="walk the whole trail chain, however long")
     args = parser.parse_args(argv)
-    report = run_doctor(fix_drivers=args.fix)
+    report = run_doctor(fix_drivers=args.fix, full_trail=args.full)
     print_report(report, as_json=args.json)
     return report.exit_code
 

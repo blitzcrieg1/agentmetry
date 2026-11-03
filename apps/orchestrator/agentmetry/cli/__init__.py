@@ -1572,7 +1572,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(_ORCH_ROOT))
     from agentmetry.core.diagnostics.doctor import print_report, run_doctor
 
-    report = run_doctor(fix_drivers=getattr(args, "fix", False))
+    report = run_doctor(fix_drivers=getattr(args, "fix", False), full_trail=getattr(args, "full", False))
     print_report(report, as_json=getattr(args, "json", False))
     return report.exit_code
 
@@ -1863,6 +1863,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="the report as JSON, for a deployment script: exit_code, "
         "orchestrator_reachable, hooks, policy and findings",
+    )
+    doctor.add_argument(
+        "--full",
+        action="store_true",
+        help="walk the whole trail chain and its anchors, however long it takes; by default "
+        "a trail over 32 MB has only its newest 5000 records checked",
     )
     doctor.add_argument(
         "--fix",

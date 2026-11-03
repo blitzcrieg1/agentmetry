@@ -11,6 +11,22 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **`doctor` no longer goes silent for minutes on a long trail** (#366). It
+  walked the whole hash chain before printing anything, and on a 172 MB trail
+  of months it was killed at 90 s and at 400 s with no output. A trail over
+  32 MB now has its newest 5,000 records checked: that they link, that each
+  hash recomputes, and that the file ends where the sidecar says the writer
+  stopped. The line says how far it looked and that it did not walk the whole
+  chain or the anchors. `doctor --full`, or `verify --trail`, still does. The
+  same machine's `doctor` now finishes in about 3 s.
+- **`doctor` on a second install no longer reports on the wrong recorder**
+  (#340). A `pip install` beside a checkout found the checkout's recorder on
+  the port, then read its own empty data directory and failed with "every
+  Codex event is refused and lost", which was false. It now compares the trail
+  the running recorder reports with its own, says when they differ, and does
+  not check the trail index or Codex's token on that install's behalf.
+  `doctor --json` carries both facts as `other_install_trail` and
+  `trail_scope`.
 - **The partial-classification marker and the HMAC label survive HTTP
   ingest.** The hook set `tool.classification: "partial"` (0.10.4) and
   `tool.input_hash_alg: "hmac-sha256"` (0.9.3), and `external.py` read both,
