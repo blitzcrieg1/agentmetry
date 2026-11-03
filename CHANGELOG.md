@@ -9,6 +9,15 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-11-03
+
+Two fields the hook sets were dropped at the receiver, so the stored event
+never said a command was only partly classified and labelled a keyed
+fingerprint as a plain hash. Full-argument capture kept a secret one level
+down. An outside audit found both. `doctor` also stops going silent on a long
+trail and stops reporting on another install's recorder. The ruleset
+fingerprint is unchanged.
+
 ### Fixed
 
 - **`doctor` no longer goes silent for minutes on a long trail** (#366). It
