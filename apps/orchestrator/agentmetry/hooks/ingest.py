@@ -543,10 +543,32 @@ def scrub_command(text: Any) -> Any:
     return out
 
 
-def scrub_arg_values(args: Any) -> Any:
-    if not isinstance(args, dict):
-        return args
-    return {k: (scrub_command(v) if isinstance(v, str) else v) for k, v in args.items()}
+#: How deep stored arguments are walked. Past it a value is replaced rather than
+#: kept: an argument nested deeper than this is not one a reviewer needs
+#: verbatim, and keeping it unread would be the leak this walk exists to stop.
+SCRUB_MAX_DEPTH = 32
+
+
+def scrub_arg_values(args: Any, _depth: int = 0) -> Any:
+    """Mask secrets in stored arguments at every depth, not only the top.
+
+    A sensitive key is redacted wherever it sits and every string is scrubbed,
+    lists included. Until 0.10.5 both stopped at the top level, so with
+    AGENTMETRY_LOG_FULL_ARGS on, `{"nested": {"token": ...}}` was stored as
+    sent. Only the stored copy comes through here: `hash_arguments` still
+    digests the top-level `redact_arguments` form, so fingerprints do not move
+    between versions. Pattern scrubbing is best effort, as it always was.
+    """
+    if _depth > SCRUB_MAX_DEPTH:
+        return "<redacted-depth>"
+    if isinstance(args, dict):
+        return {
+            k: "<redacted>" if str(k).lower() in REDACT_KEYS else scrub_arg_values(v, _depth + 1)
+            for k, v in args.items()
+        }
+    if isinstance(args, (list, tuple)):
+        return [scrub_arg_values(v, _depth + 1) for v in args]
+    return scrub_command(args) if isinstance(args, str) else args
 
 
 def _hash_key() -> bytes:

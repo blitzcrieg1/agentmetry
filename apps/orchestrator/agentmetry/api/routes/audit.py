@@ -43,6 +43,12 @@ class IngestToolBody(BaseModel):
     # (hashed-only) events are invisible to every command-based sequence rule.
     traits: list[str] = Field(default_factory=list)
     mitre: dict[str, str] | None = None
+    # "partial" when the hook classified only the two ends of an oversized
+    # command (#348), so an empty trait list is not read as a clean command.
+    # And "hmac-sha256" when input_hash is keyed. external.py read both, and
+    # both were dropped here, the third time this model has done that.
+    classification: str = ""
+    input_hash_alg: str = ""
 
 
 #: Actor kinds a capture surface may assert. Anything else is coerced to
@@ -93,12 +99,14 @@ class ExternalIngestBody(BaseModel):
     what it does not know, silently, so an undeclared field is not an error at
     ingest: it is a feature that works in unit tests and disappears over HTTP.
 
-    That has now happened twice. `traits` and `mitre` were dropped, which made
-    hashed-only events invisible to every command rule. Then 0.6.0 shipped MCP
-    per-tool digests and the initialize handshake, and those were dropped too,
-    so the release headline did not survive the wire. `test_ingest_roundtrip.py`
-    exists so there is not a third time: it builds real proxy payloads and fails
-    if any key does not survive this model.
+    That has now happened three times. `traits` and `mitre` were dropped, which
+    made hashed-only events invisible to every command rule. Then 0.6.0 shipped
+    MCP per-tool digests and the initialize handshake, and those were dropped
+    too, so the release headline did not survive the wire. Then 0.10.4's
+    `tool.classification` and 0.9.3's HMAC label went the same way, because the
+    roundtrip test covered the proxy's builders and not the hook's.
+    `test_ingest_roundtrip.py` now builds both and fails if any key does not
+    survive this model.
     """
 
     source_app: str = Field(
