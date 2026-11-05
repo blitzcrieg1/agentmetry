@@ -20,7 +20,8 @@ fixed. The ruleset fingerprint is unchanged.
   the JSON parser raised `RecursionError`; on 3.14 the argument bounding did.
   Payloads nested past 64 levels, or over 16 MiB, are now recorded as unparsed
   input (`_stdin_too_deep`, `_stdin_oversize`) and the oversize remainder is
-  drained so the agent's write completes.
+  drained so the agent's write completes. An unparsed call carries no session
+  id, so it cannot be tied to its session.
 - **`AGENTMETRY_HOOK_DEBUG=1` no longer writes tool arguments in plaintext.**
   The debug line was written before redaction and kept 2,000 characters of the
   raw payload, including tool responses, with full-argument capture off. It
@@ -31,6 +32,9 @@ fixed. The ruleset fingerprint is unchanged.
   dead-lettered the event and moved on, so fixing an expired token did not
   bring the record back. It now retries with backoff, logs that the URL or
   credential needs checking, and resumes from the same record.
+  `doctor` warns while a destination is failing, with the error and how long
+  it has lasted, the URL cut to scheme and host because an inbox URL can carry
+  its token in the path.
 - **A bearer token with a non-ASCII byte is a 401, not a 500.**
   `secrets.compare_digest` raises on non-ASCII `str`; tokens are compared as
   bytes.

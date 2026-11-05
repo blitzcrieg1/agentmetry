@@ -8,6 +8,8 @@ exit code has to reflect the product, not the optional demo runtime.
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 from agentmetry.core.diagnostics.doctor import run_doctor
@@ -427,3 +429,56 @@ def test_a_wildcard_trusted_host_with_auth_on_warns(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(auth, "auth_is_disabled", lambda: False)
     report = run_doctor(vault_path=tmp_path / "no-such-vault")
     assert _finding(report, "trusted_hosts").severity == "warn"
+
+
+class _StatusResponse:
+    def __init__(self, forwarding: dict) -> None:
+        self._body = json.dumps({"forwarding": forwarding}).encode()
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        return None
+
+
+def _forwarding_report(monkeypatch, forwarding: dict, *, reachable: bool = True):
+    import urllib.request
+
+    from agentmetry.core.diagnostics import doctor
+
+    monkeypatch.setattr(doctor.settings, "api_key", "fixture-key")
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=0: _StatusResponse(forwarding))
+    report = doctor.DoctorReport()
+    report.orchestrator_reachable = reachable
+    doctor._check_forwarding(report, "http://127.0.0.1:58881")
+    return report
+
+
+def test_a_stalled_destination_is_a_warning_without_its_url_path(monkeypatch):
+    # Since 401/403/404/407 hold the cursor, a revoked token stops delivery
+    # until someone fixes it; doctor is where that has to show (2026-11-05).
+    report = _forwarding_report(monkeypatch, {"webhook": {
+        "failing_since": 1.0, "failing_for_seconds": 42.0, "forwarded": 3, "dead_lettered": 0,
+        "last_error": "https://ingest.example.com/v1/inbox/aitnb_fixture answered HTTP 401",
+    }})
+    warning = next(f for f in report.findings if f.code == "forwarding")
+    assert warning.severity == "warn"
+    assert "42 s" in warning.message and "HTTP 401" in warning.message
+    assert "https://ingest.example.com/..." in warning.message
+    assert "aitnb_fixture" not in warning.message
+
+
+def test_a_healthy_destination_is_ok(monkeypatch):
+    report = _forwarding_report(monkeypatch, {"splunk": {
+        "failing_since": None, "failing_for_seconds": 0.0, "forwarded": 12, "dead_lettered": 0, "last_error": "",
+    }})
+    assert "forwarding" in _codes(report, "ok")
+
+
+def test_no_reachable_recorder_means_no_forwarding_line(monkeypatch):
+    report = _forwarding_report(monkeypatch, {"webhook": {"failing_since": 1.0}}, reachable=False)
+    assert "forwarding" not in {f.code for f in report.findings}
