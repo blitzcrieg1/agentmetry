@@ -138,6 +138,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 - **SIEM and webhook export.** File (default, hash-chained JSONL), generic webhook, Elastic ECS, Splunk HEC, Google SecOps UDM, Microsoft Sentinel (not yet run against a live workspace), and CloudEvents v1.0 as a webhook format. Loki is Grafana Alloy tailing the local file, not a native sink. The same list is in the table below.
 - **Claude Code OpenTelemetry ingest.** `agentmetry otel` is a loopback OTLP/HTTP JSON receiver. It shipped in 0.9.0. It does not export Agentmetry's own events as OTLP. That direction is not built.
 - **Evidence.** `agentmetry verify --trail` checks the hash chain. `agentmetry anchor` records a checkpoint; it protects against a rewrite of the whole trail only once a copy lives somewhere this host cannot write, because the default anchor file is local ([anchoring](docs/anchoring.md)). `agentmetry prove` is an inclusion proof for one event. `agentmetry export --evidence` writes an evidence pack. `agentmetry export --compliance-digest` is a period summary.
+- **A removed hook is loud.** While `agentmetry start` runs, it sends a heartbeat every 300 seconds (`AGENTMETRY_HEARTBEAT_SECONDS`) whether or not anyone is coding, listing which agents on the machine are hooked (`heartbeat.hooks`). A SIEM can alert on two things: the heartbeat stops, which means the recorder was stopped or the machine is off, or it arrives with `action.outcome: degraded`, which means the recorder is running but an agent on the machine is not being recorded, the state a deleted hooks file produces. Both are in the Sigma pack: [recorder silent](docs/integrations/sigma/agentmetry_recorder_silent.yml) and [recorder degraded](docs/integrations/sigma/agentmetry_recorder_degraded.yml). This makes bypass visible, not impossible: an agent run that skips hooks still configured on disk sends no event, and anyone who can stop the recorder can also forge a beat.
 
 ## Checked claims
 
@@ -162,7 +163,7 @@ The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audi
 
 **Not a sandbox.** The default is detect and record. DLP and tool policy can deny a call at the hook, before it runs, when set to `block`. That is off by default (`log`). An after-the-fact hook cannot deny a tool that already ran.
 
-**Not a CASB.** Hooks are cooperative. No event is not evidence that nothing happened.
+**Not a CASB.** Hooks are cooperative. No event is not evidence that nothing happened. A hook removed from an agent's config shows up in the heartbeat (above); an agent session that skips hooks still configured does not.
 
 **Not a console.** There is no central enforcement and no central triage in this package. Policy is per machine. See [fleet via your SIEM](docs/integrations/fleet-via-siem.md).
 
