@@ -155,7 +155,11 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2108 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI on Python 3.12, on 2026-10-25, reported 2006 passed and 19 skipped on Linux and macOS, 2019 passed and 6 skipped on Windows (the skips are platform-specific tests), and 82% line coverage (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
+2108 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+[0.10.6 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/42082231888)
+on Python 3.12 reported 2089 passed and 19 skipped on Linux and macOS,
+2102 passed and 6 skipped on Windows, and 82.13% line coverage on Linux
+(`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
