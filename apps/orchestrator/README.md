@@ -2,11 +2,11 @@
 
 A local-first endpoint sensor for AI coding agents.
 
-Agentmetry hooks the tool lifecycle of Claude Code, Cursor, Codex, GitHub Copilot,
-Antigravity, Qwen, Kimi, Qoder and CodeBuddy, writes every tool call, approval and
-denial to a hash-chained JSONL trail on your machine, and runs sequence detection
-over the session. A credential read followed by network egress becomes one finding
-rather than two unremarkable log lines. Findings carry MITRE ATT&CK labels, and
+Agentmetry records events reported by supported hooks for Claude Code, Cursor,
+Codex, GitHub Copilot, Antigravity, Qwen, Kimi, Qoder and CodeBuddy, and by wrapped
+stdio MCP servers. It writes those events to a hash-chained JSONL trail on your
+machine and runs sequence detection over the session. A credential read followed
+by network egress can trigger a finding. Findings carry MITRE ATT&CK labels, and
 MITRE ATLAS labels where ATLAS says something ATT&CK cannot.
 
 Nothing leaves the machine unless you configure it, and there is no telemetry.
