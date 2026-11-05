@@ -118,6 +118,9 @@ def isolated_settings(root: Path) -> Iterator[Any]:
     Auth is off and the TestClient's host is trusted for the duration: the
     client is in-process, there is no socket for anything else to reach, and
     the token file belongs to the real install, so the demo must not create one.
+    `api_key` is cleared too, because a configured key takes precedence over
+    `auth_disabled` and the demo's client sends none: with
+    `AGENTMETRY_API_KEY` set, every step was refused with a 401.
     """
     from agentmetry.core.config import settings
 
@@ -126,6 +129,7 @@ def isolated_settings(root: Path) -> Iterator[Any]:
         audit_export_enabled=True,
         audit_sink="file",
         dlp_mode="log",
+        api_key="",
         auth_disabled=True,
         trusted_hosts="testserver",
         operator_id="",

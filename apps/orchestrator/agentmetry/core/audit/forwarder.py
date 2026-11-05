@@ -55,12 +55,23 @@ class ForwardError(Exception):
         self.retryable = retryable
 
 
+#: Answers about the destination, not the batch: a revoked or expired token, a
+#: wrong inbox path. Every event would get the same answer, so isolating one and
+#: dead-lettering it moved the cursor past records the destination never saw,
+#: and delivery did not resume when the credential was fixed. The trail is the
+#: queue; holding the cursor and retrying with backoff loses nothing.
+DESTINATION_STATUSES = frozenset({401, 403, 404, 407})
+
+
 def raise_for(response: httpx.Response, target: str) -> None:
     status = response.status_code
     if 200 <= status < 300:
         return
-    retryable = status in (408, 425, 429) or status >= 500
-    raise ForwardError(f"{target} answered HTTP {status}", retryable=retryable)
+    retryable = status in (408, 425, 429) or status >= 500 or status in DESTINATION_STATUSES
+    message = f"{target} answered HTTP {status}"
+    if status in DESTINATION_STATUSES:
+        message += " (check the destination URL and credential; forwarding resumes when it accepts)"
+    raise ForwardError(message, retryable=retryable)
 
 
 class Destination(Protocol):

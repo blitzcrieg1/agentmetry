@@ -81,7 +81,7 @@ def _same_path(a: str, b: str) -> bool:
         return a == b
 
 
-def _check_health_endpoint(report: DoctorReport) -> None:
+def _check_health_endpoint(report: DoctorReport, base_url: str = "") -> None:
     """Is the orchestrator up? A recorder that is not running records nothing.
 
     It also asks whose recorder it is. A second install on the same machine, a
@@ -91,7 +91,7 @@ def _check_health_endpoint(report: DoctorReport) -> None:
     """
     import urllib.request
 
-    url = settings.audit_ingest_url.rstrip("/") + "/api/v1/health"
+    url = (base_url or settings.audit_ingest_url).rstrip("/") + "/api/v1/health"
     try:
         with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
             if resp.status != 200:
@@ -965,6 +965,7 @@ def run_doctor(
     vault_path: Path | None = None,
     fix_drivers: bool = False,
     full_trail: bool = False,
+    recorder_url: str = "",
 ) -> DoctorReport:
     """SIEM preflight. The recorder is the product; the demo vault is optional.
 
@@ -1043,7 +1044,7 @@ def run_doctor(
     _check_triage(report)
     _check_spool(report)
     _check_autostart(report)
-    _check_health_endpoint(report)
+    _check_health_endpoint(report, recorder_url)
     _check_hooks_installed(report)
     _check_observed(report)
     _check_codex_sandbox(report)

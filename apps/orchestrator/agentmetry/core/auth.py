@@ -85,8 +85,14 @@ def _token_matches(token: str | None, key: str) -> bool:
     A plain `==` short-circuits on the first differing byte, leaking the key's
     prefix through response timing to anyone who can reach the endpoint.
     `compare_digest` runs in time independent of where the mismatch is.
+
+    It compares bytes: on two `str` it raises for anything outside ASCII, so a
+    bearer token carrying a stray non-ASCII byte was a 500 instead of a 401.
     """
-    return bool(key) and secrets.compare_digest(token or "", key)
+    if not key:
+        return False
+    presented = (token or "").encode("utf-8", "surrogateescape")
+    return secrets.compare_digest(presented, key.encode("utf-8", "surrogateescape"))
 
 
 def _presented_token(request: Request, header_value: str | None) -> str | None:
