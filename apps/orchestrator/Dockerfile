@@ -6,8 +6,11 @@
 # It used to start `uvicorn api.main:app`, a module path that has not existed
 # since the package became `agentmetry`, so the image could not boot. It also
 # installed gcc and libpq for a Postgres the recorder no longer uses.
+#
+# Base images are pinned by digest, because a tag can be moved to other content
+# after the fact. Dependabot bumps the digests.
 
-FROM node:20-alpine AS dashboard
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS dashboard
 WORKDIR /dashboard
 COPY apps/dashboard/package.json apps/dashboard/package-lock.json ./
 RUN npm ci
@@ -17,7 +20,7 @@ COPY apps/dashboard/ ./
 ENV NEXT_PUBLIC_SAME_ORIGIN=true
 RUN npm run build
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
 WORKDIR /app
 
 COPY apps/orchestrator/ ./
