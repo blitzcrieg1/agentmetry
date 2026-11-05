@@ -55,6 +55,25 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # --- The recorder image ----------------------------------------------------
+  # The Dockerfile pins its base images by digest. Without this entry those pins
+  # rot, and a digest that never moves stops receiving the base image's security
+  # fixes. Digest bumps only: which Node and Python the image runs is a decision,
+  # not a Monday PR, and 3.12 is what CI tests.
+  - package-ecosystem: docker
+    directory: /apps/orchestrator
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Athens
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
   # --- The workflows themselves --------------------------------------------
   # A pinned action is a dependency with code execution in a job that holds an
   # OIDC token good enough to publish to PyPI. This is the highest-value
