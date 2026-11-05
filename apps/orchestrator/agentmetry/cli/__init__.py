@@ -1724,7 +1724,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     export.add_argument("--from", dest="date_from", metavar="DATE", required=False)
     export.add_argument("--to", dest="date_to", metavar="DATE", required=False)
-    export.add_argument("-o", "--output", default=None, help="output path (default: vault/30-Archive/exports/)")
+    export.add_argument(
+        "-o", "--output", default=None,
+        help="output path (default: exports/ beside the trail; in a checkout with a vault, vault/30-Archive/exports/)",
+    )
     import_agt = sub.add_parser(
         "import-agt",
         help="ingest a Microsoft Agent Governance Toolkit audit file into the trail",
