@@ -9,8 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
-Six findings from an outside audit on 2026-11-05, each reproduced before it was
-fixed. The ruleset fingerprint is unchanged.
+## [0.10.6] - 2026-11-05
+
+An outside audit reproduced six problems in hook capture, forwarding,
+authentication and first-run commands. This release fixes them, and `doctor`
+now warns while a forwarding destination is failing. The ruleset fingerprint
+is unchanged.
 
 ### Fixed
 

@@ -194,7 +194,8 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 ## What the project is actually short of
 
 Not code. As of 2026-11-05 there are 2094 tests collected in CI, zero open
-code scanning alerts, zero open Dependabot alerts, OpenSSF Scorecard 7.8, a
+code scanning alerts, one open Dependabot alert (dashboard development
+dependency `minimatch`, #116), OpenSSF Scorecard 7.8, a
 dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "9 of 4, Gate
 PASSED" with every complete week green (triage is what keeps it that way;
 untriaged criticals turn a week red),
