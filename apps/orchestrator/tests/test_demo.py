@@ -74,3 +74,12 @@ def test_the_clone_wrapper_still_runs(tmp_path: Path):
     assert done.returncode == 0, done.stdout + done.stderr
     assert "[CRITICAL] credential-exfil" in done.stdout
     assert list(tmp_path.iterdir()) == []
+
+
+def test_the_demo_runs_with_an_api_key_configured(monkeypatch, capsys):
+    # A configured key takes precedence over `auth_disabled`, and the demo's
+    # in-process client sends none, so with AGENTMETRY_API_KEY set every step
+    # was refused with a 401 (external audit, 2026-11-05).
+    monkeypatch.setattr(settings, "api_key", "fixture-token-only")
+    assert demo.run("classic", fast=True) == 0
+    assert settings.api_key == "fixture-token-only"

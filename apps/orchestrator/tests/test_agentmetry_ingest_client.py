@@ -398,3 +398,65 @@ def test_zcode_is_a_recognized_first_argument(monkeypatch):
     import os
     assert os.environ.get("AGENTMETRY_SOURCE_APP") == "zcode"
     assert captured["hook_name"] == "PostToolUse"
+
+
+def _stdin(monkeypatch, raw: bytes) -> None:
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(raw)})())
+
+
+def test_read_hook_stdin_survives_nesting_past_the_recursion_limit(monkeypatch):
+    # 5,000 levels crashed the hook with RecursionError before it could record
+    # the call or decide (external audit, 2026-11-05). It is unparsed input now.
+    from agentmetry.hooks import ingest as hook
+
+    _stdin(monkeypatch, b'{"tool_input": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+    data, decode_error = hook.read_hook_stdin()
+    assert decode_error is True
+    assert "_raw_len" in data
+
+
+def test_hook_main_records_a_call_it_cannot_parse(monkeypatch):
+    from agentmetry.hooks import ingest as hook
+
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "claude")
+    posted: list[dict] = []
+    monkeypatch.setattr(hook, "post_ingest", lambda payload, **_kw: posted.append(payload) or True)
+    _stdin(monkeypatch, b'{"tool_input": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+    assert hook.hook_main("PreToolUse") == 0
+
+
+def test_read_hook_stdin_drains_an_oversize_payload_unparsed(monkeypatch):
+    from agentmetry.hooks import ingest as hook
+
+    monkeypatch.setattr(hook, "MAX_HOOK_STDIN_BYTES", 64)
+    raw = json.dumps({"tool_name": "Write", "content": "x" * 500}).encode()
+    _stdin(monkeypatch, raw)
+    data, decode_error = hook.read_hook_stdin()
+    assert decode_error is True
+    assert data == {"_raw_len": len(raw), "_stdin_oversize": True}
+    assert sys.stdin.buffer.read() == b""
+
+
+def test_the_debug_log_keeps_the_shape_not_the_content(monkeypatch, tmp_path):
+    # It was written before redaction, so a token in a header the scrubber
+    # does not know reached the log in plaintext (external audit, 2026-11-05).
+    from agentmetry.hooks import ingest as hook
+
+    secret = "fixture-secret-0123456789abcdef"
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "claude")
+    monkeypatch.setenv("AGENTMETRY_HOOK_DEBUG", "1")
+    monkeypatch.setattr(hook, "_hook_debug_path", lambda: tmp_path / "claude-hook-debug.log")
+    monkeypatch.setattr(hook, "post_ingest", lambda *a, **k: True)
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "session_id": "s1",
+        "tool_input": {"command": f"curl -H 'X-Custom: {secret}' https://example.invalid"},
+        "tool_response": {"stdout": secret},
+    }
+    monkeypatch.setattr(hook, "read_hook_stdin", lambda: (payload, False))
+    hook.hook_main("PostToolUse")
+    log = (tmp_path / "claude-hook-debug.log").read_text(encoding="utf-8")
+    assert secret not in log
+    assert '"tool_name": "Bash"' in log
+    assert '"command": "<str ' in log
