@@ -193,15 +193,17 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-11-01 there are 2069 tests collected in CI, zero open
-code scanning alerts, one open Dependabot alert (`minimatch`, dev-only under
-eslint in the dashboard's lockfile; why it stays open is in that
-`package.json`'s `overridesNote`), OpenSSF Scorecard 7.8, a dogfood
-gate that passed 4 of 4 on 2026-10-02 and now prints "8 of 4, Gate PASSED"
-with every complete week green (triage is what keeps it that way; untriaged
-criticals turn a week red),
+Not code. As of 2026-11-05 there are 2094 tests collected in CI, zero open
+code scanning alerts, zero open Dependabot alerts, OpenSSF Scorecard 7.8, a
+dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "9 of 4, Gate
+PASSED" with every complete week green (triage is what keeps it that way;
+untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), 0.10.4 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.10.5 on PyPI
+(released 2026-11-04: two hook fields the receiver dropped, the
+partial-classification marker and the HMAC label, now survive HTTP ingest;
+full-argument capture redacts at every depth; `doctor` no longer stalls on a
+long trail or reports on another install's recorder), 0.10.4 before it
 (released 2026-10-31: the hook classifies 8 KiB of a command, because 0.10.3's
 64 KiB let one crafted command hold the hook for 30 s or more, and block mode
 asks on a command it could not classify in full), 0.10.3 before it
@@ -239,6 +241,15 @@ trap described under "Where truth lives". What it does change is the schema's st
 canonical fields that template reads are listed in
 `docs/agentmetry-event-schema.md`, they are not renamed or moved within 1.x,
 and a change touching one is announced in that discussion before it ships.
+
+**The second outside integration.** Tenzir merged an `agentmetry` package into
+its library on 2026-11-03 ([tenzir/library#211](https://github.com/tenzir/library/pull/211)),
+mapping events to OCSF 1.9.0. We wrote it at mavam's invitation; he simplified
+it before merging. The 34 fields it reads, and the `{trail, event}` record
+layout, are listed in the same schema section and carry the same promise: a
+change touching one ships with a matching package update, which #211 committed
+to. Its live webhook path into `accept_http` has not been run. Like AiSOC, it is
+an integration, not a user.
 
 The fleet installers Cursor drafted in #282 are parked as
 agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
