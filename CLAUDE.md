@@ -200,7 +200,12 @@ dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "9 of 4, Gate
 PASSED" with every complete week green (triage is what keeps it that way;
 untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), 0.10.5 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.10.6 on PyPI
+(released 2026-11-05: six fixes from an outside audit; a deeply nested or
+oversized hook payload is recorded as unparsed instead of crashing the hook,
+the hook debug line no longer writes arguments, a forwarding destination that
+answers 401, 403, 404 or 407 holds the cursor instead of dead-lettering, and
+`doctor` warns while one is failing), 0.10.5 before it
 (released 2026-11-04: two hook fields the receiver dropped, the
 partial-classification marker and the HMAC label, now survive HTTP ingest;
 full-argument capture redacts at every depth; `doctor` no longer stalls on a
