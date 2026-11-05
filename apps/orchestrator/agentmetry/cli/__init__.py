@@ -1572,7 +1572,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(_ORCH_ROOT))
     from agentmetry.core.diagnostics.doctor import print_report, run_doctor
 
-    report = run_doctor(fix_drivers=getattr(args, "fix", False), full_trail=getattr(args, "full", False))
+    # `agentmetry --port N doctor` used to probe the configured ingest URL
+    # (8000 by default) and report on whatever answered there. The port given
+    # on the command line names the recorder to check; with no port given, the
+    # configured URL still decides.
+    port = getattr(args, "port", 8000)
+    recorder_url = _api_base_url(port) if port != 8000 else ""
+    report = run_doctor(
+        fix_drivers=getattr(args, "fix", False),
+        full_trail=getattr(args, "full", False),
+        recorder_url=recorder_url,
+    )
     print_report(report, as_json=getattr(args, "json", False))
     return report.exit_code
 

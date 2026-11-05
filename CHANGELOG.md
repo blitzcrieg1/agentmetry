@@ -9,6 +9,39 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+Six findings from an outside audit on 2026-11-05, each reproduced before it was
+fixed. The ruleset fingerprint is unchanged.
+
+### Fixed
+
+- **A deeply nested hook payload no longer crashes the hook.** A tool call
+  whose arguments nested about 5,000 levels made the hook exit 1 before it
+  recorded the call or decided, so the agent ran it unrecorded. On Python 3.12
+  the JSON parser raised `RecursionError`; on 3.14 the argument bounding did.
+  Payloads nested past 64 levels, or over 16 MiB, are now recorded as unparsed
+  input (`_stdin_too_deep`, `_stdin_oversize`) and the oversize remainder is
+  drained so the agent's write completes.
+- **`AGENTMETRY_HOOK_DEBUG=1` no longer writes tool arguments in plaintext.**
+  The debug line was written before redaction and kept 2,000 characters of the
+  raw payload, including tool responses, with full-argument capture off. It
+  now records the payload's shape: keys, types and string lengths, plus the
+  hook, tool and session identifiers.
+- **A webhook or SIEM that answers 401, 403, 404 or 407 holds the cursor.**
+  Those answers are about the destination, not the event, but the forwarder
+  dead-lettered the event and moved on, so fixing an expired token did not
+  bring the record back. It now retries with backoff, logs that the URL or
+  credential needs checking, and resumes from the same record.
+- **A bearer token with a non-ASCII byte is a 401, not a 500.**
+  `secrets.compare_digest` raises on non-ASCII `str`; tokens are compared as
+  bytes.
+- **`agentmetry demo` works with `AGENTMETRY_API_KEY` set.** A configured key
+  takes precedence over the demo's disabled auth, and the in-process client
+  sends none, so every step was refused with a 401. The demo now clears the key
+  for its run and restores it.
+- **`agentmetry --port N doctor` checks the recorder on port N.** It probed the
+  configured ingest URL (port 8000 by default) and reported on whatever
+  answered there.
+
 ## [0.10.5] - 2026-11-03
 
 Two fields the hook sets were dropped at the receiver, so the stored event

@@ -228,11 +228,44 @@ def test_a_cursor_that_does_not_chain_is_a_mismatch(trail: Path):
 
 
 @pytest.mark.parametrize(("status", "retryable"), [(500, True), (503, True), (429, True), (408, True),
-                                                   (400, False), (401, False), (413, False)])
+                                                   (401, True), (403, True), (404, True), (407, True),
+                                                   (400, False), (413, False), (422, False)])
 def test_which_failures_are_retried(status: int, retryable: bool):
     with pytest.raises(fw.ForwardError) as exc:
         fw.raise_for(httpx.Response(status), "siem")
     assert exc.value.retryable is retryable
+
+
+async def test_an_expired_credential_holds_the_cursor_instead_of_dead_lettering(trail: Path):
+    """A 401 is about the destination, not the event (external audit, 2026-11-05).
+
+    It used to dead-letter the event and advance, so fixing the token did not
+    bring the record back. Now the cursor holds and the same event goes out
+    once the destination accepts again.
+    """
+    ids = _append(trail, 0, 1)
+    answers = [401, 401, 200]
+    received: list[str] = []
+
+    class TokenExpired:
+        name = "siem"
+        max_batch = 10
+
+        def make_client(self) -> httpx.AsyncClient:
+            return httpx.AsyncClient()
+
+        async def send_batch(self, client, events):
+            status = answers.pop(0)
+            if status != 200:
+                fw.raise_for(httpx.Response(status), "siem")
+            received.extend(e["event_id"] for e in events)
+
+    forwarder = fw.Forwarder(TokenExpired(), trail, sleep=Clock().sleep)
+    async with httpx.AsyncClient() as client:
+        assert await forwarder.step(client) == 1
+    assert received == ids
+    assert forwarder.state.dead_lettered == 0
+    assert not forwarder.store.deadletter.exists()
 
 
 def test_backoff_grows_and_is_capped():

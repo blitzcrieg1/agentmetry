@@ -256,9 +256,54 @@ def _stdin_decode_candidates(raw: bytes) -> list[tuple[str, str]]:
     return candidates
 
 
+#: The most hook stdin that is decoded. Past it the payload is drained unread and
+#: recorded as oversize: decoding tries several encodings, so an unbounded read
+#: let one tool call set the hook's memory and time. Generous, because a Write
+#: carries the whole file.
+MAX_HOOK_STDIN_BYTES = 16 * 1024 * 1024
+
+#: Deeper than any hook payload an agent sends. Past it the payload is treated
+#: as unparsed, because the argument hashing and classification below recurse.
+MAX_HOOK_JSON_DEPTH = 64
+
+
+def _nested_deeper_than(value: Any, limit: int) -> bool:
+    """Iterative, so measuring a hostile payload cannot itself recurse."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(node, dict):
+            stack.extend((child, depth + 1) for child in node.values())
+        elif isinstance(node, list):
+            stack.extend((child, depth + 1) for child in node)
+    return False
+
+
+def _read_stdin_bounded(limit: int = MAX_HOOK_STDIN_BYTES) -> tuple[bytes, int]:
+    """Up to `limit` bytes of stdin, and the full length; the rest is drained."""
+    stream = sys.stdin.buffer
+    raw = stream.read(limit + 1)
+    total = len(raw)
+    if total <= limit:
+        return raw, total
+    # Drain rather than exit with the pipe full, so the agent's write completes.
+    while chunk := stream.read(1024 * 1024):
+        total += len(chunk)
+    return raw[:limit], total
+
+
 def read_hook_stdin() -> tuple[dict[str, Any], bool]:
-    """Read hook JSON from stdin; tolerate Windows UTF-16 / BOM / wrapper corruption."""
-    raw = sys.stdin.buffer.read()
+    """Read hook JSON from stdin; tolerate Windows UTF-16 / BOM / wrapper corruption.
+
+    Never raises on hostile input. A payload nested deeper than the parser's
+    recursion limit used to crash the hook (`RecursionError`) before it could
+    record the call or decide; it is now unparsed input like any other.
+    """
+    raw, total = _read_stdin_bounded()
+    if total > MAX_HOOK_STDIN_BYTES:
+        return {"_raw_len": total, "_stdin_oversize": True}, True
     if not raw.strip():
         return {}, False
 
@@ -271,10 +316,12 @@ def read_hook_stdin() -> tuple[dict[str, Any], bool]:
             seen_snippets.add(snippet)
             try:
                 parsed = json.loads(snippet)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 continue
             if not isinstance(parsed, dict):
                 continue
+            if _nested_deeper_than(parsed, MAX_HOOK_JSON_DEPTH):
+                return {"_raw_len": len(raw), "_stdin_too_deep": True}, True
             extracted = snippet != text
             non_utf8 = enc not in ("utf-8", "utf-8-bom")
             if non_utf8:
@@ -1792,6 +1839,39 @@ def _hook_debug_path() -> Path:
     return _data_dir() / f"{source}-hook-debug.log"
 
 
+#: Hook fields whose values identify the call without carrying its content.
+_DEBUG_PLAIN_KEYS = frozenset(
+    {
+        "hook_event_name", "hookEventName", "tool_name", "toolName", "session_id",
+        "sessionId", "conversation_id", "generation_id", "cwd", "model",
+        "permission_mode", "source", "_stdin_encoding", "_stdin_oversize", "_stdin_too_deep", "_raw_len",
+    }
+)
+
+
+def _debug_shape(value: Any, key: str = "", _depth: int = 0) -> Any:
+    """The payload's structure for the debug log, with string content left out.
+
+    The debug log was written before redaction and kept up to 2,000 characters
+    of the raw payload, so it held tool arguments and responses in plaintext
+    even with full-argument capture off. What debugging a hook mapping needs is
+    which keys arrived and with what types, so that is what it keeps.
+    """
+    if _depth > 8:
+        return "<depth>"
+    if isinstance(value, dict):
+        return {str(k): _debug_shape(v, str(k), _depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return []
+        return [_debug_shape(value[0], key, _depth + 1), f"<{len(value)} items>"]
+    if isinstance(value, str):
+        if key in _DEBUG_PLAIN_KEYS:
+            return value[:200]
+        return f"<str {len(value)}>"
+    return value
+
+
 # Hooks the IDE actually blocks on: it waits for our decision before running the
 # tool. Only here can a `block` verdict become a real deny. `beforeReadFile` is
 # intentionally excluded (see CURSOR_BLOCKING) — it is not a blocking hook.
@@ -1959,7 +2039,9 @@ def hook_main(hook_name: str) -> int:
         debug_path = _hook_debug_path()
         try:
             with debug_path.open("a", encoding="utf-8") as fh:
-                fh.write(f"{_utc_now()} {hook_name} stdin={json.dumps(data)[:2000]}\n")
+                fh.write(
+                    f"{_utc_now()} {hook_name} stdin_shape={json.dumps(_debug_shape(data))[:2000]}\n"
+                )
         except OSError:
             pass
 

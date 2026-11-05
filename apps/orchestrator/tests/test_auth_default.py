@@ -408,3 +408,13 @@ def test_doctor_warns_when_auth_is_disabled_on_loopback(token_file: Path, monkey
 def test_doctor_fails_when_auth_is_disabled_beyond_loopback(token_file: Path, monkeypatch):
     monkeypatch.setattr(settings, "auth_disabled", True)
     assert _exposure(monkeypatch, "0.0.0.0")["exposure"].severity == "fail"
+
+
+def test_a_non_ascii_bearer_token_is_a_401_not_a_500(client: TestClient):
+    # `compare_digest` raises on non-ASCII `str`, so a stray byte in a bearer
+    # token was a server error (external audit, 2026-11-05).
+    response = client.get(
+        "/api/v1/audit/stats",
+        headers={"Authorization": b"Bearer caf\xe9-not-the-token"},
+    )
+    assert response.status_code == 401
