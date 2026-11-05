@@ -121,6 +121,60 @@ def _check_health_endpoint(report: DoctorReport, base_url: str = "") -> None:
         )
 
 
+def _host_only(text: str) -> str:
+    """URLs reduced to scheme and host: an inbox URL carries its token in the path,
+    and doctor output gets pasted into bug reports."""
+    import re
+
+    return re.sub(r"(https?://[^/\s?#]+)[^\s]*", r"\1/...", text)
+
+
+def _check_forwarding(report: DoctorReport, base_url: str = "") -> None:
+    """Is every SIEM or webhook destination accepting what the trail sends?
+
+    Since a 401, 403, 404 or 407 holds the forward cursor instead of
+    dead-lettering, a revoked token stops delivery until someone fixes it, and
+    only the log and the status API said so. `doctor` is where an operator
+    looks, so the stall is reported here. Asked only of this install's own
+    recorder, with this install's token; a recorder that cannot be asked is
+    already reported by the health check.
+    """
+    import urllib.request
+
+    from agentmetry.core import api_token
+
+    if not report.orchestrator_reachable or report.other_install_trail:
+        return
+    token = settings.api_key.strip() or api_token.read_token()
+    if not token:
+        return
+    url = (base_url or settings.audit_ingest_url).rstrip("/") + "/api/v1/audit/status"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})  # noqa: S310
+    try:
+        with urllib.request.urlopen(request, timeout=3) as resp:  # noqa: S310
+            forwarding = json.loads(resp.read()).get("forwarding") or {}
+    except Exception:  # noqa: BLE001 - a diagnostic, never the reason doctor fails
+        return
+    for name, state in sorted(forwarding.items()):
+        if not isinstance(state, dict):
+            continue
+        if state.get("failing_since"):
+            seconds = int(state.get("failing_for_seconds") or 0)
+            report.warn(
+                "forwarding",
+                f"Forwarding to {name} has been failing for {seconds} s: {_host_only(state.get('last_error') or 'no detail')}. "
+                "Nothing is lost: the trail keeps every event and delivery resumes from the same record.",
+            )
+        elif state.get("dead_lettered"):
+            report.warn(
+                "forwarding",
+                f"{name} refused {state['dead_lettered']} event(s) since start; they are in its "
+                "deadletter file beside the trail's forward cursors",
+            )
+        else:
+            report.ok("forwarding", f"{name} accepting, {state.get('forwarded', 0)} event(s) forwarded")
+
+
 #: Bind addresses that keep the API on this machine.
 _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1", ""})
 
@@ -1045,6 +1099,7 @@ def run_doctor(
     _check_spool(report)
     _check_autostart(report)
     _check_health_endpoint(report, recorder_url)
+    _check_forwarding(report, recorder_url)
     _check_hooks_installed(report)
     _check_observed(report)
     _check_codex_sandbox(report)
