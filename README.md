@@ -192,6 +192,7 @@ The JSONL trail is the system of record. Network sinks tail it from a cursor and
 | Microsoft Sentinel | `AGENTMETRY_AUDIT_SINK=sentinel`. [Setup](docs/integrations/sentinel.md). Not yet run against a live workspace. |
 | Loki | Not a sink mode. Grafana Alloy tails the JSONL. [Homelab notes](docs/integrations/loki-homelab.md). |
 | AiSOC | Not a sink mode. The webhook sink with the default `canonical` format, pointed at an AiSOC inbox URL minted with its Agentmetry template. Only `canonical` works: the template does not unwrap the `batch` or `cloudevents` envelopes. Built and maintained by AiSOC: [connector docs](https://beenuar.github.io/AiSOC/docs/connectors/agentmetry/). Run live end to end on 2026-11-02 (AiSOC v21, Agentmetry 0.10.4): detections arrived as critical alerts with their ATT&CK techniques, and tool calls raised none. |
+| Tenzir | Not a sink mode. The `agentmetry` package in the [Tenzir Library](https://github.com/tenzir/library/tree/main/agentmetry) maps events to OCSF 1.9.0 from the trail file or from the webhook sink (`accept_http`). Built in [tenzir/library#211](https://github.com/tenzir/library/pull/211), reviewed and merged by Tenzir. Its tests pass on recorded events; a live webhook into `accept_http` has not been run. |
 
 Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (23 rules): 15 generated files for the 14 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
 
