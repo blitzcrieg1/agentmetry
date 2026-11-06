@@ -40,7 +40,13 @@ that nothing happened outside the monitored boundary.*
 
 ---
 
-## Art. 52 — Transparency (user-facing)
+## Art. 50: Transparency (user-facing)
+
+Art. 50 binds providers of systems that interact with people or generate content,
+and deployers only in the cases it lists. The steps below are good practice for
+telling developers about monitoring, not a list of what Art. 50 requires. Where a
+high-risk system is used at work, Art. 26(7) separately requires employers to
+inform workers' representatives and affected workers first.
 
 | Step | Action | Agentmetry hook |
 |------|--------|-----------------|
