@@ -10,7 +10,7 @@
 <h1>Agentmetry</h1>
 
 <p><strong>Open-source security for AI coding agents.</strong><br/>
-It records every tool call an agent makes on the machine, flags risky sequences, can block a call your policy forbids before it runs, and keeps a record a third party can verify, forwarded to the SIEM you already run.</p>
+Agentmetry records tool events reported by supported agent hooks and wrapped stdio MCP servers. It flags risky sequences, can block calls at supported hooks when you enable blocking, and keeps a verifiable audit trail you can forward to your SIEM.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/agentmetry/"><img src="https://img.shields.io/pypi/v/agentmetry?style=for-the-badge&color=006dad" alt="PyPI version"></a>
@@ -108,7 +108,7 @@ agentmetry dashboard
 
 | Surface | What is recorded | How you turn it on |
 | --- | --- | --- |
-| Claude Code | Tool calls and a person's yes at a prompt, via hooks. Or, after the fact, via `agentmetry otel` (record only: no deny, no ask). Use one path. Both together record each call twice. | `agentmetry hooks install`, or `agentmetry otel` |
+| Claude Code | Tool calls and inferred approvals via hooks. The record-only `agentmetry otel` path captures tool results and observed human approvals after the fact. Use one path to avoid duplicate tool events. | `agentmetry hooks install`, or `agentmetry otel` |
 | Cursor | Tool calls and inferred approvals | `agentmetry hooks install` |
 | Codex | Same. Codex skips untrusted hooks until its `/hooks` prompt is approved. | `agentmetry hooks install` |
 | Qwen, Kimi, Qoder, CodeBuddy | Tool calls and inferred approvals | `agentmetry hooks install` |
