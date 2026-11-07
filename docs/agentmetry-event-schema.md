@@ -158,7 +158,8 @@ federation, or routed-access environment state selects another credential.
 `ANTHROPIC_BASE_URL=https://api.anthropic.com` is the one exception: its
 official host keeps the fallback, while other, look-alike, or malformed URLs
 skip it. Codex's hook input has no account field, but it names the session file,
-whose first line carries `creator_account_id` and `creator_user_id`. Those arrive
+whose first line carries `creator_account_id` and `creator_user_id`. If the path
+is missing or unusable, the file is found by session ID in its name. Those arrive
 as `account_id` and `user_id` with source `session_meta`. That format is not a
 stable interface and can change between versions, and only a file under Codex's
 home (`CODEX_HOME`, else `~/.codex`) is opened. `auth.json` is never read, because
