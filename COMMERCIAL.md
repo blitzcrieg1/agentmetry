@@ -44,4 +44,4 @@ may refer to the project as Agentmetry.
 
 ## Contact
 
-Commercial or licensing inquiries: **legal@agentmetry.ai**
+Commercial or licensing inquiries: **contact@agentmetry.ai**
