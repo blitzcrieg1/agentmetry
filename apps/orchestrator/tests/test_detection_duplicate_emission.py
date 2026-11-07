@@ -65,14 +65,17 @@ def _trail_detections(corr: str) -> list[dict]:
     ]
 
 
-def _cred_read(corr: str) -> dict:
-    return {
+def _cred_read(corr: str, account: dict | None = None) -> dict:
+    payload = {
         "source_app": "claude",
         "event_type": "tool_called",
         "outcome": "success",
         "correlation_id": corr,
         "tool": {"qualified": "cursor.Read", "command": "cat ~/.ssh/id_rsa"},
     }
+    if account:
+        payload["account"] = account
+    return payload
 
 
 def _approval_pending(corr: str) -> dict:
@@ -85,14 +88,17 @@ def _approval_pending(corr: str) -> dict:
     }
 
 
-def _egress(corr: str) -> dict:
-    return {
+def _egress(corr: str, account: dict | None = None) -> dict:
+    payload = {
         "source_app": "claude",
         "event_type": "tool_called",
         "outcome": "success",
         "correlation_id": corr,
         "tool": {"qualified": "WebFetch", "command": "fetch https://example.com"},
     }
+    if account:
+        payload["account"] = account
+    return payload
 
 
 async def _session_where_the_rule_completes_on_an_approved_call(corr: str) -> None:
@@ -182,3 +188,15 @@ async def test_distinct_rules_in_one_batch_are_all_kept(sink: _CollectingSink):
         counts[rid] = counts.get(rid, 0) + 1
     assert rule_ids, "expected at least one finding"
     assert all(n == 1 for n in counts.values()), counts
+
+
+@pytest.mark.asyncio
+async def test_detection_in_the_real_ingest_trail_keeps_the_completing_account(sink: _CollectingSink):
+    account = {"domain": "example.com", "source": "hook_payload"}
+    corr = "sess-account-detection"
+    await ingest_external_event(_cred_read(corr, account))
+    await ingest_external_event(_egress(corr, account))
+
+    trail = [d for d in _trail_detections(corr) if d["detection"]["rule_id"] == "credential-exfil"]
+    assert len(trail) == 1
+    assert trail[0]["account"] == account

@@ -79,6 +79,36 @@ AGENTMETRY_CHRONICLE_BEARER_TOKEN=ya29....
 
 ## YARA-L rules
 
+### Account domain outside the approved list
+
+Agentmetry emits the reported account domain as an explicit label. The label is
+not verified identity. Populate the reference list from the customer's tenant
+inventory rather than shipping a vendor-owned list of personal domains.
+
+This rule has **not been run against a live Google SecOps tenant**. It follows
+Google's documented repeated-field behavior and reference-list syntax:
+[UDM field list](https://docs.cloud.google.com/chronicle/docs/reference/udm-field-list),
+[repeated fields](https://docs.cloud.google.com/chronicle/docs/yara-l/repeated-fields),
+and [reference-list syntax](https://docs.cloud.google.com/chronicle/docs/yara-l/reference-list-syntax).
+The `$label` binding keeps the key and value on the same repeated label object,
+and `not $label.value in %...` is the documented negated reference-list form.
+
+```yaral
+rule agentmetry_unapproved_agent_account_domain {
+  meta:
+    author = "Customer SOC"
+    description = "Coding agent reported an account domain outside the approved list"
+    severity = "MEDIUM"
+  events:
+    $e.metadata.vendor_name = "Agentmetry"
+    $label = $e.additional.labels
+    $label.key = "agent_account_domain"
+    not $label.value in %agentmetry_approved_account_domains
+  condition:
+    $e
+}
+```
+
 ### C1 — Any Agentmetry detection at HIGH or above
 
 ```yaral

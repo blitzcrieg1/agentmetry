@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from agentmetry.core.audit.canonical import SCHEMA_VERSION
+from agentmetry.core.account import account_from_claim
 from agentmetry.core.audit.identity import identity_fields
 from agentmetry.core.audit.hashing import arguments_fingerprint
 from agentmetry.core.audit.redaction import scrub_arg_values, scrub_secrets
@@ -187,6 +188,16 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "model": {"id": model_id, "provider": model_provider},
     }
+    account_raw = payload.get("account")
+    if isinstance(account_raw, dict):
+        account = account_from_claim(
+            account_raw.get("domain"),
+            account_raw.get("source"),
+            account_raw.get("organization_id"),
+            account_raw.get("email"),
+        )
+        if account:
+            event["account"] = account
     if claimed_app:
         event["source"]["claimed_app"] = claimed_app
 

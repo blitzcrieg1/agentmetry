@@ -80,6 +80,22 @@ index=main sourcetype=agentmetry:json
 index=main sourcetype=agentmetry:json action_outcome=denied
 ```
 
+**Reported account domain outside the approved list:**
+
+This search has **not been run against a live Splunk tenant**. It assumes the
+canonical nested JSON is indexed and that the customer's approved-domain list
+is represented by the two example values below.
+
+```spl
+index=main sourcetype=agentmetry:json account.domain=*
+| where NOT in(account.domain, "corp.example", "subsidiary.example")
+| table _time host_id source_app account.domain account.source account.organization_id
+```
+
+The domain is a client claim, not verified identity. Keep the approved-domain
+list in the customer's SIEM configuration. Full email capture is disabled by
+default and requires `AGENTMETRY_LOG_ACCOUNT_EMAIL=1`.
+
 **Replay correlation id locally:**
 
 ```powershell
