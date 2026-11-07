@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,6 +20,12 @@ _ORG_MAX = 256
 _SOURCE_MAX = 32
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _LOCAL_CONFIG_MAX_BYTES = 1024 * 1024
+_ACCOUNT_ID_MAX = 128
+_ACCOUNT_ID_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:."
+)
+#: The first line of a Codex session file also holds its base instructions.
+_SESSION_META_MAX_BYTES = 1024 * 1024
 _CLAUDE_AUTH_OVERRIDE_VARS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -121,19 +128,41 @@ def account_from_organization(organization_id: Any, source: str) -> dict[str, st
     return {"organization_id": org, "source": source_text} if org else {}
 
 
+def _clean_id(value: Any) -> str:
+    text = _clean_text(value, _ACCOUNT_ID_MAX)
+    return text if text and all(ch in _ACCOUNT_ID_CHARS for ch in text) else ""
+
+
+def account_from_ids(account_id: Any, user_id: Any, source: Any) -> dict[str, str]:
+    """Return a claim of opaque account IDs. It names no domain and no address."""
+    account = _clean_id(account_id)
+    user = _clean_id(user_id)
+    if not account and not user:
+        return {}
+    block = {"source": _clean_text(source, _SOURCE_MAX).lower() or "client"}
+    if account:
+        block["account_id"] = account
+    if user:
+        block["user_id"] = user
+    return block
+
+
 def account_from_claim(
     domain: Any,
     source: Any,
     organization_id: Any = "",
     email: Any = "",
     *,
+    account_id: Any = "",
+    user_id: Any = "",
     include_email: bool | None = None,
 ) -> dict[str, str]:
-    """Keep a valid domain claim, or retain a valid organization-only claim."""
+    """Keep whichever valid parts of a claim arrived: domain, organization or IDs."""
     account = account_from_domain(
         domain, source, organization_id, email, include_email=include_email
-    )
-    return account or account_from_organization(organization_id, source)
+    ) or account_from_organization(organization_id, source)
+    ids = account_from_ids(account_id, user_id, source)
+    return {**ids, **account} if account else ids
 
 
 def _claude_auth_override_present() -> bool:
@@ -186,8 +215,71 @@ def _local_claude_account() -> dict[str, str]:
         return {}
 
 
+def _antigravity_storage_path() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", "")
+        return (Path(base) if base else Path.home() / "AppData" / "Roaming") / "Antigravity" / "app_storage.json"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Antigravity" / "app_storage.json"
+    base = os.environ.get("XDG_CONFIG_HOME", "")
+    return (Path(base) if base else Path.home() / ".config") / "Antigravity" / "app_storage.json"
+
+
+def _local_antigravity_account() -> dict[str, str]:
+    """Read the last sign-in name from Antigravity's undocumented app storage.
+
+    Its hook input has no account field. This one key names the account last
+    signed in on the machine, not necessarily the one that made the call, and
+    the key can change between versions. Credential stores are never opened.
+    """
+    try:
+        path = _antigravity_storage_path()
+        if not path.is_file() or path.stat().st_size > _LOCAL_CONFIG_MAX_BYTES:
+            return {}
+        parsed = json.loads(path.read_bytes())
+        if not isinstance(parsed, dict):
+            return {}
+        return account_from_email(parsed.get("jetski.onboarding.lastLoginUsername"), "local_config")
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return {}
+
+
+def _codex_session_account(transcript_path: Any) -> dict[str, str]:
+    """Read Codex's account IDs from the first line of its session file.
+
+    Hook input names the file, but that format is not a stable interface and
+    can change between versions. Only a session file under Codex's own home is
+    opened, so a crafted path cannot point the hook at another file. Nothing is
+    read past the first line, and `auth.json` is never touched: it holds
+    credentials, and a security sensor has no business opening it.
+    """
+    if not isinstance(transcript_path, str) or not transcript_path.endswith(".jsonl"):
+        return {}
+    try:
+        configured = os.environ.get("CODEX_HOME", "").strip()
+        home = (Path(configured) if configured else Path.home() / ".codex").resolve()
+        path = Path(transcript_path).resolve()
+        if not path.is_relative_to(home) or not path.is_file():
+            return {}
+        with path.open("rb") as handle:
+            line = handle.readline(_SESSION_META_MAX_BYTES + 1)
+        if len(line) > _SESSION_META_MAX_BYTES:
+            return {}
+        record = json.loads(line)
+        if not isinstance(record, dict) or record.get("type") != "session_meta":
+            return {}
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            return {}
+        return account_from_ids(
+            payload.get("creator_account_id"), payload.get("creator_user_id"), "session_meta"
+        )
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return {}
+
+
 def account_for_hook(source_app: str, data: dict[str, Any]) -> dict[str, str]:
-    """Extract an account claim from a documented hook payload."""
+    """Extract an account claim for the agent that sent this hook payload."""
     source = source_app.strip().lower()
     if source == "cursor":
         email = data.get("user_email")
@@ -196,6 +288,10 @@ def account_for_hook(source_app: str, data: dict[str, Any]) -> dict[str, str]:
         return account_from_email(email, "hook_payload")
     if source == "claude":
         return _local_claude_account()
+    if source == "codex":
+        return _codex_session_account(data.get("transcript_path"))
+    if source == "antigravity":
+        return _local_antigravity_account()
     return {}
 
 

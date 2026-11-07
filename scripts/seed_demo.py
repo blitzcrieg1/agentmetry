@@ -61,7 +61,38 @@ def tool(name: str, command: str = "", **kw) -> dict:
     return {"tool": t}
 
 
+#: Reported accounts for the demo, all invented. The session that fires a
+#: detection is on a personal domain, which is the story the Identity page tells.
+#: Codex reports only IDs, so it has no domain to call personal or corporate.
+_DEMO_COMPANY = {"domain": "company.example", "source": "hook_payload"}
+_DEMO_ACCOUNTS = {
+    "sess-refactor-4f21": _DEMO_COMPANY,
+    "sess-exfil-9c03": {"domain": "gmail.com", "source": "hook_payload"},
+    "sess-claude-3d90": {
+        "domain": "company.example",
+        "source": "local_config",
+        "organization_id": "00000000-demo-4000-8000-000000000000",
+    },
+    "sess-lolbin-8b52": {"domain": "gmail.com", "source": "hook_payload"},
+    "sess-bypass-2a77": {"domain": "company.example", "source": "local_config"},
+    "sess-recon-7e14": {
+        "account_id": "demo-workspace-0001",
+        "user_id": "demo-user-0001",
+        "source": "session_meta",
+    },
+}
+
+
 def build() -> list[dict]:
+    out = _sessions()
+    for event in out:
+        account = _DEMO_ACCOUNTS.get(event["correlation_id"])
+        if account:
+            event["account"] = dict(account)
+    return out
+
+
+def _sessions() -> list[dict]:
     out: list[dict] = []
 
     # 1. An ordinary refactor. This is what 95% of the trail looks like, and the

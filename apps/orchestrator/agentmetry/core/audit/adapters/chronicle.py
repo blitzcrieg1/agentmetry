@@ -253,6 +253,10 @@ def canonical_to_udm(canonical: dict[str, Any]) -> dict[str, Any]:
         labels.append({"key": "agent_account_source", "value": str(account["source"])})
     if account.get("organization_id"):
         labels.append({"key": "agent_account_organization_id", "value": str(account["organization_id"])})
+    if account.get("account_id"):
+        labels.append({"key": "agent_account_id", "value": str(account["account_id"])})
+    if account.get("user_id"):
+        labels.append({"key": "agent_account_user_id", "value": str(account["user_id"])})
     if account.get("email"):
         labels.append({"key": "agent_account_email", "value": str(account["email"])})
     if labels:

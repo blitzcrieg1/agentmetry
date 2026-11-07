@@ -26,6 +26,23 @@ separately (currently `1.2.0`) and changes additively.
   not expose a non-secret account field. The claim stays under the Agentmetry
   namespace in ECS and is forwarded to Google SecOps without presenting it as
   verified identity.
+- **Codex account IDs.** Codex hook capture reads `creator_account_id` and
+  `creator_user_id` from the first line of the session file its hook input names,
+  as `account_id` and `user_id` with source `session_meta`. They are opaque IDs
+  with no domain or address, and the format is not a stable interface. `auth.json`
+  is never read.
+- **Antigravity account domain.** Antigravity hook capture reads the last sign-in
+  from its undocumented `app_storage.json`, labelled `local_config`, so it means
+  the account last signed in on the machine rather than proof of who made a call.
+- **An Identity page in the dashboard.** It lists the accounts agents reported,
+  with their agents, hosts, operating system accounts, sessions and detections,
+  backed by `GET /api/v1/audit/identity`. An agent that reports nothing is shown
+  as unknown, so a blank does not read as clean. Accounts are split into
+  personal, for a domain on a built-in list of public email providers, and
+  corporate, for any other domain. That list cannot be complete, and somebody's
+  own domain reads as corporate. An account with only an ID is listed separately
+  rather than guessed. Accounts can also be checked against a list you enter,
+  which stays in that browser. The dashboard covers one machine.
 
 ### Fixed
 
