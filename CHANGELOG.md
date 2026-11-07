@@ -29,8 +29,12 @@ separately (currently `1.2.0`) and changes additively.
 - **Codex account IDs.** Codex hook capture reads `creator_account_id` and
   `creator_user_id` from the first line of the session file its hook input names,
   as `account_id` and `user_id` with source `session_meta`. They are opaque IDs
-  with no domain or address, and the format is not a stable interface. `auth.json`
-  is never read.
+  with no domain or address, and the format is not a stable interface.
+- **Codex account domain.** Codex hook capture reads the `email` claim of `id_token`
+  in `auth.json` and keeps only the domain, with source `codex_auth`. That file holds
+  live credentials, so nothing else in it is copied, stored, logged or sent, and
+  `AGENTMETRY_CODEX_AUTH_DOMAIN=0` turns this off. An API-key sign-in reports no
+  domain. Endpoint security tools may flag a process reading that file.
 - **Antigravity account domain.** Antigravity hook capture reads the last sign-in
   from its undocumented `app_storage.json`, labelled `local_config`, so it means
   the account last signed in on the machine rather than proof of who made a call.
