@@ -121,7 +121,7 @@ export const AGENT_COVERAGE_LABEL: Record<AgentCoverageState, string> = {
 const NOT_REPORTED_SENTENCE: Record<string, string> = {
   cursor: "No account in this window. Cursor sends one only when it knows the signed-in user.",
   claude: "No account in this window. The lookup is skipped when an API key, token, cloud provider or other endpoint is in use.",
-  codex: "No account ID in this window. Codex's IDs come from its session file, which may not exist yet on a session's first event. Events from before this was added have none.",
+  codex: "No account in this window. Codex's domain comes from its sign-in file, and an API-key sign-in has none. Its IDs come from its session file. Events from before this was added have neither.",
   antigravity: "No account in this window. Antigravity's comes from the last sign-in on this machine, in a file that can change between versions. Events from before this was added have none.",
 };
 
@@ -147,6 +147,7 @@ const SOURCE_LABEL: Record<string, string> = {
   otel: "Sent in the agent's telemetry",
   local_config: "Last account signed in on this machine",
   session_meta: "Read from the agent's session file",
+  codex_auth: "Current sign-in in Codex's auth file, domain only",
 };
 
 export function accountSourceLabel(source: string): string {

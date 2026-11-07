@@ -142,7 +142,7 @@ schema version remains `1.2.0`.
 ```
 
 `domain` is lowercased and bounded. `source` identifies the reporting surface:
-`hook_payload`, `otel`, `local_config` or `session_meta`. `organization_id` is
+`hook_payload`, `otel`, `local_config`, `session_meta` or `codex_auth`. `organization_id` is
 included only when the agent reports one. `account_id` and `user_id` are opaque
 IDs that name no domain or address. The full `email` key is absent unless
 `AGENTMETRY_LOG_ACCOUNT_EMAIL=1` is explicitly set. That opt-in is personal
@@ -162,9 +162,13 @@ whose first line carries `creator_account_id` and `creator_user_id`. If the path
 is missing or unusable, the file is found by session ID in its name. Those arrive
 as `account_id` and `user_id` with source `session_meta`. That format is not a
 stable interface and can change between versions, and only a file under Codex's
-home (`CODEX_HOME`, else `~/.codex`) is opened. `auth.json` is never read, because
-it holds credentials. Codex therefore reports no domain, so a company matches its
-account IDs against its own list. Antigravity's hook input has no account field,
+home (`CODEX_HOME`, else `~/.codex`) is opened. Its domain comes from `auth.json`,
+which holds live credentials: only the `email` claim of `id_token` is read, only the
+domain is kept with source `codex_auth` even when `AGENTMETRY_LOG_ACCOUNT_EMAIL=1`,
+and nothing else in the file is copied,
+stored, logged or sent. The token's signature is not checked, an API-key sign-in
+reports no domain, and `AGENTMETRY_CODEX_AUTH_DOMAIN=0` turns this off. Endpoint
+security tools may flag a process reading that file. Antigravity's hook input has no account field,
 so its domain comes from `jetski.onboarding.lastLoginUsername` in its undocumented
 `app_storage.json`, labelled `local_config`. Like Claude's, that means the account
 last signed in on the machine, and the key can change between versions. Only

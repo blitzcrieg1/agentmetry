@@ -150,7 +150,7 @@ describe("agent coverage sentences", () => {
     expect(cursor).toContain("Cursor");
     expect(cursor).not.toContain("Codex");
     const codex = agentCoverageSentence(agent("not_reported", { name: "codex" }));
-    expect(codex).toContain("session file");
+    expect(codex).toContain("sign-in file");
     expect(codex).not.toContain("Cursor");
     const claude = agentCoverageSentence(agent("not_reported", { name: "claude" }));
     expect(claude).toContain("API key");
@@ -185,6 +185,10 @@ describe("agent coverage sentences", () => {
 describe("account labels", () => {
   it("says local_config is the machine's last sign-in, not proof of who acted", () => {
     expect(accountSourceLabel("local_config")).toBe("Last account signed in on this machine");
+  });
+
+  it("says Codex's sign-in file gives a domain only", () => {
+    expect(accountSourceLabel("codex_auth")).toContain("domain only");
   });
 
   it("passes through a source it does not know", () => {
