@@ -109,6 +109,20 @@ class IngestModelBody(BaseModel):
         return v if isinstance(v, str) else ""
 
 
+class IngestAccountBody(BaseModel):
+    """A bounded client-reported agent account claim, never verified identity."""
+
+    domain: str = ""
+    source: str = ""
+    organization_id: str = ""
+    email: str = ""
+
+    @field_validator("domain", "source", "organization_id", "email", mode="before")
+    @classmethod
+    def _text_or_empty(cls, v: Any) -> str:
+        return v if isinstance(v, str) else ""
+
+
 class ExternalIngestBody(BaseModel):
     """Adapter payload — normalized to canonical v1.2 on ingest.
 
@@ -145,6 +159,9 @@ class ExternalIngestBody(BaseModel):
     input_hash: str = ""
     model_id: str = ""
     model: IngestModelBody | None = None
+    # Account metadata is additive and optional. external.py validates and
+    # bounds it again because spool replay bypasses this HTTP model.
+    account: IngestAccountBody | None = None
     adapter: str = ""
     triggered_by: str = "manual"
     timestamp_utc: str = ""

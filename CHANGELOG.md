@@ -9,6 +9,24 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Reported coding-agent account metadata.** Cursor hook payloads and Claude
+  Code OpenTelemetry events may now carry an optional `account` block with a
+  lowercased domain, source and reported organization ID. The domain is stored
+  by default; full email retention requires the explicit
+  `AGENTMETRY_LOG_ACCOUNT_EMAIL=1` opt-in. Claude hook capture has a bounded
+  fallback to the undocumented non-secret account fields in `~/.claude.json`,
+  read per short-lived hook invocation, skipped when the file is oversized, and
+  skipped when documented API-key, token, provider, profile, federation, or
+  endpoint overrides are present, except for the official Anthropic API host.
+  `CLAUDE_CONFIG_DIR` selects the configured account directory; the local claim
+  remains a last-signed-in-machine hint rather than proof of the current call.
+  Codex and Antigravity remain absent because their documented hook inputs do
+  not expose a non-secret account field. The claim stays under the Agentmetry
+  namespace in ECS and is forwarded to Google SecOps without presenting it as
+  verified identity.
+
 ### Fixed
 
 - **The model Codex reports now reaches the trail.** The hook sent it as a nested

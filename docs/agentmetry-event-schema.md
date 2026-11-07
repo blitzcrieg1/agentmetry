@@ -11,6 +11,10 @@ Set operator identity for multi-user SIEM queries: `AGENTMETRY_OPERATOR_ID=dev_0
 
 Set fleet scope for org-level SIEM queries: `AGENTMETRY_FLEET_ID=consulting-pilot`
 
+Account email capture is off by default. Set `AGENTMETRY_LOG_ACCOUNT_EMAIL=1`
+only when the privacy review permits retaining the full address. The default
+stores the account domain only.
+
 ### Forward sinks
 
 | Env | Default | Description |
@@ -122,6 +126,86 @@ A 1.1.0 consumer parses a 1.2.0 event and meets one key it does not recognise,
 which its JSON parser already handles. Nothing moved, nothing changed meaning,
 nothing became required. Consumers pinning the exact string rather than a lower
 bound are the only ones that need a change.
+
+## Reported agent account (additive)
+
+When a supported capture surface reports an account, the canonical event may
+carry this optional block. It is a client claim, not verified identity, and the
+schema version remains `1.2.0`.
+
+```json
+"account": {
+  "domain": "example.com",
+  "source": "hook_payload",
+  "organization_id": "org-123"
+}
+```
+
+`domain` is lowercased and bounded. `source` identifies the reporting surface:
+`hook_payload`, `otel` or `local_config`. `organization_id` is included only
+when the agent reports one. The full `email` key is absent unless
+`AGENTMETRY_LOG_ACCOUNT_EMAIL=1` is explicitly set. That opt-in is personal
+data and should be covered by the customer's privacy review.
+
+Coverage is deliberately uneven. Cursor's documented hook payload supplies
+`user_email`. Claude Code's documented OpenTelemetry attributes supply
+`user.email` and `organization.id`; Claude's undocumented local
+`oauthAccount.emailAddress` and `oauthAccount.organizationUuid` fields are a
+bounded fallback for hook capture and may change between versions. The local
+fallback is skipped when API-key, token, provider, profile, OAuth-token,
+federation, or routed-access environment state selects another credential.
+`ANTHROPIC_BASE_URL=https://api.anthropic.com` is the one exception: its
+official host keeps the fallback, while other, look-alike, or malformed URLs
+skip it. Codex and Antigravity have no documented non-secret account field in their
+hook input, so their block is absent. Sessions with an override and agents
+with no account claim are also absent.
+
+The block is forwarded unchanged in the canonical file and webhook formats.
+Elastic ECS keeps the claim under `agentmetry.account.domain` and
+`agentmetry.account.organization_id`, rather than ECS `user.*` or
+`organization.id`. Google SecOps keeps the values as explicit labels. Splunk
+and other consumers can query the nested canonical fields. These fields do not
+prove tenant membership, and the sensor does not ship a list of personal
+domains. Compare the domain with the customer's approved list in the SIEM.
+
+Example queries:
+
+```spl
+index=main sourcetype=agentmetry:json account.domain=*
+| where NOT in(account.domain, "corp.example", "subsidiary.example")
+```
+
+```yaral
+rule agentmetry_unapproved_agent_account_domain {
+  meta:
+    author = "Customer SOC"
+    description = "Coding agent reported an account domain outside the approved list"
+    severity = "MEDIUM"
+  events:
+    $e.metadata.vendor_name = "Agentmetry"
+    $label = $e.additional.labels
+    $label.key = "agent_account_domain"
+    not $label.value in %agentmetry_approved_account_domains
+  condition:
+    $e
+}
+```
+
+An event records nothing before installation, and nothing for an agent with no
+hook or no documented account claim. The undocumented Claude local file is
+read only when it is at most 1 MiB; larger files produce no local-config claim.
+`CLAUDE_CONFIG_DIR` is honoured when locating the file because Claude Code
+documents it as the directory selector for separate account configurations.
+The hook environment can be scrubbed or differ from the Claude session's
+environment, so this check cannot be perfect. `apiKeyHelper`, an active
+profile, and gateway sign-in are not inferred by the hook because they require
+settings or credential-state parsing. `local_config` means “the account this
+machine last signed in with”, not “the account that made this call”.
+Browser sign-in is outside this sensor's
+view; a CASB or vendor audit log is needed for that surface. EU deployments
+should have counsel decide the lawful basis, notice, retention, access controls,
+employee-representation obligations and whether a DPIA is required before
+enabling the full email opt-in.
 
 ## MITRE ATLAS (`atlas`)
 
@@ -346,6 +430,10 @@ Two integrations outside this repository read the canonical event. The fields ea
 **AiSOC.** AiSOC's bundled `agentmetry` template reads these canonical fields: `action.type`, `action.outcome`, `agent.name`, `actor.id`, `host_id`, `source.app`, `event_id`, `correlation_id`, `timestamp_utc`, `model.id`, `model.provider`, `tool.name`, `tool.qualified`, `tool.input_hash`, `tool.command`, `tool.mitre.technique_id`, `tool.atlas.technique_id`, `dlp.rule_id`, `detection.severity`, `detection.title`, `detection.summary`, `detection.rule_id`, `detection.technique_ids`, `detection.atlas.technique_id`. The schema changes additively, so none of these is renamed or moved within 1.x. A change that would touch one is announced in [AiSOC Discussion #1577](https://github.com/beenuar/AiSOC/discussions/1577) before it ships. The template reads the record as `canonical` posts it, so keep `AGENTMETRY_AUDIT_WEBHOOK_FORMAT` at its default: the `batch` and `cloudevents` envelopes are not unwrapped. The path was run live on 2026-11-02, from Agentmetry 0.10.4 on PyPI into a local AiSOC v21 stack: every event was accepted, both detections became critical alerts with their technique ids, routine tool calls raised no alert, and the agents appeared in AiSOC's AI estate.
 
 **Tenzir.** The `agentmetry` package in the Tenzir Library ([tenzir/library#211](https://github.com/tenzir/library/pull/211)) maps events to OCSF 1.9.0. It reads these canonical fields: `event_id`, `schema_version`, `timestamp_utc`, `correlation_id`, `host_id`, `fleet_id`, `source.adapter`, `action.type`, `action.outcome`, `action.reason`, `actor.id`, `actor.type`, `agent.name`, `initiator.operator_id`, `tool.name`, `tool.server`, `tool.command`, `gated_action.tool`, `gated_action.server`, `gated_action.input_hash`, `tool_policy.rule_id`, `detection.rule_id`, `detection.severity`, `detection.title`, `detection.summary`, `detection.correlation_id`, `detection.tactic_ids`, `detection.technique_ids`, `detection.event_ids`, `detection.first_seen_utc`, `detection.last_seen_utc`, `mcp_schema.status`, `mcp_schema.server_id`, `mcp_schema.server_version`. The same rule holds: none of these is renamed or moved within 1.x, and a change that would touch one ships with a matching update to the package, which this project committed to maintain in #211. Everything else on the event, including `tool.mitre`, `tool.atlas`, `tool.input_hash` and `dlp`, reaches the OCSF event under `unmapped`.
+
+The optional `account` block is not currently part of either outside
+integration's promoted field promise. AiSOC and Tenzir consumers should treat
+it as an additive canonical field until their own packages explicitly map it.
 
 It also reads a trail line as written, unwrapping `{"trail": {"v", "seq", "prev_sha256", "record_sha256"}, "event": {...}}` and keeping `trail.seq`, so that layout is part of the same promise. [anchoring.md](./anchoring.md) covers how the chain fields are computed. For file tools it looks for a path under `tool.arguments.file_path`, `tool.arguments.path` or `tool.arguments.target_file`. Those keys are named by each agent, not by Agentmetry, so they are outside the promise, and they are present only when full-argument capture is on. Its tests pass on recorded events; a live webhook into `accept_http` has not been run.
 

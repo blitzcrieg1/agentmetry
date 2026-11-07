@@ -121,7 +121,7 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
     if atlas is not None:
         detection_block["atlas"] = atlas
 
-    return {
+    event = {
         "schema_version": source_event.get("schema_version", SCHEMA_VERSION),
         "event_id": str(uuid.uuid4()),
         "session_id": source_event.get("session_id", ""),
@@ -140,3 +140,7 @@ def build_detection_event(detection: Detection, source_event: dict[str, Any]) ->
         "agent": agent if isinstance(agent, dict) else {"name": "agentmetry"},
         "detection": detection_block,
     }
+    account = source_event.get("account")
+    if isinstance(account, dict) and account:
+        event["account"] = dict(account)
+    return event

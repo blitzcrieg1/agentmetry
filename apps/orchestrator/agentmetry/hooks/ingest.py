@@ -61,6 +61,7 @@ except ImportError:  # pragma: no cover - the package always ships it
 # Standard library only, so it costs the hook nothing. Guarded anyway: an
 # unresolvable operator must leave the event unattributed, not unrecorded.
 from agentmetry.core.api_token import ingest_token_path, read_token
+from agentmetry.core.account import account_for_hook
 from agentmetry.core.paths import data_dir, env_file, hook_spool_path
 
 try:
@@ -1788,6 +1789,10 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = map_claude_hook(hook_name, data)
     else:
         payload = map_cursor_hook(hook_name, data)
+    if payload:
+        account = account_for_hook(str(payload.get("source_app") or source), data)
+        if account:
+            payload["account"] = account
     # Hash tool args in-process so plaintext never crosses the wire.
     payload = _hash_tool_args(payload)
     adapter_override = os.environ.get("AGENTMETRY_ADAPTER", "").strip()

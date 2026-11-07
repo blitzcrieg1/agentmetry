@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from agentmetry.core.account import account_for_otel
 from agentmetry.hooks.ingest import _hash_tool_args, post_ingest, redact_arguments
 
 #: The receiver binds here and nowhere else. The stream carries tool arguments
@@ -211,7 +212,7 @@ def _base(attrs: dict[str, Any], ts_iso: str) -> dict[str, Any]:
     # `session.id` is the same value, so one session correlates the same way
     # whichever path recorded it.
     session = str(attrs.get("session.id") or attrs.get("session_id") or "")
-    return {
+    payload = {
         "source_app": "claude",
         "adapter": "otel",
         "correlation_id": session,
@@ -219,6 +220,10 @@ def _base(attrs: dict[str, Any], ts_iso: str) -> dict[str, Any]:
         "timestamp_utc": ts_iso,
         "triggered_by": "otel_receiver",
     }
+    account = account_for_otel(attrs)
+    if account:
+        payload["account"] = account
+    return payload
 
 
 def _map_tool_result(attrs: dict[str, Any], ts_iso: str) -> dict[str, Any]:
