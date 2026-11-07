@@ -34,7 +34,7 @@ to Agentmetry ("the Project").
 
 5. **Contact.** To execute this CCLA, open a
    [Corporate CLA request](https://github.com/blitzcrieg1/agentmetry/issues/new?template=corporate-cla.yml)
-   or email **legal@agentmetry.ai** (once configured) with:
+   or email **contact@agentmetry.ai** with:
    - Legal entity name and jurisdiction
    - Authorized signatory name and title
    - GitHub organization or usernames of contributors covered

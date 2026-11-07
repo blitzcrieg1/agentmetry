@@ -21,7 +21,7 @@ as reasoning rather than evidence.
 
 90 days, up to 25 seats, MSI and Intune deployment, the Splunk TA, and 4 hours
 of direct maintainer time. Fee in the SOW. No demo gate. See
-[the pilot page](https://agentmetry.ai/pilot). Contact: `legal@agentmetry.ai`.
+[the pilot page](https://agentmetry.ai/pilot). Contact: `contact@agentmetry.ai`.
 
 ## Rules any edit must keep
 

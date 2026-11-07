@@ -40,6 +40,6 @@ the brand, not the codebase.
 
 ## Contact
 
-Trademark and licensing questions: **legal@agentmetry.ai**
+Trademark and licensing questions: **contact@agentmetry.ai**
 
 For security issues, see [SECURITY.md](SECURITY.md).
