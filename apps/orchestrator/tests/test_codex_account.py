@@ -49,6 +49,38 @@ def test_the_ids_come_from_the_session_file(codex_home: Path):
     }
 
 
+def test_the_windows_extended_form_of_the_path_is_accepted(codex_home: Path):
+    path = _session(codex_home)
+    extended = chr(92) * 2 + "?" + chr(92) + str(path)
+    assert account_for_hook("codex", {"transcript_path": extended})["account_id"] == "workspace-1"
+
+
+def test_a_session_with_no_path_is_found_by_its_id(codex_home: Path):
+    session = "01a1a857-aaaa-bbbb-cccc-000000000000"
+    _session(codex_home, name=f"rollout-2026-11-07T10-00-00-{session}.jsonl")
+    assert account_for_hook("codex", {"session_id": session})["account_id"] == "workspace-1"
+    assert account_for_hook("codex", {"transcript_path": None, "session_id": session})["user_id"] == "user-1"
+
+
+def test_a_path_that_fails_falls_back_to_the_id(codex_home: Path, tmp_path: Path):
+    session = "01a1a857-aaaa-bbbb-cccc-000000000000"
+    _session(codex_home, name=f"rollout-2026-11-07T10-00-00-{session}.jsonl")
+    outside = _session(tmp_path / "elsewhere", {"creator_account_id": "not-this-one"})
+    block = account_for_hook("codex", {"transcript_path": str(outside), "session_id": session})
+    assert block["account_id"] == "workspace-1"
+
+
+def test_another_session_id_does_not_match(codex_home: Path):
+    _session(codex_home, name="rollout-2026-11-07T10-00-00-01a1a857-aaaa.jsonl")
+    assert account_for_hook("codex", {"session_id": "01a1a857-bbbb"}) == {}
+
+
+@pytest.mark.parametrize("session", ["*", "..", "a/b", "a*", "../../etc", "rollout", ""])
+def test_a_crafted_session_id_cannot_widen_the_search(codex_home: Path, session: str):
+    _session(codex_home, name="rollout-2026-11-07T10-00-00-01a1a857-aaaa.jsonl")
+    assert account_for_hook("codex", {"session_id": session}) == {}
+
+
 def test_a_file_outside_codex_home_is_not_opened(codex_home: Path, tmp_path: Path):
     outside = _session(tmp_path / "elsewhere")
     assert account_for_hook("codex", {"transcript_path": str(outside)}) == {}

@@ -26,6 +26,7 @@ _ACCOUNT_ID_CHARS = frozenset(
 )
 #: The first line of a Codex session file also holds its base instructions.
 _SESSION_META_MAX_BYTES = 1024 * 1024
+_WINDOWS_EXTENDED_PREFIX = chr(92) * 2 + "?" + chr(92)
 _CLAUDE_AUTH_OVERRIDE_VARS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -244,7 +245,30 @@ def _local_antigravity_account() -> dict[str, str]:
         return {}
 
 
-def _codex_session_account(transcript_path: Any) -> dict[str, str]:
+def _codex_session_file(home: Path, transcript_path: Any, session_id: Any) -> Path | None:
+    """Find the session file, from the path the hook named or else from its ID.
+
+    Windows tools can hand over the extended form of a path, which would not
+    match Codex's home. A session with no usable path is found by its ID, which
+    Codex puts in the file name.
+    """
+    if isinstance(transcript_path, str) and transcript_path.endswith(".jsonl"):
+        text = transcript_path
+        if text.startswith(_WINDOWS_EXTENDED_PREFIX):
+            text = text[len(_WINDOWS_EXTENDED_PREFIX) :]
+        path = Path(text).resolve()
+        if path.is_relative_to(home) and path.is_file():
+            return path
+    session = _clean_id(session_id)
+    if not session or not session.replace("-", "").isalnum():
+        return None
+    # sessions/YYYY/MM/DD/rollout-<time>-<session id>.jsonl
+    for path in (home / "sessions").glob(f"*/*/*/rollout-*-{session}.jsonl"):
+        return path.resolve()
+    return None
+
+
+def _codex_session_account(transcript_path: Any, session_id: Any = "") -> dict[str, str]:
     """Read Codex's account IDs from the first line of its session file.
 
     Hook input names the file, but that format is not a stable interface and
@@ -253,13 +277,11 @@ def _codex_session_account(transcript_path: Any) -> dict[str, str]:
     read past the first line, and `auth.json` is never touched: it holds
     credentials, and a security sensor has no business opening it.
     """
-    if not isinstance(transcript_path, str) or not transcript_path.endswith(".jsonl"):
-        return {}
     try:
         configured = os.environ.get("CODEX_HOME", "").strip()
         home = (Path(configured) if configured else Path.home() / ".codex").resolve()
-        path = Path(transcript_path).resolve()
-        if not path.is_relative_to(home) or not path.is_file():
+        path = _codex_session_file(home, transcript_path, session_id)
+        if path is None:
             return {}
         with path.open("rb") as handle:
             line = handle.readline(_SESSION_META_MAX_BYTES + 1)
@@ -289,7 +311,7 @@ def account_for_hook(source_app: str, data: dict[str, Any]) -> dict[str, str]:
     if source == "claude":
         return _local_claude_account()
     if source == "codex":
-        return _codex_session_account(data.get("transcript_path"))
+        return _codex_session_account(data.get("transcript_path"), data.get("session_id"))
     if source == "antigravity":
         return _local_antigravity_account()
     return {}
