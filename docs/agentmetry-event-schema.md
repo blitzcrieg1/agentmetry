@@ -164,7 +164,8 @@ as `account_id` and `user_id` with source `session_meta`. That format is not a
 stable interface and can change between versions, and only a file under Codex's
 home (`CODEX_HOME`, else `~/.codex`) is opened. Its domain comes from `auth.json`,
 which holds live credentials: only the `email` claim of `id_token` is read, only the
-domain is kept with source `codex_auth`, and nothing else in the file is copied,
+domain is kept with source `codex_auth` even when `AGENTMETRY_LOG_ACCOUNT_EMAIL=1`,
+and nothing else in the file is copied,
 stored, logged or sent. The token's signature is not checked, an API-key sign-in
 reports no domain, and `AGENTMETRY_CODEX_AUTH_DOMAIN=0` turns this off. Endpoint
 security tools may flag a process reading that file. Antigravity's hook input has no account field,

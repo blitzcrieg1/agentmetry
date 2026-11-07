@@ -279,7 +279,9 @@ def _codex_auth_account() -> dict[str, str]:
         part = id_token.split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
         email = claims.get("email") if isinstance(claims, dict) else None
-        return account_from_email(email, "codex_auth")
+        # This credential file has a stricter boundary than other sources:
+        # the global email opt-in must never retain its full email claim.
+        return account_from_email(email, "codex_auth", include_email=False)
     except (OSError, UnicodeError, ValueError, TypeError, AttributeError):
         return {}
 

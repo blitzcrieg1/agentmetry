@@ -123,10 +123,35 @@ def test_it_can_be_turned_off(codex_home: Path, monkeypatch: pytest.MonkeyPatch)
     assert account_for_hook("codex", {}) == {}
 
 
-def test_full_email_still_needs_its_own_opt_in(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
+def test_codex_auth_remains_domain_only_with_email_opt_in(
+    codex_home: Path, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.setenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", "1")
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "codex")
     _auth(codex_home)
-    assert account_for_hook("codex", {})["email"] == "dev@example.com"
+    path = _session(codex_home)
+    data = {
+        "session_id": "s1",
+        "tool_name": "Bash",
+        "tool_input": {"command": "git status"},
+        "transcript_path": str(path),
+    }
+    block = account_for_hook("codex", data)
+    assert block == {
+        "domain": "example.com",
+        "source": "codex_auth",
+        "account_id": "workspace-1",
+        "user_id": "user-1",
+    }
+    payload = hook.map_hook("PostToolUse", data)
+    assert payload is not None
+    event = build_external_canonical(ExternalIngestBody(**payload).model_dump(exclude_none=True))
+    assert payload["account"] == event["account"] == block
+    representations = (payload, event, canonical_to_ecs(event), canonical_to_udm(event))
+    for representation in representations:
+        text = json.dumps(representation)
+        for secret in (*_AUTH_SECRETS, "dev@example.com", "subject-1", "token-account"):
+            assert secret not in text
 
 
 @pytest.mark.parametrize(
