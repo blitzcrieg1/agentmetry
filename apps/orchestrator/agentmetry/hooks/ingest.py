@@ -1184,7 +1184,9 @@ def map_codex_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | Non
         "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
     }
     if model_id:
-        base["model"] = {"id": model_id, "provider": "openai"}
+        # No provider: Codex can point at any endpoint (#389), so the harness
+        # does not say who serves the model.
+        base["model"] = {"id": model_id}
 
     if hook_name == "SessionStart":
         return {

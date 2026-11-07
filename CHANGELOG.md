@@ -9,6 +9,20 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The model Codex reports now reaches the trail.** The hook sent it as a nested
+  `model` object that the ingest route did not declare, so over HTTP it was
+  dropped and the event recorded `codex` as both model and provider. A spooled
+  event skipped that route and kept its model, so the same call could record
+  different values depending on whether the receiver was up. `model.id` now
+  holds the reported model on both paths, which changes the value consumers see
+  for Codex events. Older records are not rewritten.
+- **Codex no longer implies OpenAI.** The hook hardcoded `provider: "openai"`, but
+  Codex can use any endpoint. With no stated provider, `model.provider` holds the
+  source app's name, as it already does for other agents. Neither field shows what
+  actually served the request (#389).
+
 ## [0.10.6] - 2026-11-05
 
 An outside audit reproduced six problems in hook capture, forwarding,

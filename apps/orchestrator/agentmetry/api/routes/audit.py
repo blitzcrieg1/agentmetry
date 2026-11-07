@@ -92,6 +92,23 @@ class IngestOperatorBody(BaseModel):
     source: str = ""
 
 
+class IngestModelBody(BaseModel):
+    """The model a capture surface reports. A claim, not proof of what served it.
+
+    Wrong types become empty rather than failing validation: undeclared, this
+    field was ignored, and declaring it must not start refusing events. The
+    length bound is in external.py, because the spool replay skips this model.
+    """
+
+    id: str = ""
+    provider: str = ""
+
+    @field_validator("id", "provider", mode="before")
+    @classmethod
+    def _text_or_empty(cls, v: Any) -> str:
+        return v if isinstance(v, str) else ""
+
+
 class ExternalIngestBody(BaseModel):
     """Adapter payload — normalized to canonical v1.2 on ingest.
 
@@ -104,9 +121,10 @@ class ExternalIngestBody(BaseModel):
     MCP per-tool digests and the initialize handshake, and those were dropped
     too, so the release headline did not survive the wire. Then 0.10.4's
     `tool.classification` and 0.9.3's HMAC label went the same way, because the
-    roundtrip test covered the proxy's builders and not the hook's.
-    `test_ingest_roundtrip.py` now builds both and fails if any key does not
-    survive this model.
+    roundtrip test covered the proxy's builders and not the hook's. Then #389:
+    Codex's `model`, because that test ran only the Claude mapper, which sends
+    none. `test_ingest_roundtrip.py` now builds all of these and fails if any
+    key does not survive this model.
     """
 
     source_app: str = Field(
@@ -126,6 +144,7 @@ class ExternalIngestBody(BaseModel):
     tool: IngestToolBody | None = None
     input_hash: str = ""
     model_id: str = ""
+    model: IngestModelBody | None = None
     adapter: str = ""
     triggered_by: str = "manual"
     timestamp_utc: str = ""
@@ -156,6 +175,11 @@ class ExternalIngestBody(BaseModel):
     schema_injection: dict[str, int] = Field(default_factory=dict)
     server_version: str = ""
     list_changed: bool | None = None
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _model_object_or_none(cls, v: Any) -> Any:
+        return v if isinstance(v, dict) else None
 
 
 def _parse_event_ts(event: dict[str, Any]) -> datetime | None:

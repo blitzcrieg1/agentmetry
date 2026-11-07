@@ -241,3 +241,103 @@ def test_a_keyed_digest_is_labelled_hmac_after_ingest(keyed_hook):
     event = build_external_canonical(_survives(payload))
     assert event["tool"]["input_redaction"].split("+")[0] == "hmac"
     assert event["tool"]["input_hash"] == payload["tool"]["input_hash"]
+
+
+# ---------------------------------------------------------------------------
+# The reported model (#389). The fourth dropped field. The guard above only ran
+# the Claude mapper, which sends no model, so Codex's nested `model` was lost
+# over HTTP and the stored event said `codex` for both model and provider.
+# ---------------------------------------------------------------------------
+
+
+def _codex_payload(ingest, model: str = "glm-5.3") -> dict:
+    payload = ingest.map_codex_hook(
+        "PostToolUse",
+        {
+            "session_id": "roundtrip",
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo hi"},
+            "model": model,
+        },
+    )
+    assert payload is not None
+    return ingest._hash_tool_args(payload)
+
+
+def test_every_key_the_codex_hook_emits_survives_ingest(keyed_hook):
+    payload = _codex_payload(keyed_hook)
+    kept = _survives(payload)
+    missing = sorted(k for k in payload if k not in kept)
+    assert not missing, f"the Codex hook sends {missing} and ExternalIngestBody drops them."
+    model_missing = sorted(k for k in payload["model"] if k not in kept["model"])
+    assert not model_missing, f"the Codex hook sends model.{model_missing} and they are dropped."
+
+
+def test_the_model_codex_reports_reaches_the_stored_event(keyed_hook):
+    from agentmetry.core.audit.external import build_external_canonical
+
+    event = build_external_canonical(_survives(_codex_payload(keyed_hook)))
+    assert event["model"]["id"] == "glm-5.3"
+
+
+def test_codex_does_not_mean_openai(keyed_hook):
+    """Codex can point at any endpoint, so the harness says nothing about who serves it."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    payload = _codex_payload(keyed_hook)
+    assert "provider" not in payload["model"]
+    assert build_external_canonical(_survives(payload))["model"]["provider"] == "codex"
+
+
+def test_a_provider_the_surface_states_is_kept():
+    from agentmetry.core.audit.external import build_external_canonical
+
+    kept = _survives(
+        {
+            "source_app": "codex",
+            "event_type": "tool_called",
+            "model": {"id": "glm-5.3", "provider": "selfhosted"},
+        }
+    )
+    assert build_external_canonical(kept)["model"] == {"id": "glm-5.3", "provider": "selfhosted"}
+
+
+def test_model_id_is_still_accepted():
+    """OTel ingest and older clients send the flat field."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    kept = _survives({"source_app": "claude", "event_type": "tool_called", "model_id": "opus"})
+    assert build_external_canonical(kept)["model"] == {"id": "opus", "provider": "claude"}
+
+
+@pytest.mark.parametrize("bad", ["glm-5.3", 7, ["glm-5.3"], True])
+def test_a_model_of_the_wrong_shape_is_ignored_not_rejected(bad):
+    """Undeclared, this field was ignored. Declaring it must not start refusing events."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    kept = _survives({"source_app": "codex", "event_type": "tool_called", "model": bad})
+    assert build_external_canonical(kept)["model"] == {"id": "codex", "provider": "codex"}
+
+
+@pytest.mark.parametrize("bad", [7, ["x"], {"a": 1}, None])
+def test_model_fields_of_the_wrong_type_fall_back(bad):
+    from agentmetry.core.audit.external import build_external_canonical
+
+    kept = _survives(
+        {"source_app": "codex", "event_type": "tool_called", "model": {"id": bad, "provider": bad}}
+    )
+    assert build_external_canonical(kept)["model"] == {"id": "codex", "provider": "codex"}
+
+
+def test_model_fields_are_bounded_on_both_ingest_paths():
+    """HTTP passes this model and the spool replay does not, so the bound sits behind both."""
+    from agentmetry.core.audit.external import build_external_canonical
+
+    payload = {
+        "source_app": "codex",
+        "event_type": "tool_called",
+        "model": {"id": "m" * 5000, "provider": "p" * 5000},
+    }
+    for event in (build_external_canonical(payload), build_external_canonical(_survives(payload))):
+        assert event["model"]["id"] == "m" * 256
+        assert event["model"]["provider"] == "p" * 256

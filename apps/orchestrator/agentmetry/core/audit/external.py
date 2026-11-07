@@ -53,6 +53,15 @@ _REMEDIATION_FIELDS = frozenset({
 })
 
 
+#: Bounds what a client can put in the record. Applied here rather than on the
+#: HTTP model because the spool replay reaches this function without passing it.
+_MODEL_TEXT_MAX = 256
+
+
+def _model_text(value: Any) -> str:
+    return value[:_MODEL_TEXT_MAX] if isinstance(value, str) else ""
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -147,8 +156,8 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     skill_id = str(payload.get("skill_id") or payload.get("skill") or "")
 
     model_raw = payload.get("model") if isinstance(payload.get("model"), dict) else {}
-    model_provider = str(model_raw.get("provider") or source_app)
-    model_id = str(model_raw.get("id") or payload.get("model_id") or source_app)
+    model_provider = _model_text(model_raw.get("provider")) or source_app
+    model_id = _model_text(model_raw.get("id")) or _model_text(payload.get("model_id")) or source_app
 
     adapter = str(payload.get("adapter") or f"{source_app}_hook")
 
