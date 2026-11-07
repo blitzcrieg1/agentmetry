@@ -130,7 +130,7 @@ describe("agent coverage sentences", () => {
 
   it("says plainly when an agent has not been checked", () => {
     const sentence = agentCoverageSentence(agent("not_reported", { name: "zcode" }));
-    expect(sentence).toContain("has not been checked");
+    expect(sentence).toContain("no safe place");
     expect(sentence).not.toMatch(/Cursor|Claude|Codex/);
   });
 
@@ -139,6 +139,17 @@ describe("agent coverage sentences", () => {
       agent("partial", { events_with_account: 3, events_since_first_report: 5 }),
     );
     expect(sentence).toContain("3 of 5");
+  });
+
+  it("says an old gap is over without hiding it", () => {
+    const sentence = agentCoverageSentence(
+      agent("reported", { events_with_account: 137, events_since_first_report: 160 }),
+    );
+    expect(sentence).toBe("Reporting now. 23 earlier events since the first report had none.");
+  });
+
+  it("says plainly when every event carried an account", () => {
+    expect(agentCoverageSentence(agent("reported"))).toBe("Every event since the first report carried an account.");
   });
 });
 

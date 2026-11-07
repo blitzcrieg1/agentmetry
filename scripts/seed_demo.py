@@ -63,7 +63,7 @@ def tool(name: str, command: str = "", **kw) -> dict:
 
 #: Reported accounts for the demo, all invented. The session that fires a
 #: detection is on a personal domain, which is the story the Identity page tells.
-#: Antigravity gets none, because nothing safe to read names its account.
+#: Codex reports only IDs, so it has no domain to call personal or corporate.
 _DEMO_COMPANY = {"domain": "company.example", "source": "hook_payload"}
 _DEMO_ACCOUNTS = {
     "sess-refactor-4f21": _DEMO_COMPANY,
@@ -74,6 +74,7 @@ _DEMO_ACCOUNTS = {
         "organization_id": "00000000-demo-4000-8000-000000000000",
     },
     "sess-lolbin-8b52": {"domain": "gmail.com", "source": "hook_payload"},
+    "sess-bypass-2a77": {"domain": "company.example", "source": "local_config"},
     "sess-recon-7e14": {
         "account_id": "demo-workspace-0001",
         "user_id": "demo-user-0001",

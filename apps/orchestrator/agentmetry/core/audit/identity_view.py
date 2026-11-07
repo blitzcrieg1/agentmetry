@@ -18,7 +18,7 @@ _NOT_AGENTS = frozenset({"", "agentmetry", "unknown"})
 
 #: Agents whose documented hook input has no account field. Reporting nothing is
 #: expected for these, which is a different thing from one that should report.
-_NO_DOCUMENTED_FIELD = frozenset({"antigravity", "copilot"})
+_NO_DOCUMENTED_FIELD = frozenset({"copilot"})
 
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
@@ -85,10 +85,11 @@ def _finish_account(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _agent_state(events_since: int, with_account: int, app: str) -> str:
+def _agent_state(with_account: int, last_had_account: bool, app: str) -> str:
+    """Judged on the newest event, so an old gap does not outlive its cause."""
     if with_account == 0:
         return "no_documented_field" if app in _NO_DOCUMENTED_FIELD else "not_reported"
-    return "reported" if with_account >= events_since else "partial"
+    return "reported" if last_had_account else "partial"
 
 
 def build_identity_view(
@@ -130,9 +131,19 @@ def build_identity_view(
         if not is_detection:
             agent = agents.setdefault(
                 app,
-                {"name": app, "events": 0, "events_since_first": 0, "with_account": 0, "last_seen": "", "first_reported": ""},
+                {
+                    "name": app,
+                    "events": 0,
+                    "events_since_first": 0,
+                    "with_account": 0,
+                    "last_seen": "",
+                    "first_reported": "",
+                    "last_had_account": False,
+                },
             )
             agent["events"] += 1
+            # Rows arrive oldest first, so this ends on the newest event.
+            agent["last_had_account"] = has_account
             if timestamp > agent["last_seen"]:
                 agent["last_seen"] = timestamp
             if has_account and not agent["first_reported"]:
@@ -190,7 +201,7 @@ def build_identity_view(
             "events": agent["events"],
             "events_since_first_report": agent["events_since_first"],
             "events_with_account": agent["with_account"],
-            "state": _agent_state(agent["events_since_first"], agent["with_account"], agent["name"]),
+            "state": _agent_state(agent["with_account"], agent["last_had_account"], agent["name"]),
             "first_reported": agent["first_reported"],
             "last_seen": agent["last_seen"],
         }

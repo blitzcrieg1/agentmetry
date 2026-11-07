@@ -8,6 +8,7 @@ block absent rather than breaking the hook.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -177,6 +178,52 @@ def test_the_identity_view_shows_an_id_only_account():
     assert view["accounts"][0]["domain"] == ""
     assert view["agents"][0]["state"] == "reported"
     assert view["sessions_without_account"] == 0
+
+
+@pytest.fixture
+def antigravity_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    if sys.platform == "darwin":
+        folder = tmp_path / "Library" / "Application Support" / "Antigravity"
+    else:
+        folder = tmp_path / "Antigravity"
+    folder.mkdir(parents=True)
+    return folder / "app_storage.json"
+
+
+def test_antigravity_reports_the_last_sign_in_as_a_domain(antigravity_storage: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", raising=False)
+    antigravity_storage.write_text(
+        json.dumps({"jetski.onboarding.lastLoginUsername": "dev@example.com", "other": 1}), encoding="utf-8"
+    )
+    assert account_for_hook("antigravity", {}) == {"domain": "example.com", "source": "local_config"}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "{not json",
+        "[]",
+        json.dumps({"other": 1}),
+        json.dumps({"jetski.onboarding.lastLoginUsername": None}),
+        json.dumps({"jetski.onboarding.lastLoginUsername": "not-an-address"}),
+        json.dumps({"jetski.onboarding.lastLoginUsername": 7}),
+    ],
+)
+def test_antigravity_problems_leave_the_block_absent(antigravity_storage: Path, content: str):
+    antigravity_storage.write_text(content, encoding="utf-8")
+    assert account_for_hook("antigravity", {}) == {}
+
+
+def test_antigravity_with_no_file_or_a_huge_one_is_absent(antigravity_storage: Path):
+    assert account_for_hook("antigravity", {}) == {}
+    antigravity_storage.write_text(
+        json.dumps({"jetski.onboarding.lastLoginUsername": "dev@example.com", "pad": "x" * (1024 * 1024 + 10)}),
+        encoding="utf-8",
+    )
+    assert account_for_hook("antigravity", {}) == {}
 
 
 def test_a_silent_codex_is_called_out_rather_than_excused():

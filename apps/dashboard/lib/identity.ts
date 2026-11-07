@@ -122,6 +122,7 @@ const NOT_REPORTED_SENTENCE: Record<string, string> = {
   cursor: "No account in this window. Cursor sends one only when it knows the signed-in user.",
   claude: "No account in this window. The lookup is skipped when an API key, token, cloud provider or other endpoint is in use.",
   codex: "No account ID in this window. Codex's IDs come from its session file, which may not exist yet on a session's first event. Events from before this was added have none.",
+  antigravity: "No account in this window. Antigravity's comes from the last sign-in on this machine, in a file that can change between versions. Events from before this was added have none.",
 };
 
 export function agentCoverageSentence(agent: IdentityAgent): string {
@@ -129,10 +130,14 @@ export function agentCoverageSentence(agent: IdentityAgent): string {
     return "This agent's documented hook input has no account field, so its account stays unknown.";
   }
   if (agent.state === "not_reported") {
-    return NOT_REPORTED_SENTENCE[agent.name] ?? "Agentmetry records this agent, but where it keeps its account has not been checked, so its account stays unknown.";
+    return NOT_REPORTED_SENTENCE[agent.name] ?? "Agentmetry records this agent, but no safe place that names its account has been found, so its account stays unknown.";
   }
   if (agent.state === "partial") {
-    return `${agent.events_with_account} of ${agent.events_since_first_report} events since the first report carried an account.`;
+    return `The newest event carried no account. ${agent.events_with_account} of ${agent.events_since_first_report} events since the first report did.`;
+  }
+  const gap = agent.events_since_first_report - agent.events_with_account;
+  if (gap > 0) {
+    return `Reporting now. ${gap} earlier ${gap === 1 ? "event" : "events"} since the first report had none.`;
   }
   return "Every event since the first report carried an account.";
 }

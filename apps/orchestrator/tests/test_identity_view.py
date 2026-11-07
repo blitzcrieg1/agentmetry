@@ -108,7 +108,7 @@ def test_an_account_with_detections_sorts_first():
     assert view["accounts"][0]["domain"] == "loud.example"
 
 
-@pytest.mark.parametrize("app", ["antigravity", "copilot"])
+@pytest.mark.parametrize("app", ["copilot"])
 def test_an_agent_with_no_documented_field_is_labelled_not_blamed(app: str):
     view = _view([_row(app)])
     assert view["accounts"] == []
@@ -134,6 +134,31 @@ def test_coverage_counts_from_the_first_report():
     assert agent["state"] == "reported"
     assert agent["events"] == 4
     assert agent["events_with_account"] == 2
+
+
+def test_an_old_gap_does_not_outlive_its_cause():
+    """Reporting again counts as reporting. The gap stays in the numbers."""
+    view = _view(
+        [
+            _row(ts="2026-11-01T10:00:00+00:00", **_ACCOUNT),
+            _row(ts="2026-11-02T10:00:00+00:00"),
+            _row(ts="2026-11-03T10:00:00+00:00", **_ACCOUNT),
+        ]
+    )
+    agent = view["agents"][0]
+    assert agent["state"] == "reported"
+    assert agent["events_since_first_report"] == 3
+    assert agent["events_with_account"] == 2
+
+
+def test_an_inferred_approval_does_not_change_the_newest_event():
+    view = _view(
+        [
+            _row(ts="2026-11-01T10:00:00+00:00", **_ACCOUNT),
+            _row(ts="2026-11-01T10:00:01+00:00", action_type="approval_response", adapter="cursor_inferred"),
+        ]
+    )
+    assert view["agents"][0]["state"] == "reported"
 
 
 def test_an_agent_that_stops_reporting_reads_as_partial():

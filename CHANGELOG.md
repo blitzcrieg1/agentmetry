@@ -30,7 +30,10 @@ separately (currently `1.2.0`) and changes additively.
   `creator_user_id` from the first line of the session file its hook input names,
   as `account_id` and `user_id` with source `session_meta`. They are opaque IDs
   with no domain or address, and the format is not a stable interface. `auth.json`
-  is never read. Antigravity stays absent, because nothing safe to read names it.
+  is never read.
+- **Antigravity account domain.** Antigravity hook capture reads the last sign-in
+  from its undocumented `app_storage.json`, labelled `local_config`, so it means
+  the account last signed in on the machine rather than proof of who made a call.
 - **An Identity page in the dashboard.** It lists the accounts agents reported,
   with their agents, hosts, operating system accounts, sessions and detections,
   backed by `GET /api/v1/audit/identity`. An agent that reports nothing is shown

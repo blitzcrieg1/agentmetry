@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -214,6 +215,35 @@ def _local_claude_account() -> dict[str, str]:
         return {}
 
 
+def _antigravity_storage_path() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", "")
+        return (Path(base) if base else Path.home() / "AppData" / "Roaming") / "Antigravity" / "app_storage.json"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Antigravity" / "app_storage.json"
+    base = os.environ.get("XDG_CONFIG_HOME", "")
+    return (Path(base) if base else Path.home() / ".config") / "Antigravity" / "app_storage.json"
+
+
+def _local_antigravity_account() -> dict[str, str]:
+    """Read the last sign-in name from Antigravity's undocumented app storage.
+
+    Its hook input has no account field. This one key names the account last
+    signed in on the machine, not necessarily the one that made the call, and
+    the key can change between versions. Credential stores are never opened.
+    """
+    try:
+        path = _antigravity_storage_path()
+        if not path.is_file() or path.stat().st_size > _LOCAL_CONFIG_MAX_BYTES:
+            return {}
+        parsed = json.loads(path.read_bytes())
+        if not isinstance(parsed, dict):
+            return {}
+        return account_from_email(parsed.get("jetski.onboarding.lastLoginUsername"), "local_config")
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return {}
+
+
 def _codex_session_account(transcript_path: Any) -> dict[str, str]:
     """Read Codex's account IDs from the first line of its session file.
 
@@ -260,6 +290,8 @@ def account_for_hook(source_app: str, data: dict[str, Any]) -> dict[str, str]:
         return _local_claude_account()
     if source == "codex":
         return _codex_session_account(data.get("transcript_path"))
+    if source == "antigravity":
+        return _local_antigravity_account()
     return {}
 
 

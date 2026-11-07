@@ -163,9 +163,12 @@ as `account_id` and `user_id` with source `session_meta`. That format is not a
 stable interface and can change between versions, and only a file under Codex's
 home (`CODEX_HOME`, else `~/.codex`) is opened. `auth.json` is never read, because
 it holds credentials. Codex therefore reports no domain, so a company matches its
-account IDs against its own list. Antigravity has no documented account field and
-nothing safe to read was found, so its block is absent. Sessions with an override
-and agents with no account claim are also absent.
+account IDs against its own list. Antigravity's hook input has no account field,
+so its domain comes from `jetski.onboarding.lastLoginUsername` in its undocumented
+`app_storage.json`, labelled `local_config`. Like Claude's, that means the account
+last signed in on the machine, and the key can change between versions. Only
+Windows has been run; the macOS and Linux paths have not. Sessions with an override
+and agents with no account claim are absent.
 
 The block is forwarded unchanged in the canonical file and webhook formats.
 Elastic ECS keeps the claim under `agentmetry.account.domain` and
