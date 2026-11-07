@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Info, RefreshCw, UserSearch } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Copy, Info, RefreshCw, UserSearch } from "lucide-react";
 import { apiHeaders } from "@/lib/api";
 import { sourceLabel } from "@/lib/audit-source";
 import { AgentTile } from "@/components/ui/agent-mark";
@@ -16,10 +16,12 @@ import {
   accountsOfKind,
   agentCoverageSentence,
   approvalState,
+  approvedListStatus,
   countOutside,
   organizationSummary,
   parseApprovedDomains,
   shortTime,
+  shownAgents,
   type ApprovalState,
   type IdentityAccount,
   type IdentityAgent,
@@ -53,13 +55,65 @@ function storeList(value: string) {
   }
 }
 
-function Stat({ label, value, detail, tone = "text-foreground" }: { label: string; value: string; detail: string; tone?: string }) {
+function Stat({
+  label,
+  value,
+  detail,
+  tone = "text-foreground",
+  action,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="panel px-4 py-3">
       <p className="eyebrow">{label}</p>
       <p className={`mt-1 font-mono text-[22px] font-medium leading-none ${tone}`}>{value}</p>
       <p className="mt-1.5 text-[12px] text-muted-foreground">{detail}</p>
+      {action}
     </div>
+  );
+}
+
+function CountPill({ label, value, of, attention }: { label: string; value: number; of?: number; attention: boolean }) {
+  return (
+    <span className="whitespace-nowrap text-[12px] text-muted-foreground">
+      {label}{" "}
+      <span className={`font-mono font-medium ${attention ? "text-caution" : "text-foreground"}`}>
+        {value}
+        {of === undefined ? "" : ` of ${of}`}
+      </span>
+    </span>
+  );
+}
+
+function CopyValue({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* The value stays selectable on the page. */
+    }
+  };
+  return (
+    <span className="flex items-start gap-1.5">
+      <span className="min-w-0 break-all font-mono text-[12px]">{value}</span>
+      <button
+        type="button"
+        aria-label={copied ? `${label} copied` : `Copy ${label}`}
+        title={copied ? "Copied" : `Copy ${label}`}
+        onClick={() => void copy()}
+        className="shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </span>
   );
 }
 
@@ -102,7 +156,7 @@ function AccountDetail({
     <div className="grid gap-4 border-t border-border bg-muted/30 px-4 py-4 md:grid-cols-2">
       <div className="min-w-0 space-y-3 text-[13px]">
         <div>
-          <p className="eyebrow mb-1">How it is known</p>
+          <h3 className="eyebrow mb-1">Reported source</h3>
           <ul className="space-y-0.5">
             {account.sources.length ? (
               account.sources.map((source) => <li key={source}>{accountSourceLabel(source)}</li>)
@@ -111,55 +165,63 @@ function AccountDetail({
             )}
           </ul>
         </div>
+        <div>
+          <h3 className="eyebrow mb-1">Agents</h3>
+          <p>{account.agents.map(sourceLabel).join(", ")}</p>
+        </div>
         {account.emails.length ? (
           <div>
-            <p className="eyebrow mb-1">Email addresses</p>
-            <ul className="space-y-0.5 break-all font-mono text-[12px]">
+            <h3 className="eyebrow mb-1">Email addresses</h3>
+            <ul className="space-y-0.5">
               {account.emails.map((email) => (
-                <li key={email}>{email}</li>
+                <li key={email}>
+                  <CopyValue value={email} label="email address" />
+                </li>
               ))}
             </ul>
           </div>
         ) : null}
         {account.organization_ids.length ? (
           <div>
-            <p className="eyebrow mb-1">{account.organization_ids.length === 1 ? "Organization ID" : "Organization IDs"}</p>
-            <ul className="space-y-0.5 break-all font-mono text-[12px]">
+            <h3 className="eyebrow mb-1">{account.organization_ids.length === 1 ? "Organization ID" : "Organization IDs"}</h3>
+            <ul className="space-y-0.5">
               {account.organization_ids.map((id) => (
-                <li key={id}>{id}</li>
+                <li key={id}>
+                  <CopyValue value={id} label="organization ID" />
+                </li>
               ))}
             </ul>
           </div>
         ) : null}
         {account.account_id ? (
           <div>
-            <p className="eyebrow mb-1">Account ID</p>
-            <p className="break-all font-mono text-[12px]">{account.account_id}</p>
+            <h3 className="eyebrow mb-1">Account ID</h3>
+            <CopyValue value={account.account_id} label="account ID" />
           </div>
         ) : null}
         {account.user_id ? (
           <div>
-            <p className="eyebrow mb-1">User ID</p>
-            <p className="break-all font-mono text-[12px]">{account.user_id}</p>
+            <h3 className="eyebrow mb-1">User ID</h3>
+            <CopyValue value={account.user_id} label="user ID" />
           </div>
         ) : null}
         <div>
-          <p className="eyebrow mb-1">Operating system accounts</p>
+          <h3 className="eyebrow mb-1">Operating system accounts</h3>
           <p className="break-words font-mono text-[12px]">{account.operators.join(", ") || "None recorded"}</p>
         </div>
         <div>
-          <p className="eyebrow mb-1">Hosts</p>
+          <h3 className="eyebrow mb-1">Hosts</h3>
           <p className="break-words font-mono text-[12px]">{account.hosts.join(", ") || "None recorded"}</p>
         </div>
         <div>
-          <p className="eyebrow mb-1">Seen</p>
-          <p className="text-[12px] text-muted-foreground">
+          <h3 className="eyebrow mb-1">Seen</h3>
+          <p className="text-[12px] text-muted-foreground" title={`${account.first_seen} to ${account.last_seen}`}>
             {shortTime(account.first_seen)} to {shortTime(account.last_seen)}
           </p>
         </div>
       </div>
       <div className="min-w-0">
-        <p className="eyebrow mb-1">Detections on this account</p>
+        <h3 className="eyebrow mb-1">Detections on this domain or account</h3>
         {account.detections.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">None in this window.</p>
         ) : (
@@ -173,7 +235,9 @@ function AccountDetail({
                 >
                   <SeverityBadge severity={detection.severity} />
                   <span className="min-w-0 flex-1 truncate">{detection.title || detection.rule_id}</span>
-                  <span className="shrink-0 text-[12px] text-muted-foreground">{shortTime(detection.timestamp_utc)}</span>
+                  <span className="shrink-0 text-[12px] text-muted-foreground" title={detection.timestamp_utc}>
+                    {shortTime(detection.timestamp_utc)}
+                  </span>
                 </button>
               </li>
             ))}
@@ -201,11 +265,20 @@ function AccountsTable({
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-[13px]">
+      {/* Fixed widths, so the columns line up across the sections on the page. */}
+      <table className="w-full min-w-[760px] table-fixed text-left text-[13px]">
+        <colgroup>
+          <col className="w-[25%]" />
+          <col className="w-[13%]" />
+          <col className="w-[21%]" />
+          <col className="w-[9%]" />
+          <col className="w-[17%]" />
+          <col className="w-[15%]" />
+        </colgroup>
         <thead>
           <tr className="border-b border-border text-[12px] text-muted-foreground">
-            <th className="px-4 py-2 font-medium">Account</th>
-            <th className="px-3 py-2 font-medium">List</th>
+            <th className="px-4 py-2 font-medium">Domain or account ID</th>
+            <th className="px-3 py-2 font-medium">Approval</th>
             <th className="px-3 py-2 font-medium">Agents</th>
             <th className="px-3 py-2 text-right font-medium">Sessions</th>
             <th className="px-3 py-2 font-medium">Detections</th>
@@ -217,6 +290,7 @@ function AccountsTable({
             const key = accountKey(account);
             const isOpen = open === key;
             const name = accountName(account);
+            const { shown, hidden } = shownAgents(account.agents);
             return (
               <Fragment key={key}>
                 <tr className="border-b border-border/60 align-middle">
@@ -242,12 +316,17 @@ function AccountsTable({
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      {account.agents.map((agent) => (
+                      {shown.map((agent) => (
                         <span key={agent} className="inline-flex items-center gap-1.5 whitespace-nowrap">
                           <AgentTile app={agent} size="sm" />
                           {sourceLabel(agent)}
                         </span>
                       ))}
+                      {hidden.length ? (
+                        <span className="text-[12px] text-muted-foreground" title={hidden.map(sourceLabel).join(", ")}>
+                          +{hidden.length} more
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono">{account.sessions}</td>
@@ -261,7 +340,9 @@ function AccountsTable({
                       <span className="text-muted-foreground">None</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-muted-foreground">{shortTime(account.last_seen)}</td>
+                  <td className="px-3 py-2.5 text-[12px] text-muted-foreground" title={account.last_seen}>
+                    {shortTime(account.last_seen)}
+                  </td>
                 </tr>
                 {isOpen ? (
                   <tr className="border-b border-border/60">
@@ -310,6 +391,7 @@ export function IdentityPanel({
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState<Window>("30");
   const [listText, setListText] = useState("");
+  const listBox = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const stored = readStoredList();
@@ -370,44 +452,58 @@ export function IdentityPanel({
 
       {error ? <p className="shrink-0 text-[13px] text-danger">Could not refresh: {error}</p> : null}
 
-      <div className="grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid shrink-0 gap-3 sm:grid-cols-3">
         <Stat
-          label="Personal accounts"
+          label="Personal domains"
           value={String(data?.counts.personal ?? 0)}
           detail={`Public email domains, last ${data?.window_days ?? days} days`}
           tone={data?.counts.personal ? "text-danger" : "text-foreground"}
         />
         <Stat
-          label="Corporate accounts"
-          value={String(data?.counts.corporate ?? 0)}
-          detail={`Other domains, last ${data?.window_days ?? days} days`}
-        />
-        <Stat
           label="Outside your list"
           value={approved.length ? String(outside) : "Not set"}
-          detail={approved.length ? "Accounts not on your approved list" : "Add approved accounts below"}
+          detail={approved.length ? "Not on your approved list" : "No approved list yet"}
           tone={approved.length && outside ? "text-danger" : "text-foreground"}
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                listBox.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                listBox.current?.focus({ preventScroll: true });
+              }}
+              className="mt-1.5 text-[12px] font-medium text-signal hover:underline"
+            >
+              Edit approved list
+            </button>
+          }
         />
         <Stat
-          label="Sessions, account unknown"
-          value={String(data?.sessions_without_account ?? 0)}
-          detail={`Of ${data?.sessions ?? 0} sessions in this window`}
-          tone={data?.sessions_without_account ? "text-caution" : "text-foreground"}
+          label="Other domains"
+          value={String(data?.counts.corporate ?? 0)}
+          detail={`Not a known public provider, last ${data?.window_days ?? days} days`}
         />
-        <Stat
-          label="Agents, account unknown"
-          value={String(unknownAgents)}
-          detail={`Of ${agents.length} ${agents.length === 1 ? "agent" : "agents"} seen in this window`}
-          tone={unknownAgents ? "text-caution" : "text-foreground"}
-        />
+      </div>
+
+      <div className="panel flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5" role="group" aria-label="Where the account is unknown">
+        <CountPill label="Sessions, account unknown" value={data?.sessions_without_account ?? 0} of={data?.sessions ?? 0} attention={Boolean(data?.sessions_without_account)} />
+        <CountPill label="Agents, account unknown" value={unknownAgents} of={agents.length} attention={unknownAgents > 0} />
+        <CountPill label="Accounts with no domain" value={data?.counts.unclassified ?? 0} attention={false} />
       </div>
 
       <div className="flex shrink-0 items-start gap-2 rounded-sm border border-border bg-muted/30 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <p>
-          This is what agents reported, not verified identity. It shows nothing from before Agentmetry was installed, from an agent with no hook, or from a browser. Sessions recorded before account capture existed count as unknown. Full email addresses appear only if{" "}
-          <code className="font-mono">AGENTMETRY_LOG_ACCOUNT_EMAIL=1</code> was set when the event was recorded.
-        </p>
+        <div className="min-w-0">
+          <p>
+            Reported by the agents, not verified identity. A last sign-in source means the account last signed in on this machine, not necessarily the one that made the call.
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer font-medium text-foreground">What this page cannot show</summary>
+            <p className="mt-1">
+              Nothing from before Agentmetry was installed, from an agent with no hook, or from a browser. Sessions recorded before account capture existed count as unknown. Full email addresses appear only if{" "}
+              <code className="font-mono">AGENTMETRY_LOG_ACCOUNT_EMAIL=1</code> was set when the event was recorded.
+            </p>
+          </details>
+        </div>
       </div>
 
       {data?.truncated ? (
@@ -417,7 +513,7 @@ export function IdentityPanel({
       {accounts.length === 0 ? (
         <section className="panel shrink-0">
           <EmptyState icon={<UserSearch className="h-5 w-5" />}>
-            No agent reported an account in this window. Cursor, Claude Code and Codex can report one. Run a session in any of them, then refresh.
+            No agent reported an account in this window. Cursor, Claude Code, Codex and Antigravity can report one. Run a session in any of them, then refresh.
           </EmptyState>
         </section>
       ) : (
@@ -429,9 +525,9 @@ export function IdentityPanel({
           return (
             <section key={section.kind} className="panel shrink-0" aria-label={section.title}>
               <header className="border-b border-border px-4 py-3">
-                <p className="eyebrow">
+                <h2 className="eyebrow">
                   {section.title} <span className="font-mono">({rows.length})</span>
-                </p>
+                </h2>
                 <p className="mt-1 text-[12px] text-muted-foreground">{section.note}</p>
               </header>
               {rows.length ? (
@@ -444,10 +540,10 @@ export function IdentityPanel({
         })
       )}
 
-      <div className="grid shrink-0 gap-3 lg:grid-cols-2">
+      <div className="grid shrink-0 items-start gap-3 lg:grid-cols-2">
         <section className="panel">
           <header className="border-b border-border px-4 py-3">
-            <p className="eyebrow">Agent coverage</p>
+            <h2 className="eyebrow">Agent coverage</h2>
           </header>
           {agents.length ? (
             <CoverageList agents={agents} />
@@ -457,7 +553,7 @@ export function IdentityPanel({
         </section>
         <section className="panel">
           <header className="border-b border-border px-4 py-3">
-            <p className="eyebrow">Approved accounts</p>
+            <h2 className="eyebrow">Approved accounts</h2>
           </header>
           <div className="space-y-2 px-4 py-3">
             <label htmlFor="identity-approved" className="block text-[12px] leading-relaxed text-muted-foreground">
@@ -465,6 +561,7 @@ export function IdentityPanel({
             </label>
             <textarea
               id="identity-approved"
+              ref={listBox}
               rows={3}
               value={listText}
               spellCheck={false}
@@ -475,6 +572,9 @@ export function IdentityPanel({
               }}
               className="w-full rounded-sm border border-border bg-background px-2.5 py-2 font-mono text-[13px] outline-none focus:border-signal"
             />
+            <p className="text-[12px] text-muted-foreground" aria-live="polite">
+              {approvedListStatus(approved)}
+            </p>
           </div>
         </section>
       </div>

@@ -62,7 +62,7 @@ export const ACCOUNT_SECTIONS: { kind: AccountKind; title: string; note: string;
   {
     kind: "personal",
     title: "Personal accounts",
-    note: "The domain is a known public email provider, so this account is outside any company tenant.",
+    note: "Known public email provider. Several people can share one domain, so review it against your approved list.",
     empty: "No personal account reported in this window.",
   },
   {
@@ -195,5 +195,17 @@ export function shortTime(value: string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
   });
+}
+
+/** The first few agent names for a table row, and how many more the details hold. */
+export function shownAgents(agents: string[], max = 2): { shown: string[]; hidden: string[] } {
+  return { shown: agents.slice(0, max), hidden: agents.slice(max) };
+}
+
+/** Confirms that a list took effect, because editing it changes the page silently. */
+export function approvedListStatus(approved: string[]): string {
+  if (approved.length === 0) return "No list set, so nothing is checked.";
+  return `Applied in this browser: ${approved.length} ${approved.length === 1 ? "entry" : "entries"}.`;
 }

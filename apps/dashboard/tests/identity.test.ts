@@ -7,10 +7,13 @@ import {
   ACCOUNT_SECTIONS,
   agentCoverageSentence,
   approvalState,
+  approvedListStatus,
   countOutside,
   organizationSummary,
   parseApprovedDomains,
   shortOrganization,
+  shortTime,
+  shownAgents,
   type IdentityAccount,
   type IdentityAgent,
 } from "@/lib/identity";
@@ -98,7 +101,33 @@ describe("approved domains", () => {
   });
 });
 
+describe("table details", () => {
+  it("shows two agents and counts the rest", () => {
+    expect(shownAgents(["a", "b"])).toEqual({ shown: ["a", "b"], hidden: [] });
+    expect(shownAgents(["a", "b", "c", "d"])).toEqual({ shown: ["a", "b"], hidden: ["c", "d"] });
+  });
+
+  it("names the timezone on a time", () => {
+    const time = shortTime("2026-11-07T10:00:00+00:00");
+    expect(time).toMatch(/[A-Z]{2,}|GMT|UTC/);
+    expect(shortTime("")).toBe("");
+    expect(shortTime("not a time")).toBe("not a time");
+  });
+
+  it("confirms when a list has taken effect", () => {
+    expect(approvedListStatus([])).toBe("No list set, so nothing is checked.");
+    expect(approvedListStatus(["a.example"])).toBe("Applied in this browser: 1 entry.");
+    expect(approvedListStatus(["a.example", "b.example"])).toBe("Applied in this browser: 2 entries.");
+  });
+});
+
 describe("account sections", () => {
+  it("does not claim a personal domain is outside every tenant", () => {
+    const personal = ACCOUNT_SECTIONS.find((section) => section.kind === "personal");
+    expect(personal?.note).not.toContain("tenant");
+    expect(personal?.note).toContain("share one domain");
+  });
+
   it("shows personal accounts first, then corporate", () => {
     expect(ACCOUNT_SECTIONS.map((section) => section.kind)).toEqual(["personal", "corporate", "unclassified"]);
   });
