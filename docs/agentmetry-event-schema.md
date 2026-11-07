@@ -291,6 +291,8 @@ what catches renumbering. Two examples that a from-memory mapping gets wrong:
 }
 ```
 
+`model.id` is the model the capture surface reported, and `model.provider` is the provider it stated. Where it reported none, the field holds the source app's name, so `codex` or `claude` there means "not reported", not a model or a company. Codex reports a model id and no provider. Both are claims from the client: neither shows what actually served the request.
+
 ## Example (`run/approval_required` with gate binding)
 
 ```json

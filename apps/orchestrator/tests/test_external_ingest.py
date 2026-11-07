@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -379,3 +380,63 @@ async def test_ingest_emits_inferred_approval(tmp_path: Path, monkeypatch: pytes
     types = [unwrap_trail_record(json.loads(ln))["action"]["type"] for ln in lines]
     assert types == ["approval_request", "tool_called", "approval_response"]
     assert unwrap_trail_record(json.loads(lines[2]))["action"]["reason"] == "inferred:tool_ran_after_ask"
+
+
+def _stored_events(jsonl: Path) -> list[dict]:
+    from agentmetry.core.audit.trail_chain import unwrap_trail_record
+
+    lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
+    return [unwrap_trail_record(json.loads(line)) for line in lines]
+
+
+def _codex_hook_payload() -> dict:
+    from agentmetry.hooks import ingest as hook
+
+    payload = hook.map_codex_hook(
+        "PostToolUse",
+        {
+            "session_id": "codex-model",
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo hi"},
+            "model": "glm-5.3",
+        },
+    )
+    assert payload is not None
+    return hook._hash_tool_args(payload)
+
+
+def test_codex_model_survives_the_real_route(ingest_client):
+    """#389: the mapper had the model, and the stored event said `codex`."""
+    client, jsonl = ingest_client
+    resp = client.post("/api/v1/audit/ingest", json=_codex_hook_payload())
+    assert resp.status_code == 200
+    model = _stored_events(jsonl)[0]["model"]
+    assert model == {"id": "glm-5.3", "provider": "codex"}
+
+
+@pytest.mark.asyncio
+async def test_a_spooled_call_records_the_same_model_as_a_live_one(ingest_client, tmp_path: Path):
+    """The spool replay skips the HTTP model, so these two paths used to disagree."""
+    from agentmetry.core.audit.spool import drain_spool
+
+    client, jsonl = ingest_client
+    payload = _codex_hook_payload()
+    assert client.post("/api/v1/audit/ingest", json=payload).status_code == 200
+
+    spool = tmp_path / "hook-spool.jsonl"
+    line = {"spooled_at": datetime.now(timezone.utc).isoformat(), "payload": payload}
+    spool.write_text(json.dumps(line) + "\n", encoding="utf-8")
+    assert (await drain_spool(spool))["replayed"] == 1
+
+    live, spooled = _stored_events(jsonl)[:2]
+    assert spooled["model"] == live["model"] == {"id": "glm-5.3", "provider": "codex"}
+
+
+def test_a_model_of_the_wrong_shape_is_not_a_422(ingest_client):
+    client, jsonl = ingest_client
+    resp = client.post(
+        "/api/v1/audit/ingest",
+        json={"source_app": "codex", "event_type": "tool_called", "model": "glm-5.3"},
+    )
+    assert resp.status_code == 200
+    assert _stored_events(jsonl)[0]["model"] == {"id": "codex", "provider": "codex"}
