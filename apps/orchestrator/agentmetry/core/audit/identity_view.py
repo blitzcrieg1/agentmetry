@@ -166,6 +166,9 @@ def build_identity_view(
         )
         if organization_id:
             record["organization_ids"].add(organization_id)
+        # A domain row can start from an agent that reports no IDs.
+        record["account_id"] = record["account_id"] or account_id
+        record["user_id"] = record["user_id"] or user_id
         record["events"] += 1
         record["agents"].add(app)
         _widen(record, timestamp)

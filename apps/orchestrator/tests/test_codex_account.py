@@ -7,6 +7,7 @@ block absent rather than breaking the hook.
 
 from __future__ import annotations
 
+import base64
 import json
 import sys
 from pathlib import Path
@@ -38,6 +39,147 @@ def codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(home))
     return home
+
+
+#: A token part that decodes to something other than JSON, built here because
+#: written out it looks like a key to the secret scan.
+_NOT_JSON = base64.urlsafe_b64encode(b"not json").decode().rstrip("=")
+_AUTH_SECRETS = ("synthetic-access-token", "synthetic-refresh-token", "synthetic-api-key", "Synthetic Name")
+
+
+def _jwt(claims: dict) -> str:
+    def part(value: dict) -> str:
+        return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=")
+
+    return f"{part({'alg': 'none'})}.{part(claims)}.signature"
+
+
+def _auth(home: Path, *, mode: str = "chatgpt", email: object = "dev@example.com", extra: dict | None = None) -> Path:
+    claims = {"email": email, "name": "Synthetic Name", "sub": "subject-1"}
+    body = {
+        "OPENAI_API_KEY": "synthetic-api-key",
+        "auth_mode": mode,
+        "tokens": {
+            "id_token": _jwt(claims),
+            "access_token": "synthetic-access-token",
+            "refresh_token": "synthetic-refresh-token",
+            "account_id": "token-account",
+        },
+        **(extra or {}),
+    }
+    path = home / "auth.json"
+    path.write_text(json.dumps(body), encoding="utf-8")
+    return path
+
+
+def test_only_the_domain_leaves_auth_json(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", raising=False)
+    _auth(codex_home)
+    block = account_for_hook("codex", {})
+    assert block == {"domain": "example.com", "source": "codex_auth"}
+    text = json.dumps(block)
+    for secret in (*_AUTH_SECRETS, "dev@example.com", "subject-1", "token-account"):
+        assert secret not in text
+
+
+def test_the_domain_and_the_ids_arrive_together(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", raising=False)
+    _auth(codex_home)
+    path = _session(codex_home)
+    assert account_for_hook("codex", {"transcript_path": str(path)}) == {
+        "source": "codex_auth",
+        "account_id": "workspace-1",
+        "user_id": "user-1",
+        "domain": "example.com",
+    }
+
+
+def test_nothing_from_auth_json_reaches_the_stored_event_but_the_domain(
+    codex_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("AGENTMETRY_SOURCE_APP", "codex")
+    monkeypatch.delenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", raising=False)
+    _auth(codex_home)
+    payload = hook.map_hook(
+        "PostToolUse",
+        {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "git status"}},
+    )
+    assert payload is not None
+    event = build_external_canonical(ExternalIngestBody(**payload).model_dump(exclude_none=True))
+    assert event["account"]["domain"] == "example.com"
+    for text in (json.dumps(payload), json.dumps(event)):
+        for secret in (*_AUTH_SECRETS, "dev@example.com", "subject-1", "token-account"):
+            assert secret not in text
+
+
+def test_an_api_key_sign_in_reports_no_domain(codex_home: Path):
+    _auth(codex_home, mode="apikey")
+    assert account_for_hook("codex", {}) == {}
+
+
+def test_it_can_be_turned_off(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AGENTMETRY_CODEX_AUTH_DOMAIN", "0")
+    _auth(codex_home)
+    assert account_for_hook("codex", {}) == {}
+
+
+def test_full_email_still_needs_its_own_opt_in(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AGENTMETRY_LOG_ACCOUNT_EMAIL", "1")
+    _auth(codex_home)
+    assert account_for_hook("codex", {})["email"] == "dev@example.com"
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [None, "text", [], {}, {"id_token": None}, {"id_token": 7}, {"id_token": "not-a-jwt"}, {"id_token": "a.%%%.c"}, {"id_token": "a." + _NOT_JSON + ".c"}],
+)
+def test_a_broken_token_leaves_the_block_absent(codex_home: Path, tokens):
+    (codex_home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "tokens": tokens}), encoding="utf-8")
+    assert account_for_hook("codex", {}) == {}
+
+
+@pytest.mark.parametrize("email", [None, 7, "not-an-address", "a@b@c.example", ""])
+def test_a_bad_email_claim_leaves_the_block_absent(codex_home: Path, email):
+    _auth(codex_home, email=email)
+    assert account_for_hook("codex", {}) == {}
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", '"text"'])
+def test_a_broken_auth_file_leaves_the_block_absent(codex_home: Path, content: str):
+    (codex_home / "auth.json").write_text(content, encoding="utf-8")
+    assert account_for_hook("codex", {}) == {}
+
+
+def test_a_huge_auth_file_is_not_read(codex_home: Path):
+    _auth(codex_home, extra={"pad": "x" * (256 * 1024 + 10)})
+    assert account_for_hook("codex", {}) == {}
+
+
+def test_codex_joins_the_personal_section_with_its_ids_kept():
+    def row(app: str, **kw) -> dict:
+        return {
+            "source_app": app,
+            "action_type": "tool_called",
+            "correlation_id": app,
+            "timestamp_utc": "2026-11-07T10:00:00+00:00",
+            "adapter": f"{app}_hook",
+            "domain": "gmail.com",
+            **kw,
+        }
+
+    view = build_identity_view(
+        [
+            row("cursor", account_source="hook_payload"),
+            row("codex", account_source="codex_auth", account_id="workspace-1", user_id="user-1"),
+        ],
+        days=7,
+    )
+    assert len(view["accounts"]) == 1
+    account = view["accounts"][0]
+    assert account["kind"] == "personal"
+    assert account["agents"] == ["codex", "cursor"]
+    assert account["account_id"] == "workspace-1"
+    assert account["user_id"] == "user-1"
 
 
 def test_the_ids_come_from_the_session_file(codex_home: Path):
