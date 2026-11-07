@@ -83,7 +83,7 @@ AGENTMETRY_CHRONICLE_BEARER_TOKEN=ya29....
 
 Agentmetry emits the reported account domain as an explicit label. The label is
 not verified identity. Populate the reference list from the customer's tenant
-inventory rather than shipping a vendor-owned list of personal domains.
+inventory.
 
 This rule has **not been run against a live Google SecOps tenant**. It follows
 Google's documented repeated-field behavior and reference-list syntax:

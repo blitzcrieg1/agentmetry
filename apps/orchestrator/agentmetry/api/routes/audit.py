@@ -116,8 +116,10 @@ class IngestAccountBody(BaseModel):
     source: str = ""
     organization_id: str = ""
     email: str = ""
+    account_id: str = ""
+    user_id: str = ""
 
-    @field_validator("domain", "source", "organization_id", "email", mode="before")
+    @field_validator("domain", "source", "organization_id", "email", "account_id", "user_id", mode="before")
     @classmethod
     def _text_or_empty(cls, v: Any) -> str:
         return v if isinstance(v, str) else ""
@@ -576,6 +578,21 @@ async def machine_view():
     from agentmetry.core.diagnostics.machine_view import snapshot
 
     return await asyncio.to_thread(snapshot)
+
+
+@router.get("/identity", dependencies=[Depends(require_api_key)])
+async def identity_view(days: int = Query(30, ge=1, le=90)):
+    """Which accounts agents reported, for the dashboard's Identity page.
+
+    Read-only. These are client claims read back from the trail, and an agent
+    that reported nothing is listed as unknown rather than left out.
+    """
+    if not settings.audit_export_enabled:
+        return {"enabled": False, "window_days": days}
+
+    from agentmetry.core.audit.identity_view import identity_snapshot
+
+    return await asyncio.to_thread(identity_snapshot, days)
 
 
 @router.get("/status", dependencies=[Depends(require_api_key)])

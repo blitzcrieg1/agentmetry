@@ -195,6 +195,8 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             account_raw.get("source"),
             account_raw.get("organization_id"),
             account_raw.get("email"),
+            account_id=account_raw.get("account_id"),
+            user_id=account_raw.get("user_id"),
         )
         if account:
             event["account"] = account

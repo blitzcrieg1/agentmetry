@@ -142,8 +142,9 @@ schema version remains `1.2.0`.
 ```
 
 `domain` is lowercased and bounded. `source` identifies the reporting surface:
-`hook_payload`, `otel` or `local_config`. `organization_id` is included only
-when the agent reports one. The full `email` key is absent unless
+`hook_payload`, `otel`, `local_config` or `session_meta`. `organization_id` is
+included only when the agent reports one. `account_id` and `user_id` are opaque
+IDs that name no domain or address. The full `email` key is absent unless
 `AGENTMETRY_LOG_ACCOUNT_EMAIL=1` is explicitly set. That opt-in is personal
 data and should be covered by the customer's privacy review.
 
@@ -156,9 +157,15 @@ fallback is skipped when API-key, token, provider, profile, OAuth-token,
 federation, or routed-access environment state selects another credential.
 `ANTHROPIC_BASE_URL=https://api.anthropic.com` is the one exception: its
 official host keeps the fallback, while other, look-alike, or malformed URLs
-skip it. Codex and Antigravity have no documented non-secret account field in their
-hook input, so their block is absent. Sessions with an override and agents
-with no account claim are also absent.
+skip it. Codex's hook input has no account field, but it names the session file,
+whose first line carries `creator_account_id` and `creator_user_id`. Those arrive
+as `account_id` and `user_id` with source `session_meta`. That format is not a
+stable interface and can change between versions, and only a file under Codex's
+home (`CODEX_HOME`, else `~/.codex`) is opened. `auth.json` is never read, because
+it holds credentials. Codex therefore reports no domain, so a company matches its
+account IDs against its own list. Antigravity has no documented account field and
+nothing safe to read was found, so its block is absent. Sessions with an override
+and agents with no account claim are also absent.
 
 The block is forwarded unchanged in the canonical file and webhook formats.
 Elastic ECS keeps the claim under `agentmetry.account.domain` and

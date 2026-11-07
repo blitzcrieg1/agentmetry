@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { Activity, FileDown, LayoutDashboard, Laptop, LogOut, ShieldAlert, Terminal } from "lucide-react";
+import { Activity, FileDown, LayoutDashboard, Laptop, LogOut, ShieldAlert, Terminal, UserSearch } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/use-websocket";
 import { FlightRecorderPanel, detectionsFromEvents } from "@/components/flight-recorder-panel";
 import { MachinePanel } from "@/components/machine-panel";
+import { IdentityPanel } from "@/components/identity-panel";
 import { AnalyticsPanel } from "@/components/analytics-panel";
 import { DetectionsPanel } from "@/components/detections-panel";
 import { OverviewPanel } from "@/components/overview-panel";
@@ -19,7 +20,7 @@ import { apiHeaders } from "@/lib/api";
 import { countUntriaged, fetchDispositions } from "@/lib/disposition";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
 
-type Tab = "overview" | "machine" | "recorder" | "detections" | "analytics";
+type Tab = "overview" | "machine" | "recorder" | "detections" | "identity" | "analytics";
 
 const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon: typeof Terminal }> = {
   overview: {
@@ -45,6 +46,12 @@ const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon:
     title: "Detections",
     subtitle: "Correlated sequences from the last 7 days. Open one to inspect its agent session tree.",
     icon: ShieldAlert,
+  },
+  identity: {
+    label: "Identity",
+    title: "Identity",
+    subtitle: "Which accounts your coding agents reported, and where the account is unknown",
+    icon: UserSearch,
   },
   analytics: {
     label: "Analytics",
@@ -225,7 +232,7 @@ export function MissionControl() {
         <nav className="flex flex-1 flex-col gap-0.5 px-2 pt-5 lg:px-3" aria-label="Sections">
           {([
             ["Monitor", ["overview", "machine"]],
-            ["Investigate", ["recorder", "detections", "analytics"]],
+            ["Investigate", ["recorder", "detections", "identity", "analytics"]],
           ] as const).map(([group, ids]) => (
           <div key={group} className="mb-3">
           <p className="eyebrow mb-2 hidden px-2.5 lg:block">{group}</p>
@@ -334,6 +341,13 @@ export function MissionControl() {
             <OverviewPanel onNavigate={navigate} demo={demoMode} />
           ) : activeTab === "machine" ? (
             <MachinePanel />
+          ) : activeTab === "identity" ? (
+            <IdentityPanel
+              demo={demoMode}
+              onOpenDetection={(correlationId, ruleId) =>
+                navigate("detections", { detection: { correlationId, ruleId } })
+              }
+            />
           ) : activeTab === "recorder" ? (
             <FlightRecorderPanel />
           ) : activeTab === "detections" ? (

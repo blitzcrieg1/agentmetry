@@ -311,6 +311,34 @@ class AuditTrailDB:
                 continue
         return events
 
+    def identity_rows(self, start_utc: str, *, limit: int = 200_001) -> list[dict[str, Any]]:
+        """The fields behind the Identity page, oldest first.
+
+        Selected with json_extract rather than by parsing each event, because
+        this reads a whole window and needs only a few fields of each.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            """SELECT source_app, action_type, action_outcome, correlation_id, timestamp_utc,
+                      json_extract(event_json, '$.source.adapter') AS adapter,
+                      json_extract(event_json, '$.account.domain') AS domain,
+                      json_extract(event_json, '$.account.source') AS account_source,
+                      json_extract(event_json, '$.account.organization_id') AS organization_id,
+                      json_extract(event_json, '$.account.email') AS email,
+                      json_extract(event_json, '$.account.account_id') AS account_id,
+                      json_extract(event_json, '$.account.user_id') AS user_id,
+                      json_extract(event_json, '$.host_id') AS host_id,
+                      json_extract(event_json, '$.actor.id') AS actor_id,
+                      json_extract(event_json, '$.detection.rule_id') AS rule_id,
+                      json_extract(event_json, '$.detection.title') AS title
+               FROM audit_events
+               WHERE timestamp_utc >= ?
+               ORDER BY timestamp_utc ASC, id ASC
+               LIMIT ?""",
+            (start_utc, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def session(self, correlation_id: str, limit: int = 2000) -> list[dict[str, Any]]:
         """Return all events for one correlation_id, time-ordered."""
         conn = self._get_conn()
