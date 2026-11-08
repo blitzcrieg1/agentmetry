@@ -1,4 +1,6 @@
 "use client";
+import { PanelFreshness } from "@/components/panel-freshness";
+import { ForwardingPanel } from "@/components/forwarding-panel";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
@@ -108,6 +110,7 @@ function actionTone(action: string): string {
 }
 
 export function MachinePanel() {
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [data, setData] = useState<MachineSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +126,7 @@ export function MachinePanel() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData((await res.json()) as MachineSnapshot);
+      setLoadedAt(new Date().toISOString());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read this machine");
@@ -170,11 +174,13 @@ export function MachinePanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+      <PanelFreshness at={loadedAt} error={error} scope="Configuration snapshot · hook configuration does not establish event receipt" />
       <HostCoverage
         agents={showAbsent ? agents : installed}
         selected={focusAgent}
         onSelect={setFocusAgent}
       />
+      <ForwardingPanel />
 
       {data.profile === "service" ? (
         <p className="rounded-sm border border-caution/40 bg-caution/10 px-3 py-2 text-[13px] text-caution">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useAgentStore } from "@/lib/store";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
@@ -22,6 +22,9 @@ import { type AuditEvent, type Detection, detectionsFromEvents } from "@/compone
 import { DetectionInvestigation } from "@/components/detection-investigation";
 import { AgentTile } from "@/components/ui/agent-mark";
 import { StatusChip, formatTime } from "@/components/triage-panel";
+import { PanelFreshness } from "@/components/panel-freshness";
+import { detectionFromLocation, parseDashboardLocation, writeDashboardLocation } from "@/lib/dashboard-location";
+import { sourceLabel } from "@/lib/audit-source";
 
 const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -49,10 +52,16 @@ export function DetectionsPanel({
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [query, setQuery] = useState("");
+  const [agentFilter, setAgentFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [ruleFilter, setRuleFilter] = useState<string>(initialRule);
   const [triageFilter, setTriageFilter] = useState<string>(initialTriage);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [linkRequest, setLinkRequest] = useState(initialDetection);
+  const [missingLink, setMissingLink] = useState(false);
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
 
   const load = useCallback(async () => {
@@ -72,6 +81,8 @@ export function DetectionsPanel({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setLoadedAt(new Date().toISOString());
+      setHasOlder(Boolean(data.pagination?.has_older));
       setEvents((data.events ?? []) as AuditEvent[]);
       setError(null);
     } catch (err) {
@@ -112,18 +123,31 @@ export function DetectionsPanel({
     });
   }, [events]);
 
-  // Open the detection the Overview asked for once. `detections` is rebuilt on
-  // every 15-second refresh, so without the guard "All detections" lasted until
-  // the next poll and the investigation reopened under the analyst.
-  const appliedInitial = useRef(false);
+  // Open a requested detection once. `detections` is rebuilt on every 15-second
+  // refresh, so a request that stayed set would reopen the investigation under
+  // the analyst. Only a load that worked can say a detection is not there.
   useEffect(() => {
-    if (!initialDetection || loading || appliedInitial.current) return;
+    if (!linkRequest || loadedAt === null) return;
     const match = detections.find(
-      (d) => d.correlation_id === initialDetection.correlationId && d.rule_id === initialDetection.ruleId,
+      (d) => d.correlation_id === linkRequest.correlationId && d.rule_id === linkRequest.ruleId,
     );
-    appliedInitial.current = true;
+    setLinkRequest(undefined);
+    setMissingLink(!match);
     if (match) setSelectedKey(detectionKey(match));
-  }, [detections, initialDetection, loading]);
+  }, [detections, linkRequest, loadedAt]);
+
+  useEffect(() => {
+    const follow = () => {
+      const location = parseDashboardLocation(window.location.hash);
+      if (location.page !== "detections") return;
+      const link = detectionFromLocation(location);
+      setMissingLink(false);
+      if (link) setLinkRequest(link);
+      else setSelectedKey(null);
+    };
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, []);
 
   const ruleIds = useMemo(
     () => Array.from(new Set(detections.map((d) => d.rule_id))).sort(),
@@ -153,10 +177,12 @@ export function DetectionsPanel({
         return (
           (severityFilter === "all" || d.severity === severityFilter) &&
           (ruleFilter === "all" || d.rule_id === ruleFilter) &&
+          (agentFilter === "all" || d.app === agentFilter) &&
+          [d.title, d.summary, d.rule_id, d.correlation_id, d.account?.domain].join(" ").toLowerCase().includes(query.trim().toLowerCase()) &&
           triageOk
         );
       }),
-    [detections, severityFilter, ruleFilter, triageFilter, dispositions],
+    [detections, severityFilter, ruleFilter, triageFilter, dispositions, agentFilter, query],
   );
 
   // From every detection, not the filtered list: recording a decision under
@@ -174,7 +200,7 @@ export function DetectionsPanel({
         det={selected}
         disposition={dispositions[dispositionKey(selected.correlation_id, selected.rule_id)]}
         onDispositionSaved={applyDisposition}
-        onClose={() => setSelectedKey(null)}
+        onClose={() => { setSelectedKey(null); writeDashboardLocation({ page: "detections" }); }}
         onOpenInStream={() => requestPinnedDetection(selected.correlation_id, selected.rule_id)}
       />
     );
@@ -182,6 +208,15 @@ export function DetectionsPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <PanelFreshness at={loadedAt} error={error} scope="Last 7 days · this machine · up to 500 detection events" />
+      {hasOlder ? <p className="rounded-md border border-caution/40 bg-caution/10 px-3 py-2 text-[13px] text-caution">More detection events exist. Counts and filters below cover only the newest 500. Use the event stream to inspect older records.</p> : null}
+      {error ? <p role="alert" className="text-[13px] text-danger">Could not refresh detections: {error}</p> : null}
+      {missingLink ? (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution/10 px-3 py-2 text-[13px] text-caution">
+          <span className="min-w-0 flex-1">The linked detection is not in this view. It may be older than 7 days or outside the newest 500 detection events.</span>
+          <button type="button" className="btn" onClick={() => { setMissingLink(false); writeDashboardLocation({ page: "detections" }); }}>Dismiss</button>
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {SEVERITIES.map((sev) => {
           const active = severityFilter === sev;
@@ -215,6 +250,11 @@ export function DetectionsPanel({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <input type="search" aria-label="Search detections" placeholder="Search detection, session or domain" value={query} onChange={(event) => setQuery(event.target.value)} className="control min-w-0 flex-1 sm:min-w-64" />
+        <select aria-label="Agent" className="control" value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}>
+          <option value="all">All agents</option>
+          {Array.from(new Set(detections.map((d) => d.app).filter((app): app is string => Boolean(app)))).sort().map((app) => <option key={app} value={app}>{sourceLabel(app)}</option>)}
+        </select>
         <select
           aria-label="Severity"
           className="control"
@@ -305,7 +345,7 @@ export function DetectionsPanel({
                   det={d}
                   disposition={dispositions[dispositionKey(d.correlation_id, d.rule_id)]}
                   selected={false}
-                  onSelect={() => setSelectedKey(detectionKey(d))}
+                  onSelect={() => { setMissingLink(false); setSelectedKey(detectionKey(d)); writeDashboardLocation({ page: "detections", session: d.correlation_id, rule: d.rule_id }); }}
                   compact={false}
                 />
               ))}

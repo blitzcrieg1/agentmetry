@@ -7,6 +7,7 @@ import { SeverityBadge, TechniqueChain } from "@/components/ui/kit";
 import { StatusChip, TriagePanel, formatTime } from "@/components/triage-panel";
 import { CodeField } from "@/components/investigation/drawer";
 import { sourceLabel } from "@/lib/audit-source";
+import { ReportedAccount } from "@/components/reported-account";
 import { type Disposition, statusOf } from "@/lib/disposition";
 import { type FamilyCount, kindLabel, shortSession } from "@/lib/investigation";
 import { type SessionNode, type SessionTreePayload, shortTool } from "@/lib/session-tree";
@@ -184,14 +185,10 @@ export function DetectionDetails({
           </div>
 
           <aside className="space-y-4">
+            <ReportedAccount account={det.account} />
             <section>
-              <h3 className="text-[14px] font-semibold">Summary</h3>
+              <h3 className="text-[14px] font-semibold">Ownership and disposition</h3>
               <dl className="mt-2 divide-y divide-border">
-                <SummaryRow label="Severity"><SeverityBadge severity={det.severity} /></SummaryRow>
-                <SummaryRow label="Agent">{agent}</SummaryRow>
-                <SummaryRow label="Tactic & technique">{chain?.length ? <TechniqueChain ids={chain} /> : "None mapped"}</SummaryRow>
-                <SummaryRow label="First seen"><span className="font-mono">{formatTime(det.first_seen_utc)}</span></SummaryRow>
-                <SummaryRow label="Last seen"><span className="font-mono">{formatTime(det.last_seen_utc)}</span></SummaryRow>
                 <SummaryRow label="Assigned to">{disposition?.assignee || <span className="text-subtle">Nobody</span>}</SummaryRow>
                 <SummaryRow label="Status"><StatusChip status={statusOf(disposition)} /></SummaryRow>
               </dl>

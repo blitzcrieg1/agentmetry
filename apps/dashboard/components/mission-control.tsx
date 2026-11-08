@@ -19,6 +19,7 @@ import { ORCHESTRATOR_URL } from "@/lib/utils";
 import { apiHeaders } from "@/lib/api";
 import { countUntriaged, fetchDispositions } from "@/lib/disposition";
 import { FEED_FOCUS_SINCE_MINUTES } from "@/lib/feed-focus";
+import { type DashboardLocation, detectionFromLocation, parseDashboardLocation, writeDashboardLocation } from "@/lib/dashboard-location";
 
 type Tab = "overview" | "machine" | "recorder" | "detections" | "identity" | "analytics";
 
@@ -38,7 +39,7 @@ const PAGES: Record<Tab, { label: string; title: string; subtitle: string; icon:
   recorder: {
     label: "Event stream",
     title: "Event stream",
-    subtitle: "Every tool call your agents made, as recorded on the trail",
+    subtitle: "The tool calls agents report through their hooks",
     icon: Terminal,
   },
   detections: {
@@ -152,6 +153,28 @@ export function MissionControl() {
     rule?: string;
     selection?: { correlationId: string; ruleId: string };
   }>({ key: 0, triage: "all" });
+  const followLocation = useCallback((location: DashboardLocation) => {
+    setActiveTab(location.page);
+    if (location.page === "detections") setDetectionsView((old) => ({
+      key: old.key + 1,
+      triage: "all",
+      selection: detectionFromLocation(location),
+    }));
+  }, []);
+  useEffect(() => {
+    followLocation(parseDashboardLocation(window.location.hash));
+  }, [followLocation]);
+  // Back and Forward fire hashchange, since every history entry here differs by
+  // its hash. Within one page the panel follows the URL itself, so rebuilding it
+  // would only lose the analyst's filters.
+  useEffect(() => {
+    const onHashChange = () => {
+      const location = parseDashboardLocation(window.location.hash);
+      if (location.page !== activeTab) followLocation(location);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [activeTab, followLocation]);
   const navigate = (target: Tab, opts?: { untriaged?: boolean; rule?: string; detection?: { correlationId: string; ruleId: string } }) => {
     if (target === "detections") {
       setDetectionsView((v) => ({
@@ -162,6 +185,7 @@ export function MissionControl() {
       }));
     }
     setActiveTab(target);
+    writeDashboardLocation({ page: target, session: opts?.detection?.correlationId, rule: opts?.detection?.ruleId });
   };
   const untriaged = useUntriagedCount(activeTab);
   const session = useSession();
@@ -180,7 +204,10 @@ export function MissionControl() {
   // Opening a detection from the Detections section hands off to the flight
   // recorder, which lives in another tab — follow it there.
   useEffect(() => {
-    if (pinnedDetection) setActiveTab("recorder");
+    if (pinnedDetection) {
+      setActiveTab("recorder");
+      writeDashboardLocation({ page: "recorder", session: pinnedDetection.correlationId });
+    }
   }, [pinnedDetection]);
 
   // Analytics stats pills: detections → Detections tab; everything else → feed.
@@ -188,10 +215,12 @@ export function MissionControl() {
     if (!feedFocus) return;
     if (feedFocus.kind === "detections") {
       setActiveTab("detections");
+      writeDashboardLocation({ page: "detections" });
       clearFeedFocus();
       return;
     }
     setActiveTab("recorder");
+    writeDashboardLocation({ page: "recorder" });
   }, [feedFocus, clearFeedFocus]);
 
   const page = PAGES[activeTab];
@@ -246,7 +275,7 @@ export function MissionControl() {
                 type="button"
                 title={item.label}
                 aria-current={active ? "page" : undefined}
-                onClick={() => setActiveTab(id)}
+                onClick={() => navigate(id)}
               className={`relative flex h-10 items-center justify-center gap-2.5 rounded-md text-[13px] transition-colors lg:justify-start lg:px-3 ${
                   active
                     ? "bg-muted font-medium text-foreground"

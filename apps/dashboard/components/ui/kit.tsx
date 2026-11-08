@@ -85,7 +85,7 @@ export function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex h-8 items-center gap-0.5 rounded-sm border border-border bg-card p-0.5">
+    <div role="group" aria-label={label} className="inline-flex h-8 items-center gap-0.5 rounded-sm border border-border bg-card p-0.5 max-md:h-11">
       {items.map((item) => {
         const active = item.value === value;
         return (

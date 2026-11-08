@@ -1,4 +1,5 @@
 "use client";
+import { PanelFreshness } from "@/components/panel-freshness";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowUpRight, Box, ChevronDown, ChevronUp, CircleAlert, FileCheck2, Laptop, Radio, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
@@ -61,6 +62,7 @@ export function OverviewPanel({
   const [status, setStatus] = useState<StatusSnapshot | null>(null);
   const [failed, setFailed] = useState<string[]>([]);
   const [showInvestigationMap, setShowInvestigationMap] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({
@@ -83,6 +85,7 @@ export function OverviewPanel({
     ];
     const results = await Promise.allSettled(tasks.map(([, run]) => run()));
     setFailed(tasks.filter((_, i) => results[i].status === "rejected").map(([name]) => name));
+    if (results.every((result) => result.status === "fulfilled")) setLoadedAt(new Date().toISOString());
   }, []);
 
   useEffect(() => {
@@ -132,6 +135,7 @@ export function OverviewPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+      <PanelFreshness at={loadedAt} error={failed.length ? "Some sources could not refresh" : null} scope="Last 7 days · recorded activity on this machine" />
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3.5 shadow-[inset_0_1px_0_var(--edge),var(--elev-1)]" aria-label="Dashboard scope">
         <div className="flex min-w-0 items-start gap-3">
           <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
