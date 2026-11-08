@@ -29,7 +29,6 @@ _ACCOUNT_ID_CHARS = frozenset(
 _SESSION_META_MAX_BYTES = 1024 * 1024
 _WINDOWS_EXTENDED_PREFIX = chr(92) * 2 + "?" + chr(92)
 _CODEX_AUTH_MAX_BYTES = 256 * 1024
-_FALSE = frozenset({"0", "false", "no", "off"})
 _CLAUDE_AUTH_OVERRIDE_VARS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -261,9 +260,13 @@ def _codex_auth_account() -> dict[str, str]:
     kept. Nothing else in the file is copied, stored, logged or sent, and an
     error here carries no content from it. The token's signature is not checked,
     so this is what the file says, not proof of who made a call. It stops on an
-    API-key sign-in, and AGENTMETRY_CODEX_AUTH_DOMAIN=0 turns it off.
+    API-key sign-in.
+
+    Off unless AGENTMETRY_CODEX_AUTH_DOMAIN=1. A sensor should not load a file of
+    live credentials on every tool call unless it was asked to, and endpoint
+    security tools may flag the read.
     """
-    if os.environ.get("AGENTMETRY_CODEX_AUTH_DOMAIN", "").strip().lower() in _FALSE:
+    if os.environ.get("AGENTMETRY_CODEX_AUTH_DOMAIN", "").strip().lower() not in _TRUE:
         return {}
     try:
         path = _codex_home() / "auth.json"

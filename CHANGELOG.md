@@ -9,6 +9,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-08
+
+Which account did a coding agent report? Events can now carry the account an agent
+reported, and a new Identity page in the dashboard brings those claims together on
+one machine. They are reported claims, not verified identity. The domain is kept by
+default and full email needs an explicit opt-in.
+
 ### Added
 
 - **Reported coding-agent account metadata.** Cursor hook payloads and Claude
@@ -22,19 +29,19 @@ separately (currently `1.2.0`) and changes additively.
   endpoint overrides are present, except for the official Anthropic API host.
   `CLAUDE_CONFIG_DIR` selects the configured account directory; the local claim
   remains a last-signed-in-machine hint rather than proof of the current call.
-  Codex and Antigravity remain absent because their documented hook inputs do
-  not expose a non-secret account field. The claim stays under the Agentmetry
+  The claim stays under the Agentmetry
   namespace in ECS and is forwarded to Google SecOps without presenting it as
   verified identity.
 - **Codex account IDs.** Codex hook capture reads `creator_account_id` and
   `creator_user_id` from the first line of the session file its hook input names,
   as `account_id` and `user_id` with source `session_meta`. They are opaque IDs
   with no domain or address, and the format is not a stable interface.
-- **Codex account domain.** Codex hook capture reads the `email` claim of `id_token`
-  in `auth.json` and keeps only the domain, with source `codex_auth`. That file holds
-  live credentials, so nothing else in it is copied, stored, logged or sent, and
-  `AGENTMETRY_CODEX_AUTH_DOMAIN=0` turns this off. An API-key sign-in reports no
-  domain. Endpoint security tools may flag a process reading that file.
+- **Codex account domain, off by default.** With `AGENTMETRY_CODEX_AUTH_DOMAIN=1` in
+  the environment Codex runs in, hook capture reads the `email` claim of `id_token` in
+  `auth.json` and keeps only the domain, with source `codex_auth`. That file holds live
+  credentials, so it is not opened unless asked, and nothing else in it is copied,
+  stored, logged or sent. An API-key sign-in reports no domain. Endpoint security tools
+  may flag a process reading that file, and this has not been tested against any.
 - **Antigravity account domain.** Antigravity hook capture reads the last sign-in
   from its undocumented `app_storage.json`, labelled `local_config`, so it means
   the account last signed in on the machine rather than proof of who made a call.
@@ -47,9 +54,19 @@ separately (currently `1.2.0`) and changes additively.
   own domain reads as corporate. An account with only an ID is listed separately
   rather than guessed. Accounts can also be checked against a list you enter,
   which stays in that browser. The dashboard covers one machine.
+- **Investigations survive a reload.** Page, session, detection and investigation view
+  are in the URL, and Back and Forward follow them. A link to a detection that is no
+  longer in view says so. Identity gains search, agent and approval filters, sorting
+  and account cards at phone width. Event details and investigations show the reported
+  account with its source.
+- **SIEM forwarding status and data freshness.** This machine shows each destination's
+  delivery state, and a dead-lettered event counts as a failure. Each panel says when
+  it loaded and what it covers. Analytics loads a selected session's recorded events
+  instead of filtering the chart sample.
 
 ### Fixed
 
+- **A delayed recorder response can no longer land in the wrong view.** Superseded session and live-feed responses are ignored, along with their errors and loading updates.
 - **The model Codex reports now reaches the trail.** The hook sent it as a nested
   `model` object that the ingest route did not declare, so over HTTP it was
   dropped and the event recorded `codex` as both model and provider. A spooled
