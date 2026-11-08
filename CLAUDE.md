@@ -193,14 +193,17 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-11-05 there are 2108 tests collected in CI, zero open
+Not code. As of 2026-11-08 there are 2297 tests collected in CI, zero open
 code scanning alerts, one open Dependabot alert (dashboard development
 dependency `minimatch`, #116), OpenSSF Scorecard 7.8, a
 dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "9 of 4, Gate
 PASSED" with every complete week green (triage is what keeps it that way;
 untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), 0.10.6 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.11.0 on PyPI
+(released 2026-11-08: the Identity page and the account an agent reported;
+the read of Codex's `auth.json` is off unless `AGENTMETRY_CODEX_AUTH_DOMAIN=1`,
+because that file holds live credentials), 0.10.6 before it
 (released 2026-11-05: six fixes from an outside audit; a deeply nested or
 oversized hook payload is recorded as unparsed instead of crashing the hook,
 the hook debug line no longer writes arguments, a forwarding destination that
