@@ -1618,6 +1618,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Agentmetry local ops. New here? Start with `agentmetry demo`.",
     )
     _add_dir_flags(parser)
+    from agentmetry.core.version import __version__
+
+    parser.add_argument("--version", action="version", version=f"agentmetry {__version__}")
     parser.add_argument("--port", type=int, default=8000)
     sub = parser.add_subparsers(dest="command", required=True)
     # First, so it heads the help: it is the one command that needs nothing set up.

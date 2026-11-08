@@ -12,12 +12,23 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from agentmetry.core.version import __version__
 
 _ORCHESTRATOR = Path(__file__).resolve().parents[1]
 _REPO = _ORCHESTRATOR.parents[1]
 
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].+)?$")
+
+
+def test_the_cli_reports_its_version(capsys):
+    from agentmetry.cli import main
+
+    with pytest.raises(SystemExit) as stopped:
+        main(["--version"])
+    assert stopped.value.code == 0
+    assert capsys.readouterr().out.strip() == f"agentmetry {__version__}"
 
 
 def test_version_is_semver():
