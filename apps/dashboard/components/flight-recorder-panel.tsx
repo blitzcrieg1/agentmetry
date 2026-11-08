@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -40,8 +40,12 @@ import { EventHistogram } from "@/components/event-histogram";
 import { EventInspector } from "@/components/event-inspector";
 import { downloadAuditCsv, downloadAuditJsonl } from "@/lib/audit-export";
 import { toolColumnText, toolColumnTitle } from "@/lib/tool-label";
+import { PanelFreshness } from "@/components/panel-freshness";
+import type { ReportedAccountClaim } from "@/components/reported-account";
+import { parseDashboardLocation, writeDashboardLocation } from "@/lib/dashboard-location";
 
 export interface AuditEvent {
+  account?: ReportedAccountClaim;
   event_id?: string;
   schema_version?: string;
   correlation_id?: string;
@@ -62,6 +66,7 @@ export interface AuditEvent {
 }
 
 export interface Detection {
+  account?: ReportedAccountClaim;
   /** The agent whose session fired it, from the detection event's source. */
   app?: string;
   rule_id: string;
@@ -343,11 +348,12 @@ export function detectionsFromEvents(events: AuditEvent[]): Detection[] {
     if (ev.action?.type !== "detection") continue;
     if (ev.detection?.rule_id) {
       const d = ev.detection;
-      byKey.set(`${d.rule_id}:${d.correlation_id}`, { ...d, app: d.app ?? eventSourceApp(ev) });
+      byKey.set(`${d.rule_id}:${d.correlation_id}`, { ...d, account: ev.account, app: d.app ?? eventSourceApp(ev) });
       continue;
     }
     const ruleId = ev.source_topic?.replace(/^detection\//, "") || ev.event_id || "detection";
     byKey.set(`${ruleId}:${ev.correlation_id ?? ""}`, {
+      account: ev.account,
       rule_id: ruleId,
       title: ruleId,
       severity: detectionSeverity(ev.action?.outcome),
@@ -432,6 +438,12 @@ function FilterChip({
 }
 
 export function FlightRecorderPanel() {
+  // Every navigation or fetch supersedes its predecessor. Responses and errors
+  // from an older view must never replace the evidence under the current URL.
+  const requestVersion = useRef(0);
+  const activeSession = useRef<string | null>(null);
+  useEffect(() => () => { requestVersion.current += 1; }, []);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const threadId = useAgentStore((s) => s.threadId);
   const fleetScope = useAgentStore((s) => s.fleetScope);
   const setFleetScope = useAgentStore((s) => s.setFleetScope);
@@ -558,6 +570,8 @@ export function FlightRecorderPanel() {
       cursor?: string,
       focusOverride?: FeedFocusKind | null,
     ) => {
+      if (activeSession.current !== null) return;
+      const version = ++requestVersion.current;
       const params =
         mode === "older" && cursor
           ? buildParams({ before_utc: cursor }, focusOverride)
@@ -565,43 +579,45 @@ export function FlightRecorderPanel() {
             ? buildParams({ after_utc: cursor }, focusOverride)
             : buildParams(undefined, focusOverride);
 
-      const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
-        headers: apiHeaders(),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const page = (data.events ?? []) as AuditEvent[];
-      const pageInfo = (data.pagination ?? {}) as AuditPagination;
+      try {
+        const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/audit/tail?${params}`, {
+          headers: apiHeaders(),
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (version !== requestVersion.current) return;
+        const page = (data.events ?? []) as AuditEvent[];
+        setLoadedAt(new Date().toISOString());
+        const pageInfo = (data.pagination ?? {}) as AuditPagination;
 
-      if (mode === "older") {
-        setEvents((prev) => mergeEvents(prev, page, "prepend"));
-        setPagination((prev) => ({ ...prev, has_older: pageInfo.has_older ?? false, has_newer: true }));
-        setAtLatest(false);
-      } else if (mode === "newer") {
-        setEvents((prev) => mergeEvents(prev, page, "append"));
-        const stillHasNewer = pageInfo.has_newer ?? false;
-        setPagination((prev) => ({ ...prev, has_newer: stillHasNewer, has_older: true }));
-        if (!stillHasNewer) setAtLatest(true);
-      } else {
-        setEvents(page);
-        setPagination(pageInfo);
-        setAtLatest(!(pageInfo.has_newer ?? false));
+        if (mode === "older") {
+          setEvents((prev) => mergeEvents(prev, page, "prepend"));
+          setPagination((prev) => ({ ...prev, has_older: pageInfo.has_older ?? false, has_newer: true }));
+          setAtLatest(false);
+        } else if (mode === "newer") {
+          setEvents((prev) => mergeEvents(prev, page, "append"));
+          const stillHasNewer = pageInfo.has_newer ?? false;
+          setPagination((prev) => ({ ...prev, has_newer: stillHasNewer, has_older: true }));
+          if (!stillHasNewer) setAtLatest(true);
+        } else {
+          setEvents(page);
+          setPagination(pageInfo);
+          setAtLatest(!(pageInfo.has_newer ?? false));
+        }
+        setError(null);
+        return page;
+      } catch (err) {
+        if (version === requestVersion.current) setError(String(err));
+      } finally {
+        if (version === requestVersion.current) setLoading(false);
       }
-      setError(null);
-      return page;
     },
     [buildParams],
   );
 
   const fetchTail = useCallback(async () => {
-    try {
-      await fetchPage("latest");
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+    await fetchPage("latest");
   }, [fetchPage]);
 
   const loadOlder = useCallback(async () => {
@@ -610,8 +626,6 @@ export function FlightRecorderPanel() {
     setLoadingOlder(true);
     try {
       await fetchPage("older", oldest);
-    } catch (err) {
-      setError(String(err));
     } finally {
       setLoadingOlder(false);
     }
@@ -623,8 +637,6 @@ export function FlightRecorderPanel() {
     setLoadingNewer(true);
     try {
       await fetchPage("newer", newest);
-    } catch (err) {
-      setError(String(err));
     } finally {
       setLoadingNewer(false);
     }
@@ -632,21 +644,23 @@ export function FlightRecorderPanel() {
 
   const jumpToLatest = useCallback(async () => {
     setLoading(true);
-    try {
-      await fetchPage("latest");
-      setAtLatest(true);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+    await fetchPage("latest");
   }, [fetchPage]);
 
   // Server-side full-session lookup — scans the whole trail, not just the
   // loaded window, so viewing an older session actually works.
   const openSession = useCallback(async (corrId: string) => {
+    activeSession.current = corrId;
+    const version = ++requestVersion.current;
+    writeDashboardLocation({ page: "recorder", session: corrId });
     setLoading(true);
     setSessionView(corrId);
+    setEvents([]);
+    setDetections([]);
+    setPagination({ has_older: false, has_newer: false });
+    setSessionTruncated(false);
+    setError(null);
+    setLoadedAt(null);
     setAtLatest(false);
     try {
       const [sessionRes, detRes] = await Promise.all([
@@ -662,6 +676,10 @@ export function FlightRecorderPanel() {
       if (!sessionRes.ok) throw new Error(`HTTP ${sessionRes.status}`);
       const data = await sessionRes.json();
       const sessionEvents = (data.events ?? []) as AuditEvent[];
+      // Check after both bodies have been read: either may finish after Back.
+      const sessionDetections = detRes.ok ? (((await detRes.json()).detections ?? []) as Detection[]) : [];
+      if (version !== requestVersion.current) return;
+      setLoadedAt(new Date().toISOString());
       setEvents(sessionEvents);
       // The endpoint caps at 2000 events; a session at the cap is almost
       // certainly longer than what loaded, and hiding that would misrepresent
@@ -669,24 +687,49 @@ export function FlightRecorderPanel() {
       setSessionTruncated(sessionEvents.length >= 2000);
       setPagination({ has_older: false, has_newer: false });
       // Detections are best-effort: a failed correlation shouldn't hide the trail.
-      setDetections(detRes.ok ? (((await detRes.json()).detections ?? []) as Detection[]) : []);
+      setDetections(sessionDetections);
       setError(null);
     } catch (err) {
-      setError(String(err));
+      if (version === requestVersion.current) setError(String(err));
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, []);
 
   const exitSession = useCallback(async () => {
+    activeSession.current = null;
+    writeDashboardLocation({ page: "recorder" });
     setSessionView(null);
+    setEvents([]);
+    setError(null);
+    setLoadedAt(null);
     setSessionTruncated(false);
     setDetections([]);
     await jumpToLatest();
   }, [jumpToLatest]);
 
   useEffect(() => {
-    if (sessionView) return; // don't clobber a pinned session view
+    const restore = () => {
+      const location = parseDashboardLocation(window.location.hash);
+      if (location.page === "recorder" && location.session) void openSession(location.session);
+    };
+    restore();
+  }, [openSession]);
+
+  // Back or Forward can land on the live feed or on another session.
+  useEffect(() => {
+    const follow = () => {
+      const location = parseDashboardLocation(window.location.hash);
+      if (location.page !== "recorder" || location.session === (sessionView ?? undefined)) return;
+      if (location.session) void openSession(location.session);
+      else void exitSession();
+    };
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, [exitSession, openSession, sessionView]);
+
+  useEffect(() => {
+    if (sessionView || parseDashboardLocation(window.location.hash).session) return;
     setLoading(true);
     void fetchTail();
   }, [fetchTail, runsRefreshKey, timeWindowIdx, fleetScope, sessionView]);
@@ -710,6 +753,8 @@ export function FlightRecorderPanel() {
   useEffect(() => {
     if (!feedFocus || feedFocus.kind === "detections") return;
     const kind = feedFocus.kind;
+    activeSession.current = null;
+    requestVersion.current += 1;
     setSessionView(null);
     setSessionTruncated(false);
     setDetectionRuleFilter(null);
@@ -733,8 +778,9 @@ export function FlightRecorderPanel() {
   const clearActiveFocus = useCallback(() => {
     setHuntFocus(null);
     setOutcomeFilters({ success: true, pending: true, issues: true });
+    if (activeSession.current !== null) return;
     setLoading(true);
-    void fetchPage("latest", undefined, null).finally(() => setLoading(false));
+    void fetchPage("latest", undefined, null);
   }, [fetchPage, setHuntFocus]);
 
   const filteredEvents = useMemo(() => {
@@ -806,8 +852,12 @@ export function FlightRecorderPanel() {
     setOutcomeFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Behind the popover, so the button has to say when they narrow the feed.
+  const hiddenFilters = (eventTypeFilter !== "all" ? 1 : 0) + (fleetScope ? 0 : 1);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <PanelFreshness at={loadedAt} scope="Recorded events on this machine. Search and exports apply to loaded rows." error={error} />
       {huntFocus ? (
         <div className="flex items-center justify-between gap-3 rounded-sm border border-caution/40 bg-caution/10 px-3 py-2 text-[13px]">
           <span className="min-w-0 truncate">
@@ -836,7 +886,7 @@ export function FlightRecorderPanel() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="relative flex flex-wrap items-center gap-2">
         <label className="relative min-w-[16rem] flex-1">
           <span className="sr-only">Search events</span>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
@@ -861,6 +911,9 @@ export function FlightRecorderPanel() {
             </option>
           ))}
         </select>
+        <details className="group">
+          <summary className="btn cursor-pointer list-none">Event type and scope{hiddenFilters ? ` · ${hiddenFilters} active` : ""}</summary>
+          <div className="absolute right-0 z-40 mt-2 flex w-72 max-w-full flex-wrap gap-2 rounded-md border border-border bg-popover p-3 shadow-lg">
         <select
           aria-label="Event type"
           className="control"
@@ -883,6 +936,8 @@ export function FlightRecorderPanel() {
           value={fleetScope ? "fleet" : "session"}
           onChange={(v) => setFleetScope(v === "fleet")}
         />
+          </div>
+        </details>
         <Segmented
           label="Time window"
           items={TIME_WINDOWS.map((w, i) => ({ value: String(i), label: w.label }))}
@@ -894,13 +949,14 @@ export function FlightRecorderPanel() {
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] text-subtle">Outcome</span>
-        <FilterChip active={outcomeFilters.success} label="OK" dot="bg-secure" onClick={() => toggleOutcome("success")} />
+        <FilterChip active={outcomeFilters.success} label="Succeeded" dot="bg-secure" onClick={() => toggleOutcome("success")} />
         <FilterChip active={outcomeFilters.pending} label="Pending" dot="bg-caution" onClick={() => toggleOutcome("pending")} />
         <FilterChip active={outcomeFilters.issues} label="Issues" dot="bg-danger" onClick={() => toggleOutcome("issues")} />
         <FilterChip active={showInferred} label="Inferred" dot="bg-foreground/40" onClick={() => setShowInferred((on) => !on)} />
         <span className="ml-1 text-[12px] text-muted-foreground">
           <span className="font-mono text-foreground">{displayEvents.length}</span> shown
           {huntFocus ? ", hunt" : fleetScope ? ", this machine" : ", agent activity"}
+          {eventTypeFilter !== "all" ? `, type ${eventTypeFilter}` : ""}
           {sessionView ? ", pinned session" : !atLatest ? ", history" : ""}
           {!showInferred && eventTypeFilter !== "approval_response" && inferredHidden > 0
             ? `, ${inferredHidden} inferred hidden`
@@ -909,10 +965,10 @@ export function FlightRecorderPanel() {
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button type="button" className="btn" onClick={() => downloadAuditJsonl(displayEvents)}>
-            JSONL
+            Export shown JSONL
           </button>
           <button type="button" className="btn" onClick={() => downloadAuditCsv(displayEvents)}>
-            CSV
+            Export shown CSV
           </button>
           <div className="relative">
             <button
@@ -967,7 +1023,7 @@ export function FlightRecorderPanel() {
               </div>
             )}
           </div>
-          <button type="button" className="btn" onClick={() => void fetchTail()}>
+          <button type="button" className="btn" onClick={() => void (sessionView ? openSession(sessionView) : fetchTail())}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
@@ -1045,7 +1101,7 @@ export function FlightRecorderPanel() {
                 Newer <ChevronRight className="h-3.5 w-3.5" />
               </button>
               {!atLatest ? (
-                <button type="button" onClick={() => void jumpToLatest()} className="btn h-7 border-signal/40 text-signal">
+                <button type="button" onClick={() => void exitSession()} className="btn h-7 border-signal/40 text-signal">
                   Latest
                 </button>
               ) : null}

@@ -13,6 +13,7 @@ import { EventsTimeline } from "@/components/investigation/events-timeline";
 import { Legend } from "@/components/investigation/legend";
 import { type Disposition, statusOf } from "@/lib/disposition";
 import { sourceLabel } from "@/lib/audit-source";
+import { parseDashboardLocation, writeDashboardLocation } from "@/lib/dashboard-location";
 import {
   type Entity,
   type Highlight,
@@ -69,6 +70,22 @@ export function DetectionInvestigation({
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [legendCollapsed, setLegendCollapsed] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
+  useEffect(() => {
+    const sync = () => {
+      const location = parseDashboardLocation(window.location.hash);
+      if (location.page === "detections" && location.session === det.correlation_id) {
+        setView(VIEWS.some((item) => item.id === location.view) ? location.view as View : "details");
+      }
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [det.correlation_id]);
+
+  const selectView = (next: View) => {
+    setView(next);
+    writeDashboardLocation({ page: "detections", session: det.correlation_id, rule: det.rule_id, view: next });
+  };
 
   // The parent keys this component by detection, so a different detection
   // mounts a fresh one and nothing here has to be reset by hand.
@@ -203,7 +220,7 @@ export function DetectionInvestigation({
             aria-selected={view === id}
             aria-controls="investigation-view"
             tabIndex={view === id ? 0 : -1}
-            onClick={() => setView(id)}
+            onClick={() => selectView(id)}
             onKeyDown={(event) => {
               const last = VIEWS.length - 1;
               const next =
@@ -214,7 +231,7 @@ export function DetectionInvestigation({
                 : null;
               if (next === null) return;
               event.preventDefault();
-              setView(VIEWS[next].id);
+              selectView(VIEWS[next].id);
               document.getElementById(`investigation-tab-${VIEWS[next].id}`)?.focus();
             }}
             className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal ${
@@ -244,9 +261,9 @@ export function DetectionInvestigation({
               onDispositionSaved={onDispositionSaved}
               onInspect={(id) => {
                 selectCall(id);
-                setView("tree");
+                selectView("tree");
               }}
-              onInvestigate={() => setView("tree")}
+              onInvestigate={() => selectView("tree")}
               onOpenInStream={onOpenInStream}
             />
           </div>

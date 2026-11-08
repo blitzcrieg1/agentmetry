@@ -23,13 +23,14 @@ import { EventHistogram } from "./event-histogram";
 import { ProcessTree } from "./process-tree";
 import { DogfoodStatsStrip } from "./dogfood-stats-strip";
 import { DogfoodGate } from "./dogfood-gate";
+import { PanelFreshness } from "@/components/panel-freshness";
 
 // Recharts writes these as SVG attributes, where var() does not resolve, so
 // they go through style instead. Same tokens as everywhere else.
 const OUTCOME_FILL: Record<string, string> = {
-  Success: "hsl(var(--secure))",
+  Succeeded: "hsl(var(--secure))",
   Pending: "hsl(var(--caution))",
-  Issues: "hsl(var(--danger))",
+  "Other outcomes / detections": "hsl(var(--danger))",
 };
 
 const CHART_TOOLTIP = {
@@ -63,6 +64,11 @@ export function AnalyticsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string>("");
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [sessionEvents, setSessionEvents] = useState<AuditEvent[]>([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAll() {
@@ -83,6 +89,7 @@ export function AnalyticsPanel() {
         const statsData = (await statsRes.json()) as WeekStats;
         setEvents(tailData.events || []);
         setWeek(statsData);
+        setLoadedAt(new Date().toISOString());
         setError(null);
       } catch (err) {
         setError(String(err));
@@ -91,7 +98,18 @@ export function AnalyticsPanel() {
       }
     }
     void fetchAll();
-  }, []);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!selectedSession) return;
+    let cancelled = false;
+    fetch(`${ORCHESTRATOR_URL}/api/v1/audit/session/${encodeURIComponent(selectedSession)}?limit=10000`, { headers: apiHeaders(), credentials: "include" })
+      .then((response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+      .then((payload) => { if (!cancelled) setSessionEvents(payload.events ?? []); })
+      .catch((err) => { if (!cancelled) setSessionError(String(err)); })
+      .finally(() => { if (!cancelled) setSessionLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedSession]);
 
   const chartStats = useMemo(() => {
     let successCount = 0;
@@ -121,9 +139,9 @@ export function AnalyticsPanel() {
     });
 
     const pieData = [
-      { name: "Success", value: successCount },
+      { name: "Succeeded", value: successCount },
       { name: "Pending", value: pendingCount },
-      { name: "Issues", value: issueCount },
+      { name: "Other outcomes / detections", value: issueCount },
     ].filter((d) => d.value > 0);
 
     const sourceData = Object.entries(sourceCounts)
@@ -163,8 +181,8 @@ export function AnalyticsPanel() {
 
   const treeEvents = useMemo(() => {
     if (!selectedSession) return [];
-    return events.filter((e) => e.correlation_id === selectedSession);
-  }, [events, selectedSession]);
+    return sessionEvents;
+  }, [sessionEvents, selectedSession]);
 
   if (loading) {
     return (
@@ -174,7 +192,7 @@ export function AnalyticsPanel() {
     );
   }
 
-  if (error) {
+  if (error && !week) {
     return (
       <div className="panel flex min-h-0 flex-1 flex-col items-center justify-center gap-1">
         <p className="text-[13px] text-danger">Failed to load analytics</p>
@@ -187,20 +205,24 @@ export function AnalyticsPanel() {
 
   return (
     <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 pb-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1"><PanelFreshness at={loadedAt} error={error} scope="This machine · chart scope is labelled on each panel" /></div>
+        <button type="button" className="btn" onClick={() => setRefresh((value) => value + 1)}>Refresh analytics</button>
+      </div>
       <DogfoodStatsStrip />
-      <DogfoodGate />
 
       <div className="flex items-baseline justify-between gap-2 pt-2">
         <h2 className="text-[15px] font-semibold">Recent activity</h2>
         <p className="text-[12px] text-subtle">
-          Charts sample the newest {chartStats.sampleTotal} events, not the full week
+          Sampled panels use the newest {chartStats.sampleTotal} loaded events
         </p>
       </div>
 
       <EventHistogram events={events} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <ChartCard title="Action outcomes" note="sample">
+        <ChartCard title="Recorded outcomes" note={`Newest ${chartStats.sampleTotal} events`}>
+          <p className="mb-2 text-[12px] text-muted-foreground">Success describes execution, not safety. Detections and other outcomes are separate from successful calls.</p>
           <div className="flex h-48 w-full items-center gap-6">
             <div className="h-full min-w-0 flex-1">
               <ResponsiveContainer width="100%" height="100%">
@@ -216,7 +238,7 @@ export function AnalyticsPanel() {
                     dataKey="value"
                   >
                     {chartStats.pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} style={{ fill: OUTCOME_FILL[entry.name] ?? OUTCOME_FILL.Success }} />
+                      <Cell key={`cell-${index}`} style={{ fill: OUTCOME_FILL[entry.name] ?? OUTCOME_FILL.Succeeded }} />
                     ))}
                   </Pie>
                   <RechartsTooltip {...CHART_TOOLTIP} />
@@ -237,7 +259,7 @@ export function AnalyticsPanel() {
           </div>
         </ChartCard>
 
-        <ChartCard title="Activity by source" note={`${days} days`}>
+        <ChartCard title="Activity by source" note={Object.keys(week?.by_source ?? {}).length ? `${days} days · indexed totals` : `Newest ${chartStats.sampleTotal} events`}>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartStats.sourceData} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
@@ -255,7 +277,7 @@ export function AnalyticsPanel() {
           </div>
         </ChartCard>
 
-        <ChartCard title="MITRE ATT&CK tactics" note="sample" className="md:col-span-2">
+        <ChartCard title="MITRE ATT&CK tactics" note={`Newest ${chartStats.sampleTotal} events`} className="md:col-span-2">
           {chartStats.mitreData.length > 0 ? (
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -281,13 +303,13 @@ export function AnalyticsPanel() {
           <Search className="h-4 w-4 text-subtle" />
           <div className="min-w-0">
             <h3 className="text-[14px] font-semibold">Session timeline</h3>
-            <p className="text-[12px] text-muted-foreground">Every call in one session, in order</p>
+            <p className="text-[12px] text-muted-foreground">Loads recorded events for the selected session, independently of the chart sample</p>
           </div>
           <select
             aria-label="Session"
             className="control ml-auto max-w-full font-mono text-[12px]"
             value={selectedSession}
-            onChange={(e) => setSelectedSession(e.target.value)}
+            onChange={(e) => { setSessionLoading(Boolean(e.target.value)); setSessionEvents([]); setSessionError(null); setSelectedSession(e.target.value); }}
           >
             <option value="">Select a session…</option>
             {uniqueSessions.map((id) => (
@@ -298,8 +320,8 @@ export function AnalyticsPanel() {
           </select>
         </div>
         <div className="p-4">
-          {selectedSession ? (
-            <ProcessTree events={treeEvents} />
+          {sessionError ? <p role="alert" className="text-[13px] text-danger">Could not load the session: {sessionError}</p> : sessionLoading ? <p className="text-[13px] text-muted-foreground">Loading session events…</p> : selectedSession ? (
+            <><p className="mb-3 text-[12px] text-muted-foreground">{sessionEvents.length} recorded events loaded{sessionEvents.length >= 10000 ? ". The 10,000 event limit was reached; this view may be partial." : "."}</p><ProcessTree events={treeEvents} /></>
           ) : (
             <p className="py-8 text-center text-[12px] text-subtle">
               Pick a session to lay out its calls on a timeline.
@@ -307,6 +329,11 @@ export function AnalyticsPanel() {
           )}
         </div>
       </section>
+      <details className="panel px-4 py-3">
+        <summary className="cursor-pointer text-[13px] font-medium">Recorder validation and beta gate</summary>
+        <p className="my-3 text-[12px] text-muted-foreground">Maintainer validation history. This gate is separate from the security findings above.</p>
+        <DogfoodGate />
+      </details>
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   type IdentitySnapshot,
 } from "@/lib/identity";
 import { ORCHESTRATOR_URL } from "@/lib/utils";
+import { PanelFreshness } from "@/components/panel-freshness";
 
 const STORAGE_KEY = "agentmetry.identity.approvedDomains";
 const DEMO_APPROVED = "company.example, demo-workspace-0001";
@@ -72,7 +73,7 @@ function Stat({
     <div className="panel px-4 py-3">
       <p className="eyebrow">{label}</p>
       <p className={`mt-1 font-mono text-[22px] font-medium leading-none ${tone}`}>{value}</p>
-      <p className="mt-1.5 text-[12px] text-muted-foreground">{detail}</p>
+      <p className="mt-1.5 hidden text-[12px] text-muted-foreground sm:block">{detail}</p>
       {action}
     </div>
   );
@@ -231,11 +232,11 @@ function AccountDetail({
                 <button
                   type="button"
                   onClick={() => onOpenDetection(detection.correlation_id, detection.rule_id)}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-muted"
+                  className="flex w-full flex-wrap items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-muted"
                 >
                   <SeverityBadge severity={detection.severity} />
-                  <span className="min-w-0 flex-1 truncate">{detection.title || detection.rule_id}</span>
-                  <span className="shrink-0 text-[12px] text-muted-foreground" title={detection.timestamp_utc}>
+                  <span className="min-w-0 flex-1 break-words md:truncate">{detection.title || detection.rule_id}</span>
+                  <span className="w-full shrink-0 text-right text-[12px] text-muted-foreground md:w-auto" title={detection.timestamp_utc}>
                     {shortTime(detection.timestamp_utc)}
                   </span>
                 </button>
@@ -264,7 +265,29 @@ function AccountsTable({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
-    <div className="overflow-x-auto">
+    <>
+    <div className="space-y-2 p-3 md:hidden">
+      {accounts.map((account) => {
+        const key = accountKey(account);
+        const isOpen = open === key;
+        return (
+          <article key={key} className="overflow-hidden rounded-md border border-border">
+            <div className="space-y-3 p-3">
+              <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : key)} className="flex min-h-11 w-full items-start gap-2 text-left font-mono text-[13px] font-medium">
+                {isOpen ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />}
+                <span className="min-w-0 break-all">{accountName(account)}</span>
+              </button>
+              <div className="flex flex-wrap items-center justify-between gap-2"><ApprovalPill state={approvalState(account.domain, approved, account.account_id)} /><span className="text-[12px] text-muted-foreground">{account.sessions} {account.sessions === 1 ? "session" : "sessions"}</span></div>
+              <p className="text-[12px] text-muted-foreground">{account.agents.map(sourceLabel).join(", ")}</p>
+              {account.detections.length ? <div className="flex flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2 text-[12px] text-muted-foreground"><SeverityBadge severity={account.highest_severity} />{account.detection_count} {account.detection_count === 1 ? "detection" : "detections"}</span><button type="button" onClick={() => { const detection = account.detections[0]; onOpenDetection(detection.correlation_id, detection.rule_id); }} className="inline-flex min-h-11 items-center text-[12px] font-medium text-signal">Open latest · {account.detections[0].severity}</button></div> : <p className="text-[12px] text-muted-foreground">No detections in this window</p>}
+              <p className="text-[12px] text-muted-foreground" title={account.last_seen}>Last seen {shortTime(account.last_seen)}</p>
+            </div>
+            {isOpen ? <AccountDetail account={account} onOpenDetection={onOpenDetection} /> : null}
+          </article>
+        );
+      })}
+    </div>
+    <div className="hidden overflow-x-auto md:block">
       {/* Fixed widths, so the columns line up across the sections on the page. */}
       <table className="w-full min-w-[760px] table-fixed text-left text-[13px]">
         <colgroup>
@@ -357,6 +380,7 @@ function AccountsTable({
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -391,6 +415,11 @@ export function IdentityPanel({
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState<Window>("30");
   const [listText, setListText] = useState("");
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [agentFilter, setAgentFilter] = useState("all");
+  const [approvalFilter, setApprovalFilter] = useState("all");
+  const [sort, setSort] = useState("last_seen");
   const listBox = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -409,6 +438,7 @@ export function IdentityPanel({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData((await res.json()) as IdentitySnapshot);
+      setLoadedAt(new Date().toISOString());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read the trail");
@@ -425,6 +455,17 @@ export function IdentityPanel({
   const agents = data?.agents ?? [];
   const outside = countOutside(accounts, approved);
   const unknownAgents = agents.filter((agent) => agent.state === "not_reported" || agent.state === "no_documented_field").length;
+  const filtered = accounts.filter((account) =>
+    [account.domain, account.account_id, account.user_id, ...account.organization_ids].join(" ").toLowerCase().includes(query.trim().toLowerCase()) &&
+    (agentFilter === "all" || account.agents.includes(agentFilter)) &&
+    (approvalFilter === "all" || approvalState(account.domain, approved, account.account_id) === approvalFilter)
+  ).sort((a, b) => sort === "detections" ? b.detection_count - a.detection_count : sort === "name" ? accountName(a).localeCompare(accountName(b)) : b.last_seen.localeCompare(a.last_seen));
+  const filtering = Boolean(query || agentFilter !== "all" || approvalFilter !== "all");
+  const filterControls = <>
+    <select aria-label="Filter identity by agent" className="control" value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.name} value={agent.name}>{sourceLabel(agent.name)}</option>)}</select>
+    <select aria-label="Filter approval" className="control" value={approvalFilter} onChange={(event) => setApprovalFilter(event.target.value)}><option value="all">All approval states</option><option value="outside">Outside list</option><option value="approved">Approved</option><option value="unchecked">No list set</option><option value="no_domain">Not listable</option></select>
+    <select aria-label="Sort identities" className="control" value={sort} onChange={(event) => setSort(event.target.value)}><option value="last_seen">Latest seen first</option><option value="detections">Most detections first</option><option value="name">Domain / ID A-Z</option></select>
+  </>;
 
   if (loading && !data) {
     return <EmptyState>Reading the trail…</EmptyState>;
@@ -438,6 +479,7 @@ export function IdentityPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pb-4">
+      <PanelFreshness at={loadedAt} error={error} scope={`Last ${data?.window_days ?? days} days · totals cover the loaded snapshot, filters apply to the rows`} />
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <Segmented label="Time window" items={WINDOWS} value={days} onChange={setDays} />
         <button
@@ -452,7 +494,7 @@ export function IdentityPanel({
 
       {error ? <p className="shrink-0 text-[13px] text-danger">Could not refresh: {error}</p> : null}
 
-      <div className="grid shrink-0 gap-3 sm:grid-cols-3">
+      <div className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
           label="Personal domains"
           value={String(data?.counts.personal ?? 0)}
@@ -471,20 +513,21 @@ export function IdentityPanel({
                 listBox.current?.scrollIntoView({ behavior: "smooth", block: "center" });
                 listBox.current?.focus({ preventScroll: true });
               }}
-              className="mt-1.5 text-[12px] font-medium text-signal hover:underline"
+              className="mt-1.5 text-[12px] font-medium text-signal hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
             >
               Edit approved list
             </button>
           }
         />
-        <Stat
+        <div className="hidden sm:block"><Stat
           label="Other domains"
           value={String(data?.counts.corporate ?? 0)}
           detail={`Not a known public provider, last ${data?.window_days ?? days} days`}
-        />
+        /></div>
       </div>
 
       <div className="panel flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5" role="group" aria-label="Where the account is unknown">
+        <span className="sm:hidden"><CountPill label="Other domains" value={data?.counts.corporate ?? 0} attention={false} /></span>
         <CountPill label="Sessions, account unknown" value={data?.sessions_without_account ?? 0} of={data?.sessions ?? 0} attention={Boolean(data?.sessions_without_account)} />
         <CountPill label="Agents, account unknown" value={unknownAgents} of={agents.length} attention={unknownAgents > 0} />
         <CountPill label="Accounts with no domain" value={data?.counts.unclassified ?? 0} attention={false} />
@@ -494,12 +537,12 @@ export function IdentityPanel({
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div className="min-w-0">
           <p>
-            Reported by the agents, not verified identity. A last sign-in source means the account last signed in on this machine, not necessarily the one that made the call.
+            Reported identity, not verified. Several accounts can share one domain.
           </p>
           <details className="mt-1">
-            <summary className="cursor-pointer font-medium text-foreground">What this page cannot show</summary>
+            <summary className="cursor-pointer font-medium text-foreground max-md:py-3">What this page cannot show</summary>
             <p className="mt-1">
-              Nothing from before Agentmetry was installed, from an agent with no hook, or from a browser. Sessions recorded before account capture existed count as unknown. Full email addresses appear only if{" "}
+              A last sign-in source means the account last signed in on this machine, not necessarily the one that made the call. Nothing from before Agentmetry was installed, from an agent with no hook, or from a browser. Sessions recorded before account capture existed count as unknown. Full email addresses appear only if{" "}
               <code className="font-mono">AGENTMETRY_LOG_ACCOUNT_EMAIL=1</code> was set when the event was recorded.
             </p>
           </details>
@@ -510,6 +553,12 @@ export function IdentityPanel({
         <p className="shrink-0 text-[13px] text-caution">This window holds more events than one page reads, so these totals are partial. Choose a shorter window.</p>
       ) : null}
 
+      <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Identity filters">
+        <input type="search" aria-label="Search domains or account IDs" placeholder="Search domain or account ID" className="control w-full min-w-0 md:w-auto md:flex-1" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="hidden flex-wrap gap-2 md:flex">{filterControls}</div>
+        <details className="w-full md:hidden"><summary className="cursor-pointer text-[13px] text-muted-foreground max-md:py-3">Filters and sort{filtering ? " · active" : ""}</summary><div className="mt-2 flex flex-wrap gap-2">{filterControls}</div></details>
+      </div>
+      {filtering ? <p className="text-[12px] text-muted-foreground" role="status">{filtered.length} of {accounts.length} domain or account rows match. Agent coverage below remains unfiltered.</p> : null}
       {accounts.length === 0 ? (
         <section className="panel shrink-0">
           <EmptyState icon={<UserSearch className="h-5 w-5" />}>
@@ -518,7 +567,7 @@ export function IdentityPanel({
         </section>
       ) : (
         ACCOUNT_SECTIONS.map((section) => {
-          const rows = accountsOfKind(accounts, section.kind);
+          const rows = accountsOfKind(filtered, section.kind);
           // Personal and corporate always show, so an empty one reads as a
           // finding. The third exists only when something needs it.
           if (rows.length === 0 && !section.empty) return null;
@@ -533,7 +582,7 @@ export function IdentityPanel({
               {rows.length ? (
                 <AccountsTable accounts={rows} approved={approved} onOpenDetection={onOpenDetection} />
               ) : (
-                <p className="px-4 py-3 text-[13px] text-muted-foreground">{section.empty}</p>
+                <p className="px-4 py-3 text-[13px] text-muted-foreground">{filtering ? "No rows match these filters." : section.empty}</p>
               )}
             </section>
           );

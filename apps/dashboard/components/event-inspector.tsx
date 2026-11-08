@@ -5,6 +5,7 @@ import { Braces, Copy, Pin, X } from "lucide-react";
 import { AuditJsonView } from "@/components/audit-json-view";
 import type { AuditEvent, Detection } from "@/components/flight-recorder-panel";
 import { SeverityBadge, Technique, TechniqueChain } from "@/components/ui/kit";
+import { ReportedAccount } from "@/components/reported-account";
 
 function copyText(text: string) {
   void navigator.clipboard?.writeText(text);
@@ -96,6 +97,7 @@ export function EventInspector({
           </div>
         ) : null}
 
+        <ReportedAccount account={event.account} />
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           <button type="button" onClick={() => setShowRawJson(!showRawJson)} className="btn h-7 text-[12px]">
             <Braces className="h-3.5 w-3.5" />
