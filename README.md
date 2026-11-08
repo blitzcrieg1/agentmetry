@@ -155,7 +155,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2297 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2310 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [0.11.0 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/42486192613)
 on Python 3.12 reported 2278 passed and 19 skipped on Linux and macOS,
 2291 passed and 6 skipped on Windows, and 83% line coverage on Linux
@@ -168,6 +168,8 @@ The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audi
 **Not a sandbox.** The default is detect and record. DLP and tool policy can deny a call at the hook, before it runs, when set to `block`. That is off by default (`log`). An after-the-fact hook cannot deny a tool that already ran.
 
 **Not a CASB.** Hooks are cooperative. No event is not evidence that nothing happened. A hook removed from an agent's config shows up in the heartbeat (above); an agent session that skips hooks still configured does not.
+
+**Not a process or file monitor.** It records the tool calls agents report through their hooks. Code that runs outside a tool call produces no event: an npm `postinstall` script, a Python `.pth` or `sitecustomize.py` file, an editor extension loading. If an agent runs `npm install`, the trail holds that one call, not what the install did. A healthy heartbeat means hooks are configured, and says nothing about extensions. Pair it with EDR. [What each incident would have looked like](docs/agent-coverage.md#package-and-extension-compromises).
 
 **Not a console.** There is no central enforcement and no central triage in this package. Policy is per machine. See [fleet via your SIEM](docs/integrations/fleet-via-siem.md).
 
