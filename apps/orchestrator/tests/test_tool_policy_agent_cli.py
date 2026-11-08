@@ -1,9 +1,9 @@
 """Agent-CLI weaponization and agent-config-write policy, against the SHIPPED manifest.
 
-Nx "s1ngularity" (Aug 2025): the malicious postinstall invoked locally installed
-agent CLIs (claude / gemini / q) with guardrails disabled and prompted *them* to
-enumerate secrets — the first documented malware coercing agent CLIs into doing
-its reconnaissance. GitGuardian counted 2,349 stolen secrets across 1,079 repos.
+Nx "s1ngularity" (Aug 2025): Nx's postmortem says the malicious postinstall
+attempted to use local AI tools such as Claude and Gemini. The flags used come from
+third-party analyses. These tests cover a tool call that starts an agent CLI; a
+postinstall's own spawn is not a tool call, see test_supply_chain_boundaries.py.
 
 CVE-2025-59536 / CVE-2026-21852: agent execution config living inside the repo
 (.claude/settings.json, .mcp.json, hooks) is attacker-controlled in an untrusted

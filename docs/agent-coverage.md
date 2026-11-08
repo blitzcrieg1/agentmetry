@@ -195,6 +195,19 @@ A local recorder cannot trace these. Where the vendor keeps its own log, that is
 | Devin | Enterprise audit log API ([v3 examples](https://docs.devin.ai/api-reference/v3/usage-examples)). Which session actions it records: unverified. |
 | OpenHands Cloud | Hooks load in cloud sessions and run where the session runs, so a recorder on a laptop does not see them. |
 
+## Package and extension compromises
+
+Agentmetry records the tool calls agents report through their hooks. Malicious code in a package or an extension usually runs outside any tool call, so most of these attacks are invisible to it. Each row below is written from the incident's primary report and pinned by a synthetic test in [`apps/orchestrator/tests/test_supply_chain_boundaries.py`](../apps/orchestrator/tests/test_supply_chain_boundaries.py). None of it has been run against a real compromise.
+
+| Incident | What ran | What Agentmetry would record | What it would not |
+| --- | --- | --- | --- |
+| [Nx s1ngularity](https://nx.dev/blog/s1ngularity-postmortem) | An npm `postinstall` script scanned the machine, attempted to use local AI tools, and uploaded results with the GitHub CLI | Tool calls of any agent session whose hooks fired. A credential read followed by `gh repo create` in one session raises `dotfile-read-then-git-push` | The install script, its upload, and anything linking a spawned agent to it. Rules run per session, and `gh api` or `gh gist` uploads do not match |
+| [Trojanized Claude Code extension in Cursor](https://www.stepsecurity.io/blog/claude-code-extension-trojanized) | Code ran when the extension module loaded, with no model or tool call | Nothing | All of it. `covered` in the heartbeat means a hook is configured |
+| [LiteLLM 1.107.0](https://securitylabs.datadoghq.com/articles/litellm-compromised-pypi-docker/) | `.pth` and `sitecustomize.py` files ran at every Python start | The `python` or `pip` tool call, if an agent made one | The startup code, its file reads and its network traffic |
+| [Cline 2.3.0](https://github.com/cline/cline/security/advisories/GHSA-9ppg-jx86-fqw7) | A `postinstall` installed a legitimate, unrelated package | The `npm install` call, hashed, so the package name is not stored by default | The child install. A custom tool policy can deny the call, which is a policy result, not a malware verdict |
+
+The shipped `block_agent_cli_weaponization` policy matches a tool call that starts an agent CLI. It runs in `log` mode by default, and an install script's own spawn is not a tool call, so it would not see the Nx case.
+
 ## What this check found, and where it went
 
 - **Codex deny failed open.** Fixed by [#246](https://github.com/blitzcrieg1/agentmetry/pull/246), shipped in 0.9.5.
