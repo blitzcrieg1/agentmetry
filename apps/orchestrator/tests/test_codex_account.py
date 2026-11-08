@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from agentmetry.api.routes.audit import ExternalIngestBody
-from agentmetry.core.account import account_for_hook, account_from_claim
+from agentmetry.core.account import _codex_auth_account, account_for_hook, account_from_claim
 from agentmetry.core.audit.adapters.chronicle import canonical_to_udm
 from agentmetry.core.audit.adapters.ecs import canonical_to_ecs
 from agentmetry.core.audit.external import build_external_canonical
@@ -38,6 +38,7 @@ def codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "codex-home"
     home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.setenv("AGENTMETRY_CODEX_AUTH_DOMAIN", "1")
     return home
 
 
@@ -117,10 +118,23 @@ def test_an_api_key_sign_in_reports_no_domain(codex_home: Path):
     assert account_for_hook("codex", {}) == {}
 
 
-def test_it_can_be_turned_off(codex_home: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("AGENTMETRY_CODEX_AUTH_DOMAIN", "0")
+@pytest.mark.parametrize("value", [None, "", "0", "maybe"])
+def test_the_credential_file_is_not_touched_unless_asked(
+    codex_home: Path, monkeypatch: pytest.MonkeyPatch, value: str | None
+):
+    """Off is the default, and off has to mean the file is never looked at."""
     _auth(codex_home)
+    if value is None:
+        monkeypatch.delenv("AGENTMETRY_CODEX_AUTH_DOMAIN")
+    else:
+        monkeypatch.setenv("AGENTMETRY_CODEX_AUTH_DOMAIN", value)
     assert account_for_hook("codex", {}) == {}
+
+    def fail() -> Path:
+        raise AssertionError("auth.json was located while the read is off")
+
+    monkeypatch.setattr("agentmetry.core.account._codex_home", fail)
+    assert _codex_auth_account() == {}
 
 
 def test_codex_auth_remains_domain_only_with_email_opt_in(

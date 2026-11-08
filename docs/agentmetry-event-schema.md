@@ -162,12 +162,13 @@ whose first line carries `creator_account_id` and `creator_user_id`. If the path
 is missing or unusable, the file is found by session ID in its name. Those arrive
 as `account_id` and `user_id` with source `session_meta`. That format is not a
 stable interface and can change between versions, and only a file under Codex's
-home (`CODEX_HOME`, else `~/.codex`) is opened. Its domain comes from `auth.json`,
-which holds live credentials: only the `email` claim of `id_token` is read, only the
+home (`CODEX_HOME`, else `~/.codex`) is opened. Its domain can come from `auth.json`,
+which holds live credentials, so that read is off by default. Set
+`AGENTMETRY_CODEX_AUTH_DOMAIN=1` in the environment Codex runs in to turn it on. Then only the `email` claim of `id_token` is read, only the
 domain is kept with source `codex_auth` even when `AGENTMETRY_LOG_ACCOUNT_EMAIL=1`,
 and nothing else in the file is copied,
 stored, logged or sent. The token's signature is not checked, an API-key sign-in
-reports no domain, and `AGENTMETRY_CODEX_AUTH_DOMAIN=0` turns this off. Endpoint
+reports no domain. Endpoint
 security tools may flag a process reading that file. Antigravity's hook input has no account field,
 so its domain comes from `jetski.onboarding.lastLoginUsername` in its undocumented
 `app_storage.json`, labelled `local_config`. Like Claude's, that means the account
