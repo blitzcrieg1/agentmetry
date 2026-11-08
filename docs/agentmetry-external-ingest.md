@@ -1,6 +1,6 @@
-# External agent audit (Tier B)
+# External agent ingest
 
-Agentmetry records **governed Agentmetry runs (Tier A)** and **external agents you wire in (Tier B)** into the same `audit-forward.jsonl` flight recorder.
+Agentmetry records the agents you wire in, through hooks or the MCP proxy, into one hash-chained trail (`audit-forward.jsonl`).
 
 ## Architecture
 
@@ -16,11 +16,13 @@ Claude Code / Cursor / Codex / Antigravity / Qwen Code / Kimi Code / MCP clients
 
 ## Quick start — Claude Code (global hooks)
 
-**Launch-and-forget.** On orchestrator boot, `bootstrap_tier_b_hooks()` **merges** Agentmetry hooks into `~/.claude/settings.json` — every Claude Code project is audited, no per-repo setup. The merge is **non-destructive** (`theme`, `permissions`, `mcpServers`, `env`, and any existing hooks are preserved) and **idempotent** (re-run never duplicates). Never overwrites the file; if it can't parse your settings.json it skips rather than clobber.
+`agentmetry hooks install` **merges** Agentmetry hooks into `~/.claude/settings.json`, so every Claude Code project is recorded with no per-repo setup. The recorder only does this on boot with `AGENTMETRY_AUTO_INSTALL_HOOKS=1`. The merge is **non-destructive** (`theme`, `permissions`, `mcpServers`, `env`, and any existing hooks are preserved) and **idempotent** (re-run never duplicates). Never overwrites the file; if it can't parse your settings.json it skips rather than clobber.
 
-Manual install / re-install:
+Install or re-install:
 
 ```powershell
+agentmetry hooks install
+# from a Windows checkout you can also run:
 powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 # then FULLY QUIT and reopen Claude Code so global settings load
 ```
@@ -29,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 
 **Requirements:**
 
-1. Agentmetry running: `scripts\agentmetry.bat start` → `:8000`
+1. Agentmetry running: `agentmetry start`, on `:8000` by default (`scripts\agentmetry.bat start` from a Windows checkout)
 2. `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default)
 3. Optional: `AGENTMETRY_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
 
@@ -44,7 +46,7 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/v1/audit/tail?sources=claude&limit=
 # success = adapter `claude_hook` with a real tool (not claude_selftest)
 ```
 
-Honest limits for Claude Tier B: approval *responses* are inferred (ask → tool ran), same as Cursor; Claude hook payloads do **not** carry the model slug, so `model.id` shows the app name, not `claude-sonnet`. A transcript-watcher fallback (`~/.claude/projects/<encoded>/<session>.jsonl`) is **deferred** — hooks already cover every tool call and a watcher would double-log.
+Honest limits for Claude Code: approval *responses* are inferred (ask → tool ran), same as Cursor; Claude hook payloads do **not** carry the model slug, so `model.id` shows the app name, not `claude-sonnet`. A transcript-watcher fallback (`~/.claude/projects/<encoded>/<session>.jsonl`) is **deferred** — hooks already report the tool calls and a watcher would double-log.
 
 ## Quick start — Cursor (global hooks)
 
@@ -153,7 +155,7 @@ python scripts/agentmetry_ingest.py selftest
 
 **First run:** Codex requires you to **trust** new hooks — open `/hooks` in the Codex CLI and approve the Agentmetry hook definitions (hash-based trust model). Untrusted hooks are skipped silently.
 
-**Bonus:** Codex hook stdin includes `model` (active model slug) — one of the few Tier B adapters that can populate `model.id` in the canonical event.
+**Bonus:** Codex hook stdin includes `model` (active model slug) — one of the few adapters that can populate `model.id` in the canonical event.
 
 **Coverage gaps (honest):** per Codex's hooks page (checked 2026-10-13), `PreToolUse` and `PostToolUse` fire for shell, unified exec, `apply_patch`, MCP and other local function tools. Hosted tools such as `WebSearch` run on OpenAI's side and fire neither, so they are not recorded. Codex cloud tasks are not recorded at all; see [agent coverage](agent-coverage.md).
 
@@ -232,11 +234,11 @@ Point Claude / Cursor MCP config at the proxy command instead of the raw server.
 | `AGENTMETRY_API_KEY` | *(empty)* | Auth header for ingest |
 | `AGENTMETRY_AUDIT_INGEST_ENABLED` | `1` | Kill switch |
 
-## Honest limits (Tier C)
+## Honest limits
 
 - **Works:** Agents you instrument (hooks, MCP proxy, custom scripts) — captures tool calls (success/failure) and approval requests.
-- **Inferred, not native:** the human approve/deny *decision* for external agents is inferred from whether the tool ran (see Approvals above). Tier A (governed Agentmetry runs) captures the real grant/deny.
-- **Not captured for Tier B:** model/provider id (hook payloads omit it — shown as the app name, not `gpt-4`/`claude-sonnet`), per-approver identity.
+- **Inferred, not native:** the human approve/deny *decision* for external agents is inferred from whether the tool ran (see Approvals above).
+- **Not captured for most hook-based agents:** model/provider id (hook payloads omit it — shown as the app name, not `gpt-4`/`claude-sonnet`), per-approver identity.
 - **Does not work:** Silent browser ChatGPT, auto-approve Cursor with hooks disabled, or any agent that never hits your adapter.
 - **Not a CASB:** Network-level shadow-AI detection is a different product.
 
@@ -246,4 +248,4 @@ Point Claude / Cursor MCP config at the proxy command instead of the raw server.
 AGENTMETRY_AUDIT_INGEST_ENABLED=0
 ```
 
-Tier A Agentmetry runs continue; adapters receive HTTP 503.
+Adapters receive HTTP 503.

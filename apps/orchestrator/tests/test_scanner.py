@@ -303,7 +303,9 @@ def test_the_machine_scan_reads_instruction_files_where_a_browser_leaves_them():
     where = {f.where for f in report.findings if f.check == "instruction_file"}
     assert any("Downloads" in w for w in where), report.lines()
     # Two levels into the Desktop is the limit; deeper is somebody's project.
-    assert not any("deep" in w for w in where)
+    # Compared by path component: a folder elsewhere in the temp path can contain
+    # the word, and an audit run from one named after DeepSeek failed on exactly that.
+    assert not any("deep" in Path(w).parts for w in where)
 
 
 # --- the trail ---------------------------------------------------------------------
