@@ -44,6 +44,21 @@ jobs:
         working-directory: apps/orchestrator
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: A release tag must be on master
+        # Any `v*` tag reached PyPI, on any commit, and the checks above it were
+        # that commit's own. master is the branch that requires passing checks, so
+        # a tag has to point at something that went through them. Nx, LiteLLM and
+        # Cline were all published with stolen credentials, not stolen laptops.
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: .
+        run: |
+          git fetch --quiet --no-tags origin +refs/heads/master:refs/remotes/origin/master
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master || {
+            echo "::error::$GITHUB_REF_NAME is not on master, so it will not be published"
+            exit 1
+          }
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -164,10 +179,11 @@ jobs:
   publish:
     name: publish to PyPI
     needs: build
-    # Tags only. `workflow_dispatch` runs everything above as a dry run and
-    # stops here, so the release path can be exercised without spending a
-    # version number.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # A pushed tag only. `workflow_dispatch` runs everything above as a dry run and
+    # stops here, so the release path can be exercised without spending a version
+    # number. Checking the ref alone was not enough: a manual run started from a
+    # tag has a tag ref too, and would have published.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
       name: pypi
