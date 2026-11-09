@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last refreshed: 2026-10-23; the status table on 2026-11-05.** State, not aspiration. Dates are absolute,
+**Last refreshed: 2026-10-23; the status table on 2026-11-09.** State, not aspiration. Dates are absolute,
 because the previous version phased everything in "weeks 3 to 6" from a July
 start and every window had elapsed while the file still read as current.
 
@@ -35,19 +35,19 @@ Two rules, so it does not happen again.
 
 ---
 
-## Where this actually is, on 2026-11-05
+## Where this actually is, on 2026-11-09
 
 | | |
 |---|---|
 | Version | 0.11.0 on PyPI, released 2026-11-08: the Identity page and the account an agent reported, as a claim and not as verified identity. Reading Codex's `auth.json` is off unless asked |
 | Canonical event schema | 1.2.0, additive |
-| Dependency advisories | One open Dependabot alert as of 2026-11-05: #116, a development-only `minimatch` dependency in the dashboard lint toolchain. The parent still declares a range that excludes the patched major. |
+| Dependency advisories | One open Dependabot alert as of 2026-11-09: #116, a development-only `minimatch` dependency in the dashboard lint toolchain. The parent still declares a range that excludes the patched major. |
 | Detection rules | 14 published sequence rules plus 1 experimental, ATT&CK on every event, ATLAS on the AI-specific subset. All 14 exported as Sigma, generated from the engine |
 | Benchmark | 57 recorded sessions, 26 attack and 31 benign, 0 missed and 0 false positives. The four known FPs are now *in* the corpus |
-| Tests | 2297 collected. CI on 2026-11-08, on the 0.11.0 release PR ([run](https://github.com/blitzcrieg1/agentmetry/actions/runs/42486192613)): 2278 passed and 19 skipped on Linux and macOS, 2291 passed and 6 skipped on Windows, 83% line coverage against a 78% floor |
-| Dogfood gate | **Passed 2026-10-02, and still passing.** Run started 2026-08-30. Weeks 6 and 7 were red on 1 and 7 untriaged critical or high detections until all 16 open ones were triaged on 2026-10-23; `dogfood` then printed every complete week green, and on 2026-11-05 prints "9 of 4, Gate PASSED", with week 10 in progress and 1 detection untriaged. The three false-positive shapes that triage found are [#329](https://github.com/blitzcrieg1/agentmetry/issues/329) |
+| Tests | 2311 collected on master, 2026-11-09. CI on 2026-11-08, on the 0.11.0 release PR ([run](https://github.com/blitzcrieg1/agentmetry/actions/runs/42486192613)): 2278 passed and 19 skipped on Linux and macOS, 2291 passed and 6 skipped on Windows, 83% line coverage against a 78% floor |
+| Dogfood gate | **Passed 2026-10-02, and still passing.** Run started 2026-08-30. Weeks 6 and 7 were red on 1 and 7 untriaged critical or high detections until all 16 open ones were triaged on 2026-10-23; `dogfood` then printed every complete week green, and on 2026-11-09 prints "10 of 4, Gate PASSED", with week 11 in progress and 2 detections untriaged. The three false-positive shapes that triage found are [#329](https://github.com/blitzcrieg1/agentmetry/issues/329) |
 | Own trail | 74,923 hash-chained lines, all verified on the maintainer's machine on 2026-10-23 (`agentmetry verify --trail`). 256 anchor checkpoints cover records 1 to 74,704; the 219 newer records are chain-verified only until the next checkpoint |
-| Adoption | Public alpha. No design partner tenant yet and no reference customer. No sales message has gone out yet: the first ones are drafted and re-verified against live postings on 2026-10-24, and openers 2 and 5 again on 2026-10-31. Two open-source projects consume the events: AiSOC's ingest template (2026-10-31) and Tenzir's `agentmetry` package (2026-11-03). Neither is a user. 32 GitHub stars on 2026-11-05 |
+| Adoption | Public alpha. No design partner tenant yet and no reference customer. The first outreach went out on 2026-10-31, two requests for critique by email, and the first message to a buyer on 2026-11-06. Two open-source projects consume the events: AiSOC's ingest template (2026-10-31) and Tenzir's `agentmetry` package (2026-11-03). Neither is a user. 40 GitHub stars on 2026-11-09 |
 
 The last row is the one that matters. Engineering is further along than
 distribution by a wide margin, and the ordering below reflects that.
@@ -97,7 +97,7 @@ the most important one on the page.
 
 | Item | Issue | Why now |
 |---|---|---|
-| **First design partner contact** | none, tracked in the enterprise repo | No message sent yet. The first two are drafted and their postings re-checked live on 2026-10-24; a third (a new signal) and two peer critique-asks are ready. Four of the six hiring signals the pipeline was built on in August had closed by the time they were checked in late October: a signal is perishable, so send within days of finding one. Nothing else on this list matters as much |
+| **First design partner contact** | none, tracked in the enterprise repo | The first outreach went out on 2026-10-31 and the first buyer message on 2026-11-06. Follow up and keep the remaining drafts current; recipients and replies stay in the private enterprise log. Four of the six hiring signals the pipeline was built on in August had closed by the time they were checked in late October: a signal is perishable, so send within days of finding one. Nothing else on this list matters as much |
 | The last detection precision fix | [#55](https://github.com/blitzcrieg1/agentmetry/issues/55) | Held for the dogfood run, which has passed. #44, #49, #50 and #51 were fixed in 0.7.0; this is the one left. It moves the ruleset fingerprint, so land it in one pass. Whether the freeze ends for it is the maintainer's call and has not been made |
 | `session-tool-burst` noise | [#172](https://github.com/blitzcrieg1/agentmetry/issues/172) | Seven of every ten triage items when the issue was filed, on intended work, and the rule that held weeks 2 and 4 of the passing run at red. A rule change, so it belongs in the same pass as #55. The agent-specific signals in [#317](https://github.com/blitzcrieg1/agentmetry/issues/317) come after that pass, not in it |
 | Finish removing the old runtime | [#209](https://github.com/blitzcrieg1/agentmetry/issues/209) | Boot no longer mounts the driver host unless `AGENTMETRY_LEGACY_DRIVERS=1`, and `replay` reads the trail. What remains is the outbox, the vault demo, and the `mcp<2` pin those leftovers still require |
