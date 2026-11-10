@@ -11,6 +11,11 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Optional `detection.artifacts` on new live findings.** Bounded snapshots
+  retain cited tool/server names and reported outcomes, with selected command,
+  path and URL fields only when already captured. Missing evidence and export
+  limits are explicit. Capture settings and detection rules are unchanged.
+  See [the contract](docs/detection-artifacts.md).
 - **`agentmetry --version`** prints the installed version. It was an argparse
   error, so there was no direct way to ask ([#405]).
 

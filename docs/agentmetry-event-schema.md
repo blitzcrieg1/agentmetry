@@ -93,10 +93,19 @@ Agentmetry's rule vocabulary.
 | Field | When present | Purpose |
 |-------|--------------|---------|
 | `detection.atlas` | `action.type: detection`, and only for rules that describe an AI-specific technique | `{framework, tactic_id, tactic, technique_id, technique, atlas_version}` |
+| `detection.artifacts` | Newly emitted live findings | Optional, bounded snapshots of cited canonical events. Version 1 carries `items`, `referenced_count`, `unavailable_count`, `omitted_count` and `truncated`. See [Detection artifacts](./detection-artifacts.md) |
 | `tool.atlas` | `tool_called` where ATLAS says something ATT&CK cannot | Same shape |
 | `mcp_schema.atlas` | `action.type: mcp_schema` with `status: changed` | Same shape |
 | `mcp_schema.tools_changed` | `action.type: mcp_schema` with `status: changed`, when a per-tool baseline exists | Hashed ids of the tools whose own digest moved |
 | `mcp_schema.tools_added` / `tools_removed` | Same | Counts, not ids |
+
+**Detection artifacts are reported observations.** Available tool/server names
+are copied from the finding's cited events. Commands and selected path/URL
+arguments appear only if those fields were already captured. This adds no
+capture, reconstructs nothing from hashes and supplies no OS process identity.
+Reported action outcomes and approval inference markers remain attached to
+each source item. Existing findings and findings recomputed on read may have
+no artifact block. Missing evidence is counted explicitly, not treated as clean.
 
 **Note on `mcp_schema` outcomes.** `action.outcome` is one of `success`,
 `changed` or `unavailable`. The first two mean a listing was read: `changed` is
