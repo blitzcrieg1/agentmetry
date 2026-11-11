@@ -11,6 +11,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Claude request/result invocation metadata.** Optional `tool.invocation`
+  preserves the harness's tool-use ID and observation phase. `tool.result`
+  retains reported status, valid duration and interruption metadata without
+  retaining response bodies or failure prose. Generated Claude hook settings
+  now include `PostToolUseFailure`. This does not establish a human approval
+  or independent process execution. See [the limits](docs/claude-invocation-evidence.md).
 - **Optional `detection.artifacts` on new live findings.** Bounded snapshots
   retain cited tool/server names and reported outcomes, with selected command,
   path and URL fields only when already captured. Missing evidence and export
