@@ -1,4 +1,4 @@
-# Open-core split: Apache 2.0 vs. Enterprise (ELv2)
+# Open-core split: Apache 2.0 sensor vs. proprietary Enterprise
 
 Agentmetry uses a **two-repo open-core model**. The public repository stays
 Apache 2.0 forever for the developer utility layer. Commercial add-ons ship as a
@@ -7,6 +7,11 @@ orchestrator via standard Python entry points.
 
 This document is the Project Owner's **licensing intent**, not a contract.
 See [COMMERCIAL.md](../../COMMERCIAL.md) and [CLA.md](../../CLA.md).
+
+Enterprise's current license is proprietary. Use, modification and distribution
+require a written license agreement with the Project Owner. ELv2 has not been
+adopted. This boundary table describes the products; it grants no Enterprise
+rights. Those rights are set out in the applicable written agreement.
 
 ## Integration mechanic
 
@@ -37,7 +42,7 @@ enterprise = "agentmetry_enterprise.register:register"
 | **Dashboard** | Local dashboard for one machine (Overview, detections, investigation) |
 | **CLI** | `demo`, `doctor`, `benchmark`, `hooks`, `start`, `stop`, `status`, `scan`, `posture`, `mcp`, `mcp-proxy`, `otel`, `stats`, `detections`, `disposition`, `replay`, `export`, `verify`, `prove`, `anchor`, `trail`, `dashboard` |
 
-## Enterprise / ELv2 (private `agentmetry-enterprise`)
+## Proprietary Enterprise (private `agentmetry-enterprise`)
 
 Status as of 2026-10-24, checked against the code in `agentmetry-enterprise`.
 "Built" means the code exists; none of it has run on a customer fleet yet. The
@@ -80,7 +85,8 @@ Enterprise:
 
 - **Agentmetry Enterprise may run as a hosted service**: a fleet console,
   managed ingest and cross-machine views, run multi-tenant for many customers
-  or in one customer's own cloud. None of it is built yet.
+  or in one customer's own cloud, under the applicable written agreement.
+  The hosted-console slice has been built and run locally; it is not deployed.
 - **Customers who keep their own SIEM as the console keep that option.** The
   Splunk app (`agentmetry_app`, in the enterprise repo) ships either way.
 - **The open-source sensor stays local-first.** It records on the machine,
