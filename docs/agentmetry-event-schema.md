@@ -60,6 +60,21 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 
 `correlation_id` groups events from one agent session (IDE conversation or MCP proxy session). `session_id` is the dashboard/WebSocket session when applicable.
 
+### Claude invocation observations (optional, additive)
+
+New Claude hook events can carry `tool.invocation` with `phase`, `hook_event`,
+`provenance: harness_reported` and, when valid, the source `id`. Post-tool events
+also carry `tool.result.status` (`reported_success` or `reported_failure`), with
+optional `duration_ms`, `is_interrupt` and a constant `error_kind` on failures.
+HTTP ingest and spool replay retain the same bounded metadata. The canonical
+schema remains 1.2.0 and existing action fields retain their legacy meanings.
+
+These are source observations, not verified execution or a human approval.
+Claude's documented `PermissionRequest` input lacks the tool-use ID. Missing
+IDs remain absent; old events are not retrospectively linked. Do not join on
+tool name, argument hash or nearest timestamp. See the [field contract,
+source coverage and exact-join limits](claude-invocation-evidence.md).
+
 ### v1.1 additions (additive)
 
 | Field | When present | Purpose |

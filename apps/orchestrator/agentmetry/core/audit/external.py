@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from agentmetry.core.audit.canonical import SCHEMA_VERSION
+from agentmetry.core.audit.invocation import normalize_claude_tool_metadata
 from agentmetry.core.account import account_from_claim
 from agentmetry.core.audit.identity import identity_fields
 from agentmetry.core.audit.hashing import arguments_fingerprint
@@ -215,6 +216,8 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             "input_hash": input_hash,
             "parameters_redacted": not bool(command) and not isinstance(tool_block.get("arguments"), dict),
         }
+        if source_app == "claude" and adapter == "claude_hook":
+            event["tool"].update(normalize_claude_tool_metadata(tool_block))
         if command:
             event["tool"]["command"] = scrub_secrets(command)[:4096]
         if isinstance(tool_block.get("arguments"), dict):
