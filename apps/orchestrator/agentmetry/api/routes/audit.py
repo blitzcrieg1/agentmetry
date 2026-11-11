@@ -10,11 +10,12 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from agentmetry.core.auth import require_api_key, require_ingest_key
 from agentmetry.core.audit.detection.disposition import STATUSES, get_disposition_store
 from agentmetry.core.audit.ingest import ingest_external_event
+from agentmetry.core.audit.invocation import MAX_DURATION_MS, normalize_claude_tool_metadata
 from agentmetry.core.config import settings
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -29,6 +30,22 @@ _RUN_ACTION_TYPES = frozenset({
     "detection",  # correlated findings — must not be filtered out of the feed
     "detection_disposition",  # and the human's answer to them
 })
+
+
+class IngestInvocationBody(BaseModel):
+    """Source-reported call identity, never proof of execution or approval."""
+
+    id: str | None = Field(default=None, min_length=1, max_length=256, pattern=r"^[!-~]+$")
+    phase: Literal["request", "result"]
+    hook_event: Literal["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+    provenance: Literal["harness_reported"]
+
+
+class IngestToolResultBody(BaseModel):
+    status: Literal["reported_success", "reported_failure"]
+    duration_ms: int | None = Field(default=None, strict=True, ge=0, le=MAX_DURATION_MS)
+    is_interrupt: bool | None = Field(default=None, strict=True)
+    error_kind: Literal["tool_failure", "interrupted"] | None = None
 
 
 class IngestToolBody(BaseModel):
@@ -49,6 +66,19 @@ class IngestToolBody(BaseModel):
     # both were dropped here, the third time this model has done that.
     classification: str = ""
     input_hash_alg: str = ""
+    invocation: IngestInvocationBody | None = None
+    result: IngestToolResultBody | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bounded_observation_metadata(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        # Normalize before Pydantic can turn "12", 12.0 or False into an int.
+        # Direct/spool ingest repeats the same allowlist in external.py.
+        clean = {key: item for key, item in value.items() if key not in ("invocation", "result")}
+        clean.update(normalize_claude_tool_metadata(value))
+        return clean
 
 
 #: Actor kinds a capture surface may assert. Anything else is coerced to
