@@ -9,6 +9,46 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Claude request/result invocation metadata.** Optional `tool.invocation`
+  preserves the harness's tool-use ID and observation phase. `tool.result`
+  retains reported status, valid duration and interruption metadata without
+  retaining response bodies or failure prose. Generated Claude hook settings
+  now include `PostToolUseFailure`. This does not establish a human approval
+  or independent process execution. See [the limits](docs/claude-invocation-evidence.md).
+- **Optional `detection.artifacts` on new live findings.** Bounded snapshots
+  retain cited tool/server names and reported outcomes, with selected command,
+  path and URL fields only when already captured. Missing evidence and export
+  limits are explicit. Capture settings and detection rules are unchanged.
+  See [the contract](docs/detection-artifacts.md).
+- **`agentmetry --version`** prints the installed version. It was an argparse
+  error, so there was no direct way to ask ([#405]).
+
+### Changed
+
+- **A release must come from master.** `release.yml` publishes to PyPI only from
+  a pushed `v*` tag that points at a commit on master. Any `v*` tag on any commit
+  could reach PyPI before, and a manual run from a tag passed the publish
+  condition ([#404]).
+
+### Documentation
+
+- **Clarify the commercial licensing boundary.** The sensor remains Apache 2.0;
+  Enterprise is proprietary and requires a written agreement. Remove labels
+  implying ELv2 has been adopted and align hosted Enterprise wording with the
+  existing product decision. No open-source license or CLA grants change.
+- **What a package or extension compromise looks like to the recorder.** The
+  README and `docs/agent-coverage.md` now say that code running outside a tool
+  call produces no event, such as an npm `postinstall` script or an editor
+  extension loading, and tests pin that behaviour ([#403]).
+- **The README and homepage name the Identity page**, the headline of 0.11.0,
+  which neither mentioned at release.
+
+[#403]: https://github.com/blitzcrieg1/agentmetry/pull/403
+[#404]: https://github.com/blitzcrieg1/agentmetry/pull/404
+[#405]: https://github.com/blitzcrieg1/agentmetry/pull/405
+
 ## [0.11.0] - 2026-11-08
 
 Which account did a coding agent report? Events can now carry the account an agent

@@ -26,6 +26,7 @@ from agentmetry.core.audit.atlas import atlas_for_rule
 from agentmetry.core.audit.canonical import SCHEMA_VERSION
 from agentmetry.core.audit.identity import identity_fields
 
+from .artifacts import build_artifacts
 from .engine import run_detections, run_host_detections
 from .live_store import get_live_store
 from .models import Detection
@@ -57,6 +58,7 @@ def observe(canonical: dict[str, Any]) -> list[Detection]:
         if detection.rule_id in seen_in_batch or store.is_emitted(corr, detection.rule_id):
             continue
         seen_in_batch.add(detection.rule_id)
+        detection.artifacts = build_artifacts(detection, events, canonical)
         fresh.append(detection)
     return fresh
 
@@ -76,6 +78,7 @@ def observe_host(canonical: dict[str, Any]) -> list[Detection]:
         if detection.rule_id in seen_in_batch or store.is_host_emitted(host_id, detection.rule_id):
             continue
         seen_in_batch.add(detection.rule_id)
+        detection.artifacts = build_artifacts(detection, events, canonical, host_scope=True)
         fresh.append(detection)
     return fresh
 

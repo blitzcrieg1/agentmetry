@@ -62,6 +62,7 @@ except ImportError:  # pragma: no cover - the package always ships it
 # unresolvable operator must leave the event unattributed, not unrecorded.
 from agentmetry.core.api_token import ingest_token_path, read_token
 from agentmetry.core.account import account_for_hook
+from agentmetry.core.audit.invocation import claude_hook_tool_metadata
 from agentmetry.core.paths import data_dir, env_file, hook_spool_path
 
 try:
@@ -1055,7 +1056,9 @@ def map_cursor_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
     return None
 
 
-def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+def map_claude_hook(
+    hook_name: str, data: dict[str, Any], *, invocation_metadata: bool = True,
+) -> dict[str, Any] | None:
     hook_name = str(data.get("hook_event_name") or hook_name)
     correlation = str(_pick(data, "session_id", default=""))
     session_id = correlation
@@ -1063,6 +1066,25 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
     tool_name = str(_pick(data, "tool_name", default="unknown"))
     tin = _pick(data, "tool_input", default={})
     clean = redact_arguments(tin)
+
+    tool = {"qualified": tool_name, "server": "claude", "arguments": clean}
+    if invocation_metadata:
+        tool.update(claude_hook_tool_metadata(hook_name, data))
+
+    if hook_name == "PostToolUseFailure" and invocation_metadata:
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "tool_failed",
+            "outcome": "error",
+            # Error prose may echo credentials or tool output. The hook name
+            # and strict interruption flag are sufficient for classification.
+            "reason": "tool_interrupted" if data.get("is_interrupt") is True else "tool_failed",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
+            "tool": tool,
+        }
 
     if hook_name in ("SessionStart",):
         return {
@@ -1109,7 +1131,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "correlation_id": correlation,
             "session_id": session_id,
             "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
-            "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
+            "tool": tool,
         }
 
     if hook_name == "PostToolUse":
@@ -1134,7 +1156,7 @@ def map_claude_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | No
             "correlation_id": correlation,
             "session_id": session_id,
             "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
-            "tool": {"qualified": tool_name, "server": "claude", "arguments": clean},
+            "tool": tool,
         }
 
     if hook_name == "UserPromptSubmit":
@@ -1572,7 +1594,7 @@ def _map_claude_family_hook(
     if hook_name == "SubagentStop":
         return _subagent_stop_payload(source_app, adapter, server, data)
     return _patch_claude_family(
-        map_claude_hook(hook_name, data),
+        map_claude_hook(hook_name, data, invocation_metadata=False),
         source_app=source_app,
         adapter=adapter,
         server=server,
@@ -1786,7 +1808,8 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     elif _pick(data, "model", default="") and hook_name[:1].isupper():
         payload = map_codex_hook(hook_name, data)
     elif hook_name[:1].isupper():
-        payload = map_claude_hook(hook_name, data)
+        # Legacy shape autodetection is not documented Claude source coverage.
+        payload = map_claude_hook(hook_name, data, invocation_metadata=False)
     else:
         payload = map_cursor_hook(hook_name, data)
     if payload:
@@ -1806,6 +1829,13 @@ def map_hook(hook_name: str, data: dict[str, Any]) -> dict[str, Any] | None:
     source_override = os.environ.get("AGENTMETRY_SOURCE_APP", "").strip().lower()
     if payload and source_override:
         payload["source_app"] = source_override
+    if payload and (
+        payload.get("source_app") != "claude" or payload.get("adapter") != "claude_hook"
+    ):
+        tool = payload.get("tool")
+        if isinstance(tool, dict):
+            tool.pop("invocation", None)
+            tool.pop("result", None)
     return payload
 
 
