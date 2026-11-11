@@ -28,6 +28,10 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Documentation
 
+- **Clarify the commercial licensing boundary.** The sensor remains Apache 2.0;
+  Enterprise is proprietary and requires a written agreement. Remove labels
+  implying ELv2 has been adopted and align hosted Enterprise wording with the
+  existing product decision. No open-source license or CLA grants change.
 - **What a package or extension compromise looks like to the recorder.** The
   README and `docs/agent-coverage.md` now say that code running outside a tool
   call produces no event, such as an npm `postinstall` script or an editor
