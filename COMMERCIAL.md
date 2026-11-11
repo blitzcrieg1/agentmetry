@@ -11,7 +11,19 @@ license on the open-source code.
   available under **Apache 2.0**, subject to the [CLA](CLA.md).
 
 See the full boundary table in **[Open-core split](docs/commercial/open-core-split.md)**
-(Apache 2.0 vs. ELv2 enterprise add-ons).
+(Apache 2.0 sensor vs. proprietary enterprise add-ons).
+
+## Current Enterprise terms
+
+Agentmetry Enterprise is a separate proprietary package. Use, modification and
+distribution require a written license agreement with the Project Owner. ELv2
+has not been adopted. Customer rights are defined by the applicable written
+agreement, not by this intent document.
+
+The Project Owner may offer Enterprise as a hosted fleet console or for
+deployment in customer-owned environments under written agreements. The
+open-source sensor stays local-first and Apache 2.0; it requires no Enterprise
+agreement to use under that license.
 
 ## Extension mechanism
 
@@ -27,6 +39,7 @@ The Project Owner may offer paid offerings such as:
 - Enterprise support and SLAs
 - Certified or long-term-support builds
 - Managed deployment assistance in **customer-owned** environments
+- Hosted Enterprise fleet console under a written commercial agreement
 - Additional connectors, dashboards, or compliance packs under separate license
 
 ## Dual-licensing

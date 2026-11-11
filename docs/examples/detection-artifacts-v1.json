@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.2.0",
+  "event_id": "synthetic-finding-1",
+  "timestamp_utc": "2026-11-10T12:00:01Z",
+  "host_id": "synthetic-host",
+  "fleet_id": "synthetic-fleet",
+  "correlation_id": "synthetic-session",
+  "source": {"tier": "external", "app": "claude", "adapter": "claude_hook"},
+  "action": {"type": "detection", "outcome": "critical", "reason": "Synthetic credential access followed by network egress"},
+  "detection": {
+    "rule_id": "credential-exfil",
+    "title": "Credential access followed by network egress",
+    "severity": "critical",
+    "summary": "Synthetic credential access followed by network egress",
+    "correlation_id": "synthetic-session",
+    "tactic_ids": ["TA0006", "TA0011"],
+    "technique_ids": ["T1552.001", "T1071.001"],
+    "event_ids": ["synthetic-read-1", "synthetic-egress-1"],
+    "first_seen_utc": "2026-11-10T12:00:00Z",
+    "last_seen_utc": "2026-11-10T12:00:01Z",
+    "disposition": null,
+    "artifacts": {
+      "version": 1,
+      "referenced_count": 2,
+      "unavailable_count": 0,
+      "omitted_count": 0,
+      "truncated": false,
+      "items": [
+        {
+          "event_id": "synthetic-read-1",
+          "correlation_id": "synthetic-session",
+          "timestamp_utc": "2026-11-10T12:00:00Z",
+          "source": {"app": "claude", "adapter": "claude_hook"},
+          "action": {"type": "tool_called", "outcome": "success"},
+          "tool": {"name": "Read", "qualified": "Read", "server": "claude"}
+        },
+        {
+          "event_id": "synthetic-egress-1",
+          "correlation_id": "synthetic-session",
+          "timestamp_utc": "2026-11-10T12:00:01Z",
+          "source": {"app": "claude", "adapter": "claude_hook"},
+          "action": {"type": "tool_called", "outcome": "success"},
+          "tool": {"name": "Bash", "qualified": "Bash", "server": "shell"}
+        }
+      ]
+    }
+  }
+}

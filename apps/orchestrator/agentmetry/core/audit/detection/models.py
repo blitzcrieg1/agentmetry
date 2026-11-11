@@ -36,9 +36,11 @@ class Detection:
     # produced by the rule. A detection nobody dispositioned is an alert, not a
     # control, so every detection carries the field even when it is untouched.
     disposition: dict[str, Any] | None = None
+    # Optional snapshot attached by the live observer, outside the frozen rules.
+    artifacts: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "rule_id": self.rule_id,
             "title": self.title,
             "severity": self.severity,
@@ -51,3 +53,6 @@ class Detection:
             "last_seen_utc": self.last_seen_utc,
             "disposition": self.disposition,
         }
+        if self.artifacts is not None:
+            result["artifacts"] = self.artifacts
+        return result

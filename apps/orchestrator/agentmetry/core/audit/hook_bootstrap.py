@@ -109,6 +109,7 @@ CLAUDE_HOOK_EVENTS = (
     "SessionStart",
     "PreToolUse",
     "PostToolUse",
+    "PostToolUseFailure",
     "Notification",
     "Stop",
 )

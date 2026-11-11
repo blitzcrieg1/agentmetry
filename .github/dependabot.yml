@@ -92,3 +92,7 @@ updates:
     labels: ["dependencies", "ci"]
     commit-message:
       prefix: "ci"
+    groups:
+      # CodeQL init and analyze must use the same action version.
+      codeql:
+        patterns: ["github/codeql-action/*"]
