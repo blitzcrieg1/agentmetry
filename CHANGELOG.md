@@ -9,6 +9,17 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude Code subagent stops are recorded.** Ingest has mapped
+  `SubagentStop` to a marker on the parent session since the 2026-07-20
+  review, but the generated Claude hook settings never registered the event,
+  so an installed sensor recorded no subagent finishing. Generated settings
+  now include it. Existing installs need the normal hook refresh. The
+  hand-copy template `adapters/claude/settings.agentmetry.json` also gains
+  `PostToolUseFailure`, which 0.12.0 added to the installer but not to it, and
+  a test now keeps the two in step. The ruleset fingerprint is unchanged.
+
 ## [0.12.0] - 2026-11-12
 
 Evidence an investigator can use, and a tighter tool policy. A live detection

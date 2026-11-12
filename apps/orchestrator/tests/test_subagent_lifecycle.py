@@ -56,6 +56,38 @@ def test_claude_real_stop_still_ends_the_session():
     assert payload["event_type"] == "session_end"
 
 
+def test_claude_installer_registers_subagent_stop():
+    """The F6 mapping was correct and unreachable: the installer never asked
+    Claude Code to send SubagentStop, so no install ever recorded one."""
+    from agentmetry.core.audit.hook_bootstrap import CLAUDE_HOOK_EVENTS
+
+    assert "SubagentStop" in CLAUDE_HOOK_EVENTS
+
+
+def test_every_installed_claude_event_has_a_mapping():
+    """An event the installer registers but ingest drops is a hook that runs
+    on every call and records nothing."""
+    from agentmetry.core.audit.hook_bootstrap import CLAUDE_HOOK_EVENTS
+
+    for event in CLAUDE_HOOK_EVENTS:
+        payload = ingest.map_claude_hook(event, {
+            "session_id": "s1",
+            "tool_name": "Read",
+            "tool_input": {"file_path": "README.md"},
+        })
+        assert payload is not None, event
+
+
+def test_the_hand_copy_claude_template_matches_the_installer():
+    """0.12.0 added PostToolUseFailure to the installer and not to this
+    template, so anyone who copied it by hand still missed failed calls."""
+    from agentmetry.core.audit.hook_bootstrap import CLAUDE_HOOK_EVENTS
+
+    template = _REPO / "adapters" / "claude" / "settings.agentmetry.json"
+    doc = json.loads(template.read_text(encoding="utf-8"))
+    assert set(doc["hooks"]) == set(CLAUDE_HOOK_EVENTS)
+
+
 def test_subagent_stop_does_not_count_as_a_spawn():
     """The swarm rule must not read a finish as a start."""
     from agentmetry.core.audit.external import build_external_canonical

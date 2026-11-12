@@ -112,6 +112,9 @@ CLAUDE_HOOK_EVENTS = (
     "PostToolUseFailure",
     "Notification",
     "Stop",
+    # Mapped as a marker on the parent session since the F6 fix, but never
+    # registered, so a real install recorded no subagent finishing at all.
+    "SubagentStop",
 )
 
 # Qwen Code and Kimi Code — Claude-compatible wire protocol (JSON stdin).
