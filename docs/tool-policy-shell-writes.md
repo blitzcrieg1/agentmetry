@@ -18,6 +18,19 @@ and selected remove/rename calls. No shell or embedded program is executed by
 the evaluator. Reads, backups made with `cp`, and quoted examples stay allowed.
 The existing file-edit rule still covers direct file-edit tools.
 
+Comments are read the way Bash reads them: a `#` starts a comment only at the
+start of a word and outside quotes, and the comment ends at its newline. A `#`
+inside a word, as in `$#`, a URL fragment or `x=a#b`, is text, so a write after
+it is still found. A write inside a comment is not reported.
+
+The rule also carries a path `command_pattern`, which every literal write
+target satisfies, so the result is the same except for a Python string spelled
+with escape codes. It is there for older sensors: one that predates
+`shell_write_pattern` ignores that key, and without a prefilter it would read
+the rule as tools-only and match every shell call. The loader now warns about
+rule keys it does not read. Write a custom manifest for the oldest sensor that
+will load it.
+
 This is intentionally incomplete. Variable expansion, cwd tracking, aliases,
 indirect paths, shell wrappers, concatenated quoting, scripts supplied through
 heredocs and arbitrary programs are not resolved. PowerShell-specific mutation

@@ -134,6 +134,60 @@ def test_unsupported_expansion_is_not_claimed_as_covered():
     assert not evaluate("Bash", {"command": 'echo x > "$CONFIG"'}, mode="block").blocked
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        # A `#` inside a word is a literal in Bash, not a comment.
+        "x=a#b; echo '{}' > ~/.claude/settings.json",
+        "curl -s https://example.test/page#top; echo '{}' > ~/.claude/settings.json",
+        "echo $#; echo '{}' > ~/.claude/settings.json",
+        "echo '# not a comment' > ~/.claude/settings.json",
+        # A comment ends at its newline, even with an odd quote inside it.
+        "echo hi # it's 'odd\nrm ~/.claude/settings.json",
+    ],
+)
+def test_a_hash_bash_reads_as_text_does_not_hide_a_write(command):
+    verdict = evaluate("Bash", {"command": command}, mode="block")
+    assert verdict.blocked and verdict.match.rule_id == "block_shell_agent_exec_config_write"
+
+
+def test_a_commented_out_write_is_not_reported_as_a_write():
+    from agentmetry.core.audit.tool_policy.shell_writes import literal_write_targets
+
+    assert literal_write_targets("echo hi # > ~/.claude/settings.json") == []
+    assert literal_write_targets("# rm ~/.claude/settings.json") == []
+
+
+def test_rules_using_newer_keys_keep_a_prefilter_for_older_sensors():
+    """An older sensor ignores `shell_write_pattern` and reads what is left."""
+    from dataclasses import replace
+
+    from agentmetry.core.audit.tool_policy.evaluator import _rule_matches
+    from agentmetry.core.audit.tool_policy.loader import load_tool_policy
+
+    rules, _ = load_tool_policy(settings.tool_policy_path)
+    newer = [rule for rule in rules if rule.shell_write_pattern]
+    assert newer
+    for rule in newer:
+        assert rule.command_pattern, f"{rule.id} would be tools-only on an older sensor"
+        as_older_sensor_reads_it = replace(rule, shell_write_pattern="")
+        assert not _rule_matches(as_older_sensor_reads_it, "Bash", "claude", "ls -la")
+
+
+def test_loader_warns_about_rule_keys_it_does_not_read(tmp_path, caplog):
+    from agentmetry.core.audit.tool_policy.loader import load_tool_policy
+
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(
+        "rules:\n  - id: future_rule\n    action: deny\n    tools: [Bash]\n    future_matcher: x\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level("WARNING"):
+        rules, _ = load_tool_policy(manifest)
+    assert [rule.id for rule in rules] == ["future_rule"]
+    assert "future_matcher" in caplog.text
+
+
 def test_invalid_shell_and_python_text_do_not_crash():
     from agentmetry.core.audit.tool_policy.shell_writes import literal_write_targets
 

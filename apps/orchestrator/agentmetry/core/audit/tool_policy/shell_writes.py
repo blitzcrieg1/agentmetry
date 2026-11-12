@@ -111,15 +111,62 @@ def _command_writes(words: list[str]) -> list[str]:
     return []
 
 
+_WORD_BREAKS = " \t\r\n;&|<>()"
+
+
+def _strip_comments(command: str) -> str:
+    """Remove what Bash treats as a comment: `#` at the start of a word, outside quotes.
+
+    shlex starts a comment at any `#`, so `x=a#b; echo {} > file` lost the rest
+    of the line, write included. A `#` inside a word, as in `$#`, a URL fragment
+    or an assignment, is a literal in Bash and stays one here. A comment runs to
+    the end of its line; the newline is kept, so the next line is still a new
+    command.
+    """
+    out: list[str] = []
+    quote = ""
+    word_start = True
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if quote:
+            out.append(char)
+            if char == "\\" and quote == '"' and index + 1 < len(command):
+                out.append(command[index + 1])
+                index += 1
+            elif char == quote:
+                quote = ""
+            word_start = False
+        elif char == "\\" and index + 1 < len(command):
+            out.append(command[index : index + 2])
+            index += 1
+            word_start = False
+        elif char == "#" and word_start:
+            end = command.find("\n", index)
+            if end == -1:
+                break
+            index = end
+            continue
+        else:
+            out.append(char)
+            if char in "'\"":
+                quote = char
+            word_start = char in _WORD_BREAKS
+        index += 1
+    return "".join(out)
+
+
 def literal_write_targets(command: str) -> list[str]:
     """Literal write/remove operands and output redirections in common commands.
 
     Non-POSIX mode preserves quotes, so `echo '> file'` cannot become a shell
     redirect. This intentionally does not claim to normalize shell syntax.
     """
-    lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|<>()\n")
+    lexer = shlex.shlex(_strip_comments(command), posix=False, punctuation_chars=";&|<>()\n")
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
+    # Comments were removed the way Bash reads them; shlex's own rule is wrong.
+    lexer.commenters = ""
     try:
         tokens = list(lexer)
     except ValueError:

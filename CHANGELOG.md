@@ -41,6 +41,20 @@ separately (currently `1.2.0`) and changes additively.
   default log mode are unchanged. This remains a guardrail, not protection
   against arbitrary code running as the operator. See
   [supported operations and limits](docs/tool-policy-shell-writes.md).
+- **A `#` inside a word no longer hides a shell write from that rule.** The
+  parser treated any `#` as the start of a comment, so in
+  `x=a#b; echo {} > ~/.claude/settings.json` everything after the `#` was
+  dropped and the write was allowed. Bash starts a comment only where `#`
+  begins a word outside quotes, and the rule now reads it the same way. Found
+  in a post-merge review; never in a release.
+- **An older sensor no longer reads the new shell rule as "every shell call".**
+  A sensor from before `shell_write_pattern` ignores that key, and a rule left
+  with only `tools` matched every Bash or shell call, so a manifest from this
+  version pinned on an older host through `AGENTMETRY_TOOL_POLICY_PATH` would
+  have denied all shell use in block mode. The rule now also carries a path
+  `command_pattern` as a prefilter, and the loader warns about rule keys it
+  does not read. A custom manifest should still be written for the oldest
+  sensor that loads it.
 
 ### Documentation
 
