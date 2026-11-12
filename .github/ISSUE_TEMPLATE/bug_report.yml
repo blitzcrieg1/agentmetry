@@ -16,7 +16,7 @@ body:
     attributes:
       label: Agentmetry version
       description: 'Run: python -c "import agentmetry; print(agentmetry.__version__)"'
-      placeholder: "0.11.0"
+      placeholder: "0.12.0"
     validations:
       required: true
   - type: input

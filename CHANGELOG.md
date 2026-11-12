@@ -9,6 +9,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-12
+
+Evidence an investigator can use, and a tighter tool policy. A live detection
+can now carry bounded snapshots of the calls it cites, Claude Code calls keep
+the harness's tool-use ID with the reported result, and the shell policy
+recognises more ways an agent can rewrite its own configuration. The new
+blocks record what the agent reported, not independent proof that a call ran.
+Detection rules are unchanged; the ruleset fingerprint is still
+`15846a0915769d4a`.
+
 ### Added
 
 - **Claude request/result invocation metadata.** Optional `tool.invocation`
