@@ -9,6 +9,8 @@ class ToolPolicyRule:
     command_pattern: str = ""
     servers: list[str] = field(default_factory=list)
     description: str = ""
+    #: Match literal destinations of supported shell mutations, not path mentions.
+    shell_write_pattern: str = ""
 
 
 @dataclass

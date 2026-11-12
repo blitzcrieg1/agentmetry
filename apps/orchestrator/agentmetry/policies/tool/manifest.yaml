@@ -13,7 +13,9 @@ rules:
       - "powershell"
       - "antigravity.run_command"
       - "*.run_command"
-    command_pattern: "(?i)\\brm\\s+-rf\\b"
+    # Preserve existing -rf coverage. For additional forms, both flags must
+    # occur in the option prefix before a file operand.
+    command_pattern: '(?i)\brm\s+-rf\b|(?:^|[;&|\n])\s*(?:sudo\s+)?(?:/[^\s;&|]+/)?rm\s+(?=(?:--[a-z-]+\s+|-[a-z]+\s+)*(?:--recursive\b|-[a-z]*r[a-z]*\b))(?=(?:--[a-z-]+\s+|-[a-z]+\s+)*(?:--force\b|-[a-z]*f[a-z]*\b))'
 
   - id: block_kubectl_exec
     action: deny
@@ -121,4 +123,12 @@ rules:
       - "powershell"
       - "antigravity.run_command"
       - "*.run_command"
-    command_pattern: '(?i)(^|[\\/])\.git[\\/]hooks[\\/](pre-commit|post-commit|pre-push|post-merge|post-checkout|prepare-commit-msg)|\bcore\.hooksPath\b'
+    command_pattern: '(?i)(^|[\\/\s])\.git[\\/]hooks[\\/](pre-commit|post-commit|pre-push|post-merge|post-checkout|prepare-commit-msg)|\bcore\.hooksPath\b'
+
+  # Path mentions and reads are not writes. Inspect only literal destinations of
+  # supported shell operations; no shell or embedded program is executed.
+  - id: block_shell_agent_exec_config_write
+    action: deny
+    description: Block literal shell writes to agent execution config
+    tools: ["Bash", "Shell", "shell.run", "cursor.Shell", "powershell", "antigravity.run_command", "*.run_command"]
+    shell_write_pattern: '(?i)(^|[\\/\s])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml|\.codex[\\/](config\.toml|hooks\.json)|\.gemini[\\/]settings\.json|\.cursor[\\/](mcp|hooks)\.json)'
