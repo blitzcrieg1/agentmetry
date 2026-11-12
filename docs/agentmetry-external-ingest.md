@@ -35,7 +35,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_claude_hooks.ps1
 2. `AGENTMETRY_AUDIT_EXPORT_ENABLED=1` (default)
 3. Optional: `AGENTMETRY_API_KEY` in orchestrator `.env` — hooks send `X-API-Key` via env
 
-Events (PascalCase): `SessionStart`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`. Template: `adapters/claude/settings.agentmetry.json` (nested `event -> [{hooks:[{type,command}]}]` schema).
+Events (PascalCase): `SessionStart`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop`, `SubagentStop`. Template: `adapters/claude/settings.agentmetry.json` (nested `event -> [{hooks:[{type,command}]}]` schema).
 
 ```powershell
 $env:AGENTMETRY_SOURCE_APP="claude"; python scripts/agentmetry_ingest.py selftest   # GREEN
