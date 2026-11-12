@@ -6,6 +6,7 @@ from typing import Any
 
 from .loader import load_tool_policy
 from .models import ToolPolicyMatch, ToolPolicyRule, ToolPolicyVerdict
+from .shell_writes import literal_write_targets
 # Not core.config, for the same reason as the DLP scanner (#171).
 from ..policy_settings import policy_settings
 
@@ -132,6 +133,14 @@ def _rule_matches(rule: ToolPolicyRule, qualified: str, server: str, command: st
         return False
     if not _server_matches(rule, server):
         return False
+    if rule.shell_write_pattern:
+        try:
+            if not any(re.search(rule.shell_write_pattern, target)
+                       for target in literal_write_targets(command)):
+                return False
+        except re.error as exc:
+            logger.warning("[tool_policy] invalid write-target regex for rule %s: %s", rule.id, exc)
+            return False
     if rule.command_pattern:
         if not command:
             return False

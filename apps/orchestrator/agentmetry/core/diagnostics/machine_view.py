@@ -90,7 +90,7 @@ def snapshot() -> dict[str, Any]:
                     "action": rule.action,
                     "description": rule.description,
                     "tools": len(rule.tools),
-                    "matches_command": bool(rule.command_pattern),
+                    "matches_command": bool(rule.command_pattern or rule.shell_write_pattern),
                 }
                 for rule in rules
             ],

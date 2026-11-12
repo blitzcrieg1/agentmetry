@@ -84,6 +84,7 @@ def load_tool_policy(manifest_path: Path | str) -> tuple[list[ToolPolicyRule], s
                 command_pattern=str(raw.get("command_pattern", "") or ""),
                 servers=[str(s) for s in servers],
                 description=str(raw.get("description", "") or ""),
+                shell_write_pattern=str(raw.get("shell_write_pattern", "") or ""),
             )
         )
     return rules, default

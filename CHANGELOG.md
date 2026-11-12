@@ -32,6 +32,16 @@ separately (currently `1.2.0`) and changes additively.
   could reach PyPI before, and a manual run from a tag passed the publish
   condition ([#404]).
 
+### Fixed
+
+- **Narrow tool-policy bypasses reported in an external audit.** Recognize
+  recursive-delete flag variants and relative git-hook paths after whitespace.
+  Inspect literal destinations of supported shell writes to agent execution
+  config while allowing reads and quoted examples. Detection rules and the
+  default log mode are unchanged. This remains a guardrail, not protection
+  against arbitrary code running as the operator. See
+  [supported operations and limits](docs/tool-policy-shell-writes.md).
+
 ### Documentation
 
 - **Clarify the commercial licensing boundary.** The sensor remains Apache 2.0;
