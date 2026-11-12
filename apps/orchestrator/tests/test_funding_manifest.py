@@ -64,7 +64,9 @@ def test_the_manifest_is_valid_json_with_the_required_shape():
 
 
 def test_quoted_version_matches_the_package():
-    quoted = re.search(r"version (\d+\.\d+\.\d+) on PyPI", _project_description())
+    # A release PR says "in source" until the upload exists; the docs PR after
+    # it says "on PyPI". Both must quote the version this package ships.
+    quoted = re.search(r"version (\d+\.\d+\.\d+) (?:in source|on PyPI)", _project_description())
     assert quoted, "funding.json no longer quotes a version; update this test or the manifest"
     assert quoted.group(1) == __version__, (
         "funding.json quotes a different version than the package ships"
