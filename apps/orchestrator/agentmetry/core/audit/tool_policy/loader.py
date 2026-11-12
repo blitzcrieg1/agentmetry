@@ -15,6 +15,13 @@ SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 ACTIONS = ("allow", "deny", "ask")
 
+#: Rule keys this version reads. A key it does not know is ignored, so a rule
+#: written for a newer sensor can match more than its author meant here: a rule
+#: whose only matcher is an unknown key becomes "every call to these tools".
+RULE_KEYS = frozenset(
+    {"id", "action", "description", "tools", "servers", "command_pattern", "shell_write_pattern"}
+)
+
 #: `ask` is not a valid default yet. "Ask about everything not allowlisted" is
 #: zero-trust mode, and it needs the ask-gate's timeouts to be safe: an IDE
 #: that never shows the prompt would otherwise stall every tool call forever.
@@ -62,6 +69,15 @@ def load_tool_policy(manifest_path: Path | str) -> tuple[list[ToolPolicyRule], s
 
     rules: list[ToolPolicyRule] = []
     for raw in data["rules"]:
+        unknown = sorted(str(key) for key in raw if key not in RULE_KEYS)
+        if unknown:
+            logger.warning(
+                "[tool_policy] rule %r has key(s) this version does not read: %s. "
+                "The rule is loaded without them, so it may match more than intended; "
+                "check that the manifest was written for this Agentmetry version",
+                raw.get("id", ""),
+                ", ".join(unknown),
+            )
         action = str(raw.get("action", "deny")).strip().lower()
         if action not in ACTIONS:
             logger.warning(

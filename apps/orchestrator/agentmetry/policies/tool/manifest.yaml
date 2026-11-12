@@ -127,8 +127,16 @@ rules:
 
   # Path mentions and reads are not writes. Inspect only literal destinations of
   # supported shell operations; no shell or embedded program is executed.
+  #
+  # command_pattern is a prefilter on the raw command. A literal write target is
+  # text in that command, so this version's result is unchanged, except for a
+  # Python string spelled with escape codes, which is no longer matched. It is
+  # here for a sensor older than shell_write_pattern, which ignores that key:
+  # without the prefilter such a sensor reads this rule as tools-only and
+  # matches every shell call.
   - id: block_shell_agent_exec_config_write
     action: deny
     description: Block literal shell writes to agent execution config
     tools: ["Bash", "Shell", "shell.run", "cursor.Shell", "powershell", "antigravity.run_command", "*.run_command"]
+    command_pattern: '(?i)(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml|\.codex[\\/](config\.toml|hooks\.json)|\.gemini[\\/]settings\.json|\.cursor[\\/](mcp|hooks)\.json)'
     shell_write_pattern: '(?i)(^|[\\/\s])(\.claude[\\/]settings(\.local)?\.json|\.mcp\.json|\.claude[\\/]hooks?[\\/]|\.qwen[\\/]settings|\.qoder[\\/]settings|\.codebuddy[\\/]settings|\.kimi-code[\\/]config\.toml|\.codex[\\/](config\.toml|hooks\.json)|\.gemini[\\/]settings\.json|\.cursor[\\/](mcp|hooks)\.json)'
