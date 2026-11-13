@@ -275,6 +275,28 @@ def test_inferred_approval_does_not_gain_an_exact_invocation_link():
     assert "invocation" not in canonical.get("tool", {})
 
 
+def test_a_failed_claude_call_is_not_recorded_as_a_denial():
+    """PreToolUse, PostToolUseFailure, Stop: approved, ran, failed.
+
+    Before, only PostToolUse closed the request, so Stop recorded this call as
+    an inferred denial. Raised by a reader who keeps unresolved tool_use_ids
+    in their own bucket rather than counting them as failures.
+    """
+    from agentmetry.core.audit.ingest import infer_approval_payloads, reset_pending_approvals
+
+    reset_pending_approvals()
+    request = build_external_canonical(_http(_payload("PreToolUse", "toolu_failed_001")))
+    failure = build_external_canonical(
+        _http(_payload("PostToolUseFailure", "toolu_failed_001", error="exit 1"))
+    )
+    stop = build_external_canonical(_http(_payload("Stop", "toolu_failed_001")))
+
+    assert failure["action"]["outcome"] == "error"
+    assert infer_approval_payloads(request) == []
+    assert infer_approval_payloads(failure) == []
+    assert infer_approval_payloads(stop) == []
+
+
 def test_old_tool_events_remain_unchanged_when_metadata_is_absent():
     payload = _payload()
     payload["tool"].pop("invocation", None)
