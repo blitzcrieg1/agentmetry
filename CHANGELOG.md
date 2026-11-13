@@ -11,6 +11,15 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **A failed call is no longer recorded as a denied approval.** Only a
+  successful call closed a pending ask, so an ask whose call ran and failed,
+  or was interrupted, stayed open until the session ended and was then
+  written as an inferred `denied` response: approved, ran, failed, and
+  recorded as refused. A reported failure now closes its ask with no
+  inferred response, because a failure says nothing about what a person
+  decided. An ask that never gets a result still closes at session end as
+  `inferred:session_ended_pending`. Raised by a reader of the r/ClaudeCode
+  post on `PostToolUseFailure`. The ruleset fingerprint is unchanged.
 - **Claude Code subagent stops are recorded.** Ingest has mapped
   `SubagentStop` to a marker on the parent session since the 2026-07-20
   review, but the generated Claude hook settings never registered the event,

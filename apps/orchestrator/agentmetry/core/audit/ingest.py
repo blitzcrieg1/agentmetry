@@ -22,6 +22,7 @@ _sink = None
 # Best-effort, in-session approval correlation (Tier B). No IDE reports "the
 # human clicked approve", so we infer it: a tool that RUNS after an `ask` means
 # the human approved; an `ask` still pending at session end means denied/aborted.
+# A call that reports a failure closes its `ask` with no inference at all.
 # Inferred events are explicitly marked `reason: inferred:*` — never presented
 # as a native approval signal. In-memory only (lost on restart); approvals are
 # short-lived within a session so this is acceptable for a local recorder.
@@ -116,6 +117,20 @@ def infer_approval_payloads(canonical: dict[str, Any]) -> list[dict[str, Any]]:
                         source_app, corr, pending, "success", "inferred:tool_ran_after_ask"
                     )
                 ]
+        return []
+
+    if atype == "tool_called" and outcome == "error":
+        # A failed or interrupted call is the ask's result, so the ask is no
+        # longer open. Left pending, it was closed at session end as an
+        # inferred denial: a call that ran and failed was recorded as refused.
+        # A failure says nothing about what a person decided, so close the ask
+        # without inferring a response either way.
+        bucket = _pending_approvals.get(corr) or []
+        qualified, _server, input_hash = _tool_ident(canonical)
+        for i, pending in enumerate(bucket):
+            if _approval_matches(pending, qualified, input_hash):
+                bucket.pop(i)
+                break
         return []
 
     if atype == "session_end":

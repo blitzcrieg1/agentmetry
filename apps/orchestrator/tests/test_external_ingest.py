@@ -289,6 +289,60 @@ def test_approval_binds_when_the_hash_matches():
     assert inferred[0]["gated_action"]["input_hash"] == "c" * 64
 
 
+def _failed(corr: str, tool: str = "shell.run", input_hash: str | None = None) -> dict:
+    payload: dict = {
+        "source_app": "cursor", "event_type": "tool_failed",
+        "correlation_id": corr,
+        "tool": {"qualified": tool, "server": "shell"},
+    }
+    if input_hash:
+        payload["tool"]["input_hash"] = input_hash
+    return build_external_canonical(payload)
+
+
+def _end(corr: str) -> dict:
+    return build_external_canonical({
+        "source_app": "cursor", "event_type": "session_end", "correlation_id": corr,
+    })
+
+
+def test_a_failed_call_closes_its_ask_without_a_denial():
+    """Ask, then the call runs and fails. That is not a refusal.
+
+    Only a successful call closed an ask, so a failed one stayed pending and
+    session end recorded it as an inferred denial: approved, ran, failed, and
+    written down as refused. A failure says nothing about what a person
+    decided, so nothing is inferred in either direction.
+    """
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-failed", input_hash="e" * 64))
+
+    assert infer_approval_payloads(_failed("conv-failed", input_hash="e" * 64)) == []
+    assert infer_approval_payloads(_end("conv-failed")) == []
+
+
+def test_a_failed_different_command_leaves_the_ask_open():
+    """The same binding rule as a success: a failure of `Bash(ls)` is not the
+    result of an ask for `Bash(rm -rf /tmp/x)`."""
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-failed-other", input_hash="a" * 64))
+    infer_approval_payloads(_failed("conv-failed-other", input_hash="b" * 64))
+
+    closed = infer_approval_payloads(_end("conv-failed-other"))
+    assert len(closed) == 1
+    assert closed[0]["reason"] == "inferred:session_ended_pending"
+
+
+def test_an_ask_with_no_result_still_closes_at_session_end():
+    """Unchanged: an ask that never got a result keeps its marker."""
+    reset_pending_approvals()
+    infer_approval_payloads(_ask("conv-open", input_hash="f" * 64))
+
+    closed = infer_approval_payloads(_end("conv-open"))
+    assert len(closed) == 1
+    assert closed[0]["reason"] == "inferred:session_ended_pending"
+
+
 def test_approval_falls_back_to_tool_name_when_a_hash_is_missing():
     """Pre-hash adapters send no input_hash; name matching must still work."""
     reset_pending_approvals()

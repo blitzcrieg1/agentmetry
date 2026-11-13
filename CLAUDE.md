@@ -193,7 +193,7 @@ somebody can run. If a number cannot be produced on demand, it does not go in.
 
 ## What the project is actually short of
 
-Not code. As of 2026-11-12 there are 2437 tests collected in CI, zero open
+Not code. As of 2026-11-12 there are 2441 tests collected in CI, zero open
 code scanning alerts, one open Dependabot alert (dashboard development
 dependency `minimatch`, #116), OpenSSF Scorecard 7.8, a
 dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "10 of 4, Gate
