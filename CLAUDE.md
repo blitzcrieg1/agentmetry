@@ -261,8 +261,12 @@ mapping events to OCSF 1.9.0. We wrote it at mavam's invitation; he simplified
 it before merging. The 34 fields it reads, and the `{trail, event}` record
 layout, are listed in the same schema section and carry the same promise: a
 change touching one ships with a matching package update, which #211 committed
-to. Its live webhook path into `accept_http` has not been run. Like AiSOC, it is
-an integration, not a user.
+to. Its webhook path into `accept_http` was run on 2026-11-14, from 0.12.0 on
+PyPI into Tenzir 6.22 with package v0.1.0: every event arrived and mapped to
+OCSF, detections included. The sessions were replayed, not from a live agent.
+Like AiSOC, it is an integration, not a user. An offer to try Agentmetry
+through it is in the private outreach log; until someone has run it, that is
+still not a user.
 
 The fleet installers Cursor drafted in #282 are parked as
 agentmetry-enterprise#33 (macOS) and #34 (Intune managed policy), to be built
