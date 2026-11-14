@@ -112,6 +112,13 @@ CLAUDE_HOOK_EVENTS = (
     "PostToolUseFailure",
     "Notification",
     "Stop",
+    # Stop does not run when the person interrupts a turn, and an API error
+    # fires StopFailure in its place, so with Stop alone an approval ask left
+    # open by either kind of turn stayed open until some later turn ended
+    # cleanly, or forever. StopFailure closes the failed turn; SessionEnd closes
+    # whatever an interrupted turn left behind.
+    "StopFailure",
+    "SessionEnd",
     # Mapped as a marker on the parent session since the F6 fix, but never
     # registered, so a real install recorded no subagent finishing at all.
     "SubagentStop",

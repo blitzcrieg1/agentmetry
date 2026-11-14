@@ -1111,6 +1111,28 @@ def map_claude_hook(
             "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
         }
 
+    # Stop does not run when the person interrupts a turn, and an API error
+    # fires StopFailure instead of it, so either kind of turn left its open
+    # approval asks waiting. Both are a real end, recorded as one: StopFailure
+    # for the failed turn, SessionEnd for whatever an interrupted turn left.
+    # Only Claude's own enum values are kept; `error_details` and
+    # `last_assistant_message` are free text and are not recorded.
+    if hook_name in ("StopFailure", "SessionEnd"):
+        field = "error" if hook_name == "StopFailure" else "reason"
+        value = str(_pick(data, field, default="")).strip().lower()
+        if not re.fullmatch(r"[a-z_]{1,40}", value):
+            value = "unknown"
+        prefix = "stop_failure" if hook_name == "StopFailure" else "session_end"
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "session_end",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "reason": f"{prefix}:{value}",
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
+        }
+
     # A SubagentStop is NOT a parent session_end. Mapping it to one made ingest
     # flush every pending approval on the parent correlation as inferred-denied
     # the moment a subagent finished mid-session — a lie about what the human
