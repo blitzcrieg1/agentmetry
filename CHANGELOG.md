@@ -11,6 +11,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **Interrupted and failed Claude Code turns close their open approval asks.**
+  Claude Code does not run `Stop` when the person interrupts a turn, and an
+  API error fires `StopFailure` in its place. Only `Stop` was registered, so
+  an ask left open by either kind of turn stayed open until some later turn
+  ended cleanly, or for good. Generated settings and the hand-copy template
+  now register `StopFailure` and `SessionEnd`, both recorded as `session_end`
+  with the error type (`stop_failure:rate_limit`) or exit reason
+  (`session_end:prompt_input_exit`); the free-text error fields are not
+  recorded. Existing installs need the normal hook refresh. Raised by a reader
+  of the r/ClaudeCode post. The ruleset fingerprint is unchanged.
 - **A failed call is no longer recorded as a denied approval.** Only a
   successful call closed a pending ask, so an ask whose call ran and failed,
   or was interrupted, stayed open until the session ended and was then
