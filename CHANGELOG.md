@@ -11,6 +11,17 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- **An MCP tool that reports its own failure is recorded as failed.** The
+  stdio proxy turned a response into `tool_failed` only for a JSON-RPC
+  `error`, but MCP reports a tool execution error as an ordinary `result`
+  with `isError: true`, so a call the server itself said had failed stayed in
+  the trail as a plain `tool_called`. It is now `tool_failed` with the fixed
+  reason `mcp_tool_error:isError`; the result text is tool output and is not
+  recorded. Only a boolean `true` counts: a server that reports an error as
+  text with no flag still reads as a success, because telling it apart would
+  mean reading tool output. Raised by a reader of the r/ClaudeCode post
+  ([#426](https://github.com/blitzcrieg1/agentmetry/issues/426)). The ruleset
+  fingerprint is unchanged.
 - **Interrupted and failed Claude Code turns close their open approval asks.**
   Claude Code does not run `Stop` when the person interrupts a turn, and an
   API error fires `StopFailure` in its place. Only `Stop` was registered, so

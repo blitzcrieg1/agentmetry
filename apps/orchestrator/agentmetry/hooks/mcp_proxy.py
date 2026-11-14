@@ -155,11 +155,27 @@ def build_call_payload(
 def build_error_payload(
     msg: dict[str, Any], ctx: dict[str, str], correlation_id: str
 ) -> dict[str, Any] | None:
-    """Build a tool_failed payload from an error response, or None if not an error."""
+    """Build a tool_failed payload from an error response, or None if not an error.
+
+    MCP has two kinds of error. A JSON-RPC `error` means the request itself
+    failed. A tool that ran and failed answers with an ordinary `result`
+    carrying `isError: true`, which is how the spec reports tool execution
+    errors. Only the first used to count, so a call the server itself reported
+    as failed stayed in the trail as a plain `tool_called` (#426).
+
+    For `isError` the reason is fixed rather than taken from the result: the
+    result is tool output, which the proxy never records. Only a boolean
+    `true` counts. A server that reports an error as text without the flag is
+    indistinguishable from success without reading that text, so it stays one.
+    """
     err = msg.get("error")
-    if not err:
-        return None
-    reason = str(err.get("message") if isinstance(err, dict) else err) or "mcp_error"
+    if err:
+        reason = str(err.get("message") if isinstance(err, dict) else err) or "mcp_error"
+    else:
+        result = msg.get("result")
+        if not (isinstance(result, dict) and result.get("isError") is True):
+            return None
+        reason = "mcp_tool_error:isError"
     return {
         "source_app": _source_app(),
         "adapter": "mcp_audit_proxy",
