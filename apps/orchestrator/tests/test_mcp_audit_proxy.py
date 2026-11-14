@@ -96,6 +96,45 @@ def test_success_response_is_not_an_error():
     assert proxy.build_error_payload(resp, {"qualified": "t", "server": "s"}, "s") is None
 
 
+def test_a_result_flagged_is_error_becomes_tool_failed():
+    """MCP reports a tool execution error as a result with isError (#426)."""
+    resp = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+            "content": [{"type": "text", "text": "cursor expired: c-4471 for user ana@example.com"}],
+            "isError": True,
+        },
+    }
+    ctx = {"qualified": "notes.search", "server": "notes"}
+    payload = proxy.build_error_payload(resp, ctx, "sess-iserror")
+    assert payload is not None
+    assert payload["event_type"] == "tool_failed"
+    assert payload["outcome"] == "error"
+    assert payload["reason"] == "mcp_tool_error:isError"
+    assert payload["tool"] == {"qualified": "notes.search", "server": "notes"}
+    # The result is tool output, and none of it is recorded.
+    assert "cursor expired" not in repr(payload)
+    assert "example.com" not in repr(payload)
+
+
+@pytest.mark.parametrize("flag", [False, None, "true", 1])
+def test_only_a_boolean_true_is_error_counts(flag):
+    """No flag, or anything but `true`, is a success: nothing is read from content."""
+    result = {"content": [{"type": "text", "text": "Error: cursor expired"}]}
+    if flag is not None:
+        result["isError"] = flag
+    resp = {"jsonrpc": "2.0", "id": 7, "result": result}
+    assert proxy.build_error_payload(resp, {"qualified": "t", "server": "s"}, "s") is None
+
+
+def test_a_json_rpc_error_keeps_its_message():
+    resp = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32602, "message": "Invalid cursor"},
+            "result": {"isError": True}}
+    payload = proxy.build_error_payload(resp, {"qualified": "t", "server": "s"}, "s")
+    assert payload["reason"] == "Invalid cursor"
+
+
 def test_correlation_env_override(monkeypatch):
     monkeypatch.setenv("AGENTMETRY_CORRELATION_ID", "fixed-corr")
     assert proxy._correlation_id() == "fixed-corr"
