@@ -200,7 +200,11 @@ dogfood gate that passed 4 of 4 on 2026-10-02 and now prints "10 of 4, Gate
 PASSED" with every complete week green (triage is what keeps it that way;
 untriaged criticals turn a week red),
 `agentmetry demo`
-runnable with nothing installed (`uvx agentmetry demo`), 0.12.0 on PyPI
+runnable with nothing installed (`uvx agentmetry demo`), 0.12.1 on PyPI
+(released 2026-11-14: Claude Code turns that were interrupted or failed close
+their open approval asks, a failed call is no longer recorded as a denial,
+subagent stops are recorded, and an MCP result flagged `isError` is recorded as
+failed, with the ruleset fingerprint unchanged), 0.12.0 before it
 (released 2026-11-12: evidence snapshots on live detections, Claude Code
 tool-use IDs with the reported result, and a tighter shell policy for agent
 config writes, with the ruleset fingerprint unchanged), 0.11.0 before it
