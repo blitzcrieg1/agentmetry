@@ -9,6 +9,15 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-14
+
+Fixes to how the trail records the end of a Claude Code turn and the
+outcome of an MCP call. Three of the four were raised by readers of the
+r/ClaudeCode post. Existing Claude Code installs pick up the newly
+registered `StopFailure`, `SessionEnd` and `SubagentStop` hooks with the
+normal hook refresh (`agentmetry hooks install`). Detection rules are
+unchanged; the ruleset fingerprint is still `15846a0915769d4a`.
+
 ### Fixed
 
 - **An MCP tool that reports its own failure is recorded as failed.** The
