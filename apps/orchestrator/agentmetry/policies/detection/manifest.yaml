@@ -18,6 +18,13 @@ thresholds:
   session_tool_burst_window_minutes: 10
   host_subagent_burst_window_minutes: 60
 
+  # Two-step rules (credential read then egress, cloud API or git push;
+  # untrusted input then a risky action; download then execute) pair only
+  # when the second step follows the first within this window. On the
+  # dogfood trail every pair dispositioned real closed within 165 minutes,
+  # and one false positive paired steps 28 days apart. 0 = whole session.
+  sequence_window_minutes: 240
+
 # Analyst-authored count rules — no Python PR required. Fires when ≥ min_count
 # events in one session match all filters in `match`.
 count_rules:

@@ -27,6 +27,10 @@ _DEFAULT_THRESHOLDS: dict[str, int] = {
     "delete_burst_window_minutes": 10,
     "session_tool_burst_window_minutes": 10,
     "host_subagent_burst_window_minutes": 60,
+    # Two-step rules ("credential read, then egress") pair only when the
+    # second step follows within this many minutes. 0 pairs across the
+    # whole session, which is how they worked before 2026-11.
+    "sequence_window_minutes": 240,
 }
 
 _cache: dict[str, Any] | None = None

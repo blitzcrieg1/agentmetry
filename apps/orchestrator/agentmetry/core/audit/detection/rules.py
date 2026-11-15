@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from .models import Detection
 from .yaml_config import threshold as _threshold
@@ -391,35 +391,30 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
             )
         ]
 
-    cred_idx = next(
-        (i for i, e in enumerate(events) if _is_credential_access(e)),
-        None,
+    pair = _first_pair(
+        events, _is_credential_access, lambda e: _tactic_id(e) == "TA0011"
     )
-    if cred_idx is None:
+    if pair is None:
         return []
-
-    for net in events[cred_idx + 1:]:
-        if _tactic_id(net) == "TA0011":
-            cred = events[cred_idx]
-            return [
-                Detection(
-                    rule_id="credential-exfil",
-                    title="Credential access followed by network egress",
-                    severity="critical",
-                    summary=(
-                        f"{_tool_qualified(cred) or 'a tool'} accessed credentials, then "
-                        f"{_tool_qualified(net) or 'a tool'} egressed to the network in the "
-                        "same session."
-                    ),
-                    correlation_id=_correlation_id(events),
-                    tactic_ids=["TA0006", "TA0011"],
-                    technique_ids=[_technique_id(cred), _technique_id(net)],
-                    event_ids=[_event_id(cred), _event_id(net)],
-                    first_seen_utc=_ts(cred),
-                    last_seen_utc=_ts(net),
-                )
-            ]
-    return []
+    cred, net = pair
+    return [
+        Detection(
+            rule_id="credential-exfil",
+            title="Credential access followed by network egress",
+            severity="critical",
+            summary=(
+                f"{_tool_qualified(cred) or 'a tool'} accessed credentials, then "
+                f"{_tool_qualified(net) or 'a tool'} egressed to the network in the "
+                "same session."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0006", "TA0011"],
+            technique_ids=[_technique_id(cred), _technique_id(net)],
+            event_ids=[_event_id(cred), _event_id(net)],
+            first_seen_utc=_ts(cred),
+            last_seen_utc=_ts(net),
+        )
+    ]
 
 
 def rule_autonomous_unapproved_write(events: list[dict[str, Any]]) -> list[Detection]:
@@ -850,20 +845,16 @@ def rule_untrusted_input_then_risky_action(events: list[dict[str, Any]]) -> list
     already-risky technique (credential access, egress, destruction, obfuscated
     download) qualifies.
     """
-    ingest_idx = next((i for i, e in enumerate(events) if _is_untrusted_input(e)), None)
-    if ingest_idx is None:
-        return []
-
-    for event in events[ingest_idx + 1:]:
+    def escalates(event: dict[str, Any]) -> bool:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            continue
+            return False
         # Reading more untrusted content is not an escalation. Without this,
         # two consecutive web reads flagged each other.
-        if _is_untrusted_input(event):
-            continue
-        if not _is_risky(event):
-            continue
-        source = events[ingest_idx]
+        return not _is_untrusted_input(event) and _is_risky(event)
+
+    pair = _first_pair(events, _is_untrusted_input, escalates)
+    if pair is not None:
+        source, event = pair
         return [
             Detection(
                 rule_id="untrusted-input-then-risky-action",
@@ -950,19 +941,17 @@ def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[De
     does not start this sequence. A provider token sent only to its own CLI or
     hosts earns no credential half at all (`traits.issuer_bound`).
     """
-    cred_idx = next((i for i, e in enumerate(events) if _is_credential_access(e)), None)
-    if cred_idx is None:
-        return []
-
-    for event in events[cred_idx + 1:]:
+    def calls_cloud(event: dict[str, Any]) -> bool:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            continue
+            return False
         # Masked: `kubectl`, `aws`, `az keyvault` are command words. Read from
         # the raw text, this rule paged critical on a git commit message that
         # merely *described* those CLIs, six hours after an unrelated .env read.
-        if not (_CLOUD_API.search(_command_words(event)) or _has_trait(event, "cloud_api")):
-            continue
-        cred = events[cred_idx]
+        return bool(_CLOUD_API.search(_command_words(event)) or _has_trait(event, "cloud_api"))
+
+    pair = _first_pair(events, _is_credential_access, calls_cloud)
+    if pair is not None:
+        cred, event = pair
         return [
             Detection(
                 rule_id="credential-read-then-cloud-api",
@@ -991,16 +980,14 @@ def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detect
     Matches the exfil pattern seen in supply-chain campaigns: harvest secrets
     locally, then publish them via the victim's own git credentials.
     """
-    cred_idx = next((i for i, e in enumerate(events) if _is_credential_access(e)), None)
-    if cred_idx is None:
-        return []
-
-    for event in events[cred_idx + 1:]:
+    def pushes(event: dict[str, Any]) -> bool:
         if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            continue
-        if not (_GIT_EXFIL.search(_command_words(event)) or _has_trait(event, "git_exfil")):
-            continue
-        cred = events[cred_idx]
+            return False
+        return bool(_GIT_EXFIL.search(_command_words(event)) or _has_trait(event, "git_exfil"))
+
+    pair = _first_pair(events, _is_credential_access, pushes)
+    if pair is not None:
+        cred, event = pair
         return [
             Detection(
                 rule_id="dotfile-read-then-git-push",
@@ -1050,6 +1037,8 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
         for event in events[i + 1:]:
             if _action_type(event) != "tool_called" or _outcome(event) != "success":
                 continue
+            if not _in_sequence_window(fetch, event):
+                continue
             if not downloaded & _executed_files(_command(event)):
                 continue
             shared = sorted(downloaded & _executed_files(_command(event)))[0]
@@ -1072,16 +1061,13 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
                 )
             ]
 
-    fetch_idx = next((i for i, e in enumerate(events) if _is_staging_fetch(e)), None)
-    if fetch_idx is None:
-        return []
-
-    for event in events[fetch_idx + 1:]:
-        if _is_staging_fetch(event):
-            continue
-        if not _is_risky_exec_after_staging(event):
-            continue
-        source = events[fetch_idx]
+    pair = _first_pair(
+        events,
+        _is_staging_fetch,
+        lambda e: not _is_staging_fetch(e) and _is_risky_exec_after_staging(e),
+    )
+    if pair is not None:
+        source, event = pair
         return [
             Detection(
                 rule_id="remote-staging-then-execute",
@@ -1112,6 +1098,64 @@ def _parse_ts(ts: str) -> datetime | None:
     except ValueError:
         return None
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def _sequence_window() -> timedelta | None:
+    minutes = _threshold("sequence_window_minutes")
+    return timedelta(minutes=minutes) if minutes > 0 else None
+
+
+def _in_sequence_window(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """True when `second` lands within the sequence window after `first`.
+
+    An unparsable timestamp counts as inside, as in `_densest_window`: a missing
+    clock should not be a way to keep a sequence quiet.
+    """
+    window = _sequence_window()
+    if window is None:
+        return True
+    began, at = _parse_ts(_ts(first)), _parse_ts(_ts(second))
+    if began is None or at is None:
+        return True
+    return at - began <= window
+
+
+def _first_pair(
+    events: list[dict[str, Any]],
+    is_start: Callable[[dict[str, Any]], bool],
+    is_second: Callable[[dict[str, Any]], bool],
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """The first `second` event after a `start` event inside the sequence window.
+
+    "Credential read, then egress" used to mean anywhere in the session. A
+    session can stay open for weeks: on the dogfood trail the pairs
+    dispositioned real all closed within 165 minutes, while a false positive
+    paired a download with a run 28 days later. So the second step has to follow
+    a start within `sequence_window_minutes` (0 restores session-wide pairing).
+
+    The pair reported is the earliest start still in the window, which is the
+    session's first start whenever every gap fits, as before. A later start
+    opens its own window, so a stale early start cannot hide a fresh one.
+    An unparsable timestamp counts as inside the window.
+    """
+    window = _sequence_window()
+    starts: list[tuple[dict[str, Any], datetime | None]] = []
+    lo = 0
+    for event in events:
+        if starts and is_second(event):
+            if window is None:
+                return starts[0][0], event
+            at = _parse_ts(_ts(event))
+            while lo < len(starts):
+                began = starts[lo][1]
+                if at is None or began is None or at - began <= window:
+                    break
+                lo += 1
+            if lo < len(starts):
+                return starts[lo][0], event
+        if is_start(event):
+            starts.append((event, _parse_ts(_ts(event))))
+    return None
 
 
 def _densest_window(

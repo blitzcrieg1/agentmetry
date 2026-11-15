@@ -81,6 +81,14 @@ sequenceDiagram
 | `session-tool-burst` | high if unattended, else medium | Unusually dense tool activity in one session, measured over a time window rather than a session total. High only when an autonomous or scheduled session produced it: interactive agents cross the threshold routinely (#172) |
 | `off-hours-activity` | medium | Unscheduled autonomous impact action outside business hours. **Opt-in** (`AGENTMETRY_DETECT_OFF_HOURS=1`) with an operator-set window; scheduled jobs excluded |
 
+The two-step rules (the four critical credential and staging rules above,
+`credential-exfil`'s two-event form and `untrusted-input-then-risky-action`)
+pair only when the second step follows the first within
+`sequence_window_minutes` (240 by default, in the detection manifest). Each
+later first step opens its own window. Set it to 0 to pair across the whole
+session, as before 2026-11. `approval-denied-then-executed` has no window: a
+denied action that runs later is a bypass however much later it runs.
+
 Host-scoped rules run across sessions on one machine rather than within one:
 
 | Rule ID | Severity | Pattern |
