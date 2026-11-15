@@ -562,7 +562,11 @@ CREDENTIAL_ENV = re.compile(
     rf"(?<!\\)\$env:{_CREDENTIAL_ENV_NAME}(?!\s*=(?!=))|"
     rf"\bprintenv\b[^\n|;&]*\b{_CREDENTIAL_ENV_NAME}|"
     rf"\bgetenv\(\s*['\"]{_CREDENTIAL_ENV_NAME}|"
-    rf"\benviron(?:\[|\.get\(\s*)['\"]{_CREDENTIAL_ENV_NAME}",
+    # `os.environ["AWS_ACCESS_KEY_ID"] = "testing"` sets a fake value for a
+    # test, which public agent trajectories do constantly; reading is `[...]`
+    # without an assignment, or `.get(`.
+    rf"\benviron\[['\"]{_CREDENTIAL_ENV_NAME}['\"]\](?!\s*=(?!=))|"
+    rf"\benviron\.get\(\s*['\"]{_CREDENTIAL_ENV_NAME}",
     re.IGNORECASE,
 )
 
@@ -665,7 +669,7 @@ _ISSUERS: dict[str, tuple[frozenset[str], str, tuple[str, ...], tuple[str, ...]]
     ),
     "openai": (
         frozenset({"OPENAI_API_KEY"}),
-        r"sk-proj-[A-Za-z0-9_-]{20,}",
+        r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}",
         ("api.openai.com",),
         (),
     ),
@@ -677,7 +681,7 @@ _ISSUERS: dict[str, tuple[frozenset[str], str, tuple[str, ...], tuple[str, ...]]
     ),
     "aws": (
         frozenset({"AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"}),
-        r"AKIA[0-9A-Z]{16}",
+        r"(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}",
         ("amazonaws.com",),
         ("aws",),
     ),
@@ -686,6 +690,77 @@ _ISSUERS: dict[str, tuple[frozenset[str], str, tuple[str, ...], tuple[str, ...]]
         r"dckr_pat_[A-Za-z0-9_-]{20,}",
         ("docker.io", "docker.com"),
         ("docker",),
+    ),
+    # Token formats from gitleaks' rule set (github.com/gitleaks/gitleaks,
+    # config/gitleaks.toml, MIT), rewritten for Python's `re`. Only formats with
+    # a distinctive prefix and an obvious issuer; generic shapes such as
+    # Twilio's `SK` plus 32 hex were left out because they match ordinary hashes.
+    "google": (
+        frozenset({"GOOGLE_API_KEY", "GEMINI_API_KEY", "GCP_API_KEY"}),
+        r"AIza[\w-]{35}",
+        ("googleapis.com", "google.com"),
+        ("gcloud",),
+    ),
+    "slack": (
+        frozenset({"SLACK_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"}),
+        r"xoxb-[0-9]{10,13}-[0-9]{10,13}[A-Za-z0-9-]*|xox[pe](?:-[0-9]{10,13}){3}-[A-Za-z0-9-]{28,34}|"
+        r"xapp-\d-[A-Za-z0-9]+-\d+-[A-Za-z0-9]+",
+        ("slack.com",),
+        (),
+    ),
+    "stripe": (
+        frozenset({"STRIPE_SECRET_KEY", "STRIPE_API_KEY"}),
+        r"(?:sk|rk)_(?:test|live|prod)_[A-Za-z0-9]{10,99}",
+        ("stripe.com",),
+        ("stripe",),
+    ),
+    "sendgrid": (
+        frozenset({"SENDGRID_API_KEY"}),
+        r"SG\.[A-Za-z0-9=_.-]{66}",
+        ("sendgrid.com",),
+        (),
+    ),
+    "shopify": (
+        frozenset({"SHOPIFY_ACCESS_TOKEN", "SHOPIFY_API_TOKEN"}),
+        r"shpat_[a-fA-F0-9]{32}",
+        ("myshopify.com", "shopify.com"),
+        ("shopify",),
+    ),
+    "digitalocean": (
+        frozenset({"DIGITALOCEAN_TOKEN", "DIGITALOCEAN_ACCESS_TOKEN"}),
+        r"do[po]_v1_[a-f0-9]{64}",
+        ("digitalocean.com",),
+        ("doctl",),
+    ),
+    "linear": (
+        frozenset({"LINEAR_API_KEY"}),
+        r"lin_api_[A-Za-z0-9]{40}",
+        ("linear.app",),
+        (),
+    ),
+    "doppler": (
+        frozenset({"DOPPLER_TOKEN"}),
+        r"dp\.pt\.[A-Za-z0-9]{43}",
+        ("doppler.com",),
+        ("doppler",),
+    ),
+    "postman": (
+        frozenset({"POSTMAN_API_KEY"}),
+        r"PMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}",
+        ("getpostman.com", "postman.com"),
+        (),
+    ),
+    "pulumi": (
+        frozenset({"PULUMI_ACCESS_TOKEN"}),
+        r"pul-[a-f0-9]{40}",
+        ("pulumi.com",),
+        ("pulumi",),
+    ),
+    "databricks": (
+        frozenset({"DATABRICKS_TOKEN"}),
+        r"dapi[a-f0-9]{32}(?:-\d)?",
+        ("databricks.com", "azuredatabricks.net"),
+        ("databricks",),
     ),
 }
 
@@ -881,6 +956,17 @@ CREDENTIAL_SEARCH = re.compile(
     r"(?:/|/home/?|/root/?|/etc/?|/Users/?|~/?|\$HOME/?)(?=\s|$|[;&|)])",
     re.IGNORECASE,
 )
+
+
+def variable_text(spoken: str, literal: str, written: str) -> str:
+    """The text a variable read should be looked for in.
+
+    The shell expands `$NAME` bare and inside double quotes, never inside
+    single quotes, so `echo 'os.environ["AWS_SECRET_ACCESS_KEY"]' > t.py`
+    writes text and reads nothing. Inline code is the exception: in
+    `python -c '...os.environ["X"]...'` the single-quoted body is the program.
+    """
+    return spoken if INLINE_EVAL.search(written) else literal
 
 
 def interpreter_code_text(spoken: str, written: str) -> str:
@@ -1570,7 +1656,7 @@ def classify_command(command: str) -> list[str]:
     # of source code from being read as a credential read (#40).
     # A provider token sent only to its issuer is being used, not taken (#431).
     token_used = bool(
-        (CREDENTIAL_ENV.search(spoken) or LITERAL_SECRET.search(spoken))
+        (CREDENTIAL_ENV.search(variable_text(spoken, literal, written)) or LITERAL_SECRET.search(spoken))
         and not issuer_bound(spoken, written)
     )
     file_read = bool(

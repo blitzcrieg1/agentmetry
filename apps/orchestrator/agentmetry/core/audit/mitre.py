@@ -135,6 +135,7 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     interpreter_code_text,
     reaches_remote_host,
     unmask_search_patterns,
+    variable_text,
     CLOUD_STORAGE_UPLOAD,
     CRON_INSTALL,
     DECODE_COMMAND,
@@ -318,7 +319,10 @@ def get_mitre_mapping(
             or (
                 # A `$NAME` in structured arguments is not expanded by
                 # anything: only shell text dereferences a variable.
-                ((shell and CREDENTIAL_ENV.search(text)) or LITERAL_SECRET.search(shell or text))
+                (
+                    (shell and CREDENTIAL_ENV.search(variable_text(text, literal, written)))
+                    or LITERAL_SECRET.search(shell or text)
+                )
                 and not (shell and issuer_bound(shell, mask_literals(shell)))
             )
             or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
