@@ -9,6 +9,21 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Security
+
+- **Inline secret assignments are scrubbed from stored commands.** With
+  command logging or full-argument capture on (both off by default), the
+  scrubber missed a secret assigned to a prefixed name, because its pattern
+  needed a word boundary right before the keyword and `_` is a word character.
+  `HF_TOKEN=...`, `export HF_TOKEN="..."`, `AWS_SECRET_ACCESS_KEY=...`,
+  `DJANGO_SECRET_KEY=...` and `?access_token=...` in a URL were stored as
+  typed. The name is now kept and the value masked, quoted values included,
+  and a bare Hugging Face token (`hf_...`) is masked wherever it appears. The
+  hook and the recorder share the change. Trails written with either option on
+  before this release may hold such values. Found while answering a question
+  on the Hugging Face forum about the Hugging Face token rule. The ruleset
+  fingerprint is unchanged.
+
 ## [0.12.1] - 2026-11-14
 
 Fixes to how the trail records the end of a Claude Code turn and the
