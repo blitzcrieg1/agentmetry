@@ -43,7 +43,7 @@ from .traits import (
     PR_MERGE_COMMAND as _PR_MERGE_COMMAND,
     RAW_IP_URL as _RAW_IP_URL,
     RISKY_EXEC_AFTER_STAGING as _RISKY_EXEC_AFTER_STAGING,
-    STAGES_ARTIFACT as _STAGES_ARTIFACT,
+    stages_artifact as _stages_artifact,
     STAGING_FETCH as _STAGING_FETCH,
     STAGING_HOST as _STAGING_HOST,
     UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
@@ -333,8 +333,9 @@ def _is_staging_fetch(event: dict[str, Any]) -> bool:
         # a later command to run. `curl raw.githubusercontent.com/.../README.md`
         # followed an hour later by any `python -c` was reported as critical
         # staging with no link between the two (issue #51). GitHub raw is where
-        # documentation lives as well as where payloads do.
-        return bool(_STAGES_ARTIFACT.search(cmd))
+        # documentation lives as well as where payloads do. Only the fetch's own
+        # pipeline counts: piping the README into `grep` stages nothing either.
+        return _stages_artifact(cmd)
     return _has_trait(event, "staging_fetch")
 
 

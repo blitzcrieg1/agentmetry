@@ -387,17 +387,8 @@ RISKY_EXEC_AFTER_STAGING = re.compile(
     r"\bpowershell(?:\.exe)?\s+-(?:enc|f|file)\b",
     re.IGNORECASE,
 )
-#: A fetch that leaves something behind: written to disk, or handed onward. A
-#: fetch that only printed staged nothing, so there is no artifact for a later
-#: command to run (issue #51).
-STAGES_ARTIFACT = re.compile(
-    r"\s-[a-zA-Z]*[oO]|"          # curl -o / -O, wget -O
-    r"\s--output(?:-document)?|"
-    r"\s>\s*\S|"                     # shell redirect to a file
-    r"\s-[a-zA-Z]*P|"             # wget -P <dir>
-    r"[|]",                          # piped onward, including into an interpreter
-    re.IGNORECASE,
-)
+#: Whether a fetch leaves something behind (issue #51) is `stages_artifact`,
+#: further down, which replaced the STAGES_ARTIFACT pattern that stood here.
 
 BENIGN_AFTER_STAGING = re.compile(
     r"\b(npm|yarn|pnpm|pip|pip3|cargo|go)\s+(?:install|run|build)\b",
@@ -944,6 +935,349 @@ def unmask_search_patterns(view: str, raw: str) -> str:
                 out[m.start(1):m.end(1)] = raw[m.start(1):m.end(1)]
         start = end + 1
     return view if out is None else "".join(out)
+
+
+# ----------------------------------------------------------------------
+# Pipeline structure, read from the quote-masked view so a separator inside
+# quotes does not split anything. Spans index the raw text, which the masked
+# view matches character for character.
+
+def _pipelines(written: str) -> list[list[tuple[int, int]]]:
+    """Split a command into pipelines of stage spans (start, end)."""
+    pipelines: list[list[tuple[int, int]]] = []
+    stages: list[tuple[int, int]] = []
+    start = i = 0
+    n = len(written)
+    while i < n:
+        ch = written[i]
+        if ch == "|" and i + 1 < n and written[i + 1] == "|":
+            stages.append((start, i))
+            pipelines.append(stages)
+            stages, start, i = [], i + 2, i + 2
+            continue
+        if ch in "\n;&":
+            stages.append((start, i))
+            pipelines.append(stages)
+            stages, start = [], i + 1
+        elif ch == "|":
+            stages.append((start, i))
+            start = i + 1
+        i += 1
+    stages.append((start, n))
+    pipelines.append(stages)
+    return pipelines
+
+
+def _tokens(raw: str, start: int, end: int) -> list[tuple[int, int]]:
+    """Whitespace-separated word spans in raw[start:end], quotes kept whole."""
+    out: list[tuple[int, int]] = []
+    i = start
+    while i < end:
+        while i < end and raw[i] in " \t\r\f\v\n":
+            i += 1
+        if i >= end:
+            break
+        s = i
+        while i < end and raw[i] not in " \t\r\f\v\n":
+            ch = raw[i]
+            if ch == "\\":
+                i += 2
+                continue
+            if ch in "'\"":
+                i = min(_quoted_end(raw, i + 1, ch), end)
+                continue
+            i += 1
+        out.append((s, min(i, end)))
+    return out
+
+
+_STAGE_PREFIXES = frozenset({"sudo", "time", "nice", "command", "exec", "env", "xargs", "!"})
+_ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+
+
+def _stage_verb(raw: str, tokens: list[tuple[int, int]]) -> tuple[str, int]:
+    """The command word of a stage and the index of the token after it."""
+    for idx, (s, e) in enumerate(tokens):
+        word = raw[s:e]
+        if "$(" in word:
+            word = word.rsplit("$(", 1)[1]
+        word = word.lstrip("({`").strip("'\"")
+        if not word or _ASSIGNMENT.match(word) or word.startswith("-"):
+            continue
+        name = re.split(r"[/\\]", word)[-1].lower()
+        if name.endswith(".exe"):
+            name = name[:-4]
+        if name in _STAGE_PREFIXES:
+            continue
+        return name, idx + 1
+    return "", len(tokens)
+
+
+# ----------------------------------------------------------------------
+# A search pattern is text, not a path. `grep -oE "ALSO SEND ~/.ssh/id_rsa"
+# page.js` looks for that string inside page.js and opens no key, and on the
+# dogfood trail it was the credential half of two criticals in one session
+# (13 September). The files a search reads still count: `grep KEY
+# ~/.aws/credentials` reads credentials. A pattern holding a key header is
+# kept, because searching file contents for `-----BEGIN RSA PRIVATE KEY` is
+# hunting for keys (T1552.004).
+
+_PATTERN_SEARCH_HINT = re.compile(
+    r"\b(?:[efz]?grep|rg|ag|ack|findstr|select-string|sls)\b", re.IGNORECASE
+)
+_GREP_FAMILY = frozenset({"grep", "egrep", "fgrep", "zgrep"})
+#: Short options that take a value, per tool. `e` names a pattern, `f` a file
+#: of patterns; both mean no positional argument is a pattern.
+_SHORT_VALUE_FLAGS = {
+    "grep": "mABCdDef",
+    "rg": "efgtTmABCMjEr",
+    "ag": "ABCmGgef",
+    "ack": "ABCmgef",
+}
+_LONG_VALUE_FLAGS = {
+    "grep": frozenset({
+        "--regexp", "--file", "--max-count", "--after-context", "--before-context",
+        "--context", "--include", "--exclude", "--exclude-dir", "--exclude-from",
+        "--label", "--directories", "--devices", "--binary-files",
+    }),
+    "rg": frozenset({
+        "--regexp", "--file", "--glob", "--iglob", "--type", "--type-not",
+        "--max-count", "--after-context", "--before-context", "--context",
+        "--max-columns", "--threads", "--encoding", "--replace", "--max-depth",
+        "--max-filesize", "--pre", "--pre-glob", "--sort", "--sortr", "--type-add",
+        "--path-separator", "--ignore-file",
+    }),
+}
+_PS_SWITCHES = frozenset({
+    "-simplematch", "-casesensitive", "-quiet", "-list", "-notmatch",
+    "-allmatches", "-raw", "-noemphasis",
+})
+_KEY_HEADER = re.compile(r"-----BEGIN\b", re.IGNORECASE)
+
+
+def _pattern_spans(raw: str, verb: str, tokens: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Spans of the search-pattern arguments among `tokens` (the words after the verb)."""
+    family = "grep" if verb in _GREP_FAMILY else verb
+    if family in _SHORT_VALUE_FLAGS:
+        short = _SHORT_VALUE_FLAGS[family]
+        longs = _LONG_VALUE_FLAGS.get(family, _LONG_VALUE_FLAGS["grep"])
+        named: list[tuple[int, int]] = []
+        named_given = False
+        positionals: list[tuple[int, int]] = []
+        i = 0
+        while i < len(tokens):
+            s, e = tokens[i]
+            word = raw[s:e]
+            if word == "--":
+                positionals.extend(tokens[i + 1:])
+                break
+            if word.startswith("--"):
+                name, eq, _ = word.partition("=")
+                if name in ("--regexp", "--file"):
+                    named_given = True
+                    if name == "--regexp":
+                        if eq:
+                            named.append((s + len(name) + 1, e))
+                        elif i + 1 < len(tokens):
+                            named.append(tokens[i + 1])
+                if not eq and name in longs:
+                    i += 1
+            elif word.startswith("-") and len(word) > 1:
+                for j, flag in enumerate(word[1:], start=1):
+                    if flag not in short:
+                        continue
+                    attached = j + 1 < len(word)
+                    if flag in "ef":
+                        named_given = True
+                    if flag == "e":
+                        named.append((s + j + 1, e) if attached else (tokens[i + 1] if i + 1 < len(tokens) else (e, e)))
+                    if not attached:
+                        i += 1
+                    break
+            else:
+                positionals.append((s, e))
+            i += 1
+        # GNU tools permute: once -e or -f names the pattern, every positional
+        # is a file, wherever it sits.
+        return named if named_given else positionals[:1]
+    if verb == "findstr":
+        spans: list[tuple[int, int]] = []
+        given = False
+        first: tuple[int, int] | None = None
+        for s, e in tokens:
+            word = raw[s:e]
+            if word.startswith("/"):
+                head = word[:3].lower()
+                if head == "/c:":
+                    given = True
+                    spans.append((s + 3, e))
+                elif head == "/g:":
+                    given = True
+            elif first is None:
+                first = (s, e)
+        return spans if given else ([first] if first else [])
+    if verb in ("select-string", "sls"):
+        i = 0
+        positionals = []
+        pattern: tuple[int, int] | None = None
+        while i < len(tokens):
+            s, e = tokens[i]
+            word = raw[s:e].lower()
+            if word.startswith("-") and len(word) > 1:
+                name = word.split(":", 1)[0]
+                if "-pattern".startswith(name) and len(name) >= 3:
+                    if i + 1 < len(tokens):
+                        pattern = tokens[i + 1]
+                    i += 1
+                elif name not in _PS_SWITCHES:
+                    i += 1
+            else:
+                positionals.append((s, e))
+            i += 1
+        if pattern is not None:
+            return [pattern]
+        return positionals[:1]
+    return []
+
+
+def mask_search_patterns(view: str, raw: str) -> str:
+    """Blank the pattern argument of grep, rg, ag, ack, findstr and Select-String.
+
+    Path rules only. The files the search reads are left alone, and so is a
+    pattern carrying a private-key header.
+    """
+    if not view or len(raw or "") != len(view) or not _PATTERN_SEARCH_HINT.search(raw):
+        return view
+    written = mask_literals(raw)
+    out: list[str] | None = None
+    for pipeline in _pipelines(written):
+        for start, end in pipeline:
+            tokens = _tokens(raw, start, end)
+            verb, after = _stage_verb(raw, tokens)
+            rest = tokens[after:]
+            if verb == "git":
+                sub = next((k for k, (s, e) in enumerate(rest) if raw[s:e] == "grep"), None)
+                if sub is None:
+                    continue
+                verb, rest = "grep", rest[sub + 1:]
+            for s, e in _pattern_spans(raw, verb, rest):
+                if s >= e or _KEY_HEADER.search(raw, s, e):
+                    continue
+                if out is None:
+                    out = list(view)
+                for k in range(s, e):
+                    if out[k] != "\n":
+                        out[k] = " "
+    return view if out is None else "".join(out)
+
+
+# ----------------------------------------------------------------------
+# Did a fetch leave something a later command could run? Only the pipeline the
+# fetch sits in can say. `curl -s https://raw.githubusercontent.com/.../README.md
+# | grep -n "^## "` prints headings and stages nothing, but the old test took
+# any `|` anywhere in the command as "handed onward" (#51, 10 October on the
+# dogfood trail). A pipe stages only when it feeds something other than a
+# filter that prints; a redirect or an output flag anywhere in the pipeline
+# writes a file.
+
+#
+# The STAGES_ARTIFACT pattern this replaces meant to say this and could not:
+# from 0.7.0 three of its five alternatives carried a literal backspace (0x08)
+# where `\b` was meant, so `-o`, `-O`, `--output` and `wget -P` never matched,
+# and a fetch saved to a named file staged only when a `>` or a `|` came with
+# it. Keep `\b` inside raw strings.
+#
+# Saving nowhere is not saving: `curl -s -o /dev/null -w "%{http_code}"` checks
+# a URL answers. And a download saved only under a data extension is not a
+# payload: the AiSOC logo fetched as an `.svg`, then an unrelated `python3 -c`
+# 95 minutes later, was a critical once the flags above worked. Running the
+# downloaded file itself is still caught by name, whatever its extension.
+
+_REDIRECT_TO_FILE = re.compile(r"\s>>?\s*(?!/dev/null\b|\$null\b|nul\b)[^\s&]", re.IGNORECASE)
+#: Output flags of the fetch itself: curl -o / -O, wget -O / -P, --output,
+#: Invoke-WebRequest -OutFile. Case matters for the short flags.
+_FETCH_SAVES_FLAG = re.compile(
+    r"\s-[a-zA-Z]*[oO](?![a-zA-Z])|\s-[a-zA-Z]*P(?![a-zA-Z])|"
+    r"(?i:\s--output(?:-document|-dir)?\b|\s--directory-prefix\b|\s-outfile\b)"
+)
+#: An output flag pointed at nowhere, or at stdout.
+_DISCARDED_OUTPUT = re.compile(
+    r"(?i:\s(?:-[a-zA-Z]*[oO]|--output(?:-document)?|-outfile)(?:\s+|=)?"
+    r"(?:/dev/null|-|nul|\$null)(?=$|[\s;&|)]))"
+)
+_OUTPUT_VALUE = re.compile(
+    r"(?i:\s(?:-[a-zA-Z]*[oO]|--output(?:-document)?|-outfile)(?:\s+|=))([^\s;&|]+)"
+)
+_NAMED_FILE = re.compile(r"(?<![\w$%])([\w~-][\w.~-]*\.([A-Za-z0-9]{1,6}))(?=$|[\s'\"?#)|;&,])")
+_DATA_EXTENSIONS = frozenset({
+    "svg", "png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "avif",
+    "json", "md", "txt", "csv", "tsv", "html", "htm", "css", "xml", "yaml", "yml",
+    "toml", "pdf", "woff", "woff2", "ttf", "otf", "mp4", "webm", "mp3", "wav",
+})
+
+
+def _saves_only_data(stage: str) -> bool:
+    """Does every file this fetch names carry a data extension?"""
+    names = [_basename(u) for u in _FETCH_URL.findall(stage)]
+    rest = _FETCH_URL.sub(" ", stage)
+    for m in _OUTPUT_VALUE.finditer(rest):
+        value = m.group(1).strip("'\"")
+        # An output name with no extension could be anything; an expression
+        # such as `(Join-Path $dir 'x.svg')` is read for its names below.
+        if value and not value.startswith(("(", "$")) and "." not in _basename(value):
+            return False
+    names += [m.group(1) for m in _NAMED_FILE.finditer(rest)]
+    extensions = [n.rsplit(".", 1)[1].lower() for n in names if "." in n]
+    return bool(extensions) and all(e in _DATA_EXTENSIONS for e in extensions)
+#: Later stages that write in place: `sed -i`, `sort -o`.
+_STAGE_WRITES = {
+    "sed": re.compile(r"\s(?:-[a-zA-Z]*i\b|--in-place\b)"),
+    "sort": re.compile(r"\s(?:-[a-zA-Z]*o\b|--output\b)"),
+}
+_PRINTING_FILTERS = frozenset({
+    "grep", "egrep", "fgrep", "rg", "head", "tail", "wc", "sort", "uniq", "jq", "yq",
+    "cut", "tr", "cat", "less", "more", "sed", "column", "nl", "strings", "findstr",
+    "select-string", "sls", "select-object", "select", "convertfrom-json",
+    "out-string", "format-list", "fl", "format-table", "ft", "measure-object",
+    "where-object", "out-null", "out-host",
+})
+
+
+def stages_artifact(command: str) -> bool:
+    """True when a fetch in `command` writes a file or feeds something that may run it."""
+    if not command:
+        return False
+    written = mask_literals(command)
+    fetches: list[tuple[list[tuple[int, int]], int, bool]] = []
+    for pipeline in _pipelines(written):
+        for k, (start, end) in enumerate(pipeline):
+            if STAGING_FETCH.search(written, start, end) or DOWNLOAD_EXEC.search(written, start, end):
+                fetches.append((pipeline, k, bool(STAGING_HOST.search(command, start, end))))
+    # The URL may sit in another command (`U=https://...; curl "$U" | sh`), so
+    # fall back to every fetch when none names the host itself.
+    named = [f for f in fetches if f[2]] or fetches
+    for pipeline, k, _ in named:
+        start, end = pipeline[k]
+        stage = command[start:end]
+        verb, _after = _stage_verb(command, _tokens(command, start, end))
+        kept = _DISCARDED_OUTPUT.sub(" ", stage)
+        saves = bool(
+            _FETCH_SAVES_FLAG.search(kept)
+            or _REDIRECT_TO_FILE.search(kept)
+            # wget saves by default; `-O-` sends it to stdout instead.
+            or (verb == "wget" and kept == stage)
+        )
+        if saves and not _saves_only_data(kept):
+            return True
+        for start, end in pipeline[k + 1:]:
+            stage = command[start:end]
+            verb, _after = _stage_verb(command, _tokens(command, start, end))
+            if verb not in _PRINTING_FILTERS or _REDIRECT_TO_FILE.search(stage):
+                return True
+            writes = _STAGE_WRITES.get(verb)
+            if writes is not None and writes.search(stage):
+                return True
+    return False
 
 
 # Hunting for passwords by content across a whole filesystem or home directory
@@ -1618,7 +1952,10 @@ def classify_command(command: str) -> list[str]:
     # Path rules only: a listing opens nothing, and a pipeline keeping just
     # `.env` key names reads no value.
     path_literal = mask_key_listings(
-        mask_prose_flags(unmask_search_patterns(literal, spoken), spoken), spoken
+        mask_prose_flags(
+            mask_search_patterns(unmask_search_patterns(literal, spoken), spoken), spoken
+        ),
+        spoken,
     )
     env_literal = mask_env_names_only(path_literal, spoken)
 

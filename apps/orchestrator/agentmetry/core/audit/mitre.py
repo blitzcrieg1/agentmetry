@@ -134,6 +134,7 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     NETWORK_CLIENT,
     interpreter_code_text,
     reaches_remote_host,
+    mask_search_patterns,
     unmask_search_patterns,
     variable_text,
     CLOUD_STORAGE_UPLOAD,
@@ -301,7 +302,10 @@ def get_mitre_mapping(
         listed = literal
         if kind == "command" and shell:
             listed = mask_key_listings(
-                mask_prose_flags(unmask_search_patterns(literal, shell), shell), shell
+                mask_prose_flags(
+                    mask_search_patterns(unmask_search_patterns(literal, shell), shell), shell
+                ),
+                shell,
             )
         if PRIVATE_KEY_PATH.search(listed):
             return _PRIVATE_KEY
