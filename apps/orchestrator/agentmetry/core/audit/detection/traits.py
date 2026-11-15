@@ -84,9 +84,31 @@ PROC_SUBST_EXEC = re.compile(
 # lesson of #40.
 BARE_IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 NETWORK_CLIENT = re.compile(
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b",
+    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|sftp|ftp|telnet)\b|"
+    # Data piped into ssh leaves the machine: `tar czf - ~/x | ssh host 'cat > x'`.
+    # A bare `ssh host cmd` runs something remotely and is not counted.
+    r"\|\s*ssh\b",
     re.IGNORECASE,
 )
+
+# The remote end of scp, rsync, sftp and ssh is `[user@]host:path` or `host`,
+# with no scheme, so URL_HOST never saw it and `scp file victim@host:/tmp/` was
+# not egress (Atomic Red Team T1105, T1048). The host needs two characters so a
+# Windows drive letter (`C:\`) is not a host.
+_REMOTE_SPEC = re.compile(
+    r"\b(?:scp|rsync|sftp)\b[^\n;&|]*?\s(?:[\w.-]+@)?([A-Za-z0-9][\w.-]+):(?!//|\\)|"
+    r"\|\s*ssh\s+(?:-\w+(?:\s+(?!-)[^\s;&|]+)?\s+){0,6}(?:[\w.-]+@)?([A-Za-z0-9][\w.-]*)",
+    re.IGNORECASE,
+)
+
+
+def remote_hosts(command: str) -> list[str]:
+    """Every host the command names: URLs, bare IPs and ssh-style remotes."""
+    text = command or ""
+    hosts = URL_HOST.findall(text) + BARE_IP.findall(text)
+    for m in _REMOTE_SPEC.finditer(text):
+        hosts.append(m.group(1) or m.group(2))
+    return [h for h in hosts if h]
 
 
 def reaches_remote_host(command: str) -> bool:
@@ -98,8 +120,7 @@ def reaches_remote_host(command: str) -> bool:
     the box counts, including the LAN: exfil to the machine next to you is
     still exfil.
     """
-    hosts = URL_HOST.findall(command or "") + BARE_IP.findall(command or "")
-    return any(not LOOPBACK_HOST.match(h) for h in hosts)
+    return any(not LOOPBACK_HOST.match(h) for h in remote_hosts(command))
 
 
 # A fetch that writes the response to a named file, from any host. The staged
@@ -414,7 +435,22 @@ CREDENTIAL_PATH = re.compile(
     # Codex's login (#425). Anchored to its directory: a bare `auth.json` is a
     # common project file that holds nothing. A home moved by `$CODEX_HOME` is
     # missed, which the coverage doc states.
-    r"\.codex[/\\]auth\.json\b",
+    r"\.codex[/\\]auth\.json\b|"
+    # Files that hold a credential in plain text, from the Atomic Red Team
+    # T1552.001 and T1552.003 tests the classifier missed (2026-11-15): git's
+    # credential store, Vault's token, database client passwords, Terraform
+    # state, the Azure CLI token cache, OCI sessions, Windows answer files and
+    # credential stores, another process's environment, and shell histories,
+    # which keep whatever was typed after `-p`. CI configs (.gitlab-ci.yml and
+    # friends) were left out: every developer reads them, so tagging them
+    # would cost more than it finds.
+    r"\.git-credentials\b|\.vault-token\b|\.pgpass\b|\.my\.cnf\b|"
+    r"\bterraform\.tfstate\b|"
+    r"\.azure[/\\](?:msal_token_cache\.(?:json|bin)|accessTokens\.json)\b|"
+    r"\.oci[/\\]sessions\b|"
+    r"\bunattend\.xml\b|[/\\]microsoft[/\\](?:credentials|protect)\b|"
+    r"/proc/(?:\d+|self|\*|\$\{?\w+\}?)/environ\b|"
+    r"\.(?:bash|zsh|sh|ksh|mysql|psql|python|node_repl|sqlite)_history\b|[/~]\.history\b",
     re.IGNORECASE,
 )
 
@@ -492,6 +528,9 @@ _SSH_PUBLIC_FILE = r"(?:config|known_hosts(?:\.old)?|authorized_keys2?|[\w.-]+\.
 PRIVATE_KEY_PATH = re.compile(
     r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b(?!\.pub\b)|"
     r"\.pem\b|"
+    # GnuPG keyrings and the key containers PuTTY and PKCS#12 use (Atomic Red
+    # Team T1552.004).
+    r"(?<![\w.])\.gnupg\b|\bsecring\.gpg\b|\.(?:ppk|pfx|p12)\b|"
     r"-----BEGIN\b(?!\s+(?:OPENSSH\s+|SSH2\s+)?PUBLIC\b)|"
     r"[/\\]\.ssh\b(?![/\\]" + _SSH_PUBLIC_FILE + r")|"  # unanchored on the left, as in ENV_FILE
     r"\b(?:cd|cp|mv|tar|zip|gzip|rsync|scp|ls|cat|chmod|find)"
@@ -735,8 +774,18 @@ _READS_CREDENTIAL_FILE = re.compile(
 # changes directory and is not `-c`.
 ARCHIVE_COMMAND = re.compile(
     r"\btar\s+(?:-?[A-Za-z]*c[A-Za-z]*\b|--create\b)|"
-    r"(?i:\bzip\s+(?:-[\w-]+\s+)*[^\s;&|]+\.zip\b)|"
-    r"(?i:\b7z(?:\.exe)?\s+a\b)|(?i:\brar\s+a\b)|(?i:\bcompress-archive\b)"
+    r"(?i:\bzip\s+(?:-[\w-]+\s+(?:\"[^\"]*\"\s+)?)*[^\s;&|-][^\s;&|]*)|"
+    r"(?i:\b7z(?:\.exe)?\s+a\b)|(?i:\brar(?:\.exe)?\s+a\b)|(?i:\bcompress-archive\b)|"
+    # More utilities from the Atomic Red Team T1560.001 misses: macOS ditto,
+    # Windows makecab, and single-file compressors (decompressing excluded).
+    r"(?i:\bditto\s+(?:-\w+\s+)*-c\b)|(?i:\bmakecab(?:\.exe)?\b)|"
+    r"(?i:\b(?:gzip|bzip2|xz)\s+(?!(?:-\w*\s+)*-\w*[dt]\b)(?:-\w+\s+)*[^\s;&|-])"
+)
+# T1560.002 Archive via Library: an interpreter archiving with its own library,
+# read from inline code (`python -c "import tarfile; ..."`).
+ARCHIVE_LIBRARY = re.compile(
+    r"\b(?:import\s+(?:gzip|bz2|lzma|zipfile|tarfile|shutil)|from\s+(?:zipfile|tarfile)\s+import)\b"
+    r"[^\n]*?\b(?:ZipFile|tarfile\.open|gzip\.open|bz2\.open|lzma\.open|\.compress\(|make_archive)\b",
 )
 
 # T1567.002 Exfiltration to Cloud Storage. Upload direction only: the source is
@@ -758,16 +807,90 @@ SCHEDULED_TASK = re.compile(
     r"\bschtasks(?:\.exe)?\s+/create\b",
     re.IGNORECASE,
 )
-CRON_INSTALL = re.compile(r"\bcrontab\s+(?!-l\b)(?:-e\b|-u\s+\S+\s+(?!-l\b)\S|[^\s-]\S*)", re.IGNORECASE)
+CRON_INSTALL = re.compile(
+    r"\bcrontab\s+(?!-l\b)(?:-e\b|-u\s+\S+\s+(?!-l\b)\S|[^\s-]\S*)|"
+    # Writing a job file straight into a cron directory, which is how the
+    # Atomic Red Team T1053.003 tests do it without `crontab`.
+    r"(?:>>?|\btee\s+(?:-a\s+)?|\b(?:cp|mv|install)\s+[^\n;&|]*\s)\s*"
+    r"/(?:etc/cron\.(?:d|daily|hourly|weekly|monthly)|var/spool/cron(?:/crontabs)?|etc/crontab)\b",
+    re.IGNORECASE,
+)
 
 # T1140 Deobfuscate/Decode Files or Information.
 DECODE_COMMAND = re.compile(
     r"\bbase64\s+(?:-\w+\s+)*(?:-d|--decode|-D)\b|"
     r"\bcertutil(?:\.exe)?\s+-decode(?:hex)?\b|"
     r"\bopenssl\s+(?:base64|enc)\b[^\n;&|]*\s-d\b|"
-    r"\bxxd\s+(?:-\w+\s+)*-r\b",
+    r"\bxxd\s+(?:-\w+\s+)*-r\b|"
+    # FreeBSD's tool, and the library calls interpreters use. The library forms
+    # sit inside inline code, so they are read from the unmasked text when an
+    # inline-eval flag is present (see interpreter_code_text).
+    r"\bb64decode\b|\bbase64\.(?:urlsafe_|standard_)?b64decode\b|\bdecode_base64\b",
     re.IGNORECASE,
 )
+
+# T1485 Data Destruction: overwriting rather than deleting, and deleting whole
+# cloud buckets. `dd` counts only when it writes zeros or noise over a device or
+# a system path; `dd if=/dev/zero of=swapfile` makes a file and is ordinary.
+DESTROY_COMMAND = re.compile(
+    r"\bshred\b|\bwipefs\b|\bsdelete(?:64)?(?:\.exe)?\b|\bcipher(?:\.exe)?\s+/w\b|"
+    r"\bdd\b(?=[^\n;&|]*\bif=/dev/(?:zero|u?random)\b)"
+    r"(?=[^\n;&|]*\bof=/(?:dev/(?:sd|nvme|hd|xvd|vd|disk|mmcblk)|var/log/|etc/|boot/))|"
+    r"\bgcloud\s+storage\s+(?:rm|buckets\s+delete)\b|\bgsutil\s+(?:-\w+\s+)*(?:rm|rb)\b|"
+    r"\baws\s+s3\s+rb\b|\baws\s+s3\s+rm\b[^\n;&|]*--recursive\b|"
+    r"\baz\s+storage\s+(?:container|blob|account)\s+delete\b",
+    re.IGNORECASE,
+)
+
+
+# Searching for credential files by name. `find / -path '*/.aws/credentials'
+# -exec cat {} \;` keeps its target in single quotes, and the masking that stops
+# `echo 'cat ~/.aws/credentials'` from counting also hid twenty Atomic Red Team
+# T1552.001 tests. A quoted `-name`/`-path` argument to find or locate is a
+# search pattern, not prose, so it is restored for the path rules.
+_SEARCH_VERB = re.compile(r"\b(?:find|locate|fd)\b", re.IGNORECASE)
+_SEARCH_PATTERN_ARG = re.compile(
+    r"\s-(?:i?name|i?path|i?wholename|i?regex)\s+'([^'\n]*)'", re.IGNORECASE
+)
+
+
+def unmask_search_patterns(view: str, raw: str) -> str:
+    """Put quoted find/locate name patterns back into a masked view."""
+    if not view or len(raw or "") != len(view) or not _SEARCH_VERB.search(raw):
+        return view
+    out: list[str] | None = None
+    start = 0
+    bounds = [m.start() for m in _COMMAND_SEPARATORS.finditer(raw)] + [len(raw)]
+    for end in bounds:
+        if _SEARCH_VERB.search(raw, start, end):
+            for m in _SEARCH_PATTERN_ARG.finditer(raw, start, end):
+                if out is None:
+                    out = list(view)
+                out[m.start(1):m.end(1)] = raw[m.start(1):m.end(1)]
+        start = end + 1
+    return view if out is None else "".join(out)
+
+
+# Hunting for passwords by content across a whole filesystem or home directory
+# (Atomic Red Team T1552.001, `grep -ri password /`). A recursive search inside a
+# project for `token` is a developer reading code; the same search rooted at
+# `/`, `/home`, `/etc` or `~` is credential hunting.
+CREDENTIAL_SEARCH = re.compile(
+    r"\b(?:grep|egrep|rg|ag)\s+(?:-[\w-]+\s+)*?-\w*[rR]\w*\s+(?:-[\w-]+\s+)*"
+    r"['\"]?[\w|.*-]*(?:passw(?:or)?d|passwd|secret|api[_-]?key|credential)[\w|.*-]*['\"]?\s+"
+    r"(?:/|/home/?|/root/?|/etc/?|/Users/?|~/?|\$HOME/?)(?=\s|$|[;&|)])",
+    re.IGNORECASE,
+)
+
+
+def interpreter_code_text(spoken: str, written: str) -> str:
+    """The text a code-level pattern should read: the raw command when it runs inline code.
+
+    `python -c '...'` keeps its program in quotes, so the masked view blanks the
+    very code a library pattern looks for. INLINE_EVAL decides, exactly as the
+    network check does (interpreter_network_text).
+    """
+    return spoken if INLINE_EVAL.search(written) else written
 
 
 # Listing a key folder is discovery, not a key read. `Get-ChildItem
@@ -1408,7 +1531,9 @@ def classify_command(command: str) -> list[str]:
     # Path rules only: a pipeline keeping just `.env` key names reads no value.
     # Path rules only: a listing opens nothing, and a pipeline keeping just
     # `.env` key names reads no value.
-    path_literal = mask_key_listings(mask_prose_flags(literal, spoken), spoken)
+    path_literal = mask_key_listings(
+        mask_prose_flags(unmask_search_patterns(literal, spoken), spoken), spoken
+    )
     env_literal = mask_env_names_only(path_literal, spoken)
 
     # The IP may legitimately sit inside quotes; the fetch verb may not.
@@ -1434,7 +1559,7 @@ def classify_command(command: str) -> list[str]:
         cradle or RISKY_EXEC_AFTER_STAGING.search(written)
     ):
         traits.append("risky_exec")
-    if is_delete_command(written):
+    if is_delete_command(written) or DESTROY_COMMAND.search(written):
         traits.append("delete_cmd")
     if UNTRUSTED_INPUT_COMMAND.search(written):
         traits.append("untrusted_input")
@@ -1457,6 +1582,7 @@ def classify_command(command: str) -> list[str]:
         file_read
         or token_used
         or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
+        or CREDENTIAL_SEARCH.search(spoken)
         # A command word, so `written`: writing `aws secretsmanager
         # get-secret-value` into a runbook is not reading a secret.
         or CREDENTIAL_CLI.search(written)

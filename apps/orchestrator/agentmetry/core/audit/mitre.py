@@ -15,7 +15,6 @@ stay for display.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 
@@ -114,6 +113,7 @@ _SCHEDULED = _m("TA0003", "Persistence", "T1053.005", "Scheduled Task")
 _CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
 _DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
 _ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
+_ARCHIVE_LIBRARY = _m("TA0009", "Collection", "T1560.002", "Archive via Library")
 
 # Credential and private-key recognition now lives in detection/traits.py, and
 # this module imports it rather than keeping a second copy.
@@ -128,6 +128,13 @@ _ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
 # possible, it was undetectable.
 from agentmetry.core.audit.detection.traits import (  # noqa: E402
     ARCHIVE_COMMAND,
+    ARCHIVE_LIBRARY,
+    CREDENTIAL_SEARCH,
+    DESTROY_COMMAND,
+    NETWORK_CLIENT,
+    interpreter_code_text,
+    reaches_remote_host,
+    unmask_search_patterns,
     CLOUD_STORAGE_UPLOAD,
     CRON_INSTALL,
     DECODE_COMMAND,
@@ -160,24 +167,11 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
 #
 # This tags a *fact* about one event (it talked to the network). Exfiltration
 # itself stays a sequence signal, decided by the detection rules.
-_NETWORK_CLIENT = re.compile(
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b"
-)
-_URL_HOST = re.compile(r"https?://(?:[^\s/@'\"]*@)?([^\s/:'\"]+)")
-_BARE_IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-# Loopback is not egress. Hitting your own health endpoint is the single most
-# common thing a developer does while running this tool, and tagging it
-# Command and Control buries the one event that matters under a hundred that
-# don't. Anything off the box still counts, including the LAN: exfil to the
-# machine next to you is still exfil.
-_LOOPBACK = re.compile(r"^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?)$")
-_C2 = _m("TA0011", "Command and Control", "T1071.001", "Web Protocols")
-
-
-def _reaches_remote_host(text: str) -> bool:
-    """True when the command names a target that is not this machine."""
-    hosts = _URL_HOST.findall(text) + _BARE_IP.findall(text)
-    return any(not _LOOPBACK.match(host) for host in hosts)
+# The network vocabulary is shared with classify_command (traits.py), so the two
+# cannot drift: a mapper with its own client list missed `sftp` and `| ssh`,
+# and its own host list never saw scp-style `user@host:` remotes.
+_NETWORK_CLIENT = NETWORK_CLIENT
+_reaches_remote_host = reaches_remote_host
 
 
 #: Argument names that carry free text a human or a model wrote. A credential
@@ -305,7 +299,9 @@ def get_mitre_mapping(
         # discovery, mapped below, exactly as classify_command decides it.
         listed = literal
         if kind == "command" and shell:
-            listed = mask_key_listings(mask_prose_flags(literal, shell), shell)
+            listed = mask_key_listings(
+                mask_prose_flags(unmask_search_patterns(literal, shell), shell), shell
+            )
         if PRIVATE_KEY_PATH.search(listed):
             return _PRIVATE_KEY
         if kind == "read":
@@ -326,6 +322,7 @@ def get_mitre_mapping(
                 and not (shell and issuer_bound(shell, mask_literals(shell)))
             )
             or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
+            or (shell and CREDENTIAL_SEARCH.search(shell))
             or CREDENTIAL_CLI.search(written)
         ):
             return _CREDENTIAL_ACCESS
@@ -356,10 +353,15 @@ def get_mitre_mapping(
                 return _SCHEDULED
             if CRON_INSTALL.search(words):
                 return _CRON
-            if DECODE_COMMAND.search(words):
+            code = interpreter_code_text(shell, words) if shell else words
+            if DESTROY_COMMAND.search(words):
+                return _DESTRUCTION
+            if DECODE_COMMAND.search(code):
                 return _DECODE
             if ARCHIVE_COMMAND.search(words):
                 return _ARCHIVE
+            if ARCHIVE_LIBRARY.search(code):
+                return _ARCHIVE_LIBRARY
             if shell and lists_key_folder(literal):
                 return _DISCOVERY
 
