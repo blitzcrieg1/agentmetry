@@ -311,11 +311,23 @@ DELETE_COMMAND = re.compile(
 # Remove-Item`. The listing feeds names to the removal, so it neither deletes
 # data nor prints a value, and it was read as both a deletion and a dump of the
 # whole environment (#329, shape 2). Blanked before either pattern looks.
+#
+# The same removal is often written per item, `| ForEach-Object { Remove-Item
+# -LiteralPath ('Env:' + $_.Name) }`, which cleared Agentmetry's own variables
+# before a test run on 10 November and was the credential half of two criticals.
+# Only a block that does nothing but remove the piped item, by itself or by its
+# name, key or path, counts; a block that reads `$_.Value` does not.
 PS_STATE_PIPE_REMOVAL = re.compile(
     r"\b(?:get-childitem|gci|ls|dir)\s+(?:-[\w:]+\s+){0,6}"
     r"(?:env|variable|function|alias):[^\s|;&]*"
     r"(?:\s+-[\w:]+(?:\s+[^\s|;&-][^\s|;&]*)?){0,6}"
-    r"\s*\|\s*(?:remove-item|ri|rm|del)\b[^\n;&|]*",
+    r"\s*\|\s*(?:"
+    r"(?:remove-item|ri|rm|del)\b[^\n;&|]*|"
+    r"(?:foreach-object|foreach|%)\s*\{\s*(?:remove-item|ri|rm|del)\b"
+    r"(?:\s+-(?:literalpath|path|lp)\b)?"
+    r"\s*\(?[\s'\"]*(?:[\w:]*[\s'\"]*\+\s*)?\$(?:_|psitem)(?:\.(?:name|key|pspath))?\s*\)?"
+    r"(?:\s+-[\w:]+(?:\s+[A-Za-z]\w*)?)*\s*\}"
+    r")",
     re.IGNORECASE,
 )
 
@@ -323,6 +335,74 @@ PS_STATE_PIPE_REMOVAL = re.compile(
 def mask_state_pipe_removal(text: str) -> str:
     """Blank `Get-ChildItem Env:X* | Remove-Item`, which only unsets shell state."""
     return PS_STATE_PIPE_REMOVAL.sub(lambda m: " " * len(m.group(0)), text or "")
+
+
+# Listing the environment into something that prints no value reads no secret.
+# `env | grep -qiE "TWINE_|PYPI_"` asks whether publish credentials are set and
+# prints nothing; `env | grep -oiE "^(TWINE_[A-Z_]+|PYPI_[A-Z_]+)="` prints
+# their names. Together they were the credential half of two criticals in the
+# 0.8.0 release check on 19 September. `env | grep TWINE` prints values and
+# still counts.
+_ENV_DUMP_STAGE = re.compile(
+    r"^\s*(?:env|printenv)\s*$|"
+    r"^\s*(?:get-childitem|gci|ls|dir)\s+(?:-[\w:]+\s+){0,6}env:[^\s|;&]*"
+    r"(?:\s+-[\w:]+(?:\s+[^\s|;&-][^\s|;&]*)?){0,6}\s*$",
+    re.IGNORECASE,
+)
+_SILENT_MATCH_VERBS = frozenset({"grep", "egrep", "fgrep", "rg"})
+_PS_NAMES_ONLY = re.compile(
+    r"^\s*(?:select-object|select)\s+(?:-(?:expandproperty|expand|property|unique)\s+)*"
+    r"(?:name|key)(?:\s+-(?:first|last)\s+\d+)?\s*$|"
+    r"^\s*(?:foreach-object|foreach|%)\s*\{\s*\$(?:_|psitem)\.(?:name|key)\s*\}\s*$|"
+    r"^\s*(?:measure-object|measure|out-null)\b[^|]*$|"
+    r"^\s*select-string\b.*\s-quiet\b",
+    re.IGNORECASE,
+)
+
+
+def _prints_no_value(raw: str, start: int, end: int) -> bool:
+    """Does this stage, fed `NAME=value` lines, print no value?"""
+    stage = raw[start:end]
+    if _names_only_stage(stage) or _PS_NAMES_ONLY.search(stage):
+        return True
+    tokens = _tokens(raw, start, end)
+    verb, after = _stage_verb(raw, tokens)
+    if verb == "wc":
+        return True
+    if verb not in _SILENT_MATCH_VERBS:
+        return False
+    rest = tokens[after:]
+    clusters = [
+        raw[s:e] for s, e in rest if raw[s:e].startswith("-") and not raw[s:e].startswith("--")
+    ]
+    longs = {raw[s:e].split("=", 1)[0] for s, e in rest if raw[s:e].startswith("--")}
+    if longs & {"--quiet", "--silent", "--count", "--files-with-matches"}:
+        return True
+    letters = "".join(c[1:] for c in clusters)
+    if "q" in letters or "c" in letters or "l" in letters:
+        return True
+    if "o" in letters or "--only-matching" in longs:
+        patterns = [raw[s:e].strip("'\"") for s, e in _pattern_spans(raw, verb, rest)]
+        return bool(patterns) and all(p.rstrip(")$").endswith("=") for p in patterns)
+    return False
+
+
+def env_dump_view(written: str, raw: str | None = None) -> str:
+    """The view CREDENTIAL_ENV_DUMP reads: state removals and value-free listings blanked."""
+    view = mask_state_pipe_removal(written)
+    if raw is None or len(raw) != len(view):
+        return view
+    out: list[str] | None = None
+    for pipeline in _pipelines(mask_literals(raw)):
+        for (a0, a1), (b0, b1) in zip(pipeline, pipeline[1:], strict=False):
+            stage = raw[a0:a1].lstrip(" \t(")
+            if _ENV_DUMP_STAGE.search(stage) and _prints_no_value(raw, b0, b1):
+                if out is None:
+                    out = list(view)
+                for i in range(a0, a1):
+                    if out[i] != "\n":
+                        out[i] = " "
+    return view if out is None else "".join(out)
 
 
 def is_delete_command(written: str) -> bool:
@@ -2004,7 +2084,7 @@ def classify_command(command: str) -> list[str]:
     if (
         file_read
         or token_used
-        or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
+        or CREDENTIAL_ENV_DUMP.search(env_dump_view(written, spoken))
         or CREDENTIAL_SEARCH.search(spoken)
         # A command word, so `written`: writing `aws secretsmanager
         # get-secret-value` into a runbook is not reading a secret.
@@ -2018,7 +2098,7 @@ def classify_command(command: str) -> list[str]:
             and ENV_LOAD.search(written)
             and not token_used
             and not CREDENTIAL_PATH.search(path_literal)
-            and not CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
+            and not CREDENTIAL_ENV_DUMP.search(env_dump_view(written, spoken))
             and not CREDENTIAL_CLI.search(written)
             and not _READS_CREDENTIAL_FILE.search(written)
         ):

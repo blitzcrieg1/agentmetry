@@ -156,7 +156,7 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     mask_env_names_only,
     mask_key_listings,
     mask_prose_flags,
-    mask_state_pipe_removal,
+    env_dump_view,
     mask_literals,
     tool_kind,
 )
@@ -329,7 +329,7 @@ def get_mitre_mapping(
                 )
                 and not (shell and issuer_bound(shell, mask_literals(shell)))
             )
-            or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
+            or CREDENTIAL_ENV_DUMP.search(env_dump_view(written, shell or None))
             or (shell and CREDENTIAL_SEARCH.search(shell))
             or CREDENTIAL_CLI.search(written)
         ):
