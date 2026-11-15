@@ -266,9 +266,24 @@ def interpreter_network_text(spoken: str, literal: str, written: str) -> str:
     """
     return spoken if INLINE_EVAL.search(written) else literal
 
+# PowerShell provider drives that hold shell state rather than data.
+# `Remove-Item Env:\SOME_VAR, Env:\OTHER_VAR` unsets two variables in the current
+# shell and deletes nothing, and four of them in one session fired
+# `destructive-delete-burst` at high (#329, shape 2). A removal counts as a
+# deletion unless every target it names is on one of these drives, so
+# `Remove-Item Env:\X, C:\data` still counts.
+_PS_STATE_ITEM = r"(?:env|variable|function|alias):[^\s,;|&]*"
+_PS_STATE_ONLY = (
+    r"(?!\s+(?:-[\w:]+\s+)*" + _PS_STATE_ITEM
+    + r"(?:\s*,\s*" + _PS_STATE_ITEM + r")*"
+    + r"(?:\s+-[\w:]+(?:\s+[A-Za-z$][\w$]*)?)*\s*(?:$|[;|&\r\n]))"
+)
+
 # `bash: rm -rf build/` is a deletion even though the tool is named "Bash".
 DELETE_COMMAND = re.compile(
-    r"\brm\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|remove-item\b|\bdel\s+/", re.IGNORECASE
+    r"\brm\b" + _PS_STATE_ONLY + r"\s+(-[a-z]*\s+)*|\brmdir\b|\bunlink\b|"
+    r"remove-item\b" + _PS_STATE_ONLY + r"|\bdel\s+/",
+    re.IGNORECASE,
 )
 
 # Content an outsider can author (gh issues/PRs, git fetch) — ADI provenance.
@@ -291,7 +306,11 @@ CLOUD_API = re.compile(
     r"(?:^|\s)aws\s+\w|"
     r"\bgcloud\b|"
     r"\baz\s+(?:account|login|keyvault|aks|storage)\b|"
-    r"\b(?:hf|huggingface-cli)\b|"
+    # A command, not a word. `\bhf\b` matched the first segment of a directory
+    # called `hf-render`, so a build step that copied into it earned cloud_api
+    # and completed a critical (#329, shape 1). The CLI is followed by a
+    # subcommand; a path segment is followed by `-`, `/` or `.`.
+    r"(?:^|[\s;&|(])(?:hf|huggingface-cli)(?=\s+[a-z])|"
     r"\baliyun\b|\btencentcloud\b|\bbce\b|\bossutil\b|\bcoscmd\b",
     re.IGNORECASE,
 )
@@ -369,7 +388,11 @@ CREDENTIAL_PATH = re.compile(
     r"\bcredentials\.json\b|\bservice-account\b|"
     r"\bsecrets\.ya?ml\b|"
     r"\.docker[/\\]config\.json\b|"
-    r"\.config[/\\]gcloud\b",
+    r"\.config[/\\]gcloud\b|"
+    # Codex's login (#425). Anchored to its directory: a bare `auth.json` is a
+    # common project file that holds nothing. A home moved by `$CODEX_HOME` is
+    # missed, which the coverage doc states.
+    r"\.codex[/\\]auth\.json\b",
     re.IGNORECASE,
 )
 
@@ -396,13 +419,20 @@ CREDENTIAL_PATH = re.compile(
 # match, because those hold real values.
 _ENV_PLACEHOLDER = r"(?!\.(?:example|sample|template|dist|defaults|placeholder)\b)"
 
+# Unanchored on the left, deliberately. These patterns are only ever asked
+# whether they match, and a leading `[\w.~$-]*` changes no answer while
+# rescanning a long token from every position in it: 16 KiB with no slash took
+# 4.7 s, and the hook clips runs to CLASSIFY_MAX_RUN to survive it. Whitespace
+# without `\n` rather than `^\s*` for the same reason: `\s` crossed newlines,
+# which made a long run of blank lines quadratic, and every line start is
+# already a `^`.
 ENV_FILE = re.compile(
-    r"[\w.~$-]*[/\\]\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"[/\\]\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
     r"\b(?:cat|bat|less|more|head|tail|type|source|export|dotenv|load_dotenv|"
     r"get-content|gc|cp|mv|scp|rsync|base64|xxd|od|strings|"
     r"grep|rg|ag|awk|sed|nano|vim|vi|emacs|code|open|start)"
     r"\s+(?:-[-\w]+\s+)*\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
-    r"^\s*\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b",
+    r"^[ \t\r\f\v]*\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -420,7 +450,7 @@ PRIVATE_KEY_PATH = re.compile(
     r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b|"
     r"\.pem\b|"
     r"-----BEGIN\b|"
-    r"[\w.~$-]*[/\\]\.ssh\b|"
+    r"[/\\]\.ssh\b|"  # unanchored on the left, as in ENV_FILE
     r"\b(?:cd|cp|mv|tar|zip|gzip|rsync|scp|ls|cat|chmod|find)"
     r"\s+(?:-[-\w]+\s+)*\.ssh\b",
     re.IGNORECASE,
@@ -451,7 +481,10 @@ CREDENTIAL_ENV = re.compile(
 # Dumping the whole environment reads every secret in it without naming one.
 CREDENTIAL_ENV_DUMP = re.compile(
     r"\bprintenv\b\s*(?:$|[|>;&])|"
-    r"\benv\b\s*[|>]|"
+    # `env` as a command word. `\benv\b` also matched the end of `.env`, so
+    # `grep ... .env | cut -d= -f1` read as dumping the whole environment and
+    # survived the key-names exemption below (#329, shape 3).
+    r"(?:^|[\s;&|(])env\s*[|>]|"
     r"\bget-childitem\s+env:|\bgci\s+env:|\bls\s+env:",
     re.IGNORECASE,
 )
@@ -482,6 +515,379 @@ CREDENTIAL_CLI = re.compile(
     r"\bdocker\s+secret\s+inspect\b",
     re.IGNORECASE,
 )
+
+# ----------------------------------------------------------------------
+# Techniques the mapper can see in a command (#55)
+#
+# Everything that reached a shell and was not a credential read or network
+# egress fell through to T1059, which is right as a default and wrong for
+# techniques whose evidence is in the command string the hook already has. The
+# bar is observability at the tool boundary: phishing, lateral movement over
+# SMB and rootkits stay unmapped because no tool call shows them. These do.
+#
+# All read the masked `written` view, so writing the command into a commit
+# message or a runbook is not doing it.
+# ----------------------------------------------------------------------
+
+# T1560.001 Archive via Utility. Creation only: `tar xzf` and `tar tzf` extract
+# and list, and `unzip` is the opposite act. Case-sensitive for tar, whose `-C`
+# changes directory and is not `-c`.
+ARCHIVE_COMMAND = re.compile(
+    r"\btar\s+(?:-?[A-Za-z]*c[A-Za-z]*\b|--create\b)|"
+    r"(?i:\bzip\s+(?:-[\w-]+\s+)*[^\s;&|]+\.zip\b)|"
+    r"(?i:\b7z(?:\.exe)?\s+a\b)|(?i:\brar\s+a\b)|(?i:\bcompress-archive\b)"
+)
+
+# T1567.002 Exfiltration to Cloud Storage. Upload direction only: the source is
+# local and the destination is a bucket. `aws s3 cp s3://b/x .` is a download.
+CLOUD_STORAGE_UPLOAD = re.compile(
+    r"\baws\s+s3\s+(?:cp|mv|sync)\s+(?!s3://)[^\n;&|]*\ss3://|"
+    r"\bgsutil\s+(?:-\w+\s+)*(?:cp|mv|rsync)\s+(?!gs://)[^\n;&|]*\sgs://|"
+    r"\bgcloud\s+storage\s+(?:cp|mv|rsync)\s+(?!gs://)[^\n;&|]*\sgs://|"
+    r"\baz\s+storage\s+(?:blob|file)\s+upload(?:-batch)?\b|"
+    r"\bazcopy\s+(?:copy|cp|sync)\s+(?!https?://)[^\n;&|]*\shttps://[\w.-]+\.(?:blob|file|dfs)\.core\.windows\.net|"
+    r"\brclone\s+(?:copy|sync|move|copyto)\s+(?![\w-]+:)[^\n;&|]*\s[\w-]+:",
+    re.IGNORECASE,
+)
+
+# T1053 Scheduled Task/Job. Creating one: listing with `crontab -l` or
+# `schtasks /query` is discovery, not persistence.
+SCHEDULED_TASK = re.compile(
+    r"\bregister-scheduledtask\b|\bnew-scheduledtask(?:action|trigger)?\b|"
+    r"\bschtasks(?:\.exe)?\s+/create\b",
+    re.IGNORECASE,
+)
+CRON_INSTALL = re.compile(r"\bcrontab\s+(?!-l\b)(?:-e\b|-u\s+\S+\s+(?!-l\b)\S|[^\s-]\S*)", re.IGNORECASE)
+
+# T1140 Deobfuscate/Decode Files or Information.
+DECODE_COMMAND = re.compile(
+    r"\bbase64\s+(?:-\w+\s+)*(?:-d|--decode|-D)\b|"
+    r"\bcertutil(?:\.exe)?\s+-decode(?:hex)?\b|"
+    r"\bopenssl\s+(?:base64|enc)\b[^\n;&|]*\s-d\b|"
+    r"\bxxd\s+(?:-\w+\s+)*-r\b",
+    re.IGNORECASE,
+)
+
+
+# Reading only the *names* in a `.env` file reads no secret. `grep -E "^[A-Z_]+="
+# .env | cut -d= -f1` keeps the key names and drops every value, and it fired
+# two criticals as a credential read (#329, shape 3; same family as #178, where
+# `[bool]$env:SECRET` probes existence). A pipeline whose next stage keeps only
+# the first `=`-separated field is blanked before the path rules look, so
+# `cat .env | cut -d= -f2` (the values) still counts.
+#
+# A scan rather than one regex: a pattern spanning both pipeline stages
+# backtracks quadratically on a long segment, and the hook classifies up to
+# 8 KiB of a command (CLASSIFY_MAX_LEN, 0.10.4).
+_ENV_MENTION = re.compile(r"\.env\b", re.IGNORECASE)
+_CUT_DELIM_EQ = re.compile(r"-d\s*['\"]?=")
+_CUT_FIELD_ONE = re.compile(r"-f\s*1(?![\d,-])")
+_AWK_SEP_EQ = re.compile(r"-F\s*['\"]?=")
+_AWK_PRINT_FIRST = re.compile(r"\{\s*print\s+\$1\s*\}")
+_COMMAND_SEPARATORS = re.compile(r"[\n;&]")
+
+
+def _names_only_stage(stage: str) -> bool:
+    """Is this pipeline stage `cut -d= -f1` or `awk -F= '{print $1}'`?"""
+    words = stage.strip()
+    lowered = words[:4].lower()
+    if lowered.startswith("cut") and words[3:4].isspace():
+        return bool(_CUT_DELIM_EQ.search(words) and _CUT_FIELD_ONE.search(words))
+    if lowered.startswith("awk") and words[3:4].isspace():
+        return bool(_AWK_SEP_EQ.search(words) and _AWK_PRINT_FIRST.search(words))
+    return False
+
+
+def mask_env_names_only(view: str, raw: str | None = None) -> str:
+    """Blank pipelines that read only the key names of a `.env` file.
+
+    Stages are judged in `raw` when given, because the awk form keeps its
+    program in single quotes and a masked view has already blanked it. Masking
+    preserves offsets, so a span found in the raw text is the same span in the
+    view.
+    """
+    view = view or ""
+    source = raw if raw is not None and len(raw) == len(view) else view
+    out: list[str] | None = None
+    start = 0
+    bounds = [m.start() for m in _COMMAND_SEPARATORS.finditer(source)] + [len(source)]
+    for end in bounds:
+        chunk = source[start:end]
+        if "|" in chunk and _ENV_MENTION.search(chunk):
+            offsets, pos = [], start
+            for stage in chunk.split("|"):
+                offsets.append((pos, pos + len(stage)))
+                pos += len(stage) + 1
+            for (a0, a1), (b0, b1) in zip(offsets, offsets[1:], strict=False):
+                if _ENV_MENTION.search(source, a0, a1) and _names_only_stage(source[b0:b1]):
+                    if out is None:
+                        out = list(view)
+                    for i in range(a0, b1):
+                        out[i] = " "
+        start = end + 1
+    return view if out is None else "".join(out)
+
+
+# ----------------------------------------------------------------------
+# What kind of tool produced the text
+#
+# The hook classifies whatever `extract_command` returns, and for a file tool
+# that is a path or a patch, not a command. Two consequences, both from the
+# dogfood trail (#329, shapes 4 and 5):
+#
+# 1. A *write* to a credential path was scored as a credential *read*. Creating
+#    a project's `.env` with the Write tool earned T1552.001, and a market-data
+#    `curl` fifteen hours later completed `credential-exfil` at critical.
+# 2. A patch is file content. Codex's `apply_patch` carries the whole patch as
+#    its `command`, so a test script holding `~/.ssh/id_ed25519` as a string, or
+#    detection code listing `.aws/credentials` as a pattern, was classified as
+#    the agent running those commands.
+#
+# So the tool decides which questions the text can answer. A write or a listing
+# answers none: writing a file is not reading one, and naming a directory is
+# not opening a key. A read answers the path questions only, because a path
+# cannot be a command word: `hf-render/index.html` is not the Hugging Face CLI.
+# Everything else (shells, MCP tools, unknown tools) is classified as a command,
+# which is the conservative direction for a recorder.
+#
+# Residual, stated: overwriting `~/.aws/credentials` or `authorized_keys` is
+# tampering, not access, and is not tagged here at all.
+# ----------------------------------------------------------------------
+
+def _norm_method(qualified: str) -> str:
+    """The method segment, folded the way mitre._norm folds it."""
+    method = (qualified or "").rsplit(".", 1)[-1]
+    return method.lower().replace("_", "").replace("-", "")
+
+
+FILE_WRITE_METHODS = frozenset({
+    "write", "writefile", "writetofile", "createfile",
+    "edit", "editfile", "multiedit", "notebookedit",
+    "searchandreplace", "replacefilecontent", "multireplacefilecontent",
+    "applypatch",
+})
+FILE_READ_METHODS = frozenset({
+    "read", "readfile", "viewfile", "readnote", "grep", "grepsearch",
+})
+FILE_LIST_METHODS = frozenset({"listdir", "glob", "ls", "find"})
+
+
+def tool_kind(qualified: str) -> str:
+    """`write`, `read`, `list` or `command`, from the tool's method name."""
+    method = _norm_method(qualified)
+    if method in FILE_WRITE_METHODS:
+        return "write"
+    if method in FILE_READ_METHODS:
+        return "read"
+    if method in FILE_LIST_METHODS:
+        return "list"
+    return "command"
+
+
+def classify_path(path: str) -> list[str]:
+    """Trait labels a file path alone can earn: which secret it opens, if any."""
+    if not path or not isinstance(path, str):
+        return []
+    traits: list[str] = []
+    if CREDENTIAL_PATH.search(path) or ENV_FILE.search(path):
+        traits.append("credential_access")
+    if PRIVATE_KEY_PATH.search(path):
+        traits.append("private_key")
+    return traits
+
+
+def classify_tool_call(qualified: str, text: str) -> list[str]:
+    """Trait labels for one tool call, judged by what kind of tool it is."""
+    kind = tool_kind(qualified)
+    if kind in ("write", "list"):
+        return []
+    if kind == "read":
+        return classify_path(text)
+    return classify_command(text)
+
+
+# ----------------------------------------------------------------------
+# Commands inside structured MCP inputs (#433)
+#
+# The hook read a command only from a top-level `command`, `cmd`, `script` or
+# `CommandLine`. An MCP tool that passes it any other way was recorded and
+# classified as nothing: `{"argv": ["bash", "-c", ...]}`, `{"program": "bash",
+# "args": [...]}`, a `commands` list, a `code` body, a nested `input`, or JSON in
+# a string. context-mode, a Claude Code plugin with about 34k stars, steers the
+# agent off Bash and onto `ctx_execute {language, code}` and
+# `ctx_batch {commands}`, so on a machine running it every shell command
+# reached the rules as an unreadable MCP call.
+#
+# The shapes follow weft's guard engine (dioptx/weft, `core/guard_engine.py`,
+# MIT), which solved the same extraction for blocking: normalised command and
+# command-list keys, a program joined with its sibling arguments, nested lists
+# flattened, JSON strings decoded with a cap, and prose kept out. Bounds are
+# fixed and small because this runs in the hook before the tool does. Hitting
+# one returns what was found so far and says so, and the event is then marked
+# `classification: partial`.
+# ----------------------------------------------------------------------
+
+def _norm_key(key: object) -> str:
+    return str(key).lower().replace("_", "").replace("-", "").replace(".", "").replace(" ", "")
+
+
+_STRUCT_COMMAND_KEYS = frozenset({
+    "command", "cmd", "cmdline", "commandline", "script", "shell",
+    "bash", "sh", "zsh", "powershell", "pwsh",
+})
+_STRUCT_COMMAND_LIST_KEYS = frozenset({"commands", "cmds", "scripts"})
+_STRUCT_PROGRAM_KEYS = frozenset({"program", "executable", "bin"})
+_STRUCT_ARG_KEYS = frozenset({"args", "argv", "arguments", "subcommand", "params"})
+#: Free text and file data. A command word inside a note, a search query or a
+#: file's content is something being talked about or written, not run.
+_STRUCT_PROSE_KEYS = frozenset({
+    "content", "text", "body", "data", "query", "prompt", "message", "messages",
+    "description", "summary", "comment", "note", "title", "markdown", "html",
+    "transcript", "transcripts", "postscript", "newstring", "oldstring",
+    "codecontent", "instructions",
+})
+_SHELL_LANGUAGES = frozenset({
+    "", "shell", "bash", "sh", "zsh", "dash", "fish", "powershell", "pwsh", "cmd", "bat",
+})
+STRUCT_MAX_DEPTH = 8
+STRUCT_MAX_NODES = 2000
+STRUCT_MAX_DECODES = 4
+#: Total command text taken from one input. The hook classifies at most
+#: CLASSIFY_MAX_LEN of it anyway; past this the input is marked partial.
+STRUCT_MAX_CHARS = 65536
+
+
+def _flatten_words(value: object, out: list[str]) -> None:
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _flatten_words(item, out)
+    elif isinstance(value, bool):
+        out.append("true" if value else "false")
+    elif isinstance(value, (str, int, float)):
+        out.append(str(value))
+
+
+def _joined(value: object) -> str:
+    words: list[str] = []
+    _flatten_words(value, words)
+    return " ".join(w for w in words if w).strip()
+
+
+def structured_command(args: object) -> tuple[str, bool]:
+    """Command text found anywhere in a structured tool input, and whether a bound was hit.
+
+    Returns ("", False) when there is nothing that reads as a command. Several
+    commands are returned one per line, so each is classified on its own line.
+    """
+    import json
+
+    found: list[str] = []
+    seen: set[str] = set()
+    budget = {"nodes": STRUCT_MAX_NODES, "decodes": STRUCT_MAX_DECODES, "chars": STRUCT_MAX_CHARS}
+    partial = False
+
+    def take(text: str) -> None:
+        nonlocal partial
+        text = text.strip()
+        if not text or text in seen:
+            return
+        if len(text) > budget["chars"]:
+            partial = True
+            text = text[: max(budget["chars"], 0)]
+            if not text:
+                return
+        seen.add(text)
+        found.append(text)
+        budget["chars"] -= len(text)
+
+    def walk(node: object, depth: int) -> None:
+        nonlocal partial
+        budget["nodes"] -= 1
+        if budget["nodes"] < 0 or depth > STRUCT_MAX_DEPTH:
+            partial = True
+            return
+        if isinstance(node, str):
+            stripped = node.lstrip()
+            # JSON, including JSON encoded again as a string.
+            quoted = stripped[:1] == '"' and stripped.rstrip()[-1:] == '"'
+            if stripped[:1] in ("{", "[") or quoted:
+                if budget["decodes"] <= 0:
+                    partial = True
+                    return
+                budget["decodes"] -= 1
+                try:
+                    decoded = json.loads(stripped)
+                except (ValueError, RecursionError):
+                    return
+                walk(decoded, depth + 1)
+            return
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                if budget["nodes"] < 0:
+                    partial = True
+                    return
+                walk(item, depth + 1)
+            return
+        if not isinstance(node, dict):
+            return
+
+        keys = {_norm_key(k): k for k in node}
+        used: set[str] = set()
+        arg_keys = [k for k in keys if k in _STRUCT_ARG_KEYS]
+        sibling_args = " ".join(_joined(node[keys[k]]) for k in arg_keys)
+
+        for nk, key in keys.items():
+            value = node[key]
+            if nk in _STRUCT_PROGRAM_KEYS or (nk in ("cmd", "command") and arg_keys):
+                if isinstance(value, str) and value.strip():
+                    take(f"{value} {sibling_args}")
+                    used.add(nk)
+                    used.update(arg_keys)
+            elif nk in _STRUCT_COMMAND_KEYS:
+                if isinstance(value, str):
+                    if value.lstrip()[:1] not in ("{", "["):
+                        take(value)
+                        used.add(nk)
+                elif isinstance(value, (list, tuple)) and all(
+                    not isinstance(v, dict) for v in value
+                ):
+                    take(_joined(value))
+                    used.add(nk)
+            elif nk in _STRUCT_COMMAND_LIST_KEYS and isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, str):
+                        take(item)
+                    elif isinstance(item, (list, tuple)):
+                        take(_joined(item))
+                used.add(nk)
+            elif nk == "code" and isinstance(value, str):
+                language = _norm_key(node.get(keys.get("language", ""), "") or "")
+                if language in _SHELL_LANGUAGES:
+                    take(value)
+                else:
+                    # A program for that interpreter, not shell text (compare
+                    # #50), so it is classified as one: `python -c` makes the
+                    # network check read it as code. Its quotes are the
+                    # program's string literals, which is how code opens a
+                    # file, so they are dropped rather than masked: masked,
+                    # `open('.aws/credentials')` read as nothing.
+                    body = value.replace("'", " ").replace('"', " ").replace("`", " ")
+                    take(f"{language} -c {body}")
+                used.add(nk)
+        if "argv" in keys and "argv" not in used:
+            take(_joined(node[keys["argv"]]))
+            used.add("argv")
+
+        for nk, key in keys.items():
+            if nk in used or nk in _STRUCT_PROSE_KEYS:
+                continue
+            value = node[key]
+            if isinstance(value, (dict, list, tuple, str)):
+                walk(value, depth + 1)
+
+    walk(args, 0)
+    return "\n".join(found), partial
+
 
 # Stable vocabulary. Renaming a trait is a breaking change for stored events:
 # rules match these strings on events that may be replayed months later.
@@ -675,6 +1081,8 @@ def classify_command(command: str) -> list[str]:
     spoken = command
     written = mask_literals(command)
     literal = mask_literals(command, include_double=False)
+    # Path rules only: a pipeline keeping just `.env` key names reads no value.
+    env_literal = mask_env_names_only(literal, spoken)
 
     # The IP may legitimately sit inside quotes; the fetch verb may not.
     remote_ips = [ip for ip in RAW_IP_URL.findall(spoken) if not LOOPBACK_IP.match(ip)]
@@ -710,7 +1118,7 @@ def classify_command(command: str) -> list[str]:
     # of source code from being read as a credential read (#40).
     if (
         CREDENTIAL_PATH.search(literal)
-        or ENV_FILE.search(literal)
+        or ENV_FILE.search(env_literal)
         or CREDENTIAL_ENV.search(spoken)
         or CREDENTIAL_ENV_DUMP.search(written)
         # A command word, so `written`: writing `aws secretsmanager

@@ -219,7 +219,7 @@ def agt_to_canonical(
     allow or deny per call, and Agentmetry says what a session of those calls
     adds up to.
     """
-    from agentmetry.core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.detection.traits import classify_tool_call
     from agentmetry.core.audit.atlas import attach_atlas
     from agentmetry.core.audit.canonical import SCHEMA_VERSION
     from agentmetry.core.audit.mitre import get_mitre_mapping
@@ -246,7 +246,7 @@ def agt_to_canonical(
 
         tool["input_hash"], kind = fingerprint(command)
         tool["input_redaction"] = f"{kind}+command"
-        traits = classify_command(command)
+        traits = classify_tool_call(resource, command)
         if traits:
             tool["traits"] = traits
     mapping = get_mitre_mapping(resource or "run", data or command)

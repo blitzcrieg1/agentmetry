@@ -146,17 +146,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            57 (26 attack, 31 benign)
+  cases            70 (33 attack, 37 benign)
   rules covered    13
-  expected firings 26
-  detected         26
+  expected firings 33
+  detected         33
   missed           0
   false positives  0
 ```
 
-That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
+That block is what `agentmetry benchmark` printed from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2491 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2608 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [0.12.1 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/43610018759)
 on Python 3.12 reported 2443 passed and 19 skipped on Linux and macOS,
 2456 passed and 6 skipped on Windows, and 83% line coverage on Linux
@@ -202,7 +202,7 @@ The JSONL trail is the system of record. Network sinks tail it from a cursor and
 | AiSOC | Not a sink mode. The webhook sink with the default `canonical` format, pointed at an AiSOC inbox URL minted with its Agentmetry template. Only `canonical` works: the template does not unwrap the `batch` or `cloudevents` envelopes. Built and maintained by AiSOC: [connector docs](https://beenuar.github.io/AiSOC/docs/connectors/agentmetry/). Run live end to end on 2026-11-02 (AiSOC v21, Agentmetry 0.10.4): detections arrived as critical alerts with their ATT&CK techniques, and tool calls raised none. |
 | Tenzir | Not a sink mode. The `agentmetry` package in the [Tenzir Library](https://github.com/tenzir/library/tree/main/agentmetry) maps events to OCSF 1.9.0 from the trail file or from the webhook sink (`accept_http`). Built in [tenzir/library#211](https://github.com/tenzir/library/pull/211), reviewed and merged by Tenzir. Its tests pass on recorded events. The webhook path was run on 2026-11-14 (Agentmetry 0.12.0 from PyPI, package v0.1.0, Tenzir 6.22.0): every event the recorder wrote arrived through `accept_http` and mapped to OCSF, detections as Detection Findings with their tool calls as evidence. The sessions were replayed rather than from a live agent. |
 
-Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (23 rules): 15 generated files for the 14 published sequence rules (`encoded-command-download` is two severities), plus 8 rules for recorder health and triage.
+Guides: [docs/integrations/](docs/integrations/). Detections are also a [Sigma pack](docs/integrations/sigma/README.md) (24 rules): 16 generated files for the 14 published sequence rules (`encoded-command-download` and `session-tool-burst` are two severities each), plus 8 rules for recorder health and triage.
 
 `agentmetry otel` receives Claude Code's stream. It does not replace hooks for policy. Mapped today: `tool_result` becomes `tool_called` or `tool_failed` (arguments only if `OTEL_LOG_TOOL_DETAILS=1`); a person's yes on `tool_decision` becomes an observed approval. Other documented types are counted, not dropped silently. Prompts are not forwarded. `--print-env` and `--print-mapping` print the rest.
 

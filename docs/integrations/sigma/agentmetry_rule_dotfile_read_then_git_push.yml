@@ -27,5 +27,5 @@ level: critical
 tags:
   - attack.ta0006
   - attack.ta0010
-  - attack.t1552.001
+  - attack.t1552.004
   - attack.t1567.001

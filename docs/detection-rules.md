@@ -78,7 +78,7 @@ sequenceDiagram
 | `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
 | `destructive-delete-burst` | high | 5+ deletions in one session, by technique or command (`rm -rf`) |
 | `discovery-then-collect` | medium | Filesystem recon burst (TA0007) → data collection |
-| `session-tool-burst` | high | Unusually dense tool activity in one session, measured over a time window rather than a session total |
+| `session-tool-burst` | high if unattended, else medium | Unusually dense tool activity in one session, measured over a time window rather than a session total. High only when an autonomous or scheduled session produced it: interactive agents cross the threshold routinely (#172) |
 | `off-hours-activity` | medium | Unscheduled autonomous impact action outside business hours. **Opt-in** (`AGENTMETRY_DETECT_OFF_HOURS=1`) with an operator-set window; scheduled jobs excluded |
 
 Host-scoped rules run across sessions on one machine rather than within one:

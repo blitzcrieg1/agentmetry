@@ -33,7 +33,7 @@ any MCP-capable host (Trae, etc.) — see
 |------|------------|
 | `subagent-swarm-burst` | ≥5 `SubagentStart` events in one session (Kimi AgentSwarm, Qwen Agent Teams) |
 | `host-subagent-swarm-burst` | ≥8 subagent starts across sessions on one `host_id` |
-| `session-tool-burst` | ≥40 successful tool calls in one session |
+| `session-tool-burst` | ≥40 successful tool calls within 10 minutes in one session; high when unattended, medium otherwise |
 | `credential-read-then-cloud-api` | Also matches `aliyun`, `tencentcloud`, `ossutil`, `coscmd` CLIs |
 
 **DLP:** Tencent `AKID…` SecretId, DashScope bare `sk-` + 32 hex tokens, Chinese provider `*_API_KEY=` assignments,

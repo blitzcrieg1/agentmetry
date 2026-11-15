@@ -47,6 +47,7 @@ from .traits import (
     STAGING_FETCH as _STAGING_FETCH,
     STAGING_HOST as _STAGING_HOST,
     UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
+    tool_kind as _tool_kind,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,15 @@ def _command_words(event: dict[str, Any]) -> str:
 
     Raw `_command` is still right for extracting URLs and IPs, which are
     arguments and are routinely quoted.
+
+    Empty for a file tool. With command logging on, a Write or Read stores its
+    path as `tool.command`, and a path has no command words: a Write of
+    `hf-rule-issue.md` read as the Hugging Face CLI and completed a critical
+    (#329). Those events are judged by their traits, which the hook computes by
+    tool kind (`traits.classify_tool_call`).
     """
+    if _tool_kind(_tool_qualified(event)) != "command":
+        return ""
     return _mask_literals(_command(event))
 
 
@@ -240,6 +249,9 @@ _DELETE_METHODS = frozenset(
 
 # Scheduled work runs at night by design; excluded from the off-hours rule.
 _SCHEDULED_TRIGGERS = frozenset({"cron", "schedule", "scheduled", "timer"})
+# Sessions no human is driving: scheduled work plus the autonomous triggers
+# autonomous-unapproved-write describes (vault_watch, ingress).
+_UNATTENDED_TRIGGERS = _SCHEDULED_TRIGGERS | {"autonomous", "vault_watch", "ingress"}
 
 # Tools/commands that pull content an outsider can author. ADI's whole premise
 # is that this data is treated as trusted, so anything a session does *after*
@@ -1169,8 +1181,21 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
     """Many successful tool calls in one session.
 
     Autonomous agent campaigns (HF July 2026, Kimi AgentSwarm) often fan out
-    dozens of tool invocations in a single correlation window. Normal interactive
-    coding rarely exceeds a handful per minute — a burst is worth confirming.
+    dozens of tool invocations in a single correlation window.
+
+    The premise that interactive coding "rarely exceeds a handful per minute"
+    did not survive measurement (#172). Across 90 dogfood sessions from
+    2026-08-30 to 2026-11-15, the busiest ten minutes had a median of 13 tool
+    calls, a 95th percentile of 152 and a maximum of 232, and 27 sessions
+    crossed the threshold of 40. Every one of them was an interactive session
+    (`actor_type: agent`, `trigger: manual`), and every one was triaged as
+    ordinary work. No count separates a busy agent from a campaign, so raising
+    the threshold would only move the noise.
+
+    What the rule was written for is the unattended case. So the burst is high
+    when an autonomous or scheduled session produced it, and medium otherwise:
+    still recorded and visible, no longer a page, and no longer a red dogfood
+    week by itself (MUST_TRIAGE is critical and high).
     """
     tools = [
         e
@@ -1183,15 +1208,19 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
     window = _densest_window(tools, _threshold("session_tool_burst"), minutes)
     if window is None:
         return []
+    unattended = any(
+        _actor_type(e) == "autonomous" or _trigger(e) in _UNATTENDED_TRIGGERS
+        for e in window
+    )
     return [
         Detection(
             rule_id="session-tool-burst",
             title="Burst of tool calls in one session",
-            severity="high",
+            severity="high" if unattended else "medium",
             summary=(
                 f"{len(window)} successful tool calls within {minutes} minutes in a "
-                "single session. Common in autonomous agent campaigns; confirm this "
-                "was intended work."
+                + ("single unattended session. " if unattended else "single session. ")
+                + "Common in autonomous agent campaigns; confirm this was intended work."
             ),
             correlation_id=_correlation_id(events),
             tactic_ids=["TA0002"],
