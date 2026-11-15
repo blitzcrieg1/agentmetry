@@ -619,6 +619,29 @@ _SECRET_PATTERNS = [
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "<redacted-gh-token>"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
     (re.compile(r"\bhf_[A-Za-z0-9]{30,}\b"), "<redacted-hf-token>"),
+    # The provider formats the detection rules recognise (traits._ISSUERS),
+    # so a token the sensor can name is a token it does not store. Until
+    # 0.13.0 `sk-[A-Za-z0-9]{20,}` stopped at the second hyphen, which left
+    # OpenAI project keys (`sk-proj-`) and Anthropic keys (`sk-ant-`) stored
+    # as typed, along with every format below.
+    (re.compile(r"\bsk-(?:ant|proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"), "<redacted-key>"),
+    (re.compile(r"\b(?:A3T[A-Z0-9]|ASIA|ABIA|ACCA)[A-Z2-7]{16}\b"), "<redacted-aws-key>"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{50,}"), "<redacted-gh-token>"),
+    (re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"), "<redacted-gitlab-token>"),
+    (re.compile(r"\bnpm_[A-Za-z0-9]{36,}"), "<redacted-npm-token>"),
+    (re.compile(r"\bpypi-[A-Za-z0-9_-]{50,}"), "<redacted-pypi-token>"),
+    (re.compile(r"\bdckr_pat_[A-Za-z0-9_-]{20,}"), "<redacted-docker-token>"),
+    (re.compile(r"\bAIza[\w-]{35}"), "<redacted-google-key>"),
+    (re.compile(r"\bxapp-\d-[A-Za-z0-9]+-\d+-[A-Za-z0-9]+"), "<redacted-slack-token>"),
+    (re.compile(r"\b(?:sk|rk)_(?:test|live|prod)_[A-Za-z0-9]{10,99}"), "<redacted-stripe-key>"),
+    (re.compile(r"\bSG\.[A-Za-z0-9=_.-]{66}"), "<redacted-sendgrid-key>"),
+    (re.compile(r"\bshpat_[a-fA-F0-9]{32}"), "<redacted-shopify-token>"),
+    (re.compile(r"\bdo[po]_v1_[a-f0-9]{64}"), "<redacted-digitalocean-token>"),
+    (re.compile(r"\blin_api_[A-Za-z0-9]{40}"), "<redacted-linear-key>"),
+    (re.compile(r"\bdp\.pt\.[A-Za-z0-9]{43}"), "<redacted-doppler-token>"),
+    (re.compile(r"\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}"), "<redacted-postman-key>"),
+    (re.compile(r"\bpul-[a-f0-9]{40}"), "<redacted-pulumi-token>"),
+    (re.compile(r"\bdapi[a-f0-9]{32}(?:-\d)?"), "<redacted-databricks-token>"),
 ]
 
 

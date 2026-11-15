@@ -192,3 +192,73 @@ def test_a_long_command_scrubs_quickly(scrub):
         start = time.perf_counter()
         scrub(chunk)
         assert time.perf_counter() - start < 1.0
+
+
+# --- every token format the detection rules name is scrubbed (0.13.0) -----------
+
+import re  # noqa: E402
+
+from agentmetry.core.audit import redaction as _redaction  # noqa: E402
+from agentmetry.core.audit.detection.traits import _ISSUERS  # noqa: E402
+
+_A, _H = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC2dF4", "0123456789abcdef"
+ISSUER_SAMPLES = {
+    "huggingface": ["hf_" + _A],
+    "github": ["ghp_" + _A + "xyz", "github_pat_" + (_A + "_") * 2],
+    "gitlab": ["glpat-" + _A[:20]],
+    "npm": ["npm_" + _A + "xyz"],
+    "pypi": ["pypi-" + _A * 2],
+    "openai": ["sk-proj-" + _A + "_x-" + _A[:6], "sk-svcacct-" + _A],
+    "anthropic": ["sk-ant-api03-" + _A],
+    "aws": ["ASIA" + "QWERTY234567ABCD", "AKIA" + "QWERTY234567ABCD"],
+    "docker": ["dckr_pat_" + _A[:27]],
+    "google": ["AIza" + _A + "_x"],
+    "slack": ["xoxb-1234567890-1234567890-" + _A[:24], "xapp-1-A0123BCD-4567-" + _H * 4],
+    "stripe": ["sk_live_" + _A[:24], "rk_test_" + _A[:24]],
+    "sendgrid": ["SG." + _A[:22] + "." + (_A + _A)[:43]],
+    "shopify": ["shpat_" + _H * 2],
+    "digitalocean": ["dop_v1_" + _H * 4],
+    "linear": ["lin_api_" + (_A * 2)[:40]],
+    "doppler": ["dp.pt." + (_A * 2)[:43]],
+    "postman": ["PMAK-" + (_H * 2)[:24] + "-" + (_H * 3)[:34]],
+    "pulumi": ["pul-" + (_H * 3)[:40]],
+    "databricks": ["dapi" + _H * 2],
+}
+
+
+def test_every_issuer_has_a_redaction_sample():
+    """A provider added to the detection rules must be added here, and to redaction."""
+    assert set(ISSUER_SAMPLES) == set(_ISSUERS)
+
+
+@pytest.mark.parametrize(
+    "provider, token", [(p, t) for p, ts in ISSUER_SAMPLES.items() for t in ts]
+)
+def test_issuer_tokens_are_scrubbed_by_both_copies(provider, token):
+    assert re.fullmatch(_ISSUERS[provider][1], token), (provider, token)
+    # Not a NAME=value assignment, so only the format patterns can catch it.
+    command = f"curl -s https://api.example.net/v1/check -d {token} | jq ."
+    for scrubbed in (scrub_secrets(command), ingest.scrub_command(command)):
+        assert token not in scrubbed, (provider, scrubbed)
+        assert "api.example.net/v1/check" in scrubbed
+
+
+def test_hook_mirror_carries_the_same_patterns():
+    server = [(p.pattern, p.flags, r) for p, r in _redaction._SECRET_PATTERNS]
+    client = [(p.pattern, p.flags, r) for p, r in ingest._SECRET_PATTERNS]
+    assert server == client
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git log --oneline -3 && pytest -q",
+        "sha256sum dist/agentmetry-0.13.0.tar.gz",
+        "git show 3f9c2a1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+        "python -m pip install skl2onnx sk-video",
+        "aws s3 ls s3://bucket/path --region eu-west-1",
+    ],
+)
+def test_ordinary_text_survives_scrubbing(command):
+    assert scrub_secrets(command) == command
+    assert ingest.scrub_command(command) == command
