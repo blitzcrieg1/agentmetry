@@ -146,6 +146,8 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     lists_key_folder,
     mask_env_names_only,
     mask_key_listings,
+    mask_prose_flags,
+    mask_state_pipe_removal,
     mask_literals,
     tool_kind,
 )
@@ -199,10 +201,30 @@ def _path_evidence_text(evidence: Any, fallback: str) -> str:
     """
     if not isinstance(evidence, dict):
         return fallback
-    kept = {k: v for k, v in evidence.items() if str(k).lower() not in _PROSE_KEYS}
+    kept = {
+        k: v
+        for k, v in evidence.items()
+        if str(k).lower() not in _PROSE_KEYS and _names_a_location(str(k))
+    }
     if not kept:
         return ""
     return _evidence_text(kept)
+
+
+#: Argument names that hold a location a tool will open. Keeping only these
+#: replaced keeping everything but known prose: the prose list can never be
+#: complete, and a recap field (`mcp__ccd_turn__wrap_up {recap}`) or a plan's
+#: `items` that mentioned `.env` earned T1552.001 and completed a critical
+#: (#329, the #49 family). A key that names no location is not a file read.
+_LOCATION_WORDS = ("path", "file", "dir", "folder")
+_LOCATION_KEYS = frozenset(
+    {"target", "src", "source", "dest", "destination", "uri", "location", "cwd", "root"}
+)
+
+
+def _names_a_location(key: str) -> bool:
+    k = key.lower().replace("_", "").replace("-", "")
+    return k in _LOCATION_KEYS or any(w in k for w in _LOCATION_WORDS)
 
 
 def _shell_text(evidence: Any) -> str | None:
@@ -283,7 +305,7 @@ def get_mitre_mapping(
         # discovery, mapped below, exactly as classify_command decides it.
         listed = literal
         if kind == "command" and shell:
-            listed = mask_key_listings(literal, shell)
+            listed = mask_key_listings(mask_prose_flags(literal, shell), shell)
         if PRIVATE_KEY_PATH.search(listed):
             return _PRIVATE_KEY
         if kind == "read":
@@ -298,10 +320,12 @@ def get_mitre_mapping(
                 mask_env_names_only(listed, shell if shell else None)
             )
             or (
-                (CREDENTIAL_ENV.search(text) or LITERAL_SECRET.search(shell or text))
+                # A `$NAME` in structured arguments is not expanded by
+                # anything: only shell text dereferences a variable.
+                ((shell and CREDENTIAL_ENV.search(text)) or LITERAL_SECRET.search(shell or text))
                 and not (shell and issuer_bound(shell, mask_literals(shell)))
             )
-            or CREDENTIAL_ENV_DUMP.search(written)
+            or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
             or CREDENTIAL_CLI.search(written)
         ):
             return _CREDENTIAL_ACCESS

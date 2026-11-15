@@ -286,6 +286,28 @@ DELETE_COMMAND = re.compile(
     re.IGNORECASE,
 )
 
+# The same unsetting, written as a pipeline: `Get-ChildItem Env:AGENTMETRY_* |
+# Remove-Item`. The listing feeds names to the removal, so it neither deletes
+# data nor prints a value, and it was read as both a deletion and a dump of the
+# whole environment (#329, shape 2). Blanked before either pattern looks.
+PS_STATE_PIPE_REMOVAL = re.compile(
+    r"\b(?:get-childitem|gci|ls|dir)\s+(?:-[\w:]+\s+){0,6}"
+    r"(?:env|variable|function|alias):[^\s|;&]*"
+    r"(?:\s+-[\w:]+(?:\s+[^\s|;&-][^\s|;&]*)?){0,6}"
+    r"\s*\|\s*(?:remove-item|ri|rm|del)\b[^\n;&|]*",
+    re.IGNORECASE,
+)
+
+
+def mask_state_pipe_removal(text: str) -> str:
+    """Blank `Get-ChildItem Env:X* | Remove-Item`, which only unsets shell state."""
+    return PS_STATE_PIPE_REMOVAL.sub(lambda m: " " * len(m.group(0)), text or "")
+
+
+def is_delete_command(written: str) -> bool:
+    """A deletion of data, read from the masked command words."""
+    return bool(DELETE_COMMAND.search(mask_state_pipe_removal(written)))
+
 # Content an outsider can author (gh issues/PRs, git fetch) — ADI provenance.
 UNTRUSTED_INPUT_COMMAND = re.compile(
     r"\bgh\s+(issue|pr)\s+(view|list|diff|comment)|"
@@ -460,13 +482,20 @@ ENV_FILE_SENT = re.compile(
 # short enough to appear in prose, and `git commit -m "docs: explain .ssh
 # setup"` must not read as a credential access. It has to look like a path, or
 # follow something that copies or reads one.
+#
+# Private keys, not everything beside them. `~/.ssh/config`, `known_hosts`,
+# `authorized_keys` and `*.pub` hold host aliases, fingerprints and public
+# keys; reading `.ssh\config` to set up a host alias was the credential half of
+# a critical (#329). The folder itself still counts, because taking the folder
+# takes the keys, and so does any other file in it.
+_SSH_PUBLIC_FILE = r"(?:config|known_hosts(?:\.old)?|authorized_keys2?|[\w.-]+\.pub)(?![\w.-])"
 PRIVATE_KEY_PATH = re.compile(
-    r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b|"
+    r"\bid_(?:rsa|ed25519|dsa|ecdsa)\b(?!\.pub\b)|"
     r"\.pem\b|"
-    r"-----BEGIN\b|"
-    r"[/\\]\.ssh\b|"  # unanchored on the left, as in ENV_FILE
+    r"-----BEGIN\b(?!\s+(?:OPENSSH\s+|SSH2\s+)?PUBLIC\b)|"
+    r"[/\\]\.ssh\b(?![/\\]" + _SSH_PUBLIC_FILE + r")|"  # unanchored on the left, as in ENV_FILE
     r"\b(?:cd|cp|mv|tar|zip|gzip|rsync|scp|ls|cat|chmod|find)"
-    r"\s+(?:-[-\w]+\s+)*\.ssh\b",
+    r"\s+(?:-[-\w]+\s+)*\.ssh\b(?![/\\]" + _SSH_PUBLIC_FILE + r")",
     re.IGNORECASE,
 )
 
@@ -483,9 +512,15 @@ _CREDENTIAL_ENV_NAME = (
 # while path patterns are not: writing the bare name into documentation is not
 # credential access, and dereferencing it is.
 CREDENTIAL_ENV = re.compile(
-    rf"\$\{{?{_CREDENTIAL_ENV_NAME}|"
+    # Not after a backslash: `\$SECRET` is a literal dollar sign, which the
+    # shell passes along unexpanded. A disposition note quoting #178's
+    # `[bool]\$env:DEEPSEEK_API_KEY` read as a read of that key (#329).
+    rf"(?<!\\)\$\{{?{_CREDENTIAL_ENV_NAME}|"
     rf"%{_CREDENTIAL_ENV_NAME}%|"
-    rf"\$env:{_CREDENTIAL_ENV_NAME}|"
+    # PowerShell reads and writes the same spelling. `$env:AGENTMETRY_API_KEY=''`
+    # clears a variable, and it was the credential half of two criticals in a
+    # setup script (#329). An assignment is not a read; `-eq` and `==` are.
+    rf"(?<!\\)\$env:{_CREDENTIAL_ENV_NAME}(?!\s*=(?!=))|"
     rf"\bprintenv\b[^\n|;&]*\b{_CREDENTIAL_ENV_NAME}|"
     rf"\bgetenv\(\s*['\"]{_CREDENTIAL_ENV_NAME}|"
     rf"\benviron(?:\[|\.get\(\s*)['\"]{_CREDENTIAL_ENV_NAME}",
@@ -751,8 +786,64 @@ _LISTING_VERBS = frozenset({
 })
 _LISTING_FILTERS = frozenset({
     "head", "tail", "wc", "sort", "uniq", "grep", "findstr", "select-object",
-    "select", "format-table", "ft", "measure-object", "measure", "where-object", "where",
+    "select", "format-table", "ft", "format-list", "fl", "measure-object", "measure",
+    "where-object", "where", "sort-object", "group-object", "out-string", "out-host",
+    "out-null", "convertto-json",
 })
+
+# Asking whether a file exists opens nothing (#178's family). `Test-Path
+# apps/orchestrator/.env` inside an expression was the credential half of two
+# criticals (#329). These probes are blanked wherever they sit, not only at the
+# start of a command.
+_EXISTENCE_PROBE = re.compile(
+    r"\btest-path\s+(?:-[\w:]+\s+){0,4}(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s);|&]+)|"
+    r"\[\[?\s+-[efdrsL]\s+(?:\"[^\"\n]*\"|[^\s\]]+)\s+\]\]?|"
+    r"\btest\s+-[efdrsL]\s+(?:\"[^\"\n]*\"|[^\s;&|]+)",
+    re.IGNORECASE,
+)
+
+# The quoted value of a flag that carries prose: a commit message, a note, a
+# title. `git commit -m "docs: handle ~/.aws/credentials"` names a file and
+# reads none. Path rules only; a `$SECRET` inside one still expands, so the
+# variable rule reads the raw text as before.
+_PROSE_FLAG = re.compile(
+    r"(?:^|\s)(?:-m|--message|--note|--title|--body|--description|--comment|"
+    r"--summary|--subject|--notes)(?:\s+|=)([\"'])"
+)
+
+
+def _quoted_end(text: str, start: int, quote: str) -> int:
+    """Index just past the closing quote that matches the one at `start - 1`."""
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and quote == '"':
+            i += 2
+            continue
+        if ch == quote:
+            return i + 1
+        i += 1
+    return len(text)
+
+
+def mask_prose_flags(view: str, raw: str | None = None) -> str:
+    """Blank the quoted values of message, note and title flags."""
+    view = view or ""
+    source = raw if raw is not None and len(raw) == len(view) else view
+    out: list[str] | None = None
+    pos = 0
+    while True:
+        m = _PROSE_FLAG.search(source, pos)
+        if not m:
+            break
+        end = _quoted_end(source, m.end(), m.group(1))
+        if out is None:
+            out = list(view)
+        for i in range(m.end() - 1, end):
+            if out[i] != "\n":
+                out[i] = " "
+        pos = end
+    return view if out is None else "".join(out)
 
 
 def _first_word(stage: str) -> str:
@@ -785,6 +876,12 @@ def mask_key_listings(view: str, raw: str | None = None) -> str:
             for i in range(start, end):
                 out[i] = " "
         start = end + 1
+    for m in _EXISTENCE_PROBE.finditer(source):
+        if out is None:
+            out = list(view)
+        for i in range(m.start(), m.end()):
+            if out[i] != "\n":
+                out[i] = " "
     return view if out is None else "".join(out)
 
 
@@ -1311,7 +1408,7 @@ def classify_command(command: str) -> list[str]:
     # Path rules only: a pipeline keeping just `.env` key names reads no value.
     # Path rules only: a listing opens nothing, and a pipeline keeping just
     # `.env` key names reads no value.
-    path_literal = mask_key_listings(literal, spoken)
+    path_literal = mask_key_listings(mask_prose_flags(literal, spoken), spoken)
     env_literal = mask_env_names_only(path_literal, spoken)
 
     # The IP may legitimately sit inside quotes; the fetch verb may not.
@@ -1337,7 +1434,7 @@ def classify_command(command: str) -> list[str]:
         cradle or RISKY_EXEC_AFTER_STAGING.search(written)
     ):
         traits.append("risky_exec")
-    if DELETE_COMMAND.search(written):
+    if is_delete_command(written):
         traits.append("delete_cmd")
     if UNTRUSTED_INPUT_COMMAND.search(written):
         traits.append("untrusted_input")
@@ -1359,7 +1456,7 @@ def classify_command(command: str) -> list[str]:
     if (
         file_read
         or token_used
-        or CREDENTIAL_ENV_DUMP.search(written)
+        or CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
         # A command word, so `written`: writing `aws secretsmanager
         # get-secret-value` into a runbook is not reading a secret.
         or CREDENTIAL_CLI.search(written)
@@ -1372,7 +1469,7 @@ def classify_command(command: str) -> list[str]:
             and ENV_LOAD.search(written)
             and not token_used
             and not CREDENTIAL_PATH.search(path_literal)
-            and not CREDENTIAL_ENV_DUMP.search(written)
+            and not CREDENTIAL_ENV_DUMP.search(mask_state_pipe_removal(written))
             and not CREDENTIAL_CLI.search(written)
             and not _READS_CREDENTIAL_FILE.search(written)
         ):

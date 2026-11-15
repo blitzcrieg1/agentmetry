@@ -493,3 +493,114 @@ def test_dotenv_leaving_without_a_read_verb_counts(command):
 )
 def test_mentions_and_placeholders_do_not(command):
     assert not _credential("Bash", command)
+
+
+# --- found by replaying the dogfood trail against its dispositions ---------------
+
+from agentmetry.core.audit.detection.rules import rule_destructive_delete_burst  # noqa: E402
+
+
+def _deletes(minutes_apart: float, n: int = 5) -> list[dict]:
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2026, 11, 15, 10, 0, tzinfo=timezone.utc)
+    return [
+        {
+            "event_id": f"d{i}",
+            "correlation_id": "s-del",
+            "timestamp_utc": (start + timedelta(minutes=i * minutes_apart)).isoformat(),
+            "action": {"type": "tool_called", "outcome": "success"},
+            "tool": {"qualified": "Bash", "command": f"rm -rf build/part{i}"},
+        }
+        for i in range(n)
+    ]
+
+
+def test_deletions_spread_over_hours_are_not_a_burst():
+    assert rule_destructive_delete_burst(_deletes(60)) == []
+
+
+def test_deletions_inside_ten_minutes_are():
+    (detection,) = rule_destructive_delete_burst(_deletes(1))
+    assert detection.severity == "high" and "within 10 minutes" in detection.summary
+
+
+@pytest.mark.parametrize(
+    "command, reads",
+    [
+        (r"$env:AGENTMETRY_API_KEY=''", False),
+        (r"$env:GITHUB_TOKEN = 'x'", False),
+        (r"echo $env:GITHUB_TOKEN", True),
+        (r"if ($env:GITHUB_TOKEN -eq '') { exit 1 }", True),
+    ],
+)
+def test_powershell_assignment_is_not_a_read(command, reads):
+    assert _credential("PowerShell", command) is reads
+
+
+@pytest.mark.parametrize(
+    "command",
+    [r"Get-ChildItem Env:AGENTMETRY_* | Remove-Item", r"gci env: | Remove-Item"],
+)
+def test_unsetting_through_a_pipeline_is_neither_delete_nor_dump(command):
+    assert classify_command(command) == []
+
+
+def test_removal_piped_from_a_real_folder_still_deletes():
+    assert "delete_cmd" in classify_command(r"Get-ChildItem C:\data | Remove-Item -Recurse")
+
+
+@pytest.mark.parametrize(
+    "qualified, args, technique",
+    [
+        ("mcp__ccd_turn__wrap_up", {"recap": "edited .env and ~/.aws/credentials"}, None),
+        ("mcp__ccd_turn__update_plan", {"items": [{"text": "read .env"}], "scope": "x"}, None),
+        ("mcp__notes__save", {"note": "$HF_TOKEN"}, None),
+        ("mcp__fs__read_file", {"path": "/home/dev/.aws/credentials"}, "T1552.001"),
+        ("mcp__fs__read_file", {"file_path": "/x/.env"}, "T1552.001"),
+        ("mcp__fs__open", {"target": "~/.ssh/id_rsa"}, "T1552.004"),
+    ],
+)
+def test_mcp_arguments_count_only_where_they_name_a_location(qualified, args, technique):
+    mapping = get_mitre_mapping(qualified, args)
+    assert (mapping["technique_id"] if mapping and mapping["technique_id"].startswith("T1552") else None) == technique
+
+
+@pytest.mark.parametrize(
+    "command, reads",
+    [
+        (r'Get-ChildItem "$env:USERPROFILE\.ssh" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize | Out-String -Width 150', False),
+        (r"$ok = (Test-Path apps/orchestrator/.env); $ok", False),
+        ("[ -f .env ] && echo yes", False),
+        ("test -f ~/.aws/credentials && echo has", False),
+        ('git commit -m "docs: handle ~/.aws/credentials and .env"', False),
+        ('agentmetry disposition --note "the string ~/.ssh/id_rsa was a label" s r', False),
+        (r'echo "\$env:DEEPSEEK_API_KEY is a probe"', False),
+        ('git commit -m "$AWS_SECRET_ACCESS_KEY"', True),
+        ("[ -f .env ] && cat .env", True),
+        ('cat ~/.aws/credentials; git commit -m "x"', True),
+        ("Test-Path .env; Get-Content .env", True),
+    ],
+)
+def test_probes_prose_flags_and_escaped_dollars(command, reads):
+    assert _credential("PowerShell", command) is reads
+
+
+@pytest.mark.parametrize(
+    "qualified, text, private",
+    [
+        ("Read", r"C:\Users\x\.ssh\config", False),
+        ("Read", "/home/x/.ssh/known_hosts", False),
+        ("Bash", "cat ~/.ssh/id_rsa.pub", False),
+        ("Read", "/home/x/.ssh/authorized_keys", False),
+        ("Bash", "echo '-----BEGIN OPENSSH PUBLIC KEY-----'", False),
+        ("Bash", "cat ~/.ssh/id_rsa", True),
+        ("Read", r"C:\Users\x\.ssh\id_ed25519", True),
+        ("Bash", "cp -r ~/.ssh /tmp/k", True),
+        ("Read", "/home/x/.ssh/deploy_key", True),
+        ("Bash", "cat ~/.ssh/config_backup_key", True),
+    ],
+)
+def test_public_ssh_files_are_not_private_keys(qualified, text, private):
+    traits = classify_tool_call(qualified, text)
+    assert ("private_key" in traits or _technique(qualified, text) == "T1552.004") is private

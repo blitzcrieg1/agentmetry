@@ -27,7 +27,7 @@ from .yaml_config import threshold as _threshold
 from .traits import (
     BENIGN_AFTER_STAGING as _BENIGN_AFTER_STAGING,
     CLOUD_API as _CLOUD_API,
-    DELETE_COMMAND as _DELETE_COMMAND,
+    DELETE_COMMAND as _DELETE_COMMAND,  # noqa: F401  (asserted by test_detection_quoted_command_words)
     DOWNLOAD_EXEC as _DOWNLOAD_EXEC,
     ENCODED_CMD as _ENCODED_CMD,
     GIT_EXFIL as _GIT_EXFIL,
@@ -47,6 +47,7 @@ from .traits import (
     STAGING_FETCH as _STAGING_FETCH,
     STAGING_HOST as _STAGING_HOST,
     UNTRUSTED_INPUT_COMMAND as _UNTRUSTED_INPUT_COMMAND,
+    is_delete_command as _is_delete_command,
     tool_kind as _tool_kind,
 )
 
@@ -693,7 +694,7 @@ def _is_delete(event: dict[str, Any]) -> bool:
     method = _norm_tool(_tool_qualified(event).rsplit(".", 1)[-1])
     if method in _DELETE_METHODS:
         return True
-    if _DELETE_COMMAND.search(_command_words(event)):
+    if _is_delete_command(_command_words(event)):
         return True
     return _has_trait(event, "delete_cmd")
 
@@ -705,22 +706,32 @@ def rule_destructive_delete_burst(events: list[dict[str, Any]]) -> list[Detectio
     to an agent destroying data, and only the operator knows which. Critical is
     reserved for patterns that are hard to explain innocently (credential exfil,
     a denied action running anyway).
+
+    It is a burst, so it has a clock like the other burst rules. Counted over
+    the whole session it was a total, and a long session reaches five
+    deletions without trying: dogfood sessions of 52 deletions over 425 hours
+    and of 5 over 25 hours both fired, with at most three in any ten minutes
+    (#329). Of the six sessions with five or more, two had five inside ten
+    minutes, and those still fire.
     """
     deletes = [
         e
         for e in events
         if _action_type(e) == "tool_called" and _outcome(e) == "success" and _is_delete(e)
     ]
-    if len(deletes) < _threshold("delete_burst"):
+    minutes = _threshold("delete_burst_window_minutes")
+    window = _densest_window(deletes, _threshold("delete_burst"), minutes)
+    if window is None:
         return []
+    deletes = window
     return [
         Detection(
             rule_id="destructive-delete-burst",
             title="Burst of destructive deletions",
             severity="high",
             summary=(
-                f"{len(deletes)} deletion operations in a single session. Worth confirming "
-                "this was intended cleanup and not data destruction."
+                f"{len(deletes)} deletion operations within {minutes} minutes in a single "
+                "session. Worth confirming this was intended cleanup and not data destruction."
             ),
             correlation_id=_correlation_id(events),
             tactic_ids=["TA0040"],
