@@ -571,7 +571,8 @@ _SECRET_PATTERNS = [
     (re.compile(r"(?i)(-{1,2}(?:password|token|secret|api[-_]?key|pwd)[=\s]+)\S+"), r"\1<redacted>"),
     (
         re.compile(
-            r"(?i)\b(password|passwd|pwd|token|secret|api[-_]?key|apikey|access[-_]?key)\s*[=:]\s*[^\s;&|\"']+"
+            r"(?i)\b([A-Za-z0-9_]*(?:password|passwd|pwd|token|secret|api[-_]?key|apikey"
+            r"|access[-_]?key|secret[-_]?key|private[-_]?key))\s*[=:]\s*[\"']?[^\s;&|\"']+"
         ),
         r"\1=<redacted>",
     ),
@@ -579,6 +580,7 @@ _SECRET_PATTERNS = [
     (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), "<redacted-key>"),
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "<redacted-gh-token>"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
+    (re.compile(r"\bhf_[A-Za-z0-9]{30,}\b"), "<redacted-hf-token>"),
 ]
 
 

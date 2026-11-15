@@ -131,3 +131,64 @@ def test_the_digest_does_not_move_when_storage_redaction_got_deeper(monkeypatch)
     monkeypatch.delenv("AGENTMETRY_HASH_KEY", raising=False)
     blob = json.dumps(ingest.redact_arguments(_NESTED), sort_keys=True, separators=(",", ":"), default=str)
     assert ingest.hash_arguments(_NESTED) == hashlib.sha256(blob.encode()).hexdigest()
+
+
+# Prefixed assignments (2026-11-15). The key=value pattern required a word
+# boundary right before the keyword, and `_` is a word character, so
+# `HF_TOKEN=...`, `AWS_SECRET_ACCESS_KEY=...` and `?access_token=...` were
+# stored as typed whenever command logging or full-argument capture was on.
+# Values are built from pieces so no file holds a realistic secret.
+
+_HF = "hf_" + "Q7" * 17
+_AWS = "wJalr" + "XUtnF" * 6
+
+PREFIXED_CASES = [
+    ("HF_" + "TOKEN=" + _HF + " hf upload org/repo ./out", _HF),
+    ("export HF_" + "TOKEN=" + _AWS, _AWS),
+    ('export HF_' + 'TOKEN="' + _AWS + '"', _AWS),
+    ("AWS_SECRET_" + "ACCESS_KEY=" + _AWS + " aws s3 ls", _AWS),
+    ("DJANGO_SECRET_" + "KEY=" + _AWS + " python manage.py check", _AWS),
+    ("curl 'https://example.com/api?access_" + "token=" + _AWS + "&page=2'", _AWS),
+    ("python push.py --repo org/x " + _HF, _HF),
+]
+
+
+@pytest.mark.parametrize("cmd,secret", PREFIXED_CASES)
+@pytest.mark.parametrize("scrub", [scrub_secrets, ingest.scrub_command], ids=["server", "hook"])
+def test_a_prefixed_or_quoted_assignment_is_masked(scrub, cmd, secret):
+    out = scrub(cmd)
+    assert secret not in out, f"secret leaked: {out}"
+
+
+@pytest.mark.parametrize("cmd,secret", PREFIXED_CASES)
+def test_client_and_server_agree_on_prefixed_assignments(cmd, secret):
+    assert ingest.scrub_command(cmd) == scrub_secrets(cmd)
+
+
+@pytest.mark.parametrize("cmd", [
+    "python train.py max_tokens=4000 tokenizer=bert",
+    "HF_TOKEN_PATH=/tmp/cache hf whoami",
+    "kubectl get secret prod-db -o yaml",
+    "helm install app --set secret_name=prod-db",
+    "curl 'https://example.com/api?page=2&limit=50'",
+])
+def test_names_that_only_contain_a_keyword_are_left_alone(cmd):
+    assert scrub_secrets(cmd) == cmd
+    assert ingest.scrub_command(cmd) == cmd
+
+
+def test_the_name_is_kept_and_only_the_value_goes():
+    out = scrub_secrets("HF_" + "TOKEN=" + _HF + " hf upload org/repo")
+    assert out.startswith("HF_TOKEN=<redacted>")
+    assert out.endswith("hf upload org/repo")
+
+
+@pytest.mark.parametrize("scrub", [scrub_secrets, ingest.scrub_command], ids=["server", "hook"])
+def test_a_long_command_scrubs_quickly(scrub):
+    """The hook classifies up to 8 KiB; the wider name prefix must stay linear."""
+    import time
+
+    for chunk in ("a_" * 4096, "a=" * 4096, "x" * 8192, "token_" * 1365):
+        start = time.perf_counter()
+        scrub(chunk)
+        assert time.perf_counter() - start < 1.0
