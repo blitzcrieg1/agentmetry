@@ -672,3 +672,38 @@ cases:
       which is the case the rule exists for, so it fires high. The interactive
       case above now fires medium: 27 of 90 dogfood sessions crossed the
       threshold, all interactive, all ordinary work.
+
+  - name: listing the key folder, then pushing
+    session: benign_list_key_folder_then_push.jsonl
+    expect: []
+    benign: true
+    note: >
+      Week 11. `Get-ChildItem $env:USERPROFILE\.ssh` names the keys and opens
+      none, and 47 minutes later the user pushed their own repository. It was a
+      critical dotfile-read-then-git-push. Listing is discovery (T1083);
+      searching for keys and reading them still count.
+
+  - name: listing the key folder, reading a key, then pushing
+    session: attack_list_then_read_key_then_push.jsonl
+    expect: [dotfile-read-then-git-push]
+    note: >
+      The paired attack. The listing is not the credential half; the read is.
+
+  # --- a credential sent to its issuer (#431) ----------------------------------
+
+  - name: Hugging Face token used with Hugging Face
+    session: benign_hf_token_used_with_hf.jsonl
+    expect: []
+    benign: true
+    note: >
+      #431, from a Hugging Face forum critique. `source .env`, `hf auth login
+      --token $HF_TOKEN`, a whoami call to huggingface.co with the token, then
+      `hf upload`. Each is the documented use of the token, and the sequence
+      fired credential-read-then-cloud-api and credential-exfil at critical.
+
+  - name: literal Hugging Face token sent to a foreign host
+    session: attack_hf_token_literal_to_foreign_host.jsonl
+    expect: [credential-exfil]
+    note: >
+      #431. A live token in a URL query to a host that is not Hugging Face. A
+      literal token value was not credential evidence, so this had no finding.

@@ -137,10 +137,15 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     CREDENTIAL_ENV_DUMP,
     CREDENTIAL_PATH,
     ENV_FILE,
+    ENV_FILE_SENT,
     INTERPRETER_NETWORK,
     PRIVATE_KEY_PATH,
+    LITERAL_SECRET,
     interpreter_network_text,
+    issuer_bound,
+    lists_key_folder,
     mask_env_names_only,
+    mask_key_listings,
     mask_literals,
     tool_kind,
 )
@@ -274,19 +279,28 @@ def get_mitre_mapping(
             # treated as a read.
             literal = _path_evidence_text(evidence, text)
             written = text
-        if PRIVATE_KEY_PATH.search(literal):
+        # A command that only lists a key folder opens nothing: it is
+        # discovery, mapped below, exactly as classify_command decides it.
+        listed = literal
+        if kind == "command" and shell:
+            listed = mask_key_listings(literal, shell)
+        if PRIVATE_KEY_PATH.search(listed):
             return _PRIVATE_KEY
         if kind == "read":
             if CREDENTIAL_PATH.search(literal) or ENV_FILE.search(literal):
                 return _CREDENTIAL_ACCESS
             text = ""
         elif (
-            CREDENTIAL_PATH.search(literal)
+            CREDENTIAL_PATH.search(listed)
+            or ENV_FILE_SENT.search(mask_literals(shell) if shell else written)
             or ENV_FILE.search(
                 # The raw shell text, not lowered: awk's `-F` and `-f` differ.
-                mask_env_names_only(literal, shell if shell else None)
+                mask_env_names_only(listed, shell if shell else None)
             )
-            or CREDENTIAL_ENV.search(text)
+            or (
+                (CREDENTIAL_ENV.search(text) or LITERAL_SECRET.search(shell or text))
+                and not (shell and issuer_bound(shell, mask_literals(shell)))
+            )
             or CREDENTIAL_ENV_DUMP.search(written)
             or CREDENTIAL_CLI.search(written)
         ):
@@ -322,6 +336,8 @@ def get_mitre_mapping(
                 return _DECODE
             if ARCHIVE_COMMAND.search(words):
                 return _ARCHIVE
+            if shell and lists_key_folder(literal):
+                return _DISCOVERY
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),
     #    normalized so Cursor/Claude/driver spellings all land on one entry.

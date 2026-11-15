@@ -307,6 +307,12 @@ def _is_credential_access(event: dict[str, Any]) -> bool:
     whatever evidence survived redaction; an event that kept only one of them is
     normal rather than suspicious.
     """
+    if _has_trait(event, "credential_env_load") and not _has_trait(event, "private_key"):
+        # Loading `.env` into the shell sends no secret anywhere. A later command
+        # that sends one names it (`$SECRET`, a dump, `@.env`) and is caught in
+        # that command, so the load alone does not open a credential sequence.
+        # `source .env` followed hours later by any egress was a critical (#431).
+        return False
     return _technique_id(event).startswith("T1552") or _has_trait(
         event, "credential_access"
     ) or _has_trait(event, "private_key")
@@ -926,6 +932,12 @@ def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[De
     Hugging Face's July 2026 agentic intrusion harvested cloud and cluster
     credentials, then used them to move laterally. The read alone is collection;
     the cloud CLI call is the escalation worth paging on.
+
+    Loading `.env` into the shell is not harvesting: it is how a cloud CLI is
+    meant to receive its secrets, and `source .env` then `hf upload` fired here
+    at critical (#431). The hook marks such a load `credential_env_load`, and it
+    does not start this sequence. A provider token sent only to its own CLI or
+    hosts earns no credential half at all (`traits.issuer_bound`).
     """
     cred_idx = next((i for i, e in enumerate(events) if _is_credential_access(e)), None)
     if cred_idx is None:
