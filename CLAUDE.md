@@ -56,8 +56,18 @@ events. Only the triage was.
 **The gate passed on 2026-10-02: 4 of 4, weeks 1 to 4.** Weeks 2 and 4 had
 also scored RED, on one and three untriaged `session-tool-burst` detections, and
 turned GREEN when those were triaged that day. The fingerprint did not move
-during the run. Whether the freeze now ends, so #55 and #172 can land, is the
-maintainer's decision; until it is made, the list above stays frozen.
+during the run.
+
+**Decided by the maintainer on 2026-11-15: the freeze ends after the r/netsec
+post on 2026-11-17.** By then the gate reads 11 of 4. The trigger is outside
+reports saying which rules matter: #431 (a Hugging Face forum critique of the
+token rule), #425 (an outside test of copied agent logins), and #433, where
+context-mode, a plugin with about 34k stars, routes shell commands through MCP
+inputs the command detections cannot read. **Until then the list above stays
+frozen**, because the post leans on the unchanged-ruleset line. Work may start
+in a worktree before then; nothing merges to master, and the live recorder is
+not updated, until the post is out. See "The detection pass" below for what
+lands and how.
 
 That flip is worth knowing about. **A week scored red on untriaged detections
 can be rescued at any time**, because `assess` reads the disposition store
@@ -97,9 +107,32 @@ apps/orchestrator/.venv/Scripts/python.exe -c "from agentmetry.core.audit.dogfoo
 Four of the five parked detection-precision bugs were fixed in 0.7.0 and are
 closed: #44, #49, #50, #51. Fixing them is why the clock restarted.
 
-**Still parked: [#55](https://github.com/blitzcrieg1/agentmetry/issues/55)
-alone.** It is the last change that will move the fingerprint, so land it in
-one pass rather than piecemeal, and expect another restart when it lands.
+### The detection pass
+
+One pass, landed together, not piecemeal, so the fingerprint moves once:
+
+- [#55](https://github.com/blitzcrieg1/agentmetry/issues/55): observable
+  techniques collapsing into T1059 (moves `mitre.py`)
+- #172: the detection-noise pass
+- #329: all five false-positive shapes (`hf` in a path, `Remove-Item Env:`,
+  `.env` key names only, text in a written file, writing `.env`)
+- #425: Codex `auth.json` as a credential path
+- #431: tie the Hugging Face token rule to where the secret goes, not to order
+- #433: command extraction from MCP inputs, context-mode's `code` and
+  `commands` included. This is in `hooks/ingest.py`, which is not frozen, but
+  it changes what the rules see, so it lands with the rest
+
+Each change carries an attack case and a benign case in the corpus, and
+`benchmark` stays at 0 missed, 0 false positives. Before it merges, replay the
+dogfood trail through the new rules and compare against the dispositions, so
+the false-positive drop on real traffic is measured rather than claimed. That
+figure replaces the green-week streak as the number worth quoting.
+
+On the day it merges: record the new fingerprint in place of the one above,
+restart the clock with `agentmetry dogfood --start --restart`, update the
+recorder checkout, and change everything that quotes `15846a0915769d4a` or the
+streak (the site's `DOGFOOD` constant and copy, the README, the skills). Then
+release it as its own minor version.
 
 Files in `detection/` that are **not** frozen and are safe to edit:
 `disposition.py`, `live.py`, `live_store.py`, `benchmark.py`, `yaml_rules.py`,
@@ -314,9 +347,10 @@ state where nothing shippable moves a prospect as much as one reply would.
 
 **Not allowed until a trigger fires:** new commands or features, dashboard
 polish, the MCP fingerprinting backlog, refactors, the fleet items (#313,
-#314, #318), and the detection-noise pass (#172, #329, #55). That last one
-waits for outside reports to say which rules matter, and landing it resets the
-"green weeks against an unchanged ruleset" line the site shows.
+#314, #318). The detection pass is the one exception, decided 2026-11-15: its
+trigger fired (outside reports in #425, #431 and #433), and it lands after
+2026-11-17 as described under the freeze above. Landing it resets the "green
+weeks against an unchanged ruleset" line the site shows.
 
 **Restart only when** a named person asks for something, a pilot needs it (for
 example the MSI on a real tenant), or a user reports a bug.
