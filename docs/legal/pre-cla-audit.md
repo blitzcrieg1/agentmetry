@@ -11,7 +11,9 @@ All commits on `master` through `6f65181` are authored by **blitzcrieg1**
 
 ## Going forward
 
-- External pull requests **must** sign [CLA.md](../CLA.md) via the CLA Assistant bot.
+- External pull requests **must** sign [CLA.md](../CLA.md) before merge. Until
+  2026-11-16 the CLA Assistant bot collected signatures; since then the maintainer
+  does (see CONTRIBUTING.md).
 - Corporate contributors must file a [Corporate CLA request](../../issues/new?template=corporate-cla.yml)
   or email **legal@agentmetry.ai** once configured.
 - Maintainer direct pushes to `master` are allowed (`enforce_admins: false` on branch

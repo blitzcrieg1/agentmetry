@@ -22,7 +22,9 @@ on:
 #   orchestrator (windows-latest)
 #   hooks-windows
 #   dashboard
-#   CLAAssistant           <- from cla.yml, not this file
+#
+# `CLAAssistant` was required until 2026-11-16, when its archived action stopped
+# starting. The CLA is now signed by hand; see CONTRIBUTING.md.
 #
 # Deliberately NOT required: `supply-chain` here, and `analyze` in codeql.yml.
 # Both report on the world rather than on the diff, so a CVE published overnight

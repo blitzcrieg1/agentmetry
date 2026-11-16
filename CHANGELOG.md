@@ -9,8 +9,27 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-16
+
+A privacy release. Both fixes apply only with command logging or full-argument
+capture turned on, which are off by default; with the defaults, arguments are
+stored as hashes and nothing here changes. Detection rules are unchanged; the
+ruleset fingerprint is still `15846a0915769d4a`. If you ran either capture
+option on an earlier version, the trail may hold the values below as typed:
+rotate those credentials. Do not rewrite the trail, since that breaks its chain.
+
 ### Security
 
+- **Provider tokens are scrubbed by format.** The OpenAI pattern,
+  `sk-[A-Za-z0-9]{20,}`, stopped at the second hyphen, so OpenAI project and
+  service keys (`sk-proj-`, `sk-svcacct-`, `sk-admin-`) and Anthropic keys
+  (`sk-ant-`) typed into a command were stored as typed. So were fine-grained
+  GitHub tokens (`github_pat_`), AWS temporary keys (`ASIA` and the other STS
+  prefixes), and GitLab, npm, PyPI, Docker, Google, Slack app, Stripe,
+  SendGrid, Shopify, DigitalOcean, Linear, Doppler, Postman, Pulumi and
+  Databricks tokens. Each now has its own pattern and label, in both the hook
+  and the recorder, and a test fails if the two pattern lists ever differ.
+  Found in the detection pass, which teaches the rules the same formats.
 - **Inline secret assignments are scrubbed from stored commands.** With
   command logging or full-argument capture on (both off by default), the
   scrubber missed a secret assigned to a prefixed name, because its pattern
