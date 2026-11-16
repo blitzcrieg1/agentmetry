@@ -194,12 +194,19 @@ def test_a_long_command_scrubs_quickly(scrub):
         assert time.perf_counter() - start < 1.0
 
 
-# --- every token format the detection rules name is scrubbed (0.13.0) -----------
+# --- every token format the detection rules name is scrubbed (0.12.2) -----------
 
 import re  # noqa: E402
 
 from agentmetry.core.audit import redaction as _redaction  # noqa: E402
-from agentmetry.core.audit.detection.traits import _ISSUERS  # noqa: E402
+
+# The detection rules' provider table arrives with the detection pass. The
+# redaction patterns ship first (0.12.2), so the cross-checks against that
+# table run only once it exists; the scrubbing tests run either way.
+try:
+    from agentmetry.core.audit.detection.traits import _ISSUERS  # noqa: E402
+except ImportError:  # before the detection pass
+    _ISSUERS = None
 
 _A, _H = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC2dF4", "0123456789abcdef"
 ISSUER_SAMPLES = {
@@ -228,6 +235,8 @@ ISSUER_SAMPLES = {
 
 def test_every_issuer_has_a_redaction_sample():
     """A provider added to the detection rules must be added here, and to redaction."""
+    if _ISSUERS is None:
+        pytest.skip("the detection rules' provider table is not in this version")
     assert set(ISSUER_SAMPLES) == set(_ISSUERS)
 
 
@@ -235,7 +244,8 @@ def test_every_issuer_has_a_redaction_sample():
     "provider, token", [(p, t) for p, ts in ISSUER_SAMPLES.items() for t in ts]
 )
 def test_issuer_tokens_are_scrubbed_by_both_copies(provider, token):
-    assert re.fullmatch(_ISSUERS[provider][1], token), (provider, token)
+    if _ISSUERS is not None:
+        assert re.fullmatch(_ISSUERS[provider][1], token), (provider, token)
     # Not a NAME=value assignment, so only the format patterns can catch it.
     command = f"curl -s https://api.example.net/v1/check -d {token} | jq ."
     for scrubbed in (scrub_secrets(command), ingest.scrub_command(command)):

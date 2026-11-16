@@ -38,7 +38,7 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bhf_[A-Za-z0-9]{30,}\b"), "<redacted-hf-token>"),
     # The provider formats the detection rules recognise (traits._ISSUERS),
     # so a token the sensor can name is a token it does not store. Until
-    # 0.13.0 `sk-[A-Za-z0-9]{20,}` stopped at the second hyphen, which left
+    # 0.12.2 `sk-[A-Za-z0-9]{20,}` stopped at the second hyphen, which left
     # OpenAI project keys (`sk-proj-`) and Anthropic keys (`sk-ant-`) stored
     # as typed, along with every format below.
     (re.compile(r"\bsk-(?:ant|proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"), "<redacted-key>"),
