@@ -204,7 +204,7 @@ do not do it.
 **Commit only when asked.** Do the work, report it, and wait. This is a
 standing preference and it is not negotiable by convenience.
 
-**Branch and PR.** `master` is protected with five required checks and
+**Branch and PR.** `master` is protected with four required checks and
 `enforce_admins` on, so nothing merges from a direct push. Match the existing
 commit-message voice: what changed, why it was wrong before, what it cost.
 
