@@ -93,9 +93,10 @@ Do **not** open a public issue for a vulnerability. See [SECURITY.md](SECURITY.m
 All pull requests require a signed **[Individual CLA (CLA.md)](CLA.md)** before merge.
 
 1. Open your pull request.
-2. The CLA Assistant bot will comment with signing instructions.
-3. Reply to that comment with exactly: **`I have read the CLA Document and I hereby sign the CLA`**
-4. The bot records your GitHub username in `signatures/version1/cla.json`.
+2. If you have not signed before, the maintainer will ask you to sign in a comment.
+3. Reply on the pull request with exactly: **`I have read the CLA Document and I hereby sign the CLA`**
+4. The maintainer records your GitHub username, and a link to that comment, in
+   `signatures/version1/cla.json` on the `cla-signatures` branch. You sign once.
 
 **What you are agreeing to:** You retain copyright in your contribution. You grant
 the Project Owner (blitzcrieg1) the rights in CLA.md, including use under
@@ -112,13 +113,20 @@ code you submit, including output from generative AI tools (CLA.md §7).
 We do **not** require Developer Certificate of Origin (DCO) sign-off; the CLA
 covers inbound licensing.
 
-## Maintainer: branch protection
+## Maintainer: checking the CLA
 
-Require the CLA check before merging to the default branch:
+There is no CLA bot. The `contributor-assistant/github-action` workflow ran
+until 2026-11-16, when the archived action stopped starting, and it was removed
+rather than kept failing on every pull request. Signatures it collected are on
+the `cla-signatures` branch and stay valid.
 
-1. GitHub → **Settings** → **Branches** → branch protection for `master`
-2. Enable **Require status checks to pass**
-3. Require the check named **`CLA Assistant`** (or the status context emitted on PRs)
-4. Enable **Require pull request reviews** as appropriate for your team
+Before merging a pull request from anyone not in
+`signatures/version1/cla.json` on that branch:
+
+1. Ask them to reply with the sentence above, and wait for it.
+2. Add an entry to `cla.json` in the same shape as the existing ones (`name`,
+   `id`, `comment_id`, `created_at`, `repoId`, `pullRequestNo`) and commit it to
+   `cla-signatures`.
+3. Then merge. Dependabot needs no signature.
 
 See also [COMMERCIAL.md](COMMERCIAL.md) for non-binding commercial-licensing intent.
