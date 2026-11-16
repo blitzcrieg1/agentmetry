@@ -10,9 +10,9 @@ These are small, self-contained, and testable. The best way in:
 
 | Area | Where |
 |------|-------|
-| A new **detection rule** | `apps/orchestrator/core/audit/detection/rules.py`: a pure function over a session's events, plus tests in `tests/test_detection_engine.py` |
+| A new **detection rule** | `apps/orchestrator/agentmetry/core/audit/detection/rules.py`: a pure function over a session's events, plus tests in `tests/test_detection_engine.py` |
 | A new **DLP pattern** | `agentmetry/policies/dlp/manifest.yaml`: regex only, no Python; add a fires/doesn't-fire test |
-| A **SIEM adapter** | `apps/orchestrator/core/audit/sinks.py` |
+| A **SIEM adapter** | `apps/orchestrator/agentmetry/core/audit/sinks.py` |
 | A **hook adapter** for a new IDE | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
 | A **Sigma rule** | [docs/integrations/sigma/](docs/integrations/sigma/) |
 
@@ -61,7 +61,7 @@ is rewritten. New commits after the steps above will not add Cursor as co-author
 From `apps/orchestrator`:
 
 ```bash
-python -m ruff check core api tests      # lint
+python -m ruff check agentmetry tests   # lint
 python -m pytest -q                      # tests
 ```
 
