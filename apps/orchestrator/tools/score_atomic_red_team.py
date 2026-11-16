@@ -49,6 +49,8 @@ EXPECT = {
     "T1070.004": lambda tr, m: "delete_cmd" in tr,
     "T1485": lambda tr, m: "delete_cmd" in tr or m.startswith("T1485"),
     "T1027": lambda tr, m: "encoded_cmd" in tr or m.startswith(("T1027", "T1140")),
+    "T1046": lambda tr, m: m.startswith("T1046"),
+    "T1595": lambda tr, m: m.startswith("T1595"),
     "T1059.004": None, "T1059.001": None,  # every shell call is this; not scored
 }
 EXEC_TOOL = {"sh": "Bash", "bash": "Bash", "powershell": "PowerShell", "command_prompt": "shell.run"}

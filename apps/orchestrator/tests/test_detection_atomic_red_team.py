@@ -1,7 +1,7 @@
 """Commands from Atomic Red Team that the classifier must label.
 
-Scored on 2026-11-15 against every Atomic Red Team test for the techniques this
-sensor tags: 37 of 231 commands carried the expected label on master, 102 on
+Scored on 2026-11-16 against every Atomic Red Team test for the techniques this
+sensor tags: 37 of 245 commands carried the expected label on master, 107 on
 the detection-pass branch. The commands below pin the shapes that moved, so a
 later change cannot quietly lose them. They are parsed as strings and never run.
 
@@ -71,6 +71,8 @@ def test_atomic_credential_access_is_labelled(command):
         ("dd of=/var/log/syslog if=/dev/zero count=100", "T1485"),
         ("shred -u /tmp/secret.txt", "T1485"),
         ("gcloud storage buckets delete gs://atomic-red-team-bucket", "T1485"),
+        ("for port in {1..65535}; do (2>/dev/null echo >/dev/tcp/192.168.1.1/$port) && echo port $port is open ; done", "T1046"),
+        ("nmap 127.0.0.1", "T1046"),
     ],
 )
 def test_atomic_techniques_are_mapped(command, technique):

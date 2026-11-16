@@ -988,6 +988,41 @@ DESTROY_COMMAND = re.compile(
     re.IGNORECASE,
 )
 
+# Scanners. A coding agent sweeping the network for open ports or brute-forcing
+# a web server's paths is the next step of a hijacked session, and it used to be
+# "Unix Shell" like any other command. These need the scanner in program
+# position (start of a command, after `;`, `&&`, `|`, or behind sudo and its
+# siblings), with an argument that is not a version or help flag: `grep nmap
+# README.md`, `apt install nmap` and `nmap --version` scan nothing.
+_PROGRAM_POSITION = (
+    r"(?:^|[;&|(\n]|\$\(|`)\s*"
+    r"(?:(?:sudo|doas|nohup|time|proxychains4?|timeout\s+\S+)\s+(?:-\S+\s+)*)*"
+    r"(?:[\w.~:-]*[/\\])*"
+)
+# A version or help flag alone is not a run. Alone, because nikto's `-h` names
+# the host to scan.
+_RUNS = r"(?:\.exe)?\s+(?!-{1,2}(?:version|help|V|h)\s*(?:$|[;&|)\n]))\S"
+
+# T1046 Network Service Discovery: port and service scanners, and a `for` loop
+# opening /dev/tcp connections with the loop's own variable as the port (the
+# Atomic Red Team bash test). Waiting for a database with
+# `until echo > /dev/tcp/$DB_HOST/$DB_PORT` probes one port and is not a scan.
+NETWORK_SCAN = re.compile(
+    _PROGRAM_POSITION + r"(?:nmap|masscan|rustscan|naabu|zmap|unicornscan)" + _RUNS
+    + r"|(?s:\bfor\s+(\w+)\s+in\b.{0,200}?/dev/tcp/[^/\s]+/\$\{?\1\b)",
+    re.IGNORECASE,
+)
+# T1595.002 Vulnerability Scanning and T1595.003 Wordlist Scanning, Active
+# Scanning under Reconnaissance: a web target probed for known flaws or for
+# paths from a wordlist.
+VULN_SCAN = re.compile(
+    _PROGRAM_POSITION + r"(?:nuclei|nikto(?:\.pl)?|wpscan)" + _RUNS, re.IGNORECASE
+)
+WORDLIST_SCAN = re.compile(
+    _PROGRAM_POSITION + r"(?:ffuf|gobuster|feroxbuster|dirb|dirsearch|wfuzz)" + _RUNS,
+    re.IGNORECASE,
+)
+
 
 # Searching for credential files by name. `find / -path '*/.aws/credentials'
 # -exec cat {} \;` keeps its target in single quotes, and the masking that stops

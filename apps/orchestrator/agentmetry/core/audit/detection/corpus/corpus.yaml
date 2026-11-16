@@ -55,6 +55,24 @@ cases:
     session: attack_discovery_then_collect.jsonl
     expect: [discovery-then-collect]
 
+  - name: network scan, then a config file read
+    session: attack_network_scan_then_collect.jsonl
+    expect: [discovery-then-collect]
+    note: >
+      nmap and masscan against an internal range are T1046 Network Service
+      Discovery, and ffuf against a host's paths is T1595.003. Until the
+      detection pass they were Unix Shell, so a scan before a read was no
+      recon at all.
+
+  - name: installing a scanner and reading about it
+    session: benign_scanner_install_then_read.jsonl
+    expect: []
+    benign: true
+    note: >
+      The paired benign case. `apt-get install nmap`, `nmap --version`,
+      `grep -rn nmap docs/` and `which gobuster` name a scanner without
+      running one against anything.
+
   - name: destructive delete burst
     session: attack_destructive_delete_burst.jsonl
     expect: [destructive-delete-burst]

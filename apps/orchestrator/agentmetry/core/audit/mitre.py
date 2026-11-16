@@ -114,6 +114,9 @@ _CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
 _DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
 _ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
 _ARCHIVE_LIBRARY = _m("TA0009", "Collection", "T1560.002", "Archive via Library")
+_NETWORK_SCAN = _m("TA0007", "Discovery", "T1046", "Network Service Discovery")
+_VULN_SCAN = _m("TA0043", "Reconnaissance", "T1595.002", "Vulnerability Scanning")
+_WORDLIST_SCAN = _m("TA0043", "Reconnaissance", "T1595.003", "Wordlist Scanning")
 
 # Credential and private-key recognition now lives in detection/traits.py, and
 # this module imports it rather than keeping a second copy.
@@ -132,6 +135,9 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     CREDENTIAL_SEARCH,
     DESTROY_COMMAND,
     NETWORK_CLIENT,
+    NETWORK_SCAN,
+    VULN_SCAN,
+    WORDLIST_SCAN,
     interpreter_code_text,
     reaches_remote_host,
     mask_search_patterns,
@@ -370,6 +376,14 @@ def get_mitre_mapping(
                 return _ARCHIVE
             if ARCHIVE_LIBRARY.search(code):
                 return _ARCHIVE_LIBRARY
+            # Scanners, after the network check above: `nmap ... | curl -d @-`
+            # sends its results somewhere, and the egress is the stronger label.
+            if NETWORK_SCAN.search(words):
+                return _NETWORK_SCAN
+            if VULN_SCAN.search(words):
+                return _VULN_SCAN
+            if WORDLIST_SCAN.search(words):
+                return _WORDLIST_SCAN
             if shell and lists_key_folder(literal):
                 return _DISCOVERY
 
