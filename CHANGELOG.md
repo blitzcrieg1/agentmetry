@@ -9,6 +9,46 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Changed
+
+- **Detection classification follows the tool kind.** File writes and listings
+  do not gain command traits from their content; reads use path evidence.
+  Search patterns and environment-name-only listings are not mistaken for
+  credential paths or values; existence probes and shell-variable removal do
+  not stand in for credential reads or filesystem deletion (#329).
+- **Structured MCP command inputs reach recorded classification.** The hook
+  extracts commands from nested inputs, argument lists, language-tagged code,
+  command-key suffixes and stdin, within explicit depth, node, text and decode
+  limits. Classification is marked partial when a limit is reached (#433).
+  This broadens recording and detection; it does not extend the pre-tool policy
+  evaluator to all the same input shapes.
+- **More specific ATT&CK labels for observable commands.** Scheduled tasks,
+  cron installation, archive creation, decoding, cloud-storage uploads,
+  destruction and supported scanner commands can receive their corresponding
+  labels. Listings of key directories remain Discovery rather than credential
+  reads. These are behavior mappings, not proof of malicious intent (#55).
+- **Credential use is distinguished from transfer.** Recognized provider tokens
+  used only with their provider's supported CLI or hosts do not establish the
+  credential-then-cloud-API sequence merely by call order. Loading an env file
+  into the shell does not start a credential sequence (#431).
+- **Two-step rules use a pairing window.** `sequence_window_minutes` defaults to
+  240; setting it to 0 restores session-wide pairing.
+- **Interactive tool bursts are medium severity.** `session-tool-burst` remains
+  high for sessions reported as autonomous or scheduled. The Sigma export has
+  separate high and medium variants (#172).
+
+### Fixed
+
+- Reading Codex's `auth.json` is recognized as a credential read (#425).
+- Artifact staging follows the fetch command's own pipeline. Output flags
+  previously missed because a regular expression contained literal backspace
+  characters are recognized; printing a download is not treated as staging an
+  executable (#51).
+- Credential-path patterns avoid repeated scans of hostile long input tokens.
+
+This pass changes the ruleset fingerprint and requires a new dogfood period when
+it ships. The provider-token redaction fixes shipped separately in 0.12.2.
+
 ## [0.12.2] - 2026-11-16
 
 A privacy release. Both fixes apply only with command logging or full-argument
