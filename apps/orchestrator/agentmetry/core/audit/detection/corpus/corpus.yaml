@@ -673,6 +673,23 @@ cases:
       `ctx_batch` takes a `commands` list and runs each in order. Each entry is
       classified on its own line.
 
+  - name: MCP input key ending in a command word reads and sends a credential
+    session: attack_mcp_suffix_key_exfil.jsonl
+    expect: [credential-exfil]
+    note: >
+      `{"setup_script": ...}`. Keys ending in command, cmd or script, and
+      stdin, name a command, as weft's guard engine reads them. Before this
+      only exact names (`command`, `script`) were read.
+
+  - name: MCP keys that end like a command word but hold text or JavaScript
+    session: benign_mcp_suffix_key_text.jsonl
+    expect: []
+    benign: true
+    note: >
+      The paired benign case. A `meeting_transcript` quoting an exfil command
+      and a `javascript` body are not shell; a `run_command` running a linter
+      is read and classified as the harmless command it is.
+
   - name: MCP prose and file content that mention commands
     session: benign_mcp_prose_mentions_commands.jsonl
     expect: []

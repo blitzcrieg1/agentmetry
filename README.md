@@ -146,17 +146,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            84 (40 attack, 44 benign)
+  cases            86 (41 attack, 45 benign)
   rules covered    13
-  expected firings 40
-  detected         40
+  expected firings 41
+  detected         41
   missed           0
   false positives  0
 ```
 
 That block is what `agentmetry benchmark` printed from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2844 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2854 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [0.12.1 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/43610018759)
 on Python 3.12 reported 2443 passed and 19 skipped on Linux and macOS,
 2456 passed and 6 skipped on Windows, and 83% line coverage on Linux

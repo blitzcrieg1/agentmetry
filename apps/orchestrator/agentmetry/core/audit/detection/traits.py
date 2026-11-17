@@ -1717,6 +1717,21 @@ _STRUCT_COMMAND_KEYS = frozenset({
     "bash", "sh", "zsh", "powershell", "pwsh",
 })
 _STRUCT_COMMAND_LIST_KEYS = frozenset({"commands", "cmds", "scripts"})
+#: Standard input fed to a shell is a command too.
+_STRUCT_STDIN_KEYS = frozenset({"stdin", "stdintext"})
+#: A key that ends in a command word names one (`run_command`, `shellCommand`,
+#: `setup_script`, `preCmd`), as weft's guard engine also reads it. Not these:
+#: a transcript, PostScript, or a JavaScript or TypeScript body is not shell.
+_STRUCT_COMMAND_SUFFIXES = ("command", "cmd", "script")
+_STRUCT_NOT_COMMAND_SUFFIXES = ("transcript", "postscript", "javascript", "typescript")
+
+
+def _is_command_key(nk: str) -> bool:
+    if nk in _STRUCT_COMMAND_KEYS or nk in _STRUCT_STDIN_KEYS:
+        return True
+    if nk in _STRUCT_ARG_KEYS or nk in _STRUCT_PROSE_KEYS:
+        return False
+    return nk.endswith(_STRUCT_COMMAND_SUFFIXES) and not nk.endswith(_STRUCT_NOT_COMMAND_SUFFIXES)
 _STRUCT_PROGRAM_KEYS = frozenset({"program", "executable", "bin"})
 _STRUCT_ARG_KEYS = frozenset({"args", "argv", "arguments", "subcommand", "params"})
 #: Free text and file data. A command word inside a note, a search query or a
@@ -1824,7 +1839,7 @@ def structured_command(args: object) -> tuple[str, bool]:
                     take(f"{value} {sibling_args}")
                     used.add(nk)
                     used.update(arg_keys)
-            elif nk in _STRUCT_COMMAND_KEYS:
+            elif _is_command_key(nk):
                 if isinstance(value, str):
                     if value.lstrip()[:1] not in ("{", "["):
                         take(value)
