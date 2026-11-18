@@ -107,6 +107,20 @@ def test_contract_request_result_survive_http_and_persistence(recorder):
         for event in events:
             if event["tool"]["invocation"]["phase"] == "result":
                 assert event["tool"]["result"] == {"status": "reported_success"}
+
+    tree = client.get("/api/v1/audit/session/synthetic-claude-session/tree")
+    assert tree.status_code == 200
+    nodes = [node for node in tree.json()["nodes"] if "invocation" in node["tool"]]
+    assert len(nodes) == 4
+    for identifier in ("toolu_synthetic_001", "toolu_synthetic_002"):
+        expected = {
+            event["tool"]["invocation"]["phase"] + "_event_id": event["event_id"]
+            for event in indexed if event["tool"]["invocation"]["id"] == identifier
+        }
+        matching = [node for node in nodes if node["tool"]["invocation"]["id"] == identifier]
+        assert len(matching) == 2
+        assert all(node["invocation_evidence"] == {"status": "linked", **expected} for node in matching)
+    assert _MARKER not in tree.text
     assert _MARKER not in output.read_text()
     assert "printf synthetic" not in output.read_text()
 

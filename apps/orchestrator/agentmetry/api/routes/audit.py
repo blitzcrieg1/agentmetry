@@ -439,9 +439,9 @@ async def audit_session_tree(
 ):
     """One session folded into investigation-tree nodes.
 
-    Each ask, its answer and the call it led to become one node, so a detection
-    that cites the ask and a policy verdict recorded on it land on the call
-    they belong to. A session longer than `limit` is windowed on `around_utc`
+    Claude request and result nodes carry exact invocation links where
+    available. Legacy asks can be folded with their answers and calls.
+    A session longer than `limit` is windowed on `around_utc`
     (a detection's first_seen_utc) when given. See `core/audit/session_tree.py`.
     """
     from agentmetry.core.audit.session_tree import session_tree
