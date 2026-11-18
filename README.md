@@ -86,6 +86,8 @@ To check what the agents on this machine are about to depend on, before anything
 agentmetry scan                    # MCP servers your agents launch, and AGENTS.md / CLAUDE.md files left in Downloads or on the Desktop
 agentmetry scan ~/.claude/skills   # skills, rules and CLAUDE.md files: text that instructs the model instead of describing a tool
 agentmetry scan npm:NAME           # one package name, before you install it
+agentmetry scan --preflight ./repo # startup hooks, project MCP and setup declarations
+agentmetry scan --wheel ./example-1.0-py3-none-any.whl # Python startup declarations
 ```
 
 It reads files and nothing else: it never starts a server or fetches a package. It exits 1 on a finding, and "no findings" means these checks found nothing, never that something is safe. The checks and their limits are in [docs/scanner.md](docs/scanner.md).
@@ -156,7 +158,7 @@ These are the numbers from commands, not from a slide.
 
 Run `agentmetry benchmark` to check these expectations. The 14 rule IDs in the corpus include 13 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
 
-2882 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+Expected collection: 2904 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [0.12.1 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/43610018759)
 on Python 3.12 reported 2443 passed and 19 skipped on Linux and macOS,
 2456 passed and 6 skipped on Windows, and 83% line coverage on Linux

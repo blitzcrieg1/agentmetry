@@ -10,12 +10,15 @@ a server and never fetches a package.
 ```bash
 agentmetry scan                      # MCP servers, and instruction files in Downloads, Desktop and ~
 agentmetry scan ./skills             # a file or folder: skills, rules, a saved tools/list
+agentmetry scan --preflight ./repo   # inventory declarations that can start execution
+agentmetry scan --wheel ./example-1.0-py3-none-any.whl  # inspect Python startup declarations
 agentmetry scan pypi:request         # one package name
 agentmetry scan --json               # the report as JSON
 agentmetry scan --known names.txt    # add your own package names (npm:/pypi: or bare)
 ```
 
-Exit codes: **0** no findings, **1** findings, **2** nothing could be read. Unlike
+The dependency and instruction scanner exits **0** for no findings, **1** for
+findings and **2** if nothing could be read. Unlike
 `agentmetry mcp` and `agentmetry posture`, which a health check runs in the
 background and which exit 0 with findings, `scan` is run on purpose before an
 install, so a finding stops the script that ran it.
@@ -23,7 +26,77 @@ install, so a finding stops the script that ran it.
 The output never contains the word "safe". "No findings" means these checks
 found nothing, which is all it can honestly mean.
 
-## The two checks
+## Repository execution preflight
+
+Run `agentmetry scan --preflight PATH` against a checkout before opening it
+in an agent or running project setup. Add `--json` for structured inventory.
+The preflight reads manifests in the named directory and reports where each
+declaration is defined. Entries describe potential execution and carry no
+malware verdict or severity.
+
+| Manifest | Declaration |
+|---|---|
+| `.claude/settings.json`, `.claude/settings.local.json` | Claude Code `SessionStart` handlers. [Hooks reference](https://code.claude.com/docs/en/hooks#sessionstart) |
+| `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json` | Project MCP process or remote server declarations and any declared header helper. [Claude Code MCP](https://code.claude.com/docs/en/mcp), [Cursor MCP](https://cursor.com/docs/mcp), [VS Code MCP](https://code.visualstudio.com/docs/agent-customization/mcp-servers) |
+| `.vscode/tasks.json` | Tasks with `runOptions.runOn: folderOpen`. A dependency entry signals that further tasks need review. [VS Code tasks](https://code.visualstudio.com/docs/debugtest/tasks#_run-behavior) |
+| `package.json` in the checkout | npm install lifecycle entries. Scripts such as `test` are outside this inventory. [npm lifecycle order](https://docs.npmjs.com/cli/v11/using-npm/scripts/#life-cycle-operation-order) |
+| `.devcontainer.json`, `.devcontainer/devcontainer.json`, `.devcontainer/*/devcontainer.json` | Host initialization and container creation, start and attach lifecycle fields. [Dev Container specification](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainer-reference.md) |
+
+The report keeps manifest paths, entry locations and reference status. Commands,
+arguments, environment fields, server names, endpoint URLs and script contents
+stay out of the report. A simple npm script path can be checked relative to its
+package. For simple startup hooks and default editor tasks, relative paths
+are checked from the repository root. That assumes you open this directory as
+the project. Supported project-root placeholders can also locate a candidate
+script in the checkout. Other shell syntax, client-dependent working directories,
+task dependencies and container paths remain unresolved. A present script is
+uninspected. The preflight does not resolve agent trust, policy or enablement.
+
+The scan skips symbolic links and Windows junctions, dependency and build
+directories, and manifests outside the supported paths. It caps directory
+entries at 12,000, depth at 32, manifests at 512, data at 1,000,000 bytes per
+manifest and 16,000,000 bytes total, and declarations at 1,000. Malformed or
+unreadable manifests, links and limits are reported as partial coverage.
+Preflight exits **0** when it reads the supported manifests in scope or finds
+none, and **2** on an incomplete inventory. Script reference statuses describe
+what could be located and do not change manifest coverage. This inventory cannot
+see hooks from an installed plugin, downloaded dependencies or child processes.
+
+## Python wheel startup check
+
+Run `agentmetry scan --wheel PATH` on a local `.whl` before installing it.
+Use `--json` for a structured report and `--expected-sha256 HEX` to compare
+the artifact with an independently obtained digest. The report always labels
+publisher provenance as unverified. A digest match establishes byte identity
+with the artifact represented by the expected hash. [PyPI attestations](https://docs.pypi.org/attestations/)
+
+The scanner reads archive metadata and startup declarations at the wheel root
+and directly under `.data/purelib` or `.data/platlib` directories. It reports
+partial coverage if a startup file sits in a noncanonical `.data` directory.
+It distinguishes executable `.pth` import lines from path entries and counts
+`.start` entry points. Python 3.15 also recognizes indented import lines and
+can ignore `.pth` imports when a matching `.start` file exists. The report
+lists where declarations appear and leaves runtime behavior to the installed
+interpreter and its configuration. [Wheel format](https://packaging.python.org/en/latest/specifications/binary-distribution-format/), [Python 3.14 site](https://docs.python.org/3.14/library/site.html), [Python 3.15 site](https://docs.python.org/3.15/library/site.html)
+
+The report includes archive member names, counts and up to 32 executable
+declaration line numbers per file. It omits line contents. The scanner uses
+bounded reads and leaves the wheel uninstalled and unextracted. Limits are
+128 MiB per wheel, 4 MiB and 4,096 entries in its ZIP directory, 128 startup
+files, 64 KiB per startup file and 4 MiB total startup text. Startup text is
+read as UTF-8 with optional BOM. Archive layouts and startup content outside
+the supported formats produce a partial report when encountered.
+
+The wheel check exits **0** after inspecting supported locations without an
+executable declaration or hash mismatch, **1** when either requires review
+and **2** when the report is incomplete. Incomplete reports can also contain
+findings. Path-only entries are shown without raising a finding. Normal
+packages can declare startup code. This check covers the two named startup
+file formats, with package code, other auto-import mechanisms such as
+`sitecustomize`, transitive dependencies and verification of attestations
+outside its scope.
+
+## Existing scan checks
 
 ### Text that instructs the model (#188)
 

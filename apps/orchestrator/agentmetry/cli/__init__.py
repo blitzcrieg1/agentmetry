@@ -1205,23 +1205,41 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
-    """Check what an agent is about to depend on: MCP servers, skills, packages.
+    """Check agent dependencies and offline execution declarations.
 
-    Exits 1 when anything is found and 2 when nothing could be read. Unlike
+    A finding can exit 1 and an incomplete scan can exit 2. Unlike
     `mcp` and `posture`, which a health check runs in the background, this is
     run on purpose before something is installed, so a finding should stop the
-    script that ran it. See core/scanner/scan.py.
+    script that ran it. Preflight reports partial coverage with exit 2.
     """
     import json as _json
     from pathlib import Path as _Path
 
-    from agentmetry.core.scanner.scan import run
+    if args.expected_sha256 is not None and args.wheel is None:
+        print("--expected-sha256 requires --wheel PATH", file=sys.stderr)
+        return 2
+    if args.wheel is not None:
+        if args.target is not None or args.project is not None or args.known is not None:
+            print("--wheel PATH cannot be combined with a target, --project or --known", file=sys.stderr)
+            return 2
+        from agentmetry.core.scanner.wheel import inspect_wheel
 
-    report = run(
-        args.target,
-        project=_Path(args.project).resolve() if args.project else _Path.cwd(),
-        known_file=args.known,
-    )
+        report = inspect_wheel(_Path(args.wheel), expected_sha256=args.expected_sha256)
+    elif args.preflight is not None:
+        if args.target is not None or args.project is not None or args.known is not None:
+            print("--preflight PATH cannot be combined with a target, --project or --known", file=sys.stderr)
+            return 2
+        from agentmetry.core.scanner.preflight import inspect_repository
+
+        report = inspect_repository(_Path(args.preflight))
+    else:
+        from agentmetry.core.scanner.scan import run
+
+        report = run(
+            args.target,
+            project=_Path(args.project).resolve() if args.project else _Path.cwd(),
+            known_file=args.known,
+        )
     if args.json:
         print(_json.dumps(report.to_json(), indent=2))
     else:
@@ -1810,7 +1828,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     scan = sub.add_parser(
         "scan",
-        help="check MCP servers, skills or a package name before an agent depends on them",
+        help="check agent dependencies or inventory what a repository can launch",
     )
     scan.add_argument(
         "target", nargs="?", default=None,
@@ -1820,6 +1838,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     scan.add_argument("--project", default=None, help="project root whose MCP config to include (default: cwd)")
     scan.add_argument("--known", default=None, help="file of extra known package names, one per line (npm:/pypi: or bare)")
+    scan_mode = scan.add_mutually_exclusive_group()
+    scan_mode.add_argument("--preflight", metavar="PATH", help="inventory repository execution declarations")
+    scan_mode.add_argument("--wheel", metavar="PATH", help="inspect Python startup declarations in a local wheel")
+    scan.add_argument("--expected-sha256", metavar="HEX", help="compare a local wheel with a SHA-256 you supply")
     scan.add_argument("--json", action="store_true", help="print the report as JSON")
     otel = sub.add_parser(
         "otel", help="receive Claude Code's native OpenTelemetry stream (no hooks needed)"

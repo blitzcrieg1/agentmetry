@@ -11,6 +11,17 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Repository execution preflight.** `agentmetry scan --preflight PATH`
+  inventories supported startup hooks, project MCP definitions, VS Code
+  folder-open tasks, npm install scripts and devcontainer lifecycle commands.
+  It shows unresolved references and partial coverage without exposing command
+  text or running repository code.
+
+- **Python wheel startup check.** `agentmetry scan --wheel PATH` inventories
+  executable `.pth` lines and Python 3.15 `.start` declarations in a local
+  wheel. It reports SHA-256 and optionally checks an expected digest without
+  installing, extracting or executing the package.
+
 - **Literal Hugging Face token exposure.** An observed command input containing
   a literal token can produce a high finding from a pre-hash label, even on an
   expected host. The finding records the observation without storing the token
