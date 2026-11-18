@@ -9,6 +9,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Literal Hugging Face token exposure.** An observed command input containing
+  a literal token can produce a high finding from a pre-hash label, even on an
+  expected host. The finding records the observation without storing the token
+  or claiming the command ran (#431).
+
 ### Changed
 
 - **Detection classification follows the tool kind.** File writes and listings
@@ -31,6 +38,7 @@ separately (currently `1.2.0`) and changes additively.
   used only with their provider's supported CLI or hosts do not establish the
   credential-then-cloud-API sequence merely by call order. Loading an env file
   into the shell does not start a credential sequence (#431).
+  Explicit Hugging Face destinations now require an exact hostname match.
 - **Two-step rules use a pairing window.** `sequence_window_minutes` defaults to
   240; setting it to 0 restores session-wide pairing.
 - **Interactive tool bursts are medium severity.** `session-tool-burst` remains
@@ -39,6 +47,9 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Fixed
 
+- Execution sequences use successful tool observations. Discovery counts a
+  reported invocation once when the source, session, tool and invocation ID
+  all match. Requests and failed results do not count as completed activity.
 - Reading Codex's `auth.json` is recognized as a credential read (#425).
 - Artifact staging follows the fetch command's own pipeline. Output flags
   previously missed because a regular expression contained literal backspace

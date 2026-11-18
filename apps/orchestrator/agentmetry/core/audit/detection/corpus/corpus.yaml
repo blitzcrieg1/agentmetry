@@ -738,10 +738,17 @@ cases:
 
   - name: literal Hugging Face token sent to a foreign host
     session: attack_hf_token_literal_to_foreign_host.jsonl
-    expect: [credential-exfil]
+    expect: [credential-exfil, hf-token-exposed-in-command]
     note: >
       #431. A live token in a URL query to a host that is not Hugging Face. A
       literal token value was not credential evidence, so this had no finding.
+
+  - name: literal Hugging Face token at an expected destination
+    session: attack_hf_token_exposed_at_issuer.jsonl
+    expect: [hf-token-exposed-in-command]
+    note: >
+      #431. The hook observed a literal token in command input and kept only
+      its trait. Issuer matching does not suppress exposure at the hook.
 
   # --- found tracing session 716fbfb9 on the dogfood trail ---------------------
 

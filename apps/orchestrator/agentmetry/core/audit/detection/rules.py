@@ -101,6 +101,38 @@ def _tool_qualified(event: dict[str, Any]) -> str:
     return str(tool.get("qualified") or "") if isinstance(tool, dict) else ""
 
 
+def _is_reported_success(event: dict[str, Any]) -> bool:
+    """Use an explicit result when present and preserve legacy tool outcomes."""
+    if _action_type(event) != "tool_called" or _outcome(event) != "success":
+        return False
+    tool = event.get("tool")
+    invocation = tool.get("invocation") if isinstance(tool, dict) else None
+    if not isinstance(invocation, dict) or "phase" not in invocation:
+        return True
+    result = tool.get("result")
+    return (
+        invocation["phase"] == "result"
+        and isinstance(result, dict)
+        and result.get("status") == "reported_success"
+    )
+
+
+def _result_invocation_key(event: dict[str, Any]) -> tuple[str, ...] | None:
+    """Identify repeated results from the same source and invocation in a session."""
+    tool = event.get("tool")
+    invocation = tool.get("invocation") if isinstance(tool, dict) else None
+    source = event.get("source")
+    if not isinstance(invocation, dict) or not isinstance(source, dict):
+        return None
+    key = (
+        source.get("app"), source.get("adapter"), event.get("session_id"),
+        _tool_qualified(event), invocation.get("id"),
+    )
+    if invocation.get("phase") != "result" or not all(isinstance(value, str) and value for value in key):
+        return None
+    return (str(event.get("host_id") or ""), *key)
+
+
 def _command(event: dict[str, Any]) -> str:
     """The command exactly as issued, quotes and heredoc bodies intact.
 
@@ -340,8 +372,6 @@ def _is_staging_fetch(event: dict[str, Any]) -> bool:
 
 
 def _is_risky_exec_after_staging(event: dict[str, Any]) -> bool:
-    if _action_type(event) != "tool_called" or _outcome(event) != "success":
-        return False
     cmd = _command(event)
     if not cmd:
         return _has_trait(event, "risky_exec")
@@ -368,11 +398,11 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
     # Content upgrades return one technique and credential access outranks C2,
     # so the egress half cannot be read off the MITRE tag here. It is a trait.
     for event in events:
+        if not _is_reported_success(event):
+            continue
         if not _is_credential_access(event):
             continue
         if not _has_trait(event, "net_egress"):
-            continue
-        if _action_type(event) != "tool_called" or _outcome(event) != "success":
             continue
         return [
             Detection(
@@ -380,8 +410,8 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
                 title="Credential access followed by network egress",
                 severity="critical",
                 summary=(
-                    f"{_tool_qualified(event) or 'A tool'} read credentials and sent "
-                    "them off the machine in a single command."
+                    f"{_tool_qualified(event) or 'A tool'} reported success and matched "
+                    "credential access and network egress in a single command."
                 ),
                 correlation_id=_correlation_id(events),
                 tactic_ids=["TA0006", "TA0011"],
@@ -404,9 +434,9 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
             title="Credential access followed by network egress",
             severity="critical",
             summary=(
-                f"{_tool_qualified(cred) or 'a tool'} accessed credentials, then "
-                f"{_tool_qualified(net) or 'a tool'} egressed to the network in the "
-                "same session."
+                f"{_tool_qualified(cred) or 'A tool'} matched credential access, then "
+                f"{_tool_qualified(net) or 'a tool'} matched network egress. Both calls "
+                "were reported successful in the same session."
             ),
             correlation_id=_correlation_id(events),
             tactic_ids=["TA0006", "TA0011"],
@@ -416,6 +446,29 @@ def rule_credential_exfil(events: list[dict[str, Any]]) -> list[Detection]:
             last_seen_utc=_ts(net),
         )
     ]
+
+
+def rule_hf_token_exposed_in_command(events: list[dict[str, Any]]) -> list[Detection]:
+    """A literal HF token was already visible at the hook boundary (#431)."""
+    for event in events:
+        if _action_type(event) not in {"approval_request", "tool_called", "tool_failed"}:
+            continue
+        if _has_trait(event, "hf_literal_token"):
+            return [
+                Detection(
+                    rule_id="hf-token-exposed-in-command",
+                    title="Hugging Face token exposed in command input",
+                    severity="high",
+                    summary="An observed command input contained a literal Hugging Face token.",
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0006"],
+                    technique_ids=["T1552"],
+                    event_ids=[_event_id(event)],
+                    first_seen_utc=_ts(event),
+                    last_seen_utc=_ts(event),
+                )
+            ]
+    return []
 
 
 def rule_autonomous_unapproved_write(events: list[dict[str, Any]]) -> list[Detection]:
@@ -433,8 +486,7 @@ def rule_autonomous_unapproved_write(events: list[dict[str, Any]]) -> list[Detec
             continue
         if (
             not approved
-            and _action_type(event) == "tool_called"
-            and _outcome(event) == "success"
+            and _is_reported_success(event)
             and _tactic_id(event) == "TA0040"
             and _actor_type(event) == "autonomous"
         ):
@@ -469,11 +521,21 @@ def rule_discovery_then_collect(events: list[dict[str, Any]]) -> list[Detection]
     grab shape. Medium: benign on its own, meaningful as a lead-in.
     """
     burst: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
     for event in events:
+        if not _is_reported_success(event):
+            continue
         tactic = _tactic_id(event)
+        if tactic not in ("TA0007", "TA0009", "TA0006"):
+            continue
+        key = _result_invocation_key(event)
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
         if tactic == "TA0007":
             burst.append(event)
-        elif tactic in ("TA0009", "TA0006") and len(burst) >= _threshold("discovery_burst"):
+        elif len(burst) >= _threshold("discovery_burst"):
             collect = event
             technique_ids = sorted({_technique_id(e) for e in burst if _technique_id(e)})
             if _technique_id(collect):
@@ -484,8 +546,8 @@ def rule_discovery_then_collect(events: list[dict[str, Any]]) -> list[Detection]
                     title="Filesystem recon followed by data collection",
                     severity="medium",
                     summary=(
-                        f"{len(burst)} discovery calls preceded {_tool_qualified(collect) or 'a read'} "
-                        "collecting data in the same session."
+                        f"{len(burst)} reported successful discovery calls preceded a reported "
+                        "successful call classified as collection or credential access."
                     ),
                     correlation_id=_correlation_id(events),
                     tactic_ids=["TA0007", tactic],
@@ -539,7 +601,7 @@ def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Det
                     }
                 )
 
-        elif action_type == "tool_called" and outcome == "success":
+        elif _is_reported_success(event):
             tool_name = _tool_qualified(event)
             if not tool_name:
                 continue
@@ -713,7 +775,7 @@ def rule_destructive_delete_burst(events: list[dict[str, Any]]) -> list[Detectio
     deletes = [
         e
         for e in events
-        if _action_type(e) == "tool_called" and _outcome(e) == "success" and _is_delete(e)
+        if _is_reported_success(e) and _is_delete(e)
     ]
     minutes = _threshold("delete_burst_window_minutes")
     window = _densest_window(deletes, _threshold("delete_burst"), minutes)
@@ -771,7 +833,7 @@ def rule_off_hours_activity(events: list[dict[str, Any]]) -> list[Detection]:
         # A scheduled job running at 03:00 is doing its job, not hiding.
         if _trigger(event) in _SCHEDULED_TRIGGERS:
             continue
-        if _tactic_id(event) != "TA0040" or _outcome(event) != "success":
+        if _tactic_id(event) != "TA0040" or not _is_reported_success(event):
             continue
 
         local = _to_tz(_ts(event), tz)
@@ -847,8 +909,6 @@ def rule_untrusted_input_then_risky_action(events: list[dict[str, Any]]) -> list
     download) qualifies.
     """
     def escalates(event: dict[str, Any]) -> bool:
-        if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            return False
         # Reading more untrusted content is not an escalation. Without this,
         # two consecutive web reads flagged each other.
         return not _is_untrusted_input(event) and _is_risky(event)
@@ -892,7 +952,7 @@ def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detectio
     reviewed = False
     saw_pr = False
     for event in events:
-        if _action_type(event) != "tool_called":
+        if not _is_reported_success(event):
             continue
         method, cmd = _method(event), _command_words(event)
 
@@ -907,7 +967,7 @@ def rule_pr_merged_without_review(events: list[dict[str, Any]]) -> list[Detectio
             or _PR_MERGE_COMMAND.search(cmd)
             or _has_trait(event, "pr_merge")
         )
-        if merging and saw_pr and not reviewed and _outcome(event) == "success":
+        if merging and saw_pr and not reviewed:
             return [
                 Detection(
                     rule_id="pr-merged-without-review",
@@ -943,8 +1003,6 @@ def rule_credential_read_then_cloud_api(events: list[dict[str, Any]]) -> list[De
     hosts earns no credential half at all (`traits.issuer_bound`).
     """
     def calls_cloud(event: dict[str, Any]) -> bool:
-        if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            return False
         # Masked: `kubectl`, `aws`, `az keyvault` are command words. Read from
         # the raw text, this rule paged critical on a git commit message that
         # merely *described* those CLIs, six hours after an unrelated .env read.
@@ -982,8 +1040,6 @@ def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detect
     locally, then publish them via the victim's own git credentials.
     """
     def pushes(event: dict[str, Any]) -> bool:
-        if _action_type(event) != "tool_called" or _outcome(event) != "success":
-            return False
         return bool(_GIT_EXFIL.search(_command_words(event)) or _has_trait(event, "git_exfil"))
 
     pair = _first_pair(events, _is_credential_access, pushes)
@@ -1030,13 +1086,13 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
     # downloaded something and later ran something", it is "you ran the thing
     # you just downloaded".
     for i, fetch in enumerate(events):
-        if _action_type(fetch) != "tool_called" or _outcome(fetch) != "success":
+        if not _is_reported_success(fetch):
             continue
         downloaded = _fetched_files(_command(fetch))
         if not downloaded:
             continue
         for event in events[i + 1:]:
-            if _action_type(event) != "tool_called" or _outcome(event) != "success":
+            if not _is_reported_success(event):
                 continue
             if not _in_sequence_window(fetch, event):
                 continue
@@ -1126,7 +1182,7 @@ def _first_pair(
     is_start: Callable[[dict[str, Any]], bool],
     is_second: Callable[[dict[str, Any]], bool],
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
-    """The first `second` event after a `start` event inside the sequence window.
+    """Pair reported successful calls inside the sequence window.
 
     "Credential read, then egress" used to mean anywhere in the session. A
     session can stay open for weeks: on the dogfood trail the pairs
@@ -1143,6 +1199,8 @@ def _first_pair(
     starts: list[tuple[dict[str, Any], datetime | None]] = []
     lo = 0
     for event in events:
+        if not _is_reported_success(event):
+            continue
         if starts and is_second(event):
             if window is None:
                 return starts[0][0], event
@@ -1189,7 +1247,7 @@ def _densest_window(
 
 
 def _is_subagent_start(event: dict[str, Any]) -> bool:
-    if _action_type(event) != "tool_called" or _outcome(event) != "success":
+    if not _is_reported_success(event):
         return False
     reason = str(_action(event).get("reason") or "")
     if reason.startswith("subagent_start:"):
@@ -1268,9 +1326,7 @@ def rule_session_tool_burst(events: list[dict[str, Any]]) -> list[Detection]:
     tools = [
         e
         for e in events
-        if _action_type(e) == "tool_called"
-        and _outcome(e) == "success"
-        and not _is_subagent_lifecycle(e)
+        if _is_reported_success(e) and not _is_subagent_lifecycle(e)
     ]
     minutes = _threshold("session_tool_burst_window_minutes")
     window = _densest_window(tools, _threshold("session_tool_burst"), minutes)
@@ -1345,6 +1401,7 @@ def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detecti
 
 REGISTRY = [
     rule_credential_exfil,
+    rule_hf_token_exposed_in_command,
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
     rule_approval_denied_then_executed,
@@ -1394,6 +1451,7 @@ EXPERIMENTAL_RULE_IDS: frozenset[str] = frozenset({
 
 BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "credential-exfil",
+    "hf-token-exposed-in-command",
     "discovery-then-collect",
     "approval-denied-then-executed",
     "encoded-command-download",

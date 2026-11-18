@@ -15,13 +15,13 @@ Portable [Sigma](https://sigmahq.io/) rules for Agentmetry canonical events, por
 
 ---
 
-## The sequence detections (generated)
+## The generated detections
 
 The table above covers the recorder's **own health**: is it alive, is coverage
 intact, did an MCP schema move, is anybody triaging. Useful, and none of it is
 the product.
 
-`agentmetry_rule_*.yml` covers the fourteen **published sequence detections**,
+`agentmetry_rule_*.yml` covers the fifteen **published detections**,
 which are what a SOC actually routes on. The experimental rule is not exported.
 One file per rule, except the split noted below, matching the detection event
 in the trail:
@@ -40,12 +40,11 @@ tags:
   - attack.t1552.004
 ```
 
-Fifteen files for fourteen rules. `encoded-command-download` is deliberately two
-detections: `critical` for remote code fetched and executed, `low` for local
-content piped into an interpreter, where `rules.py` says the low one exists "so
-it stops drowning the criticals". A single Sigma `level` would either page on
-the quiet variant or stay silent on the loud one, so each gets a rule and the
-selection pins `action.outcome`.
+Seventeen files cover fifteen detections. `encoded-command-download` and
+`session-tool-burst` each have two severity variants. Each variant has its own
+Sigma file and pins `action.outcome`. The high-severity
+`hf-token-exposed-in-command` rule matches one captured input containing a
+literal Hugging Face token.
 
 ### Do not hand-edit these
 
@@ -64,7 +63,7 @@ generated, so a consumer who pinned one keeps working.
 
 `tests/test_sigma_pack.py` fails if a rule is added without a Sigma rule, if a
 Sigma rule survives a deleted rule, or if a severity here disagrees with the
-engine. Two of the fourteen (`host-subagent-swarm-burst`, `off-hours-activity`)
+engine. Two of the fifteen (`host-subagent-swarm-burst`, `off-hours-activity`)
 have no corpus case and carry an explicit entry in the generator, which is
 tracked in [issue #36](https://github.com/blitzcrieg1/agentmetry/issues/36).
 

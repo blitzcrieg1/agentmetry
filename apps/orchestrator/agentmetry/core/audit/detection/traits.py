@@ -19,6 +19,7 @@ module owns the regexes so the hook and the rules cannot drift apart.
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit
 
 # A raw-IP URL and a download/execute verb in the same command is a classic
 # malware download cradle. Legit tooling uses domains and package managers.
@@ -846,11 +847,32 @@ _ENV_REF_NAME = re.compile(
     r"\$\{?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%|\$env:([A-Za-z_][A-Za-z0-9_]*)",
     re.IGNORECASE,
 )
+_HTTP_URL = re.compile(r"""https?://[^\s'"<>]*""", re.IGNORECASE)
 
 
 def _host_of_issuer(host: str, domains: tuple[str, ...]) -> bool:
     host = host.lower().strip("[]")
     return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def _hf_issuer_urls(spoken: str, domains: tuple[str, ...]) -> bool | None:
+    """Match the host of each visible HF destination. None means no URL was named."""
+    urls = _HTTP_URL.findall(spoken)
+    if BARE_IP.search(spoken):
+        return False
+    if not urls:
+        return None
+    for url in urls:
+        try:
+            target = urlsplit(url)
+            if (
+                target.hostname not in domains
+                or target.netloc.lower() not in (target.hostname, f"{target.hostname}:{target.port}")
+            ):
+                return False
+        except ValueError:
+            return False
+    return True
 
 
 def issuer_bound(spoken: str, written: str) -> bool:
@@ -868,6 +890,14 @@ def issuer_bound(spoken: str, written: str) -> bool:
             providers.add(name)
     if not providers:
         return False
+    if "huggingface" in providers:
+        # Do not let a different token's issuer justify an HF destination.
+        if len(providers) != 1:
+            return False
+        exact = _hf_issuer_urls(spoken, _ISSUERS["huggingface"][2])
+        if exact is not None:
+            return exact
+
     domains = tuple(d for p in providers for d in _ISSUERS[p][2])
     hosts = [h for h in URL_HOST.findall(spoken) if not LOOPBACK_HOST.match(h)]
     hosts += [ip for ip in BARE_IP.findall(spoken) if not LOOPBACK_HOST.match(ip)]
@@ -1902,6 +1932,7 @@ KNOWN_TRAITS = frozenset({
     "pr_commit",
     "pr_merge",
     "credential_access",
+    "hf_literal_token",
     "private_key",
     "net_egress",
     "fetch_to_file",
@@ -2116,6 +2147,11 @@ def classify_command(command: str) -> list[str]:
         traits.append("delete_cmd")
     if UNTRUSTED_INPUT_COMMAND.search(written):
         traits.append("untrusted_input")
+
+    # Quotes still put literal arguments in the submitted tool input. Emit only
+    # a label, independently of the destination or reported execution outcome.
+    if _LITERAL_BY_PROVIDER["huggingface"].search(spoken):
+        traits.append("hf_literal_token")
 
     # Credential access. The env-var forms read `spoken` on purpose: `$SECRET`
     # expands inside double quotes, so `echo "$AWS_SECRET_ACCESS_KEY"` is a real
