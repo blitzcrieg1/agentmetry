@@ -9,6 +9,14 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Repository execution preflight.** `agentmetry scan --preflight PATH`
+  inventories supported startup hooks, project MCP definitions, VS Code
+  folder-open tasks, npm install scripts and devcontainer lifecycle commands.
+  It shows unresolved references and partial coverage without exposing command
+  text or running repository code.
+
 ## [0.12.2] - 2026-11-16
 
 A privacy release. Both fixes apply only with command logging or full-argument

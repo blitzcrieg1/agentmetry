@@ -86,6 +86,7 @@ To check what the agents on this machine are about to depend on, before anything
 agentmetry scan                    # MCP servers your agents launch, and AGENTS.md / CLAUDE.md files left in Downloads or on the Desktop
 agentmetry scan ~/.claude/skills   # skills, rules and CLAUDE.md files: text that instructs the model instead of describing a tool
 agentmetry scan npm:NAME           # one package name, before you install it
+agentmetry scan --preflight ./repo # startup hooks, project MCP and setup declarations
 ```
 
 It reads files and nothing else: it never starts a server or fetches a package. It exits 1 on a finding, and "no findings" means these checks found nothing, never that something is safe. The checks and their limits are in [docs/scanner.md](docs/scanner.md).
@@ -156,7 +157,7 @@ These are the numbers from commands, not from a slide.
 
 That block is what `agentmetry benchmark` printed from the PyPI 0.9.4 package and from this tree. "Rules covered 13" counts rule ids named in corpus expectations. Twelve of those are published rules. The thirteenth is the experimental rule. Two published rules have no corpus case: `host-subagent-swarm-burst` and `off-hours-activity`. They are named in `apps/orchestrator/tools/generate_sigma_pack.py` so the Sigma pack still has them.
 
-2523 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+Expected collection: 2534 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [0.12.1 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/43610018759)
 on Python 3.12 reported 2443 passed and 19 skipped on Linux and macOS,
 2456 passed and 6 skipped on Windows, and 83% line coverage on Linux
