@@ -158,10 +158,10 @@ These are the numbers from commands, not from a slide.
 
 Run `agentmetry benchmark` to check these expectations. The 14 rule IDs in the corpus include 13 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
 
-Expected collection: 2904 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
-[0.12.1 release PR's CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/43610018759)
-on Python 3.12 reported 2443 passed and 19 skipped on Linux and macOS,
-2456 passed and 6 skipped on Windows, and 83% line coverage on Linux
+2904 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+[detection pass CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/44312544675)
+reported 2885 passed and 19 skipped on Linux, 2898 passed and 6 skipped on Windows,
+and 84% line coverage on Linux
 (`pytest -q --cov=agentmetry --cov-report=term`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).

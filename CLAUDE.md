@@ -58,16 +58,13 @@ also scored RED, on one and three untriaged `session-tool-burst` detections, and
 turned GREEN when those were triaged that day. The fingerprint did not move
 during the run.
 
-**Decided by the maintainer on 2026-11-15: the freeze ends after the r/netsec
-post on 2026-11-17.** By then the gate reads 11 of 4. The trigger is outside
+**The maintainer ended this freeze after confirming the r/netsec post.**
+The trigger was outside
 reports saying which rules matter: #431 (a Hugging Face forum critique of the
 token rule), #425 (an outside test of copied agent logins), and #433, where
 context-mode, a plugin with about 34k stars, routes shell commands through MCP
-inputs the command detections cannot read. **Until then the list above stays
-frozen**, because the post leans on the unchanged-ruleset line. Work may start
-in a worktree before then; nothing merges to master, and the live recorder is
-not updated, until the post is out. See "The detection pass" below for what
-lands and how.
+inputs the command detections could not read. The detection pass merged in
+[#435](https://github.com/blitzcrieg1/agentmetry/pull/435) on 2026-11-18.
 
 That flip is worth knowing about. **A week scored red on untriaged detections
 can be rescued at any time**, because `assess` reads the disposition store
@@ -101,7 +98,7 @@ fingerprint has not moved before opening any PR that touches
 
 ```bash
 apps/orchestrator/.venv/Scripts/python.exe -c "from agentmetry.core.audit.dogfood import ruleset_fingerprint; print(ruleset_fingerprint()[:16])"
-# expect 15846a0915769d4a
+# expect 01e0a0c3339f6d80 for the 0.13.0 source
 ```
 
 Four of the five parked detection-precision bugs were fixed in 0.7.0 and are
@@ -128,11 +125,10 @@ dogfood trail through the new rules and compare against the dispositions, so
 the false-positive drop on real traffic is measured rather than claimed. That
 figure replaces the green-week streak as the number worth quoting.
 
-On the day it merges: record the new fingerprint in place of the one above,
-restart the clock with `agentmetry dogfood --start --restart`, update the
-recorder checkout, and change everything that quotes `15846a0915769d4a` or the
-streak (the site's `DOGFOOD` constant and copy, the README, the skills). Then
-release it as its own minor version.
+When rolling out 0.13.0, update the recorder and verify its active fingerprint.
+Restart the clock with `agentmetry dogfood --start --restart` after the new
+ruleset is running. Update the site and skills after publication. Historical
+results for fingerprint `15846a0915769d4a` belong to the previous ruleset.
 
 Files in `detection/` that are **not** frozen and are safe to edit:
 `disposition.py`, `live.py`, `live_store.py`, `benchmark.py`, `yaml_rules.py`,

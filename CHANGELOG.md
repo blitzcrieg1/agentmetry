@@ -9,6 +9,11 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.13.0]
+
+This release improves how detection rules use successful tool outcomes and
+adds offline preflight checks for repositories and Python wheels.
+
 ### Added
 
 - **Repository execution preflight.** `agentmetry scan --preflight PATH`
@@ -68,8 +73,9 @@ separately (currently `1.2.0`) and changes additively.
   executable (#51).
 - Credential-path patterns avoid repeated scans of hostile long input tokens.
 
-This pass changes the ruleset fingerprint and requires a new dogfood period when
-it ships. The provider-token redaction fixes shipped separately in 0.12.2.
+The ruleset fingerprint is `01e0a0c3339f6d80`. Start a new dogfood period
+when the recorder adopts this ruleset. The provider-token redaction fixes
+shipped separately in 0.12.2.
 
 ## [0.12.2] - 2026-11-16
 
@@ -3064,7 +3070,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.9...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.12.2...v0.13.0
 [0.9.9]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.6...v0.9.7
