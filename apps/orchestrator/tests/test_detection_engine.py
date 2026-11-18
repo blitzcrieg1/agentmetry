@@ -5,6 +5,8 @@ All events are synthetic — never real secrets in fixtures (gitleaks runs in CI
 
 from __future__ import annotations
 
+import pytest
+
 from agentmetry.core.audit.detection import run_detections
 
 
@@ -43,6 +45,139 @@ def _event(
 
 def _rule_ids(events: list[dict]) -> set[str]:
     return {d.rule_id for d in run_detections(events)}
+
+
+def _phase_event(step, kind, phase, invocation_id):
+    tool, tactic, technique = {
+        "read": ("Read", "TA0006", "T1552.001"),
+        "egress": ("Bash", "TA0011", "T1071.001"),
+        "discover": ("Glob", "TA0007", "T1083"),
+        "collect": ("Read", "TA0009", "T1005"),
+        "cloud": ("Bash", "TA0008", "T1078"),
+        "push": ("Bash", "TA0010", "T1567.001"),
+        "fetch": ("Bash", "TA0011", "T1105"),
+        "execute": ("Bash", "TA0002", "T1059"),
+        "issue": ("github.read_issue", "TA0009", "T1213"),
+    }[kind]
+    action_type, outcome, hook = {
+        "pending": ("approval_request", "pending", "PreToolUse"),
+        "allowed_request": ("tool_called", "success", "PreToolUse"),
+        "denied": ("approval_request", "denied", "PreToolUse"),
+        "failed": ("tool_failed", "error", "PostToolUseFailure"),
+        "success": ("tool_called", "success", "PostToolUse"),
+    }[phase]
+    event = _event(
+        f"2026-07-13T10:00:{step:02d}Z", action_type=action_type, outcome=outcome,
+        tool=tool, tactic_id=tactic, technique_id=technique, event_id=f"phase-{step}",
+    )
+    event["source"] = {"app": "claude", "adapter": "claude_hook"}
+    event["host_id"] = "test-host"
+    event["session_id"] = event["correlation_id"]
+    event["tool"]["invocation"] = {
+        "phase": "request" if hook == "PreToolUse" else "result",
+        "hook_event": hook, "provenance": "harness_reported",
+    }
+    if invocation_id is not None:
+        event["tool"]["invocation"]["id"] = invocation_id
+    if hook != "PreToolUse":
+        event["tool"]["result"] = {
+            "status": "reported_success" if hook == "PostToolUse" else "reported_failure",
+        }
+    trait = {"cloud": "cloud_api", "push": "git_exfil",
+             "fetch": "staging_fetch", "execute": "risky_exec"}.get(kind)
+    if trait:
+        event["tool"]["traits"] = [trait]
+    return event
+
+
+@pytest.mark.parametrize(
+    "read_phase, egress_phase",
+    [
+        ("pending", "pending"),
+        ("denied", "success"),
+        ("success", "failed"),
+        ("allowed_request", "success"),
+    ],
+)
+def test_phase_credential_exfil_excludes_unconfirmed_calls(read_phase, egress_phase):
+    events = [
+        _phase_event(0, "read", read_phase, "read-1"),
+        _phase_event(1, "egress", egress_phase, "net-1"),
+    ]
+    assert "credential-exfil" not in _rule_ids(events)
+
+
+def test_phase_credential_exfil_cites_only_results():
+    events = [
+        _phase_event(0, "read", "pending", "read-1"),
+        _phase_event(1, "read", "success", "read-1"),
+        _phase_event(2, "egress", "pending", "net-1"),
+        _phase_event(3, "egress", "success", "net-1"),
+    ]
+    finding = next(d for d in run_detections(events) if d.rule_id == "credential-exfil")
+    assert finding.event_ids == ["phase-1", "phase-3"]
+
+
+def test_phase_single_call_with_exfil_traits_requires_a_result():
+    event = _phase_event(0, "read", "allowed_request", "read-1")
+    event["tool"]["traits"] = ["net_egress"]
+    assert "credential-exfil" not in _rule_ids([event])
+
+
+@pytest.mark.parametrize(
+    "rule, start, later",
+    [
+        ("credential-read-then-cloud-api", "read", "cloud"),
+        ("dotfile-read-then-git-push", "read", "push"),
+        ("remote-staging-then-execute", "fetch", "execute"),
+        ("untrusted-input-then-risky-action", "issue", "egress"),
+    ],
+)
+def test_phase_sequences_require_a_successful_start(rule, start, later):
+    result = _phase_event(2, later, "success", "later-1")
+    assert rule not in _rule_ids([_phase_event(0, start, "pending", "start-1"), result])
+    assert rule in _rule_ids([_phase_event(1, start, "success", "start-1"), result])
+
+
+def test_phase_recon_counts_each_reported_invocation_once():
+    events = [
+        _phase_event(0, "discover", "pending", "disc-1"),
+        _phase_event(1, "discover", "success", "disc-1"),
+        _phase_event(2, "discover", "success", "disc-1"),
+        _phase_event(3, "discover", "pending", "disc-2"),
+        _phase_event(4, "discover", "success", "disc-2"),
+        _phase_event(6, "collect", "pending", "collect-1"),
+        _phase_event(7, "collect", "failed", "collect-1"),
+        _phase_event(8, "collect", "success", "collect-2"),
+    ]
+    assert "discovery-then-collect" not in _rule_ids(events)
+    events.insert(5, _phase_event(5, "discover", "success", "disc-3"))
+    assert "discovery-then-collect" not in _rule_ids(events[:-1])
+    finding = next(d for d in run_detections(events) if d.rule_id == "discovery-then-collect")
+    assert finding.event_ids == ["phase-1", "phase-4", "phase-5", "phase-8"]
+
+
+def test_phase_recon_preserves_success_results_without_ids():
+    events = [
+        _phase_event(i, "discover", "success", None) for i in range(3)
+    ] + [_phase_event(3, "collect", "success", None)]
+    finding = next(d for d in run_detections(events) if d.rule_id == "discovery-then-collect")
+    assert finding.event_ids == ["phase-0", "phase-1", "phase-2", "phase-3"]
+
+
+def test_phase_approval_denial_still_counts_as_denial_evidence():
+    denied = _event(
+        "2026-07-13T10:00:00Z", action_type="approval_response", outcome="denied",
+        tool="Read", input_hash="synthetic-input", event_id="explicit-denial",
+    )
+    request = _phase_event(1, "read", "allowed_request", "read-1")
+    result = _phase_event(2, "read", "success", "read-1")
+    for event in (request, result):
+        event["tool"]["input_hash"] = denied["tool"]["input_hash"]
+    assert "approval-denied-then-executed" not in _rule_ids([denied, request])
+    finding = next(d for d in run_detections([denied, request, result])
+                   if d.rule_id == "approval-denied-then-executed")
+    assert finding.event_ids == ["explicit-denial", "phase-2"]
 
 
 # --- credential-exfil --------------------------------------------------------

@@ -39,7 +39,7 @@ flowchart LR
   ENG --> D
 ```
 
-Each rule in the table below is the same idea: **ordered steps within a session**, not a threshold on one row. `credential-exfil` requires credential access (T1552) *then* network egress (TA0011) in that order. Reversed order does not fire.
+Sequence rules use **ordered steps within a session**. The two-event form of `credential-exfil` requires credential access (T1552) before network egress (TA0011). Some detections can also match one observation.
 
 ```mermaid
 sequenceDiagram
@@ -68,6 +68,7 @@ sequenceDiagram
 | Rule ID | Severity | Pattern |
 | ------- | -------- | ------- |
 | `credential-exfil` | critical | Credential access (T1552) → network egress (TA0011) |
+| `hf-token-exposed-in-command` | high | A Hugging Face token-shaped literal was visible in an observed command input (T1552) |
 | `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
 | `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |
 | `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
@@ -76,10 +77,38 @@ sequenceDiagram
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
 | `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
-| `destructive-delete-burst` | high | 5+ deletions in one session, by technique or command (`rm -rf`) |
+| `destructive-delete-burst` | high | 5+ deletions within 10 minutes in one session, by technique or command (`rm -rf`) |
 | `discovery-then-collect` | medium | Filesystem recon burst (TA0007) → data collection |
-| `session-tool-burst` | high | Unusually dense tool activity in one session, measured over a time window rather than a session total |
+| `session-tool-burst` | high if unattended, else medium | Unusually dense tool activity in one session, measured over a time window rather than a session total. High only when an autonomous or scheduled session produced it: interactive agents cross the threshold routinely (#172) |
 | `off-hours-activity` | medium | Unscheduled autonomous impact action outside business hours. **Opt-in** (`AGENTMETRY_DETECT_OFF_HOURS=1`) with an operator-set window; scheduled jobs excluded |
+
+`hf-token-exposed-in-command` uses a label computed from the command input before
+hashing. The finding does not contain the token. It can cite a request, including
+one that never ran. It does not establish that the token is valid or was sent.
+For credential-use classification, explicit Hugging Face URLs are matched
+against the exact hostnames `huggingface.co` and `hf.co`. A literal exposure is
+reported even when the hostname matches. Ordinary `hf` calls that obtain
+`HF_TOKEN` from their environment do not produce this finding. The hook only
+checks input it observes and cannot see hidden destinations or redirects.
+
+Execution sequences use successful tool observations. Where the adapter supplies
+request/result phases, the rule requires a reported successful result and skips
+requests, denials and failures. Older records without phase metadata retain
+their adapter's original `tool_called`/`success` meaning. Tool observations alone
+cannot verify what actually executed or confirm that data crossed the network.
+
+For `discovery-then-collect`, multiple reported results with the same invocation
+ID count once when host, source app, source adapter, session and tool also match.
+Successful results without IDs still count individually. Approval denials remain
+available as evidence for the denial-then-execution rule.
+
+The two-step rules (the four critical credential and staging rules above,
+`credential-exfil`'s two-event form and `untrusted-input-then-risky-action`)
+pair only when the second step follows the first within
+`sequence_window_minutes` (240 by default, in the detection manifest). Each
+later first step opens its own window. Set it to 0 to pair across the whole
+session, as before 2026-11. `approval-denied-then-executed` has no window: a
+denied action that runs later is a bypass however much later it runs.
 
 Host-scoped rules run across sessions on one machine rather than within one:
 

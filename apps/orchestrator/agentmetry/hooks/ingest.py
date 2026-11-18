@@ -78,10 +78,16 @@ except ImportError:  # pragma: no cover - the package always ships it
 # trait/MITRE tagging, which only needs the stdlib.
 try:
     from agentmetry.core.audit.atlas import attach_atlas
-    from agentmetry.core.audit.detection.traits import classify_command
+    from agentmetry.core.audit.detection.traits import (
+        classify_tool_call,
+        structured_command,
+        tool_kind,
+    )
     from agentmetry.core.audit.mitre import get_mitre_mapping
 except ImportError:
-    classify_command = None
+    classify_tool_call = None
+    structured_command = None
+    tool_kind = None
     get_mitre_mapping = None
     attach_atlas = None
 
@@ -463,29 +469,61 @@ def _log_full_args_enabled() -> bool:
     return False
 
 
-def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_MAX_LEN) -> str | None:
-    """Pull shell command text from tool args (Bash, run_command, shell.run, etc.).
+def extract_command_detail(args: Any, qualified: str = "") -> tuple[str | None, bool]:
+    """Command text from tool args, and whether structured extraction hit a bound.
 
-    `limit` bounds what is stored and displayed. Pass `limit=None` for the full
-    text, which is what classification needs (see CLASSIFY_MAX_LEN).
+    A top-level `command`, `cmd`, `script` or `CommandLine` string wins, as it
+    always has. For a tool that is not a file tool, a structured input is then
+    searched for a command (argv lists, a program with its arguments, `commands`,
+    `code`, nested inputs, JSON in a string): an MCP tool that runs shell
+    commands passed any other way was recorded and classified as nothing (#433,
+    `traits.structured_command`). File tools keep returning their path.
     """
+    partial = False
     if isinstance(args, dict):
+        structured = bool(
+            structured_command and tool_kind and tool_kind(qualified) == "command"
+        )
+        # `{"cmd": "bash", "argv": ["-c", ...]}` names a program whose command is
+        # in its arguments, so the bare `cmd` is not the answer.
+        has_args = any(k in args for k in ("args", "argv", "arguments", "subcommand", "params"))
         for key in ("command", "cmd", "script", "CommandLine"):
             val = args.get(key)
-            if val is not None and str(val).strip():
-                return str(val).strip()[:limit]
+            if val is None or isinstance(val, (dict, list, tuple)):
+                continue
+            if structured and has_args and key in ("command", "cmd"):
+                continue
+            if str(val).strip():
+                return str(val).strip(), False
+
+        if structured:
+            text, partial = structured_command(args)
+            if text:
+                return text, partial
 
         for key in ("path", "filepath", "file_path", "AbsolutePath", "TargetFile", "target_path"):
             val = args.get(key)
             if val is not None and str(val).strip():
-                return str(val).strip()[:limit]
+                return str(val).strip(), partial
     q = (qualified or "").lower()
     if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
         if isinstance(args, dict):
             val = args.get("value")
             if val is not None and str(val).strip():
-                return str(val).strip()[:limit]
-    return None
+                return str(val).strip(), partial
+    # Nothing found, but a bound was hit: the input was not read in full, and
+    # the event must say so rather than read as a clean call.
+    return None, partial
+
+
+def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_MAX_LEN) -> str | None:
+    """Pull shell command text from tool args (Bash, run_command, shell.run, MCP inputs).
+
+    `limit` bounds what is stored and displayed. Pass `limit=None` for the full
+    text, which is what classification needs (see CLASSIFY_MAX_LEN).
+    """
+    text, _ = extract_command_detail(args, qualified)
+    return None if text is None else text[:limit]
 
 
 def _classification_text(command: str) -> tuple[str, bool]:
@@ -687,8 +725,10 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
                 tool["input_hash_alg"] = "hmac-sha256"
 
         cmd = extract_command(args, qualified)
-        full = extract_command(args, qualified, limit=None)
+        full, structured_partial = extract_command_detail(args, qualified)
         analysed, partial = _classification_text(full) if full else (None, False)
+        # A structured input past its bounds was read in part (#433).
+        partial = partial or structured_partial
 
         # Detection features, computed while the plaintext is still visible.
         # Only category labels and ATT&CK ids leave this process — never the
@@ -697,8 +737,10 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         # download cradles) blind on real traffic: the demo injected `command`,
         # production events had nothing to match. They read `analysed`, not
         # the stored `cmd`: see CLASSIFY_MAX_LEN.
-        if classify_command and analysed:
-            traits = classify_command(analysed)
+        # By tool kind: a Write's path or an apply_patch body is not a command
+        # (#329, shapes 4 and 5). See traits.classify_tool_call.
+        if classify_tool_call and analysed:
+            traits = classify_tool_call(qualified, analysed)
             if traits:
                 tool["traits"] = traits
         if get_mitre_mapping and not tool.get("mitre"):

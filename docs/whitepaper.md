@@ -73,8 +73,9 @@ The finding is the **order**. A credential read, then an outbound request to a
 host that is not in the project, inside one session, in that sequence, is a
 different thing from either half.
 
-So the detection unit is an ordered session, and the engine ships **14 published
-sequence rules**, plus one held back as experimental (section 9).
+The engine ships **15 published rules** and one experimental rule (section 9).
+Most rules evaluate an ordered session. Literal Hugging Face token exposure
+can be identified from a single observed command input.
 
 Ordering is explicit: events are sorted by timestamp, with a deterministic
 tie-break, because "did A happen before B" is the question every rule asks and
@@ -248,7 +249,7 @@ Enterprise and is not built. The sensor does not need it. See
 
 Forwarders ship for **Splunk HEC**, **Elastic ECS**, **Google SecOps UDM**,
 **Microsoft Sentinel** (not yet run against a live workspace), **CloudEvents**,
-and Loki via Alloy. All fourteen published detections are also
+and Loki via Alloy. All fifteen published detections are also
 exported as **Sigma rules**, generated from the engine by replaying the
 benchmark corpus and reading the `Detection` objects it emits, so a severity
 that changes in the rules changes in the Sigma pack on the next run and a test
@@ -267,11 +268,10 @@ the firings to the wrong queue.
 This is a security tool, so the interesting question is not what it detects but
 why you should believe the numbers.
 
-**A benchmark anyone can run in about ten seconds.** 57 recorded sessions, 26
-attack and 31 benign. Current result: 26 of 26 expected detections fire, 0
-missed, 0 false positives. The benchmark's "rules covered 13" counts rule ids
-named in corpus expectations: 12 of the 14 published rules, plus the
-experimental rule. Two published rules have no corpus case
+**The detection benchmark checks 87 session fixtures.** It expects 43 findings
+across 42 attack cases and no findings across 45 benign cases. The corpus
+includes 13 of the 15 published rules and the experimental rule.
+Two published rules have no corpus case
 (`host-subagent-swarm-burst`, `off-hours-activity`). They are named in the
 Sigma generator rather than omitted from the pack.
 

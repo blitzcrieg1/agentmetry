@@ -34,7 +34,8 @@ the benchmark corpus emits, for reference only.
 | `remote-staging-then-execute` | critical | T1105, T1059 |
 | `autonomous-unapproved-write` | high | T1565 |
 | `destructive-delete-burst` | high | T1485 |
-| `session-tool-burst` | high | T1059 |
+| `hf-token-exposed-in-command` | high | T1552 |
+| `session-tool-burst` | high if unattended, else medium | T1059 |
 | `subagent-swarm-burst` | high | T1059 |
 | `host-subagent-swarm-burst` | high | T1059 |
 | `untrusted-input-then-risky-action` | high | T1071.001 |
