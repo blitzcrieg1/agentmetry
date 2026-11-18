@@ -17,6 +17,11 @@ separately (currently `1.2.0`) and changes additively.
   It shows unresolved references and partial coverage without exposing command
   text or running repository code.
 
+- **Python wheel startup check.** `agentmetry scan --wheel PATH` inventories
+  executable `.pth` lines and Python 3.15 `.start` declarations in a local
+  wheel. It reports SHA-256 and optionally checks an expected digest without
+  installing, extracting or executing the package.
+
 ## [0.12.2] - 2026-11-16
 
 A privacy release. Both fixes apply only with command logging or full-argument
