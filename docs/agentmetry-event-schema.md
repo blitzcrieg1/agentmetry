@@ -60,6 +60,29 @@ AGENTMETRY_SPLUNK_HEC_TOKEN=...
 
 `correlation_id` groups events from one agent session (IDE conversation or MCP proxy session). `session_id` is the dashboard/WebSocket session when applicable.
 
+### Agent Governance Toolkit file import
+
+`agentmetry import-agt` imports AGT `FileAuditSink` records as external evidence.
+`policy_evaluation` records the resolved policy verdict from `policy_decision`
+when present. `approval_decision` records the approval outcome separately.
+Both retain the source entry ID and requested action in `provenance`.
+Only the evaluation represents the resolved policy decision. When the source
+provides no shared identifier, the importer preserves the two records without
+joining them. Neither action type asserts tool execution.
+
+Explicit `tool_invocation` records retain their reported outcome. A missing
+outcome stays `unknown` even when a legacy producer records an allow verdict.
+Unrecognized AGT event kinds use `agt_event` and retain their original kind
+in provenance.
+
+`provenance.chain_consistent` reports the file-level hash and linkage check.
+`provenance.signatures_checked` is true on imported records if HMAC was
+checked with the supplied key. The legacy `verified_on_import` flag now
+requires that keyed verification. With a trusted shared key, HMAC can authenticate
+the covered fields. Each rotated file has its own chain. These checks cannot
+establish complete capture or show whether another rotated file is missing.
+Earlier imported records retain their original metadata.
+
 ### Claude invocation observations (optional, additive)
 
 New Claude hook events can carry `tool.invocation` with `phase`, `hook_event`,
