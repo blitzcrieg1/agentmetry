@@ -1,18 +1,13 @@
 """One session as the nodes of an investigation tree.
 
-A hook records a tool call as up to three events: the agent asking
-(`approval_request`), the answer (`approval_response`) and the call itself
-(`tool_called`). A detection may cite any of them, and the DLP and tool policy
-verdicts sit on the ask, not the call. Drawn one event per node, a session
-shows every call two or three times and splits each verdict from the call it
-judged. So the three are folded into one node here, joined on the input hash
-the hook computes for all of them, and the node keeps every event id it
-absorbed so a cited id still finds it.
+Claude requests and reported results retain their own nodes and event IDs.
+Only an unambiguous native invocation links those observations. Permission
+responses remain separate when the source supplies no invocation ID for them.
 
-Cursor asks as `cursor.Shell` and runs as `shell.run`; the hash is the same,
-which is why the join is on the hash and not the tool name. An ask with no call
-after it stays a node of its own: that is a denial, or a call the agent
-abandoned, and either is worth seeing.
+Legacy adapters can fold an ask, answer and call into one node with all their
+event IDs when there is one pending ask for the hash in the source session.
+Cursor asks as `cursor.Shell` and runs as `shell.run`, with the same input hash.
+An ask with no call stays visible on its own.
 
 Nothing here reads command text the trail does not already hold. `command` is
 present only when the operator set `AGENTMETRY_LOG_COMMANDS`.
@@ -21,6 +16,8 @@ present only when the operator set `AGENTMETRY_LOG_COMMANDS`.
 from __future__ import annotations
 
 from typing import Any
+
+from agentmetry.core.audit.invocation import normalize_claude_tool_metadata
 
 #: Long enough for a real shell line, short enough that one pasted script does
 #: not make the payload the size of the session.
@@ -112,38 +109,94 @@ def _answer(event: dict[str, Any]) -> str:
     return "inferred" if inferred else "approved"
 
 
+def _invocation_key(event: dict[str, Any], tool: dict[str, Any]) -> tuple[str, ...] | None:
+    # The tree reads one recorder's local index. The host and correlation ID
+    # constrain this comparison further and do not establish device identity.
+    source = event["source"]
+    key = (
+        event.get("host_id"), event.get("correlation_id"), event.get("session_id"),
+        source.get("app"), source.get("adapter"), tool["qualified"], tool["server"],
+        tool["invocation"].get("id"),
+    )
+    return key if all(isinstance(part, str) and part for part in key) else None
+
+
+def _link_invocations(groups: dict[tuple[str, ...], list[dict[str, Any]]]) -> None:
+    for group in groups.values():
+        if len(group) == 1:
+            continue
+        by_phase = {node["tool"]["invocation"]["phase"]: node["id"] for node in group}
+        request_id = by_phase.get("request")
+        result_id = by_phase.get("result")
+        if len(group) == 2 and request_id and result_id and request_id != result_id:
+            evidence = {
+                "status": "linked",
+                "request_event_id": request_id,
+                "result_event_id": result_id,
+            }
+        else:
+            evidence = {"status": "ambiguous"}
+        for node in group:
+            node["invocation_evidence"] = evidence.copy()
+
+
 def fold(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Fold a time-ordered session into tree nodes, asks joined to their calls."""
+    """Project a session window and link the evidence available within it."""
     nodes: list[dict[str, Any]] = []
-    pending: dict[str, dict[str, Any]] = {}  # input_hash -> the ask waiting for its call
+    invocations: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    pending: dict[tuple[str, ...], dict[str, Any] | None] = {}
     for event in events:
         action = (event.get("action") or {}).get("type", "")
         if action == "heartbeat":
             continue
+        kind = _kind(event)
+        node = _node(event, kind)
+        source = event.get("source") or {}
+        if source.get("app") == "claude":
+            if source.get("adapter") == "claude_hook" and action in ("approval_request", "tool_called"):
+                metadata = normalize_claude_tool_metadata(event.get("tool"))
+                phase = "request" if action == "approval_request" else "result"
+                if metadata and metadata["invocation"]["phase"] == phase:
+                    node["tool"].update(metadata)
+                    node["invocation_evidence"] = {"status": "unresolved"}
+                    key = _invocation_key(event, node["tool"])
+                    if key is not None:
+                        invocations.setdefault(key, []).append(node)
+            if action == "approval_response":
+                node["approval"] = _answer(event)
+            nodes.append(node)
+            continue
+
+        input_hash = (event.get("gated_action") or {}).get("input_hash") if action == "approval_response" else (
+            node["tool"]["input_hash"]
+        )
+        scope = (
+            str(event.get("host_id") or ""), str(event.get("correlation_id") or ""), node["app"], str(input_hash or ""),
+        )
         if action == "approval_response":
-            gated = event.get("gated_action") or {}
-            ask = pending.get(str(gated.get("input_hash") or ""))
+            ask = pending.get(scope)
             if ask is None:
-                continue  # an answer to an ask outside this window says nothing alone
+                if scope in pending:  # two asks for the same hash leave the answer unlinked
+                    node["approval"] = _answer(event)
+                    nodes.append(node)
+                continue
             ask["approval"] = _answer(event)
-            ask["event_ids"].append(str(event.get("event_id") or ""))
+            ask["event_ids"].extend(node["event_ids"])
             if ask["approval"] in ("denied", "expired"):
                 if ask["approval"] == "denied":
                     ask["kind"] = "denied"
-                pending.pop(ask["tool"]["input_hash"], None)
+                pending.pop(scope)
             continue
-        kind = _kind(event)
         if kind == "call":
-            call = _node(event, "call")
-            input_hash = call["tool"]["input_hash"]
-            ask = pending.pop(input_hash, None) if input_hash else None
+            ask = pending.get(scope)
             if ask is not None:
+                pending.pop(scope)
                 ask["kind"] = "call"
-                ask["event_ids"].extend(call["event_ids"])
-                ask["outcome"] = call["outcome"]
-                ask["reason"] = call["reason"] or ask["reason"]
+                ask["event_ids"].extend(node["event_ids"])
+                ask["outcome"] = node["outcome"]
+                ask["reason"] = node["reason"] or ask["reason"]
                 ask["asked_as"] = ask["tool"]["qualified"]
-                merged_tool = call["tool"]
+                merged_tool = node["tool"]
                 # The ask may hold the command when the call does not, or the
                 # other way round; keep whichever was recorded.
                 if "command" not in merged_tool and "command" in ask["tool"]:
@@ -152,18 +205,15 @@ def fold(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     merged_tool["mitre"] = ask["tool"]["mitre"]
                 ask["tool"] = merged_tool
                 for key in ("dlp", "tool_policy"):
-                    if key in call and key not in ask:
-                        ask[key] = call[key]
-                ask["id"] = call["id"]
+                    if key in node and key not in ask:
+                        ask[key] = node[key]
+                ask["id"] = node["id"]
                 continue
-            nodes.append(call)
-            continue
-        node = _node(event, kind)
         nodes.append(node)
-        if kind == "ask" and node["tool"]["input_hash"]:
-            # A second ask with the same input before any call replaces the
-            # first as the one the next call answers; the first stays a node.
-            pending[node["tool"]["input_hash"]] = node
+        if kind == "ask" and input_hash:
+            # A collision stays ambiguous for the rest of this session window.
+            pending[scope] = None if scope in pending else node
+    _link_invocations(invocations)
     return nodes
 
 
