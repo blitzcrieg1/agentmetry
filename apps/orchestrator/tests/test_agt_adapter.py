@@ -1,8 +1,9 @@
 """Ingest Microsoft Agent Governance Toolkit audit files.
 
-The fixtures are not hand-written. They were produced by the real
-`FileAuditSink` from `agent-governance-toolkit-core` 5.0.0 in a throwaway venv,
-and `AGT.verify_integrity()` returned True on them before they were copied here.
+The original fixtures were produced by the real `FileAuditSink` from
+`agent-governance-toolkit-core` 5.0.0. The `agt_govern_*` fixtures come from
+the upstream version reviewed in discussion #4560. See
+`fixtures/generate_agt_govern.py` for their capture script.
 That matters: an adapter tested only against its own idea of the format is
 testing that the author was consistent, not that the format is right.
 
@@ -34,6 +35,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 EXFIL = FIXTURES / "agt_filesink_exfil.jsonl"
 MIXED = FIXTURES / "agt_filesink_mixed.jsonl"
 KEY = b"scratch-key-not-a-secret"
+GOVERN_KEY = b"agentmetry-synthetic-agt-fixture-key"
+GOVERN_DECISIONS = FIXTURES / "agt_govern_decisions.jsonl"
 
 
 # ----------------------------------------------------------------------
@@ -69,12 +72,15 @@ def test_verification_passes_on_a_real_file():
 
 
 def test_hashes_and_chain_are_checkable_without_the_key():
-    """The key is optional; editing and reordering are caught regardless. Only
-    forgery by a key holder is out of reach, and that is out of reach for AGT
-    too."""
-    result = verify_agt_chain(read_agt_file(EXFIL), None)
+    result, events = agt_file_to_canonical(EXFIL)
     assert result.ok
     assert not result.signatures_checked
+    assert "chain consistent" in result.message
+    for event in events:
+        provenance = event["provenance"]
+        assert provenance["chain_consistent"] is True
+        assert provenance["signatures_checked"] is False
+        assert provenance["verified_on_import"] is False
 
 
 def test_an_edited_entry_is_caught(tmp_path):
@@ -103,9 +109,10 @@ def test_a_removed_entry_is_caught():
 
 
 def test_a_wrong_key_is_caught():
-    result = verify_agt_chain(read_agt_file(EXFIL), b"not-the-key")
+    result, events = agt_file_to_canonical(EXFIL, secret_key=b"not-the-key")
     assert not result.ok
     assert result.signature_failures
+    assert events == []
 
 
 def test_an_unverifiable_file_yields_no_events(tmp_path):
@@ -177,6 +184,93 @@ def test_custody_is_recorded_rather_than_implied():
     assert event["source"]["app"] == "agt"
     assert event["provenance"]["captured_by"] == "agent-governance-toolkit"
     assert event["provenance"]["agt_content_hash"]
+    assert event["provenance"]["chain_consistent"] is False
+    assert event["provenance"]["signatures_checked"] is False
+    assert event["provenance"]["verified_on_import"] is False
+
+
+def test_govern_records_decisions_without_tool_evidence():
+    from agentmetry.core.audit.detection.engine import run_detections
+
+    result, events = agt_file_to_canonical(GOVERN_DECISIONS, secret_key=GOVERN_KEY)
+    assert result.ok and result.signatures_checked
+    assert "HMAC verified" in result.message
+    assert [event["action"]["type"] for event in events] == ["policy_evaluation"] * 2
+    assert [event["action"]["outcome"] for event in events] == ["allow", "deny"]
+    assert "fixture-rule" in events[1]["action"]["reason"]
+    assert [event["provenance"]["agt_action"] for event in events] == ["read", "write"]
+    assert [event["provenance"]["agt_verdict"] for event in events] == ["allow", "deny"]
+    rows = read_agt_file(GOVERN_DECISIONS)
+    assert [event["provenance"]["agt_entry_id"] for event in events] == [
+        row["entry_id"] for row in rows
+    ]
+    assert all("tool" not in event for event in events)
+    for event in events:
+        provenance = event["provenance"]
+        assert provenance["chain_consistent"] is True
+        assert provenance["signatures_checked"] is True
+        assert provenance["verified_on_import"] is True
+    assert run_detections(events) == []
+
+
+def test_approval_and_resolved_evaluation_are_distinct_records():
+    path = FIXTURES / "agt_govern_approval.jsonl"
+    result, events = agt_file_to_canonical(path, secret_key=GOVERN_KEY)
+    assert result.ok
+    assert [event["action"]["type"] for event in events] == [
+        "approval_decision", "policy_evaluation",
+    ]
+    assert [event["action"]["outcome"] for event in events] == ["rejected", "deny"]
+    assert "Synthetic approval rejected" in events[0]["action"]["reason"]
+    assert all("tool" not in event for event in events)
+    assert len({event["event_id"] for event in events}) == 2
+
+
+def test_rotated_files_are_independent_chains():
+    files = [FIXTURES / f"agt_govern_rotation_{suffix}.jsonl" for suffix in ("first", "second")]
+    for path in files:
+        result, events = agt_file_to_canonical(path, secret_key=GOVERN_KEY)
+        assert result.ok and result.signatures_checked
+        (event,) = events
+        assert event["provenance"]["agt_previous_hash"] == ""
+    result = verify_agt_chain(read_agt_file(files[0]) + read_agt_file(files[1]), GOVERN_KEY)
+    assert not result.ok
+    assert result.chain_failures == [1]
+    assert result.signature_failures == []
+
+
+def test_legacy_allow_without_a_tool_result_stays_unknown():
+    row = {**read_agt_file(EXFIL)[0], "outcome": ""}
+    event = agt_to_canonical(row)
+    assert event["action"]["type"] == "tool_called"
+    assert event["action"]["outcome"] == "unknown"
+    assert event["provenance"]["agt_verdict"] == "allow"
+
+
+def test_unknown_source_kind_does_not_become_a_tool_call():
+    row = {**read_agt_file(EXFIL)[0], "event_type": "tool_called"}
+    event = agt_to_canonical(row)
+    assert event["action"]["type"] == "agt_event"
+    assert event["provenance"]["agt_event_type"] == "tool_called"
+    assert "tool" not in event
+
+
+def test_cli_dry_run_distinguishes_chain_check_from_hmac(monkeypatch, capsys):
+    from agentmetry.cli import main
+
+    monkeypatch.delenv("AGENTMETRY_AGT_HMAC_KEY", raising=False)
+    args = ["import-agt", str(GOVERN_DECISIONS), "--dry-run"]
+    assert main(args) == 0
+    output = capsys.readouterr().out
+    assert "chain consistent" in output
+    assert "Source authenticity unverified" in output
+    assert "2 event(s) would be appended" in output
+
+    monkeypatch.setenv("AGENTMETRY_AGT_HMAC_KEY", GOVERN_KEY.decode())
+    assert main(args) == 0
+    output = capsys.readouterr().out
+    assert "chain consistent and HMAC verified" in output
+    assert "Source authenticity unverified" not in output
 
 
 # ----------------------------------------------------------------------

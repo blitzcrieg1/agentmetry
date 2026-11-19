@@ -1033,9 +1033,7 @@ def cmd_export(args: argparse.Namespace) -> int:
 def cmd_import_agt(args: argparse.Namespace) -> int:
     """Ingest a Microsoft Agent Governance Toolkit audit file into the trail.
 
-    AGT decides allow or deny per call; this says what a session of those calls
-    adds up to. In testing it read three calls AGT had individually allowed and
-    raised one critical `credential-exfil` across them.
+    Import policy evidence and reported tool activity under distinct action types.
     """
     import os
 
@@ -1068,11 +1066,10 @@ def cmd_import_agt(args: argparse.Namespace) -> int:
         return 1
 
     print(f"OK — {result.message}")
-    if key is None:
+    if result.entries and not result.signatures_checked:
         print(
-            "  No HMAC key supplied, so signatures were not checked. Hashes and "
-            "chain linkage were, which catches editing and reordering. Pass --key "
-            "or set AGENTMETRY_AGT_HMAC_KEY to check forgery too."
+            "  Source authenticity unverified. Only content hashes and chain linkage "
+            "were checked. Use AGENTMETRY_AGT_HMAC_KEY to verify HMAC with a trusted shared key."
         )
 
     if args.dry_run:
@@ -1090,8 +1087,7 @@ def cmd_import_agt(args: argparse.Namespace) -> int:
     for event in events:
         append_chained_line(trail, event)
     print(f"  Appended {len(events)} event(s) to {trail}")
-    print("  Marked source.tier=external, app=agt: Agentmetry read this record "
-          "rather than observing the calls.")
+    print("  Marked source.tier=external, app=agt: these are imported source records.")
     return 0
 
 

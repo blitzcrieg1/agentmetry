@@ -118,7 +118,7 @@ agentmetry dashboard
 | Antigravity | Tool calls and inferred approvals | `scripts/install_antigravity_hooks.ps1` on Windows. `hooks install` and `scripts/install.sh` do not write these. |
 | MCP servers | Every stdio `tools/call`, plus a `tools/list` fingerprint | `agentmetry mcp-proxy -- <server command>` |
 | CrewAI, OpenSRE | Framework adapters | [adapters/crewai](adapters/crewai/), [adapters/opensre](adapters/opensre/) |
-| Microsoft Agent Governance Toolkit files | Import after the file's own chain verifies | `agentmetry import-agt` |
+| Microsoft Agent Governance Toolkit files | Import policy and tool records with a per-file chain check and optional HMAC verification | `agentmetry import-agt` |
 
 Any agent that acts on your machine can be recorded through the ingest API, not only coding agents. [Agent coverage](docs/agent-coverage.md) says what is supported, what is possible and what is impossible, for local agents such as OpenClaw and Hermes, frameworks such as LangGraph, and hosted agents such as the Grok app. The detections are written for agents that act on an endpoint.
 
@@ -158,7 +158,7 @@ These are the numbers from commands, not from a slide.
 
 Run `agentmetry benchmark` to check these expectations. The 14 rule IDs in the corpus include 13 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
 
-Expected collection: 2910 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2917 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [detection pass CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/44312544675)
 reported 2885 passed and 19 skipped on Linux, 2898 passed and 6 skipped on Windows,
 and 84% line coverage on Linux
