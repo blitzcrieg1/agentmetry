@@ -145,7 +145,7 @@ The process runs where you deploy it, so capture is an adapter in that process t
 Notes:
 
 - **Blocking is not a promise.** "Yes" means the framework documents a way for code at that point to stop the tool. Agentmetry's framework adapters are recorders. A blocking adapter would be new work, and a deny that the framework then ignores would repeat the Codex failure.
-- **Microsoft Agent Governance Toolkit files** are a separate, shipped path: `agentmetry import-agt` reads a `FileAuditSink` JSONL file after the file's own chain verifies, tested in `test_agt_adapter.py`. It imports a file some other runtime wrote. It does not make Semantic Kernel, Agent Framework, LangGraph or CrewAI supported on their own.
+- **Microsoft Agent Governance Toolkit files.** `agentmetry import-agt` reads a `FileAuditSink` JSONL file after checking hashes and chain links. Source authenticity requires HMAC verification with a trusted shared key. Policy and approval records carry their own action types. This is file import coverage. [AGT event mapping](agentmetry-event-schema.md#agent-governance-toolkit-file-import)
 - **Where the framework runs matters.** A LangGraph graph on your server is this category. The same graph on a vendor's hosted platform is category G.
 
 ## F. Self-hosted agent and workflow platforms
