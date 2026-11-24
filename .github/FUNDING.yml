@@ -2,3 +2,9 @@
 # the account does not do this on its own: the button only appears when a repo
 # carries this file.
 github: blitzcrieg1
+# Additional channels appear as buttons too. Add them only once the account
+# exists on that platform, otherwise the button links to a 404:
+# open_collective: agentmetry   # good for EU grant payouts (NLnet NGI etc.)
+# liberapay: agentmetry
+# ko_fi: agentmetry
+# custom: ["https://agentmetry.ai/sponsor"]
