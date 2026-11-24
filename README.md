@@ -19,6 +19,7 @@ Agentmetry records tool events reported by supported agent hooks and wrapped std
   <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/ci.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/ci.yml?branch=master&style=for-the-badge&label=CI" alt="CI status on master (Windows and Linux required, macOS in preview)"></a>
   <a href="https://github.com/blitzcrieg1/agentmetry/actions/workflows/codeql.yml?query=branch%3Amaster"><img src="https://img.shields.io/github/actions/workflow/status/blitzcrieg1/agentmetry/codeql.yml?branch=master&style=for-the-badge&label=CodeQL" alt="CodeQL scan status on master"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/blitzcrieg1/agentmetry"><img src="https://img.shields.io/ossf-scorecard/github.com/blitzcrieg1/agentmetry?style=for-the-badge&label=OpenSSF%20Scorecard" alt="OpenSSF Scorecard score"></a>
+  <a href="https://github.com/sponsors/blitzcrieg1"><img src="https://img.shields.io/github/sponsors/blitzcrieg1?style=for-the-badge&label=Sponsor&color=ea4aaa" alt="Sponsor on GitHub"></a>
 </p>
 
 <p align="center">
@@ -36,7 +37,8 @@ Agentmetry records tool events reported by supported agent hooks and wrapped std
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
   <a href="docs/faq.md"><strong>FAQ</strong></a> ·
   <a href="https://github.com/blitzcrieg1/agentmetry/issues"><strong>Issues</strong></a> ·
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> ·
+  <a href="https://github.com/sponsors/blitzcrieg1"><strong>Sponsor</strong></a>
 </p>
 
 </div>
@@ -280,6 +282,10 @@ PRs need a signed [CLA](CLA.md) (v1.0).
 The trail stays on the machine unless you set a sink. Tool arguments are SHA-256 by default. Set `AGENTMETRY_HASH_KEY` and the fingerprints are HMAC-SHA256. Every API route except health needs the per-install token or `AGENTMETRY_API_KEY`. `AGENTMETRY_AUTH_DISABLED=1` is for development, and `doctor` flags it.
 
 Report vulnerabilities via [private vulnerability reporting](https://github.com/blitzcrieg1/agentmetry/security/advisories/new). See [SECURITY.md](SECURITY.md).
+
+## Sponsor
+
+Agentmetry is built and maintained solo, in the open, with no vendor cloud and no telemetry. If it earns a place in your workflow, [sponsor it on GitHub](https://github.com/sponsors/blitzcrieg1) (one-time or monthly). Suggested tiers: $5 keeps the releases coming, $25 gets your name in `CONTRIBUTORS.md`, $100 gets priority triage on the issue you care about, and anything above funds the detection-rule bounties tagged `bounty`. Sponsorship never changes the license: the core stays Apache-2.0, and Enterprise stays a separate written agreement. Grants (NLnet NGI and similar) are also welcome and are announced in [Discussions](https://github.com/blitzcrieg1/agentmetry/discussions).
 
 ## License
 
