@@ -148,10 +148,10 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            87 (42 attack, 45 benign)
+  cases            90 (44 attack, 46 benign)
   rules covered    14
-  expected firings 43
-  detected         43
+  expected firings 46
+  detected         46
   missed           0
   false positives  0
 ```
