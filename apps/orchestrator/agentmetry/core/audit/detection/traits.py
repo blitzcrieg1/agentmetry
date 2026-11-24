@@ -2126,6 +2126,15 @@ def classify_command(command: str) -> list[str]:
         traits.append("raw_ip_fetch")
     if ENCODED_CMD.search(written):
         traits.append("encoded_cmd")
+    if re.search(
+        r"\b(?:base64\s+(?:-d|--decode)|openssl\s+base64\s+-d|xxd\s+-r)\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",
+        written,
+        re.IGNORECASE,
+    ):
+        if "encoded_cmd" not in traits:
+            traits.append("encoded_cmd")
+        if "risky_exec" not in traits:
+            traits.append("risky_exec")
     cradle = PIPE_TO_SHELL.search(written) or PROC_SUBST_EXEC.search(written)
     if cradle:
         traits.append(
