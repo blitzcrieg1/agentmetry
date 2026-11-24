@@ -34,6 +34,7 @@ Agentmetry records tool events reported by supported agent hooks and wrapped std
   <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="docs/agentmetry-external-ingest.md"><strong>Docs</strong></a> ·
   <a href="docs/agentmetry-event-schema.md"><strong>Schema</strong></a> ·
+  <a href="docs/faq.md"><strong>FAQ</strong></a> ·
   <a href="https://github.com/blitzcrieg1/agentmetry/issues"><strong>Issues</strong></a> ·
   <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
 </p>
