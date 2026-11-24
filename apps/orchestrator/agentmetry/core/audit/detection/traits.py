@@ -54,7 +54,7 @@ ENCODED_CMD = re.compile(r"-enc(odedcommand)?\b|frombase64string", re.IGNORECASE
 # Residual, stated rather than hidden: `| python -c "exec(sys.stdin.read())"`
 # reaches for the download deliberately and slips this. INLINE_EVAL sees that
 # shape, and a cradle written that way is no longer hiding.
-_INLINE_SCRIPT = r"(?!\s*-\w*[ce]\b)"
+_INLINE_SCRIPT = r"(?!(?:\s+-[a-zA-Z0-9-]+)*\s*-\w*[ce]\b)"
 
 PIPE_TO_SHELL = re.compile(
     r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
