@@ -9,6 +9,48 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-24
+
+This release opens GitHub Sponsors, documents the Hugging Face URL-form
+behavior from the Show and Tell thread, and tightens session tree and AGT
+adapter evidence.
+
+### Added
+
+- **GitHub Sponsors is open.** Support Agentmetry at
+  github.com/sponsors/blitzcrieg1. Tiers start at a sponsor badge and a name
+  in the README; higher tiers fund detection-rule bounties. Sponsorship
+  never changes the Apache-2.0 license of the core. The README carries a
+  sponsor section and badge, `.github/FUNDING.yml` enables the repository
+  sponsor button, and Discussion #460 announces the program.
+- **FAQ** (docs/faq.md) answering the Hugging Face Show and Tell thread:
+  which URL forms the hostname rules match, where coverage starts and stops,
+  and what never leaves the machine.
+
+### Changed
+
+- **Session tree keeps invocation evidence.** Claude requests and reported
+  results are linked by the native invocation ID within their source and
+  session; unlinked approvals and ambiguous results stay visible, with a
+  guard against same-hash approval collisions (#445).
+- **AGT adapter separates policy from execution.** The source verdict is
+  preserved and a consistent file chain is distinguished from a keyed HMAC
+  check, covering decisions, approval, rotation and provenance (#447).
+
+### Fixed
+
+- **Trailing-dot hostnames stay bounded.** The parsed-host allowlist
+  requires exact spelling; the Hugging Face trailing-dot form is pinned so
+  the expected-host exception cannot be widened by a lookalike spelling
+  (#446).
+
+### Tests and CI
+
+- URL-form staging cases pinned from Hugging Face discuss topic 191787; the
+  detection benchmark now measures 90 cases with 46 rule firings (#452).
+- CI tolerates an upstream scorecard-action ghcr.io outage instead of
+  failing unrelated PRs (#453).
+
 ## [0.13.0]
 
 This release improves how detection rules use successful tool outcomes and
