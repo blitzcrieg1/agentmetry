@@ -41,6 +41,22 @@ cases:
     expect: [remote-staging-then-execute]
     note: Fetch from a public staging host, execute in a later step.
 
+  - name: HF trailing-dot host staged then execute
+    session: attack_hf_trailing_dot_stage_execute.jsonl
+    expect: [remote-staging-then-execute]
+    note: >
+      huggingface.co. (trailing dot) resolves to the same IP and still matches:
+      the STAGING_HOST regex is not end-anchored after .co. Pinned from
+      HF discuss topic 191787.
+
+  - name: IP literal staged then execute
+    session: attack_ip_literal_stage_execute.jsonl
+    expect: [remote-staging-then-execute, encoded-command-download]
+    note: >
+      A dotted-IP URL is not in STAGING_HOST, so the staging-host branch stays
+      silent; the host-agnostic branch fires because the fetched basename is
+      the executed basename. Pinned from HF discuss topic 191787.
+
   - name: download cradle
     session: attack_encoded_command_download.jsonl
     expect: [encoded-command-download]
@@ -251,6 +267,15 @@ cases:
     expect: []
     benign: true
     note: The most common shape in real traffic and the least interesting, which is why it belongs here.
+
+  - name: HF README fetch then python -c
+    session: benign_hf_readme_fetch_then_python_c.jsonl
+    expect: []
+    benign: true
+    note: >
+      curl of a README with no -o stages nothing on disk, so a later
+      `python -c` is not linked to it (#51 guard). Pinned from HF discuss
+      topic 191787.
 
   - name: dependency install then build
     session: benign_dependency_install_and_build.jsonl
