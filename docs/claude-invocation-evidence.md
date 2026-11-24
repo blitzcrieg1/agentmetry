@@ -90,11 +90,21 @@ synthetic invocation, not a captured or executed session:
 ]
 ```
 
-One request and one result is the simple case. Multiple or conflicting
-observations under the same key remain visible and ambiguous. The feature does
-not infer attempts, suppress duplicates or provide a join engine. Arrival order
-is not execution order; a request without a result remains unresolved. Never
-substitute command similarity, argument hashes or a nearby timestamp for an ID.
+The session-tree API retains the bounded `tool.invocation` and `tool.result`
+blocks on their original event nodes. Within the returned session window, one
+request and one result with the same exact key both get
+`invocation_evidence.status: linked` and the two event IDs. The key uses the
+local recorder index, event host, correlation ID, source session, source app
+and adapter, tool identity and native invocation ID. Arrival order does not
+affect the link. Multiple observations of the same phase stay visible with
+`status: ambiguous`. A missing counterpart or key field gives
+`status: unresolved`. Events outside the loaded window may be unavailable to
+the comparison.
+
+Claude approval responses stay distinct from those links, with their
+reported or inferred state. A request with no linked result remains
+unresolved even when the trail contains an approval with a similar tool name,
+argument hash or timestamp.
 
 ## Legacy approvals and remaining gaps
 
