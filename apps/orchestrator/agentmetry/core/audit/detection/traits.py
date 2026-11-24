@@ -2126,7 +2126,12 @@ def classify_command(command: str) -> list[str]:
         traits.append("raw_ip_fetch")
     if ENCODED_CMD.search(written):
         traits.append("encoded_cmd")
-    cradle = PIPE_TO_SHELL.search(written) or PROC_SUBST_EXEC.search(written)
+    written_unquoted = re.sub(r"(?<=\w)['\"](?=\w)", "", command)
+    cradle = (
+        PIPE_TO_SHELL.search(written)
+        or PIPE_TO_SHELL.search(written_unquoted)
+        or PROC_SUBST_EXEC.search(written)
+    )
     if cradle:
         traits.append(
             "pipe_to_shell_local" if pipes_only_loopback(spoken) else "pipe_to_shell"
