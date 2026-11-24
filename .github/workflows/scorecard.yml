@@ -38,6 +38,13 @@ jobs:
     name: scorecard
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # 2026-11-24: every tag of ghcr.io/ossf/scorecard-action (v2.4.x-v2.6.0,
+    # latest) currently resolves to an index whose child manifests return 404,
+    # so the action's `docker pull` fails upstream of this repo. The README
+    # badge reads the OpenSSF API server-side and is unaffected. Keep the job
+    # green-but-optional until upstream republishes the image; the weekly cron
+    # retries automatically. Remove continue-on-error once a run succeeds.
+    continue-on-error: true
     permissions:
       # Signs the published result, so the API can tell it came from this repo.
       id-token: write
