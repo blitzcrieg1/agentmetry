@@ -285,7 +285,7 @@ Report vulnerabilities via [private vulnerability reporting](https://github.com/
 
 ## Sponsor
 
-Agentmetry is built and maintained solo, in the open, with no vendor cloud and no telemetry. If it earns a place in your workflow, [sponsor it on GitHub](https://github.com/sponsors/blitzcrieg1) (one-time or monthly). Suggested tiers: $5 keeps the releases coming, $25 gets your name in `CONTRIBUTORS.md`, $100 gets priority triage on the issue you care about, and anything above funds the detection-rule bounties tagged `bounty`. Sponsorship never changes the license: the core stays Apache-2.0, and Enterprise stays a separate written agreement. Grants (NLnet NGI and similar) are also welcome and are announced in [Discussions](https://github.com/blitzcrieg1/agentmetry/discussions).
+Agentmetry is built and maintained solo, in the open, with no vendor cloud and no telemetry. If it earns a place in your workflow, [sponsor it on GitHub](https://github.com/sponsors/blitzcrieg1) (one-time or monthly). Suggested tiers: $5 keeps the releases coming, $25 gets your name in `CONTRIBUTORS.md`, $100 gets priority triage on the issue you care about, and anything above funds the detection-rule bounties tagged `bounty`. Sponsorship never changes the license: the core stays Apache-2.0, and Enterprise stays a separate written agreement. Grants (NLnet NGI and similar) are also welcome and are announced in [Discussions](https://github.com/blitzcrieg1/agentmetry/discussions). See the pinned announcement: [Support Agentmetry: GitHub Sponsors is live](https://github.com/blitzcrieg1/agentmetry/discussions/460).
 
 ## License
 
