@@ -9,6 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **DLP rules for Google Cloud credentials.** `google_api_key` (the `AIza…` API key
+  shape) and `gcp_service_account_key` (the `"type": "service_account"` marker of a
+  key file), both `credentials` / `critical`.
+
 ## [0.14.0] - 2026-11-24
 
 This release opens GitHub Sponsors, documents the Hugging Face URL-form
