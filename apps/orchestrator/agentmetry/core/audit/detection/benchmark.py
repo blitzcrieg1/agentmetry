@@ -150,14 +150,35 @@ def load_corpus(corpus_dir: Path | None = None) -> list[Case]:
     return cases
 
 
+def _fired_rules(events: list[dict[str, Any]]) -> set[str]:
+    """Rule ids the engine raises on a recorded case, scoped as the live pipeline scopes them.
+
+    Session rules see one `correlation_id` at a time and host rules see one
+    `host_id` at a time, exactly as `detection.live` feeds them. Handing the
+    whole file to the session rules alone meant a host-scoped rule could never
+    fire in the benchmark, and a case spanning several sessions was read as one.
+    """
+    from agentmetry.core.audit.detection.engine import run_detections, run_host_detections
+
+    sessions: dict[str, list[dict[str, Any]]] = {}
+    hosts: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        sessions.setdefault(str(event.get("correlation_id") or ""), []).append(event)
+        hosts.setdefault(str(event.get("host_id") or ""), []).append(event)
+
+    fired: set[str] = set()
+    for group in sessions.values():
+        fired |= {d.rule_id for d in run_detections(group)}
+    for group in hosts.values():
+        fired |= {d.rule_id for d in run_host_detections(group)}
+    return fired
+
+
 def run_benchmark(corpus_dir: Path | None = None) -> BenchmarkReport:
     """Replay every case through the real rule engine."""
-    from agentmetry.core.audit.detection import run_detections
-
     report = BenchmarkReport()
     for case in load_corpus(corpus_dir):
-        fired = {d.rule_id for d in run_detections(case.events)}
-        report.results.append(CaseResult(case=case, fired=fired))
+        report.results.append(CaseResult(case=case, fired=_fired_rules(case.events)))
     return report
 
 

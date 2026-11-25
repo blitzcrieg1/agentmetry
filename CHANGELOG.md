@@ -9,6 +9,14 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The benchmark could never cover a host-scoped rule.** It fed each recorded case to
+  the session rules only, as one session. It now scopes as the live pipeline does:
+  session rules per `correlation_id`, host rules per `host_id`. That gives
+  `host-subagent-swarm-burst` its corpus case (a swarm that restarts its session between
+  bursts), and the benchmark reports 15 rules covered. Refs #36.
+
 ### Added
 
 - **DLP rules for Google Cloud credentials.** `google_api_key` (the `AIza…` API key
