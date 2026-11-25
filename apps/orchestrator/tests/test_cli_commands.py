@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -803,5 +804,5 @@ def test_dashboard_link_without_dev_server_is_unchanged(dashboard_link, capsys):
 def test_dashboard_dev_server_link_leaves_other_hosts_alone(dashboard_link, monkeypatch, capsys):
     monkeypatch.setenv("AGENTMETRY_URL", "http://recorder.internal:8000")
     assert main(["dashboard", "--dev-server", "--no-browser"]) == 0
-    link = capsys.readouterr().out.strip()
-    assert link.startswith("http://recorder.internal:8000/")
+    parts = urlsplit(capsys.readouterr().out.strip())
+    assert (parts.scheme, parts.hostname, parts.port) == ("http", "recorder.internal", 8000)
