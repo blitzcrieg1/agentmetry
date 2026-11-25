@@ -19,6 +19,7 @@ import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -119,6 +120,23 @@ def _api_headers() -> dict[str, str]:
     return {"X-API-Key": key} if key else {}
 
 
+def _on_dev_server_host(url: str) -> str:
+    """Rewrite a loopback sign-in link to `localhost` for the Next dev server.
+
+    The sign-in cookie is host-only, so it is set for whatever host the link is
+    opened on. The dev dashboard lives on `localhost:3000` and calls the API as
+    `localhost:8000`, and a browser treats `127.0.0.1` and `localhost` as
+    different sites. A link on `127.0.0.1` set the cookie for the wrong one, the
+    redirect landed on `localhost:3000`, and every API call came back 401 (#301).
+    Only the IPv4 loopback literal is rewritten; any other host is left alone.
+    """
+    parts = urlsplit(url)
+    if parts.hostname != "127.0.0.1":
+        return url
+    netloc = "localhost" + (f":{parts.port}" if parts.port else "")
+    return urlunsplit(parts._replace(netloc=netloc))
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     """Sign the browser in to the local dashboard without giving it the key."""
     from agentmetry.core.operator_identity import os_operator
@@ -138,7 +156,7 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
         return 1
     url = base + resp.json()["url"]
     if args.dev_server:
-        url += "&next=dev"
+        url = _on_dev_server_host(url) + "&next=dev"
     print(url)
     if not args.no_browser:
         import webbrowser
