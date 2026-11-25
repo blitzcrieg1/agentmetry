@@ -9,6 +9,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **DLP rule for OpenAI project, service-account and admin keys.** `openai_project_api_key`
+  matches `sk-proj-…`, `sk-svcacct-…` and `sk-admin-…`, which broke the generic `sk-`
+  rule's alphanumeric run at the first hyphen, so those leaks produced no finding
+  (#478, #482).
+
 ### Removed
 
 - **Dead state from the removed email runtime in the dashboard.** The store no

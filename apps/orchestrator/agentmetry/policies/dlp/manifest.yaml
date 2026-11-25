@@ -204,9 +204,22 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  # Same bug class as anthropic_api_key above: OpenAI's project, service-account
+  # and admin key formats (sk-proj-..., sk-svcacct-..., sk-admin-...) each break
+  # the generic rule's alnum-only run within a handful of characters, at the
+  # hyphen after the prefix word. core/audit/redaction.py's scrubber already
+  # covers these (fixed there in 0.12.2: "sk-(?:ant|proj|svcacct|admin)-..."),
+  # but no DLP rule ever matched them, so a leaked key produced no finding.
+  - id: "openai_project_api_key"
+    name: "OpenAI Project/Service-Account API Key"
+    description: "Detects OpenAI project, service-account and admin API keys (sk-proj-/sk-svcacct-/sk-admin-...)"
+    pattern: "(?i)\\bsk-(?:proj|svcacct|admin)-[a-zA-Z0-9_-]{20,}"
+    category: "credentials"
+    severity: "critical"
+
   - id: "generic_provider_api_key"
     name: "Generic LLM Provider API Key"
-    description: "Detects OpenAI-shaped provider API keys (sk-...); Anthropic and DashScope keys have their own rules above"
+    description: "Detects legacy OpenAI-shaped provider API keys (sk-...); Anthropic, DashScope and OpenAI project/service-account keys have their own rules above"
     pattern: "(?i)\\bsk-[a-zA-Z0-9]{20,}\\b"
     category: "credentials"
     severity: "critical"
