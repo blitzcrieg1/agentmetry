@@ -9,6 +9,14 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Removed
+
+- **Dead state from the removed email runtime in the dashboard.** The store no
+  longer carries `skills`, `activeSkill`, `approvalDraft`, `approvalConfidence`
+  or `memoryHeatmap`, and `graph-utils` drops the inbox, client SOP, escalate
+  and re-fetch node labels and the `scan` special case. Nothing read any of it
+  (#26).
+
 ## [0.15.0] - 2026-11-25
 
 This release is a community release: four external contributors landed five

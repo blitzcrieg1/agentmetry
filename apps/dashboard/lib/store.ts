@@ -35,31 +35,17 @@ export interface PendingTool {
 
 export type ApprovalKind = "draft" | "tool_gate";
 
-export interface Skill {
-  id: string;
-  name: string;
-  display_name?: string;
-  description?: string;
-  nodes?: string[];
-  default_input?: string;
-}
-
 interface AgentStore {
   sessionId: string;
-  skills: Skill[];
-  activeSkill: string | null;
   threadId: string | null;
   executionStatus: "idle" | "running" | "waiting_for_input" | "completed" | "failed";
   graphNodes: GraphNodeState[];
   terminalOutput: string[];
   metrics: TelemetryMetrics;
-  approvalDraft: string;
-  approvalConfidence: number;
   approvalKind: ApprovalKind | null;
   pendingTool: PendingTool | null;
   lastUserInput: string;
   lastToolCalled: string | null;
-  memoryHeatmap: Record<string, number>;
   wsConnected: boolean;
   runsRefreshKey: number;
   /** True: every event on this machine, including heartbeats. False: agent activity only. */
@@ -73,8 +59,6 @@ interface AgentStore {
   // Active hunt filter on Event stream. Survives tab switches until Clear.
   huntFocus: FeedFocusKind | null;
 
-  setSkills: (skills: Skill[]) => void;
-  setActiveSkill: (skill: string) => void;
   setThreadId: (id: string) => void;
   setExecutionStatus: (status: AgentStore["executionStatus"]) => void;
   setGraphNodes: (nodes: GraphNodeState[]) => void;
@@ -83,18 +67,13 @@ interface AgentStore {
   appendStreamToken: (node: string, token: string) => void;
   clearTerminal: () => void;
   updateMetrics: (partial: Partial<TelemetryMetrics>) => void;
-  setApproval: (
-    draft: string,
-    confidence: number,
-    meta?: {
-      approvalKind?: ApprovalKind;
-      pendingTool?: PendingTool | null;
-    }
-  ) => void;
+  setApproval: (meta?: {
+    approvalKind?: ApprovalKind;
+    pendingTool?: PendingTool | null;
+  }) => void;
   setLastUserInput: (input: string) => void;
   setLastToolCalled: (tool: string | null) => void;
   clearApproval: () => void;
-  incrementMemoryAccess: (path: string) => void;
   setWsConnected: (connected: boolean) => void;
   bumpRunsRefresh: () => void;
   setFleetScope: (enabled: boolean) => void;
@@ -109,8 +88,6 @@ interface AgentStore {
 
 export const useAgentStore = create<AgentStore>((set) => ({
   sessionId: initialSessionId(),
-  skills: [],
-  activeSkill: null,
   threadId: null,
   executionStatus: "idle",
   graphNodes: [] as GraphNodeState[],
@@ -122,13 +99,10 @@ export const useAgentStore = create<AgentStore>((set) => ({
     contextUsagePercent: 0,
     latencyMs: 0,
   },
-  approvalDraft: "",
-  approvalConfidence: 0,
   approvalKind: null,
   pendingTool: null,
   lastUserInput: "",
   lastToolCalled: null,
-  memoryHeatmap: {},
   wsConnected: false,
   runsRefreshKey: 0,
   fleetScope: true,
@@ -136,8 +110,6 @@ export const useAgentStore = create<AgentStore>((set) => ({
   feedFocus: null,
   huntFocus: null,
 
-  setSkills: (skills) => set({ skills }),
-  setActiveSkill: (skill) => set({ activeSkill: skill }),
   setThreadId: (id) => set({ threadId: id }),
   setExecutionStatus: (status) => set({ executionStatus: status }),
   setGraphNodes: (nodes) => set({ graphNodes: nodes }),
@@ -169,10 +141,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
   clearTerminal: () => set({ terminalOutput: [] }),
   updateMetrics: (partial) =>
     set((state) => ({ metrics: { ...state.metrics, ...partial } })),
-  setApproval: (draft, confidence, meta) =>
+  setApproval: (meta) =>
     set({
-      approvalDraft: draft,
-      approvalConfidence: confidence,
       approvalKind: meta?.approvalKind ?? null,
       pendingTool: meta?.pendingTool ?? null,
     }),
@@ -180,18 +150,9 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setLastToolCalled: (tool) => set({ lastToolCalled: tool }),
   clearApproval: () =>
     set({
-      approvalDraft: "",
-      approvalConfidence: 0,
       approvalKind: null,
       pendingTool: null,
     }),
-  incrementMemoryAccess: (path) =>
-    set((state) => ({
-      memoryHeatmap: {
-        ...state.memoryHeatmap,
-        [path]: (state.memoryHeatmap[path] || 0) + 1,
-      },
-    })),
   setWsConnected: (connected) => set({ wsConnected: connected }),
   bumpRunsRefresh: () =>
     set((state) => ({ runsRefreshKey: state.runsRefreshKey + 1 })),
@@ -211,9 +172,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
         graphNodes: base.map((n) => ({ ...n, status: "idle" as NodeStatus, output: "" })),
         terminalOutput: [],
         metrics: { inputTokens: 0, outputTokens: 0, cost: 0, contextUsagePercent: 0, latencyMs: 0 },
-        approvalDraft: "",
-        approvalConfidence: 0,
-        approvalKind: null,
+                    approvalKind: null,
         pendingTool: null,
       };
     }),

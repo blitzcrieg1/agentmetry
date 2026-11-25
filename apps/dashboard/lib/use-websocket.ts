@@ -33,7 +33,6 @@ export function useWebSocket() {
   const updateMetrics = useAgentStore((s) => s.updateMetrics);
   const setGraphNodes = useAgentStore((s) => s.setGraphNodes);
   const appendStreamToken = useAgentStore((s) => s.appendStreamToken);
-  const incrementMemoryAccess = useAgentStore((s) => s.incrementMemoryAccess);
   const bumpRunsRefresh = useAgentStore((s) => s.bumpRunsRefresh);
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
@@ -75,9 +74,6 @@ export function useWebSocket() {
           }
           appendTerminal(`▶ Execution started: ${data.skill}`);
           if (data.context_sources) {
-            for (const src of data.context_sources) {
-              incrementMemoryAccess(src);
-            }
             appendTerminal(`Context loaded: ${data.context_sources.length} notes`);
           }
           break;
@@ -103,7 +99,7 @@ export function useWebSocket() {
 
         case "approval_required":
           setExecutionStatus("waiting_for_input");
-          setApproval(data.draft ?? "", data.confidence ?? 0, {
+          setApproval({
             approvalKind: data.approval_kind,
             pendingTool: data.pending_tool ?? null,
           });
@@ -210,7 +206,6 @@ export function useWebSocket() {
     updateMetrics,
     setGraphNodes,
     appendStreamToken,
-    incrementMemoryAccess,
     bumpRunsRefresh,
   ]);
 
