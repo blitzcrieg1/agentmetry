@@ -34,6 +34,24 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  - id: "google_api_key"
+    name: "Google API Key"
+    description: "Detects Google API keys (AIza prefix, 39 chars total)"
+    pattern: "\\b(AIza[0-9A-Za-z_\\-]{35})(?![0-9A-Za-z_\\-])"
+    category: "credentials"
+    severity: "critical"
+
+  # A GCP service-account key file is JSON containing "type": "service_account".
+  # scanner.py matches against json.dumps(arguments), so the quotes around the
+  # key and value arrive backslash-escaped (\"type\": \"service_account\"),
+  # hence the optional \? before each quote.
+  - id: "gcp_service_account_key"
+    name: "GCP Service Account Key"
+    description: "Detects the service_account type marker of a GCP service-account key file"
+    pattern: "(?i)\\btype\\\\?[\"']?\\s*:\\s*\\\\?[\"']?service_account\\b"
+    category: "credentials"
+    severity: "critical"
+
   - id: "huggingface_token"
     name: "Hugging Face Access Token"
     description: "Detects Hugging Face user and org access tokens (hf_…)"

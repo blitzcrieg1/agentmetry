@@ -40,6 +40,34 @@ def test_dlp_scan_github_pat():
     assert verdict.match.rule_id == "github_pat"
 
 
+def test_dlp_scan_google_api_key():
+    # Fake key, not a real credential.
+    args = {"command": "curl 'https://maps.googleapis.com/maps/api/geocode/json?key=AIzaSyA1234567890abcdefghijklmnopqrstuv'"}  # gitleaks:allow
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "google_api_key"
+
+
+def test_dlp_scan_google_api_key_benign_near_miss():
+    # Right prefix, but too short to be a Google API key.
+    args = {"command": "echo AIzaShortString"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_gcp_service_account_key():
+    args = {"content": '{"type": "service_account", "project_id": "demo-project"}'}
+    verdict = scan("write_file", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "gcp_service_account_key"
+
+
+def test_dlp_scan_gcp_service_account_benign_near_miss():
+    args = {"content": '{"type": "user_account", "name": "service account docs"}'}
+    verdict = scan("write_file", args)
+    assert verdict.matched is False
+
+
 def test_dlp_scan_huggingface_token():
     args = {"command": "huggingface-cli login --token hf_abcdefghijklmnopqrstuvwxyz1234567890AB"}
     verdict = scan("run_command", args)
