@@ -74,6 +74,7 @@ sequenceDiagram
 | `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
 | `subagent-swarm-burst` | high | ≥5 subagent starts in one session (Kimi AgentSwarm, Qwen Agent Teams) |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
+| `repeated-denials` | high | ≥4 denied tool calls in one session: the burst shape of an agent probing a guardrail for a way through. Counts `tool_called` denials only, aggregated into one detection; three or fewer stays silent |
 | `encoded-command-download` | critical | Remote code fetched and executed: a raw-IP download, or a fetch piped into an interpreter (`curl … \| bash`). T1105, plus T1027 when base64-encoded |
 | `pr-merged-without-review` | critical | A pull request merged with no preceding read of its diff (T1195.002) |
 | `untrusted-input-then-risky-action` | high | Session ingested externally-authored content (a GitHub issue, a fetched page) → then performed a risky action |
