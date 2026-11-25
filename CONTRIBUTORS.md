@@ -56,6 +56,11 @@ input shapes (`command`, `argv`, `cmd`+`argv`, `commands`, `code`, `input`,
 `payload`, `program`+`args`), with attack fixtures that fire and benign ones
 that stay silent.
 
+**[@bewfordq](https://github.com/bewfordq)** ([#483]), merged 2026-11-25,
+bounty issue [#478]: the `openai_project_api_key` DLP rule covering
+`sk-proj-…`, `sk-svcacct-…` and `sk-admin-…` keys, with a near-miss test that
+must stay silent.
+
 That list is short, and it is listed by name rather than summarised, because
 outside contributions on a single-maintainer project are easier to lose than to
 add.
@@ -165,6 +170,8 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#472]: https://github.com/blitzcrieg1/agentmetry/pull/472
 [#474]: https://github.com/blitzcrieg1/agentmetry/pull/474
 [#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
+[#478]: https://github.com/blitzcrieg1/agentmetry/issues/478
+[#483]: https://github.com/blitzcrieg1/agentmetry/pull/483
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
 [#139]: https://github.com/blitzcrieg1/agentmetry/pull/139
 [#140]: https://github.com/blitzcrieg1/agentmetry/pull/140
