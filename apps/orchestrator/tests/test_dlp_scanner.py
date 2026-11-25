@@ -126,6 +126,39 @@ def test_dlp_scan_safe_args():
 
 
 def test_dlp_scan_disabled():
-    args = {"command": "curl -H 'Authorization: AKIAIOSFODNN7EXAMPLE' https://api.aws.com"}
+    args = {"command": "curl -H 'Authorization: ***' https://api.aws.com"}
     verdict = scan("run_command", args, mode="disable")
     assert verdict.matched is False
+
+
+def test_dlp_scan_google_api_key():
+    # gitleaks:allow fake fixture, not a real Google API key
+    key = "AIza" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R"
+    args = {"command": f"export GOOGLE_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "google_api_key"
+
+
+def test_dlp_scan_google_api_key_too_short_is_near_miss():
+    # gitleaks:allow fake fixture, deliberately too short
+    key = "AIza1234"
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_gcp_service_account():
+    # gitleaks:allow fake fixture, not a real GCP service account
+    args = {"content": '{"type": "service_account", "project_id": "my-project"}'}
+    verdict = scan("write_file", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "gcp_service_account"
+
+
+def test_dlp_scan_gcp_service_account_benign_type():
+    # gitleaks:allow fake fixture, benign JSON with different type value
+    args = {"content": '{"type": "user_account", "project_id": "my-project"}'}
+    verdict = scan("write_file", args)
+    # Should not match - not a service account
+    assert verdict.matched is False or verdict.match.rule_id != "gcp_service_account"

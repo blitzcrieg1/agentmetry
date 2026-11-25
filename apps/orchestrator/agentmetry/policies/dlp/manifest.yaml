@@ -192,3 +192,17 @@ rules:
     pattern: "(?i)\\bsk-[a-zA-Z0-9]{20,}\\b"
     category: "credentials"
     severity: "critical"
+
+  - id: "google_api_key"
+    name: "Google API Key"
+    description: "Detects Google API keys (AIza...)"
+    pattern: "\\bAIza[0-9A-Za-z_-]{35}\\b"
+    category: "credentials"
+    severity: "critical"
+
+  - id: "gcp_service_account"
+    name: "GCP Service Account Key"
+    description: "Detects GCP service account JSON key markers"
+    pattern: "(?i)\\\"type\\\"\\s*:\\s*\\\"service_account\\\""
+    category: "credentials"
+    severity: "critical"
