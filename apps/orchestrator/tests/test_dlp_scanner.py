@@ -56,14 +56,22 @@ def test_dlp_scan_google_api_key_benign_near_miss():
 
 
 def test_dlp_scan_gcp_service_account_key():
-    args = {"content": '{"type": "service_account", "project_id": "demo-project"}'}
+    # Deliberately invalid key body, with the structure of a Google JSON key.
+    args = {
+        "content": (
+            r'{"type": "service_account", "private_key": '
+            r'"-----BEGIN PRIVATE KEY-----\nsynthetic-test-only\n-----END PRIVATE KEY-----\n"}'
+        ),
+    }
     verdict = scan("write_file", args)
-    assert verdict.matched is True
-    assert verdict.match.rule_id == "gcp_service_account_key"
+    assert [match.rule_id for match in verdict.matches] == ["private_key"]
+    assert verdict.match.severity == "critical"
 
 
 def test_dlp_scan_gcp_service_account_benign_near_miss():
-    args = {"content": '{"type": "user_account", "name": "service account docs"}'}
+    args = {
+        "content": '{"type": "service_account", "project_id": "demo-project", "private_key_id": "example-id"}'
+    }
     verdict = scan("write_file", args)
     assert verdict.matched is False
 

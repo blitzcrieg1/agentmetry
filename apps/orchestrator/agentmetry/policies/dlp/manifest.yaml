@@ -41,17 +41,6 @@ rules:
     category: "credentials"
     severity: "critical"
 
-  # A GCP service-account key file is JSON containing "type": "service_account".
-  # scanner.py matches against json.dumps(arguments), so the quotes around the
-  # key and value arrive backslash-escaped (\"type\": \"service_account\"),
-  # hence the optional \? before each quote.
-  - id: "gcp_service_account_key"
-    name: "GCP Service Account Key"
-    description: "Detects the service_account type marker of a GCP service-account key file"
-    pattern: "(?i)\\btype\\\\?[\"']?\\s*:\\s*\\\\?[\"']?service_account\\b"
-    category: "credentials"
-    severity: "critical"
-
   - id: "huggingface_token"
     name: "Hugging Face Access Token"
     description: "Detects Hugging Face user and org access tokens (hf_…)"
@@ -96,7 +85,7 @@ rules:
 
   - id: "private_key"
     name: "Private Key Block"
-    description: "Detects PEM private key material (RSA/EC/OpenSSH/PGP)"
+    description: "Detects PEM private key markers, including the PKCS#8 key in Google Cloud service-account JSON"
     pattern: "-----BEGIN (?:RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----"
     category: "credentials"
     severity: "critical"

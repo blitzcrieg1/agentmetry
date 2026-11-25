@@ -16,12 +16,27 @@ These are small, self-contained, and testable. The best way in:
 | A **hook adapter** for a new IDE | [docs/agentmetry-external-ingest.md](docs/agentmetry-external-ingest.md) |
 | A **Sigma rule** | [docs/integrations/sigma/](docs/integrations/sigma/) |
 
-**The built-in detection ruleset is frozen for now.** `rules.py`, `traits.py`,
-`engine.py`, `core/audit/mitre.py` and `policies/detection/manifest.yaml` are
-hashed into a published fingerprint, and the "green weeks against an unchanged
-ruleset" claim depends on it not moving. A new rule or a change to an existing
-one is welcome as an issue first, with the event sequence it should catch;
-it lands with the next planned ruleset change rather than on its own.
+Changes to the built-in rules can change the published ruleset fingerprint.
+Describe the intended detection change in the issue or PR and include the
+fixtures that demonstrate it.
+
+## Detection and DLP bounty program
+
+[Issue #454](https://github.com/blitzcrieg1/agentmetry/issues/454) describes the
+standing program. To claim work, comment `claim` on the individual issue.
+[Discussion #476](https://github.com/blitzcrieg1/agentmetry/discussions/476) has
+starter tasks. Use one task per PR and link the task issue it resolves.
+
+| Contribution | Evidence to include |
+|---|---|
+| Detection rule or detection behavior change | A case that fires, a benign case that stays quiet, and expectations in `corpus.yaml`. Use ATT&CK or ATLAS tags when supported by the evidence. Keep the Sigma export working where applicable. |
+| DLP pattern | A scanner test with a synthetic matching value and a realistic benign near-miss. |
+| Corpus-only task | The new synthetic sessions and their expectations in `corpus.yaml`. |
+
+Run `agentmetry benchmark` and the full test suite. Refresh the README figures
+if the test or corpus counts change. Accepted work earns contributor credit.
+Paid rewards follow separately announced funding rounds and their published
+terms.
 
 ## Development setup
 
