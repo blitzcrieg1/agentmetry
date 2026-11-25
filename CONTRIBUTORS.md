@@ -37,10 +37,27 @@ thing this project cares most about in a detection contribution.
 [`e9a1b9c`](https://github.com/blitzcrieg1/agentmetry/commit/e9a1b9c), a neutral
 Windows path in an ingest client test fixture.
 
-That is the complete list of merged external code. It is short, and it is listed
-by name rather than summarised, because two outside contributions on a
-single-maintainer project are two more than none and both are easier to lose
-than to add.
+**[@surendraSinghKamboj](https://github.com/surendraSinghKamboj)** ([#465],
+[#468]), merged 2026-11-25: two DLP rules for Google Cloud credentials (the
+`AIza…` API key shape and the service-account key marker), each with a
+near-miss test that must stay silent, plus three benign corpus sessions (a CI
+deploy sourcing `.env`, operator `kubectl get secrets`, a bulk `git mv`
+rename).
+
+**[@rmanm19](https://github.com/rmanm19)** ([#469]), merged 2026-11-25: three
+classifier-bypass fixes, shell-quoted downloaders (`c'u'rl … | sh`), decode-pipes
+into a shell (`base64 -d`, `openssl base64 -d`, `xxd -r`), and preceding flags
+before `-c`/`-e` no longer exempting an inline script.
+
+**[@NSudeep-Rust](https://github.com/NSudeep-Rust)** ([#470]), merged
+2026-11-25, bounty issue [#433]: MCP command extraction across eight alternative
+input shapes (`command`, `argv`, `cmd`+`argv`, `commands`, `code`, `input`,
+`payload`, `program`+`args`), with attack fixtures that fire and benign ones
+that stay silent.
+
+That list is short, and it is listed by name rather than summarised, because
+outside contributions on a single-maintainer project are easier to lose than to
+add.
 
 ### In flight
 
@@ -140,6 +157,11 @@ and they stay open with the original critique attached, because an issue that
 records why the first design was wrong is worth more than a tidy tracker.
 
 [#30]: https://github.com/blitzcrieg1/agentmetry/pull/30
+[#465]: https://github.com/blitzcrieg1/agentmetry/pull/465
+[#468]: https://github.com/blitzcrieg1/agentmetry/pull/468
+[#469]: https://github.com/blitzcrieg1/agentmetry/pull/469
+[#470]: https://github.com/blitzcrieg1/agentmetry/pull/470
+[#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
 [#139]: https://github.com/blitzcrieg1/agentmetry/pull/139
 [#140]: https://github.com/blitzcrieg1/agentmetry/pull/140
