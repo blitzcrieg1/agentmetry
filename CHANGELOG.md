@@ -15,6 +15,13 @@ separately (currently `1.2.0`) and changes additively.
   shape) and `gcp_service_account_key` (the `"type": "service_account"` marker of a
   key file), both `credentials` / `critical`.
 
+### Fixed
+
+- **Classifier bypasses closed.** Shell-quoted downloaders (`c'u'rl … | sh`) are
+  caught by PIPE_TO_SHELL, decode-pipes (`base64 -d`, `openssl base64 -d`,
+  `xxd -r` piped to a shell) tag `encoded_cmd` and `risky_exec`, and preceding
+  flags before `-c`/`-e` no longer exempt an inline script (#458, #459, #463).
+
 ## [0.14.0] - 2026-11-24
 
 This release opens GitHub Sponsors, documents the Hugging Face URL-form
