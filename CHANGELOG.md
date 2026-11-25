@@ -16,6 +16,12 @@ separately (currently `1.2.0`) and changes additively.
   rule's alphanumeric run at the first hyphen, so those leaks produced no finding
   (#478, #482).
 
+### Fixed
+
+- **Google Cloud service-account examples stay quiet.** The DLP pack uses the
+  existing `private_key` rule for the PEM marker in Google Cloud key JSON. A
+  service-account type and key ID alone no longer trigger a critical match.
+
 ### Removed
 
 - **Dead state from the removed email runtime in the dashboard.** The store no
@@ -26,10 +32,10 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [0.15.0] - 2026-11-25
 
-This release is a community release: four external contributors landed five
-pull requests in one day under the bounty program, growing the detection
-corpus from 90 to 104 cases while keeping zero misses and zero false
-positives (15 rules covered, 55 expected firings, 2980 tests).
+This community release includes six merged pull requests credited to three
+external contributors. The detection corpus grew from 90 to 104 cases, with
+zero misses and zero false positives (15 rules covered, 55 expected firings,
+2980 tests).
 
 ### Added
 
