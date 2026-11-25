@@ -845,3 +845,32 @@ cases:
     note: >
       The paired attack. A ForEach-Object block that reads `$_.Value` is a
       dump.
+
+  - name: CI deploy script sources .env and rolls out
+    session: benign_ci_deploy_reads_env.jsonl
+    expect: []
+    benign: true
+    note: >
+      A deploy script sources `.env.staging` and runs `deploy.sh`, then waits on
+      a rollout. A naive rule expects a credential read followed by anything
+      that talks to a cluster to be exfiltration. Here the .env feeds the
+      operator's own deploy tooling and nothing leaves for a foreign host.
+
+  - name: operator lists and restarts around Kubernetes secrets
+    session: benign_operator_kubectl_get_secrets.jsonl
+    expect: []
+    benign: true
+    note: >
+      `kubectl get secrets` and `describe secret` by the operator who owns the
+      namespace, then a rollout restart. Looks like credential harvesting; it is
+      routine rotation work. No value is printed to a foreign host and no
+      egress step follows.
+
+  - name: bulk rename across a refactor
+    session: benign_bulk_rename_refactor.jsonl
+    expect: []
+    benign: true
+    note: >
+      Four `git mv` calls and a `sed -i` across the tree. Many file-changing
+      calls in a short window can look like destructive-delete-burst, but a
+      rename removes nothing: every file still exists under its new name.

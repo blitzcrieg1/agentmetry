@@ -9,6 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Three more benign corpus sessions.** A CI deploy that sources `.env`, an operator
+  working with `kubectl get secrets`, and a bulk `git mv` rename. Each pins a normal
+  working day that looks alarming to a naive rule; all three stay silent.
+
 ## [0.14.0] - 2026-11-24
 
 This release opens GitHub Sponsors, documents the Hugging Face URL-form
