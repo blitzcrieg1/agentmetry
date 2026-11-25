@@ -38,11 +38,12 @@ thing this project cares most about in a detection contribution.
 Windows path in an ingest client test fixture.
 
 **[@surendraSinghKamboj](https://github.com/surendraSinghKamboj)** ([#465],
-[#468]), merged 2026-11-25: two DLP rules for Google Cloud credentials (the
-`AIza…` API key shape and the service-account key marker), each with a
-near-miss test that must stay silent, plus three benign corpus sessions (a CI
-deploy sourcing `.env`, operator `kubectl get secrets`, a bulk `git mv`
-rename).
+[#468], [#472], [#474]), merged 2026-11-25: two DLP rules for Google Cloud
+credentials (the `AIza…` API key shape and the service-account key marker),
+each with a near-miss test that must stay silent; three benign corpus sessions
+(a CI deploy sourcing `.env`, operator `kubectl get secrets`, a bulk `git mv`
+rename); host-scoped benchmark coverage that gave `host-subagent-swarm-burst`
+its corpus case; and the `dashboard --dev-server` localhost sign-in link fix.
 
 **[@rmanm19](https://github.com/rmanm19)** ([#469]), merged 2026-11-25: three
 classifier-bypass fixes, shell-quoted downloaders (`c'u'rl … | sh`), decode-pipes
@@ -161,6 +162,8 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#468]: https://github.com/blitzcrieg1/agentmetry/pull/468
 [#469]: https://github.com/blitzcrieg1/agentmetry/pull/469
 [#470]: https://github.com/blitzcrieg1/agentmetry/pull/470
+[#472]: https://github.com/blitzcrieg1/agentmetry/pull/472
+[#474]: https://github.com/blitzcrieg1/agentmetry/pull/474
 [#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
 [#139]: https://github.com/blitzcrieg1/agentmetry/pull/139

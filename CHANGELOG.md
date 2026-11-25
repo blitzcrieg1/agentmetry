@@ -9,41 +9,42 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-25
+
+This release is a community release: four external contributors landed five
+pull requests in one day under the bounty program, growing the detection
+corpus from 90 to 104 cases while keeping zero misses and zero false
+positives (15 rules covered, 55 expected firings, 2980 tests).
+
+### Added
+
+- **DLP rules for Google Cloud credentials.** `google_api_key` (the `AIza…` API key
+  shape) and `gcp_service_account_key` (the `"type": "service_account"` marker of a
+  key file), both `credentials` / `critical` (#465).
+- **Benign corpus sessions.** A CI deploy that sources `.env`, an operator
+  working with `kubectl get secrets`, a bulk `git mv` rename, and a host-scoped
+  subagent-swarm attack case (#468, #472).
+
 ### Fixed
 
 - **The benchmark could never cover a host-scoped rule.** It fed each recorded case to
   the session rules only, as one session. It now scopes as the live pipeline does:
   session rules per `correlation_id`, host rules per `host_id`. That gives
   `host-subagent-swarm-burst` its corpus case (a swarm that restarts its session between
-  bursts), and the benchmark reports 15 rules covered. Refs #36.
+  bursts), and the benchmark reports 15 rules covered. Refs #36 (#472).
 - **`agentmetry dashboard --dev-server` signed in on the wrong host.** The link was printed on
   `127.0.0.1`, so the cookie was set for that site, while the Next dev dashboard on
   `localhost:3000` calls the API as `localhost` and got a 401 on every request. A loopback link
-  is now printed on `localhost` in dev-server mode. Refs #301.
-
-### Added
-
-- **DLP rules for Google Cloud credentials.** `google_api_key` (the `AIza…` API key
-  shape) and `gcp_service_account_key` (the `"type": "service_account"` marker of a
-  key file), both `credentials` / `critical`.
-- **Three more benign corpus sessions.** A CI deploy that sources `.env`, an operator
-  working with `kubectl get secrets`, and a bulk `git mv` rename. Each pins a normal
-  working day that looks alarming to a naive rule; all three stay silent.
-
-### Fixed
-
+  is now printed on `localhost` in dev-server mode. Refs #301 (#474).
 - **Classifier bypasses closed.** Shell-quoted downloaders (`c'u'rl … | sh`) are
   caught by PIPE_TO_SHELL, decode-pipes (`base64 -d`, `openssl base64 -d`,
   `xxd -r` piped to a shell) tag `encoded_cmd` and `risky_exec`, and preceding
   flags before `-c`/`-e` no longer exempt an inline script (#458, #459, #463).
-
-### Fixed
-
 - **MCP command extraction covers alternative input shapes.** Commands are
   extracted from nested and alternative MCP argument shapes (`argv`,
   `cmd`+`argv`, `command`, `commands`, `code`, `input`, `payload`,
   `program`+`args`), with attack corpus fixtures that fire and benign ones
-  that stay silent (#433).
+  that stay silent (#433, #470).
 
 ## [0.14.0] - 2026-11-24
 
