@@ -2,6 +2,8 @@
 
 <!-- What changed, why it was wrong or missing before, and what it cost. Link the issue. -->
 
+- [ ] If this fixes an open issue, the PR body says `Closes #N` (or `Refs #N` if partial), so the issue closes on merge instead of going stale
+
 ## Checks
 
 - [ ] `python -m pytest -q` and `python -m ruff check agentmetry tests` pass (from `apps/orchestrator`)
