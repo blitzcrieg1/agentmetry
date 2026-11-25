@@ -24,16 +24,12 @@ const NODE_LABELS: Record<string, string> = {
   fetch: "Fetch Thread",
   draft: "Draft Reply",
   deliver: "File Draft",
-  inbox_fetch: "Fetch Inbox",
   triage: "AI Triage",
   archive: "Archive",
   research: "Research",
   analyzer: "Analyzer",
   classify_thread: "Classify",
-  load_client_sop: "Client SOP",
   load_generic_sop: "Reply SOP",
-  escalate_draft: "Escalate",
-  replan_fetch: "Re-fetch",
 };
 
 /** Lucide icon names passed to GraphNode */
@@ -54,14 +50,10 @@ export const NODE_ICONS: Record<string, string> = {
   fetch: "MailOpen",
   draft: "PenLine",
   deliver: "Send",
-  inbox_fetch: "Mail",
   triage: "Sparkles",
   archive: "Archive",
   classify_thread: "GitBranch",
-  load_client_sop: "BookOpen",
   load_generic_sop: "BookMarked",
-  escalate_draft: "AlertTriangle",
-  replan_fetch: "RefreshCw",
 };
 
 export function buildGraphNodes(nodeIds: string[]): GraphNodeState[] {
@@ -73,25 +65,12 @@ export function buildGraphNodes(nodeIds: string[]): GraphNodeState[] {
   }));
 }
 
-export function defaultInputForSkill(skill: { id?: string; name?: string; default_input?: string }): string {
-  if (skill.default_input) return skill.default_input;
-  const id = skill.id || skill.name || "";
-  if (id === "audit_demo") return "00-Inbox/audit-demo-note.md";
-  return "Describe what the agent should do...";
-}
-
-/** Richer visual pipelines than raw YAML node lists (display only). */
-const VISUAL_PIPELINES: Record<string, string[]> = {};
-
 /** Map backend node ids → dashboard visual node ids. */
 export const NODE_UPDATE_ALIASES: Record<string, string[]> = {
-  scan: ["inbox_fetch", "triage"],
   finalize: ["archive"],
 };
 
 export function displayNodesForSkill(skill: { nodes?: string[]; id?: string; name?: string }): string[] {
-  const id = skill.id || skill.name || "";
-  if (VISUAL_PIPELINES[id]) return VISUAL_PIPELINES[id];
   return nodesForSkill(skill);
 }
 
@@ -101,18 +80,6 @@ export function resolveNodeUpdates(
   output?: string
 ): Array<{ id: string; status: NodeStatus; output?: string }> {
   const targets = NODE_UPDATE_ALIASES[nodeId] || [nodeId];
-  if (nodeId === "scan" && status === "running") {
-    return [
-      { id: "inbox_fetch", status: "running", output },
-      { id: "triage", status: "running" },
-    ];
-  }
-  if (nodeId === "scan" && status === "completed") {
-    return [
-      { id: "inbox_fetch", status: "completed", output: "Inbox loaded" },
-      { id: "triage", status: "completed", output },
-    ];
-  }
   return targets.map((id) => ({ id, status, output }));
 }
 
