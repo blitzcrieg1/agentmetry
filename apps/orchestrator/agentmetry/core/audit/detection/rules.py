@@ -640,6 +640,61 @@ def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Det
     return detections
 
 
+#: How many denied tool calls in one session make a burst worth reporting.
+#: Four is the bar #1 sets: one denial is a mis-click or a stale permission,
+#: two or three is an agent retrying something its operator has not noticed
+#: yet, and four is a pattern no ordinary session produces by accident.
+REPEATED_DENIALS_MIN = 4
+
+
+def rule_repeated_denials(events: list[dict[str, Any]]) -> list[Detection]:
+    """Four or more denied tool calls in one session: guardrail probing.
+
+    An agent that keeps calling tools the guardrail keeps denying is often
+    probing the guardrail itself — varying the ask to find the phrasing,
+    tool, or path the policy lets through (#1). A single denial is noise:
+    permissions are stale, operators mis-click, and honest retries happen.
+    The burst is the signal, so the rule counts `tool_called` events whose
+    outcome is `denied` across the whole session and aggregates them into
+    one detection, rather than firing per denial and flooding the feed.
+
+    Only `tool_called` denials count. An `approval_response` denial is a
+    human answering a prompt, which `approval-denied-then-executed` already
+    covers with a stronger claim; counting both would double-report the
+    sessions that rule exists for.
+    """
+    denied = [
+        event
+        for event in events
+        if _action_type(event) == "tool_called" and _outcome(event) == "denied"
+    ]
+    if len(denied) < REPEATED_DENIALS_MIN:
+        return []
+
+    tools = sorted({_tool_qualified(e) for e in denied if _tool_qualified(e)})
+    tool_phrase = ", ".join(tools[:3]) if tools else "tool calls"
+    if len(tools) > 3:
+        tool_phrase += f" and {len(tools) - 3} more"
+    return [
+        Detection(
+            rule_id="repeated-denials",
+            title="Repeated denied tool calls",
+            severity="high",
+            summary=(
+                f"{len(denied)} tool calls were denied in this session "
+                f"({tool_phrase}). A burst of denials is the shape of an agent "
+                "probing a guardrail for a way through, not of ordinary work."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0005"],
+            technique_ids=sorted({_technique_id(e) for e in denied if _technique_id(e)}),
+            event_ids=[_event_id(e) for e in denied],
+            first_seen_utc=_ts(denied[0]),
+            last_seen_utc=_ts(denied[-1]),
+        )
+    ]
+
+
 def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detection]:
     """A command pulls a payload from a raw IP, often via an obfuscated one-liner.
 
@@ -1405,6 +1460,7 @@ REGISTRY = [
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
     rule_approval_denied_then_executed,
+    rule_repeated_denials,
     rule_encoded_command_download,
     rule_destructive_delete_burst,
     rule_off_hours_activity,
@@ -1454,6 +1510,7 @@ BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "hf-token-exposed-in-command",
     "discovery-then-collect",
     "approval-denied-then-executed",
+    "repeated-denials",
     "encoded-command-download",
     "destructive-delete-burst",
     "off-hours-activity",
