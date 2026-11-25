@@ -113,6 +113,26 @@ def test_an_ordinary_command_in_block_mode_is_untouched(run_hook):
     assert "classification" not in posted[-1]["tool"]
 
 
+@pytest.mark.parametrize("bound", ["depth", "decodes", "bytes"])
+def test_mcp_extraction_limits_ask_in_block_mode(run_hook, bound):
+    args = {"code": "git status"}
+    if bound == "depth":
+        for _ in range(33):
+            args = {"input": args}
+    elif bound == "decodes":
+        encoded = args
+        for _ in range(9):
+            encoded = json.dumps(encoded)
+        args = {"payload": encoded}
+    else:
+        args = {"code": "echo '" + "界 " * 2200 + "'"}
+    data = {"session_id": "s1", "tool_name": "mcp__shell__execute", "tool_input": args}
+    out, posted = run_hook("claude", "PreToolUse", data)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+    assert posted[-1]["reason"] == "tool_policy:classification_partial"
+    assert posted[-1]["tool"]["classification"] == "partial"
+
+
 # --- long runs: the quadratic patterns in the frozen files --------------------
 #
 # ENV_FILE and PRIVATE_KEY_PATH open with an unanchored `[\w.~$-]*[/\\]`. On one

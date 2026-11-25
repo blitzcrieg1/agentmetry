@@ -80,13 +80,11 @@ try:
     from agentmetry.core.audit.atlas import attach_atlas
     from agentmetry.core.audit.detection.traits import (
         classify_tool_call,
-        structured_command,
         tool_kind,
     )
     from agentmetry.core.audit.mitre import get_mitre_mapping
 except ImportError:
     classify_tool_call = None
-    structured_command = None
     tool_kind = None
     get_mitre_mapping = None
     attach_atlas = None
@@ -98,7 +96,7 @@ REDACT_KEYS = frozenset({
 
 COMMAND_MAX_LEN = 4096
 
-#: How much of a command the hook classifies. Storage keeps COMMAND_MAX_LEN;
+#: How many UTF-8 bytes of a command the hook classifies. Storage keeps COMMAND_MAX_LEN;
 #: classification used to see only that same 4,096-character prefix, so a
 #: credential read and an upload at the end of an ordinary long build script
 #: carried no traits and fired nothing (audit PUB-01, 2026-10-30). The whole
@@ -469,21 +467,222 @@ def _log_full_args_enabled() -> bool:
     return False
 
 
+MCP_MAX_DEPTH = 32
+MCP_MAX_DECODES = 8
+MCP_MAX_NODES = 2000
+_MCP_KEY_TRANSLATION = str.maketrans("", "", "_-. ")
+
+# Keep the existing command vocabulary, but apply the hook's byte budget and
+# per-branch decode limit here rather than changing the frozen trait classifier.
+_MCP_COMMAND_KEYS = frozenset({
+    "command", "cmd", "cmdline", "commandline", "script", "shell",
+    "bash", "sh", "zsh", "powershell", "pwsh", "stdin", "stdintext",
+})
+_MCP_COMMAND_LIST_KEYS = frozenset({"commands", "cmds", "scripts"})
+_MCP_PROGRAM_KEYS = frozenset({"program", "executable", "bin"})
+_MCP_ARG_KEYS = frozenset({"args", "argv", "arguments", "subcommand", "params"})
+_MCP_PROSE_KEYS = frozenset({
+    "content", "text", "body", "data", "query", "prompt", "message", "messages",
+    "description", "summary", "comment", "note", "title", "markdown", "html",
+    "transcript", "transcripts", "postscript", "newstring", "oldstring",
+    "codecontent", "instructions",
+})
+_MCP_SHELL_LANGUAGES = frozenset({
+    "", "shell", "bash", "sh", "zsh", "dash", "fish", "powershell", "pwsh", "cmd", "bat",
+})
+
+
+def _mcp_key(key: Any) -> str:
+    return str(key).lower().translate(_MCP_KEY_TRANSLATION)
+
+
+def _mcp_command_key(key: str) -> bool:
+    if key in _MCP_COMMAND_KEYS:
+        return True
+    return (
+        key not in _MCP_ARG_KEYS | _MCP_PROSE_KEYS
+        and key.endswith(("command", "cmd", "script"))
+        and not key.endswith(("transcript", "postscript", "javascript", "typescript"))
+    )
+
+
+def _byte_excerpt(text: str, limit: int) -> tuple[str, bool]:
+    """Keep a UTF-8 head and tail without encoding an unbounded string."""
+    prefix = text[: limit + 1].encode("utf-8", errors="replace")
+    if len(text) <= limit and len(prefix) <= limit:
+        return text, False
+    if limit < 3:
+        return prefix[:limit].decode("utf-8", errors="ignore"), True
+    head = (limit - 1) // 2
+    tail = limit - 1 - head
+    return (
+        prefix[:head].decode("utf-8", errors="ignore")
+        + "\n"
+        + text[-tail:].encode("utf-8", errors="replace")[-tail:].decode("utf-8", errors="ignore"),
+        True,
+    )
+
+
+def _mcp_command(args: Any) -> tuple[str, bool]:
+    """Walk MCP command contexts with shared text/node and per-branch JSON bounds."""
+    found: list[str] = []
+    seen: set[str] = set()
+    remaining = CLASSIFY_MAX_LEN
+    nodes = MCP_MAX_NODES
+    partial = False
+
+    def visit(depth: int) -> bool:
+        nonlocal nodes, partial
+        if depth > MCP_MAX_DEPTH or nodes <= 0:
+            partial = True
+            return False
+        nodes -= 1
+        return True
+
+    def take(text: str) -> None:
+        nonlocal remaining, partial
+        # Strip only a bounded copy: even one candidate can be a huge script.
+        text, skipped = _byte_excerpt(text, max(remaining - bool(found), 0))
+        partial = partial or skipped
+        text = text.strip()
+        if not text or text in seen:
+            return
+        remaining -= len(text.encode("utf-8", errors="replace")) + bool(found)
+        seen.add(text)
+        found.append(text)
+
+    def words(value: Any, depth: int, out: list[str], budget: list[int]) -> None:
+        nonlocal partial
+        if not visit(depth):
+            return
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                if nodes <= 0:
+                    partial = True
+                    break
+                words(item, depth + 1, out, budget)
+        elif isinstance(value, (str, int, float, bool)):
+            text = str(value).lower() if isinstance(value, bool) else str(value)
+            text, skipped = _byte_excerpt(text, max(budget[0] - bool(out), 0))
+            partial = partial or skipped
+            if text:
+                budget[0] -= len(text.encode("utf-8", errors="replace")) + bool(out)
+                out.append(text)
+
+    def walk(node: Any, depth: int, decodes: int = 0, command: bool = False) -> None:
+        nonlocal partial
+        if not visit(depth):
+            return
+        if isinstance(node, str):
+            # Bound JSON before parsing. A truncated JSON object is not decoded
+            # as a different command, and a parser recursion failure is partial.
+            text, oversized = _byte_excerpt(node, CLASSIFY_MAX_LEN)
+            stripped = text.lstrip()
+            if stripped[:1] in ("{", "[", '"'):
+                if oversized or decodes >= MCP_MAX_DECODES:
+                    partial = True
+                    return
+                try:
+                    decoded = json.loads(stripped)
+                except RecursionError:
+                    partial = True
+                    return
+                except ValueError:
+                    if command:
+                        take(node)
+                    return
+                walk(decoded, depth + 1, decodes + 1, command)
+            elif command:
+                take(node)
+            return
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                if nodes <= 0:
+                    partial = True
+                    break
+                walk(item, depth + 1, decodes, command)
+            return
+        if not isinstance(node, dict):
+            return
+
+        # Avoid materializing all keys of a potentially enormous input.
+        items = []
+        for key, value in node.items():
+            if len(items) >= nodes:
+                partial = True
+                break
+            items.append((_mcp_key(key), value))
+        arg_items = [(key, value) for key, value in items if key in _MCP_ARG_KEYS]
+        program = next((value for key, value in items if (
+            key in _MCP_PROGRAM_KEYS or (key in ("cmd", "command") and arg_items)
+        ) and isinstance(value, str) and value.strip()), None)
+        if program is not None:
+            out: list[str] = []
+            budget = [max(remaining - bool(found), 0)]
+            words(program, depth + 1, out, budget)
+            for _, value in arg_items:
+                words(value, depth + 1, out, budget)
+            take(" ".join(out))
+
+        language = next((value for key, value in items if key == "language"), "")
+        for key, value in items:
+            if nodes <= 0:
+                partial = True
+                break
+            if key in _MCP_PROSE_KEYS:
+                continue
+            if program is not None and (
+                key in _MCP_PROGRAM_KEYS | _MCP_ARG_KEYS or key in ("cmd", "command")
+            ):
+                continue
+            if key == "argv" or (_mcp_command_key(key) and isinstance(value, (list, tuple))):
+                out = []
+                words(value, depth + 1, out, [max(remaining - bool(found), 0)])
+                take(" ".join(out))
+            elif key in _MCP_COMMAND_LIST_KEYS and isinstance(value, (list, tuple)):
+                if not visit(depth + 1):
+                    continue
+                for item in value:
+                    if nodes <= 0:
+                        partial = True
+                        break
+                    if isinstance(item, (list, tuple)):
+                        out = []
+                        words(item, depth + 2, out, [max(remaining - bool(found), 0)])
+                        take(" ".join(out))
+                    else:
+                        walk(item, depth + 2, decodes, True)
+            elif key == "code" and isinstance(value, str):
+                if visit(depth + 1):
+                    lang = _mcp_key(language or "")
+                    if lang in _MCP_SHELL_LANGUAGES:
+                        take(value)
+                    else:
+                        body, skipped = _byte_excerpt(value, max(remaining - len(lang) - 4, 0))
+                        partial = partial or skipped
+                        body = body.replace("'", " ").replace('"', " ").replace("`", " ")
+                        take(f"{lang} -c {body}")
+            else:
+                context = _mcp_command_key(key) or key in _MCP_COMMAND_LIST_KEYS
+                walk(value, depth + 1, decodes, context)
+
+    walk(args, 0)
+    return "\n".join(found), partial
+
+
 def extract_command_detail(args: Any, qualified: str = "") -> tuple[str | None, bool]:
     """Command text from tool args, and whether structured extraction hit a bound.
 
-    A top-level `command`, `cmd`, `script` or `CommandLine` string wins, as it
-    always has. For a tool that is not a file tool, a structured input is then
+    A top-level `command`, `cmd`, `script` or `CommandLine` string wins, bounded
+    to CLASSIFY_MAX_LEN UTF-8 bytes. For a tool that is not a file tool, an input is then
     searched for a command (argv lists, a program with its arguments, `commands`,
     `code`, nested inputs, JSON in a string): an MCP tool that runs shell
-    commands passed any other way was recorded and classified as nothing (#433,
-    `traits.structured_command`). File tools keep returning their path.
+    commands passed any other way was recorded and classified as nothing (#433).
+    File tools keep returning their path.
     """
     partial = False
     if isinstance(args, dict):
-        structured = bool(
-            structured_command and tool_kind and tool_kind(qualified) == "command"
-        )
+        structured = tool_kind is None or tool_kind(qualified) == "command"
         # `{"cmd": "bash", "argv": ["-c", ...]}` names a program whose command is
         # in its arguments, so the bare `cmd` is not the answer.
         has_args = any(k in args for k in ("args", "argv", "arguments", "subcommand", "params"))
@@ -494,10 +693,10 @@ def extract_command_detail(args: Any, qualified: str = "") -> tuple[str | None, 
             if structured and has_args and key in ("command", "cmd"):
                 continue
             if str(val).strip():
-                return str(val).strip(), False
+                return _byte_excerpt(str(val).strip(), CLASSIFY_MAX_LEN)
 
         if structured:
-            text, partial = structured_command(args)
+            text, partial = _mcp_command(args)
             if text:
                 return text, partial
 
@@ -505,12 +704,17 @@ def extract_command_detail(args: Any, qualified: str = "") -> tuple[str | None, 
             val = args.get(key)
             if val is not None and str(val).strip():
                 return str(val).strip(), partial
+    elif tool_kind is None or tool_kind(qualified) == "command":
+        text, partial = _mcp_command(args)
+        if text:
+            return text, partial
     q = (qualified or "").lower()
     if q.endswith(".run_command") or q in ("bash", "shell.run", "shell"):
         if isinstance(args, dict):
             val = args.get("value")
             if val is not None and str(val).strip():
-                return str(val).strip(), partial
+                text, skipped = _byte_excerpt(str(val).strip(), CLASSIFY_MAX_LEN)
+                return text, partial or skipped
     # Nothing found, but a bound was hit: the input was not read in full, and
     # the event must say so rather than read as a clean call.
     return None, partial
@@ -519,8 +723,8 @@ def extract_command_detail(args: Any, qualified: str = "") -> tuple[str | None, 
 def extract_command(args: Any, qualified: str = "", limit: int | None = COMMAND_MAX_LEN) -> str | None:
     """Pull shell command text from tool args (Bash, run_command, shell.run, MCP inputs).
 
-    `limit` bounds what is stored and displayed. Pass `limit=None` for the full
-    text, which is what classification needs (see CLASSIFY_MAX_LEN).
+    `limit` bounds what is stored and displayed. Pass `limit=None` to keep all
+    extracted text up to the classification byte budget (see CLASSIFY_MAX_LEN).
     """
     text, _ = extract_command_detail(args, qualified)
     return None if text is None else text[:limit]
@@ -535,11 +739,7 @@ def _classification_text(command: str) -> tuple[str, bool]:
     A run longer than CLASSIFY_MAX_RUN loses its middle too. Either way the
     second value is True, so the event can say so and block mode can ask.
     """
-    partial = False
-    if len(command) > CLASSIFY_MAX_LEN:
-        half = CLASSIFY_MAX_LEN // 2
-        command = command[:half] + "\n" + command[-half:]
-        partial = True
+    command, partial = _byte_excerpt(command, CLASSIFY_MAX_LEN)
 
     def _shorten(m: re.Match[str]) -> str:
         nonlocal partial
@@ -554,7 +754,10 @@ def _classification_text(command: str) -> tuple[str, bool]:
     return _PATHLIKE_RUN.sub(_shorten, command), partial
 
 
-def _bounded_evidence(value: Any, budget: list[int] | None = None) -> tuple[Any, bool]:
+def _bounded_evidence(
+    value: Any, budget: list[int] | None = None, *,
+    exclude_prose: bool = False, _depth: int = 0, _nodes: list[int] | None = None,
+) -> tuple[Any, bool]:
     """Structured tool arguments, bounded the way _classification_text bounds a command.
 
     The MITRE mapper reads the raw arguments when a call carries no command or
@@ -564,25 +767,43 @@ def _bounded_evidence(value: Any, budget: list[int] | None = None) -> tuple[Any,
     """
     if budget is None:
         budget = [CLASSIFY_MAX_LEN]
+    if _nodes is None:
+        _nodes = [MCP_MAX_NODES]
+    if _depth > MCP_MAX_DEPTH or _nodes[0] <= 0:
+        return None, True
+    _nodes[0] -= 1
     if isinstance(value, str):
         if budget[0] <= 0:
             return "", bool(value)
-        text, partial = _classification_text(value[: budget[0]])
-        partial = partial or len(value) > budget[0]
-        budget[0] -= len(text)
+        text, skipped = _byte_excerpt(value, budget[0])
+        text, partial = _classification_text(text)
+        partial = partial or skipped
+        budget[0] -= len(text.encode("utf-8", errors="replace"))
         return text, partial
     if isinstance(value, dict):
         out: dict[Any, Any] = {}
         partial = False
         for key, item in value.items():
-            out[key], skipped = _bounded_evidence(item, budget)
+            if _nodes[0] <= 0:
+                partial = True
+                break
+            if exclude_prose and _mcp_key(key) in _MCP_PROSE_KEYS:
+                continue
+            out[key], skipped = _bounded_evidence(
+                item, budget, exclude_prose=exclude_prose, _depth=_depth + 1, _nodes=_nodes,
+            )
             partial = partial or skipped
         return out, partial
     if isinstance(value, (list, tuple)):
         items = []
         partial = False
         for item in value:
-            bounded, skipped = _bounded_evidence(item, budget)
+            if _nodes[0] <= 0:
+                partial = True
+                break
+            bounded, skipped = _bounded_evidence(
+                item, budget, exclude_prose=exclude_prose, _depth=_depth + 1, _nodes=_nodes,
+            )
             items.append(bounded)
             partial = partial or skipped
         return items, partial
@@ -724,8 +945,8 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
             if _hash_key():
                 tool["input_hash_alg"] = "hmac-sha256"
 
-        cmd = extract_command(args, qualified)
         full, structured_partial = extract_command_detail(args, qualified)
+        cmd = full[:COMMAND_MAX_LEN] if full else None
         analysed, partial = _classification_text(full) if full else (None, False)
         # A structured input past its bounds was read in part (#433).
         partial = partial or structured_partial
@@ -746,7 +967,9 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         if get_mitre_mapping and not tool.get("mitre"):
             evidence: Any = analysed
             if not evidence and isinstance(args, dict):
-                evidence, skipped = _bounded_evidence(args)
+                evidence, skipped = _bounded_evidence(
+                    args, exclude_prose=tool_kind is None or tool_kind(qualified) == "command",
+                )
                 partial = partial or skipped
             mitre = get_mitre_mapping(qualified, evidence)
             if mitre:
