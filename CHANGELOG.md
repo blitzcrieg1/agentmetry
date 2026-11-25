@@ -9,6 +9,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`agentmetry dashboard --dev-server` signed in on the wrong host.** The link was printed on
+  `127.0.0.1`, so the cookie was set for that site, while the Next dev dashboard on
+  `localhost:3000` calls the API as `localhost` and got a 401 on every request. A loopback link
+  is now printed on `localhost` in dev-server mode. Refs #301.
+
 ### Added
 
 - **DLP rules for Google Cloud credentials.** `google_api_key` (the `AIza…` API key

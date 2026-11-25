@@ -763,3 +763,45 @@ def test_export_writes_a_pack_that_verifies(tmp_path: Path, capsys):
 
     assert main(["verify", str(out)]) == 0
     assert "OK" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- dashboard
+
+
+class _LinkResponse:
+    status_code = 200
+
+    @staticmethod
+    def json() -> dict:
+        return {"url": "/api/v1/auth/dashboard?code=abc123", "expires_in": 60}
+
+
+@pytest.fixture
+def dashboard_link(monkeypatch: pytest.MonkeyPatch):
+    """`agentmetry dashboard` with the API call stubbed out."""
+    monkeypatch.setattr("agentmetry.cli.httpx.post", lambda *a, **k: _LinkResponse())
+    monkeypatch.setattr("agentmetry.cli._api_headers", lambda: {})
+    monkeypatch.delenv("AGENTMETRY_URL", raising=False)
+
+
+def test_dashboard_dev_server_link_uses_localhost(dashboard_link, capsys):
+    """The dev dashboard is on localhost, so the cookie must be set for localhost.
+
+    A link on 127.0.0.1 set the cookie for another site and every API call
+    returned 401 (#301)."""
+    assert main(["dashboard", "--dev-server", "--no-browser"]) == 0
+    link = capsys.readouterr().out.strip()
+    assert link == "http://localhost:8000/api/v1/auth/dashboard?code=abc123&next=dev"
+
+
+def test_dashboard_link_without_dev_server_is_unchanged(dashboard_link, capsys):
+    assert main(["dashboard", "--no-browser"]) == 0
+    link = capsys.readouterr().out.strip()
+    assert link == "http://127.0.0.1:8000/api/v1/auth/dashboard?code=abc123"
+
+
+def test_dashboard_dev_server_link_leaves_other_hosts_alone(dashboard_link, monkeypatch, capsys):
+    monkeypatch.setenv("AGENTMETRY_URL", "http://recorder.internal:8000")
+    assert main(["dashboard", "--dev-server", "--no-browser"]) == 0
+    link = capsys.readouterr().out.strip()
+    assert link.startswith("http://recorder.internal:8000/")
