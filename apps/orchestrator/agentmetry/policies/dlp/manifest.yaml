@@ -217,6 +217,24 @@ rules:
     category: "credentials"
     severity: "critical"
 
+  # Same bug class again: OpenRouter keys (sk-or-v1-...) break the generic
+  # rule's alnum-only run at the hyphen after "sk", so a leaked OpenRouter key
+  # produced no finding. Groq keys (gsk_...) don't start with "sk-" at all and
+  # matched no rule, generic or otherwise.
+  - id: "openrouter_api_key"
+    name: "OpenRouter API Key"
+    description: "Detects OpenRouter API keys (sk-or-v1-...)"
+    pattern: "(?i)\\bsk-or-v1-[a-zA-Z0-9]{16,}"
+    category: "credentials"
+    severity: "critical"
+
+  - id: "groq_api_key"
+    name: "Groq API Key"
+    description: "Detects Groq API keys (gsk_...)"
+    pattern: "(?i)\\bgsk_[a-zA-Z0-9]{20,}"
+    category: "credentials"
+    severity: "critical"
+
   - id: "generic_provider_api_key"
     name: "Generic LLM Provider API Key"
     description: "Detects legacy OpenAI-shaped provider API keys (sk-...); Anthropic, DashScope and OpenAI project/service-account keys have their own rules above"
