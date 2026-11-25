@@ -294,6 +294,16 @@ cases:
       Carries the `git_exfil` trait on a normal push. That trait exists for the Nx
       s1ngularity pattern, and this pins that carrying it alone is not a finding.
 
+  - name: preview git clean dry run then status
+    session: benign_git_clean_preview.jsonl
+    expect: []
+    benign: true
+    note: >
+      `git clean -nd` only previews which untracked files would be removed and
+      removes nothing; a later `git status --short` is an ordinary check. The
+      dry-run flag must keep a destructive-looking preview from reading as a
+      deletion burst or a cleanup attack.
+
   - name: read documentation, then edit docs
     session: benign_research_then_docs.jsonl
     expect: []
