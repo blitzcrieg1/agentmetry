@@ -151,17 +151,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            90 (44 attack, 46 benign)
+  cases            100 (52 attack, 48 benign)
   rules covered    14
-  expected firings 46
-  detected         46
+  expected firings 54
+  detected         54
   missed           0
   false positives  0
 ```
 
 Run `agentmetry benchmark` to check these expectations. The 14 rule IDs in the corpus include 13 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
 
-2917 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2967 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [detection pass CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/44312544675)
 reported 2885 passed and 19 skipped on Linux, 2898 passed and 6 skipped on Windows,
 and 84% line coverage on Linux

@@ -845,3 +845,75 @@ cases:
     note: >
       The paired attack. A ForEach-Object block that reads `$_.Value` is a
       dump.
+
+  # --- MCP extraction through the hook, all eight #433 shapes -----------------
+
+  - name: MCP command input reads and sends a credential
+    session: attack_mcp_shape_command.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP argv input reads and sends a credential
+    session: attack_mcp_shape_argv.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP program_args input reads and sends a credential
+    session: attack_mcp_shape_program_args.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP cmd_argv input reads and sends a credential
+    session: attack_mcp_shape_cmd_argv.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP commands input reads and sends a credential
+    session: attack_mcp_shape_commands.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP code input reads and sends a credential
+    session: attack_mcp_shape_code.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP input input reads and sends a credential
+    session: attack_mcp_shape_input.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: MCP payload input reads and sends a credential
+    session: attack_mcp_shape_payload.jsonl
+    expect: [credential-exfil]
+    note: >
+      #433. Synthetic MCP arguments retained for hook replay tests.
+      Detection uses the traits captured before the arguments are hashed.
+
+  - name: All eight MCP shapes run a harmless git status
+    session: benign_mcp_shapes_commands.jsonl
+    expect: []
+    benign: true
+    note: All eight #433 command shapes are extracted without raising detections.
+
+  - name: MCP queries and file content cannot complete a credential exfiltration
+    session: benign_mcp_shapes_prose.jsonl
+    expect: []
+    benign: true
+    note: >
+      #433. After a real credential read, command-shaped prose remains data,
+      including nested query objects and JSON strings in query or content.
