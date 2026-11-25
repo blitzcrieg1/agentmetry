@@ -25,6 +25,14 @@ separately (currently `1.2.0`) and changes additively.
   `xxd -r` piped to a shell) tag `encoded_cmd` and `risky_exec`, and preceding
   flags before `-c`/`-e` no longer exempt an inline script (#458, #459, #463).
 
+### Fixed
+
+- **MCP command extraction covers alternative input shapes.** Commands are
+  extracted from nested and alternative MCP argument shapes (`argv`,
+  `cmd`+`argv`, `command`, `commands`, `code`, `input`, `payload`,
+  `program`+`args`), with attack corpus fixtures that fire and benign ones
+  that stay silent (#433).
+
 ## [0.14.0] - 2026-11-24
 
 This release opens GitHub Sponsors, documents the Hugging Face URL-form

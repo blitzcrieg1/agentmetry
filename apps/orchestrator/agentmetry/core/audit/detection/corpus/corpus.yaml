@@ -846,7 +846,6 @@ cases:
       The paired attack. A ForEach-Object block that reads `$_.Value` is a
       dump.
 
-<<<<<<< HEAD
   - name: CI deploy script sources .env and rolls out
     session: benign_ci_deploy_reads_env.jsonl
     expect: []
@@ -875,7 +874,6 @@ cases:
       Four `git mv` calls and a `sed -i` across the tree. Many file-changing
       calls in a short window can look like destructive-delete-burst, but a
       rename removes nothing: every file still exists under its new name.
-=======
   # --- MCP extraction through the hook, all eight #433 shapes -----------------
 
   - name: MCP command input reads and sends a credential
@@ -947,4 +945,3 @@ cases:
     note: >
       #433. After a real credential read, command-shaped prose remains data,
       including nested query objects and JSON strings in query or content.
->>>>>>> bc659cd (fix(ingest): extract commands across nested and alternative MCP input shapes (#433))
