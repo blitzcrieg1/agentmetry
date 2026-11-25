@@ -54,7 +54,7 @@ ENCODED_CMD = re.compile(r"-enc(odedcommand)?\b|frombase64string", re.IGNORECASE
 # Residual, stated rather than hidden: `| python -c "exec(sys.stdin.read())"`
 # reaches for the download deliberately and slips this. INLINE_EVAL sees that
 # shape, and a cradle written that way is no longer hiding.
-_INLINE_SCRIPT = r"(?!\s*-\w*[ce]\b)"
+_INLINE_SCRIPT = r"(?!(?:\s+-[a-zA-Z0-9-]+)*\s*-\w*[ce]\b)"
 
 PIPE_TO_SHELL = re.compile(
     r"\b(curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^|;&]*[|]\s*"
@@ -2126,7 +2126,21 @@ def classify_command(command: str) -> list[str]:
         traits.append("raw_ip_fetch")
     if ENCODED_CMD.search(written):
         traits.append("encoded_cmd")
-    cradle = PIPE_TO_SHELL.search(written) or PROC_SUBST_EXEC.search(written)
+    if re.search(
+        r"\b(?:base64\s+(?:-d|--decode)|openssl\s+base64\s+-d|xxd\s+-r)\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",
+        written,
+        re.IGNORECASE,
+    ):
+        if "encoded_cmd" not in traits:
+            traits.append("encoded_cmd")
+        if "risky_exec" not in traits:
+            traits.append("risky_exec")
+    written_unquoted = re.sub(r"(?<=\w)['\"](?=\w)", "", command)
+    cradle = (
+        PIPE_TO_SHELL.search(written)
+        or PIPE_TO_SHELL.search(written_unquoted)
+        or PROC_SUBST_EXEC.search(written)
+    )
     if cradle:
         traits.append(
             "pipe_to_shell_local" if pipes_only_loopback(spoken) else "pipe_to_shell"

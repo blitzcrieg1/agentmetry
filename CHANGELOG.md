@@ -18,6 +18,13 @@ separately (currently `1.2.0`) and changes additively.
   working with `kubectl get secrets`, and a bulk `git mv` rename. Each pins a normal
   working day that looks alarming to a naive rule; all three stay silent.
 
+### Fixed
+
+- **Classifier bypasses closed.** Shell-quoted downloaders (`c'u'rl … | sh`) are
+  caught by PIPE_TO_SHELL, decode-pipes (`base64 -d`, `openssl base64 -d`,
+  `xxd -r` piped to a shell) tag `encoded_cmd` and `risky_exec`, and preceding
+  flags before `-c`/`-e` no longer exempt an inline script (#458, #459, #463).
+
 ## [0.14.0] - 2026-11-24
 
 This release opens GitHub Sponsors, documents the Hugging Face URL-form
