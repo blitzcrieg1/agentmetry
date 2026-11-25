@@ -95,3 +95,20 @@ def test_report_renders_without_a_failure_section(report):
     rendered = render_report(report)
     assert "All cases behaved as recorded." in rendered
     assert "false positives  0" in rendered
+
+
+def test_a_host_scoped_rule_is_covered_by_the_corpus(report):
+    """`host-subagent-swarm-burst` is a host rule. The benchmark used to feed the
+    whole file to the session rules only, so it could never fire there."""
+    by_name = {result.case.name: result for result in report.results}
+    case = by_name["subagent swarm that restarts sessions between bursts"]
+    assert "host-subagent-swarm-burst" in case.fired
+    assert "host-subagent-swarm-burst" in report.rules_covered
+
+
+def test_a_case_spanning_sessions_is_scoped_per_session(report):
+    """Nine spawns over three sessions of three: each session is under the
+    per-session threshold, so only the host-level rule may fire."""
+    by_name = {result.case.name: result for result in report.results}
+    case = by_name["subagent swarm that restarts sessions between bursts"]
+    assert "subagent-swarm-burst" not in case.fired
