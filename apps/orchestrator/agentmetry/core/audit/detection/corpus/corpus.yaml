@@ -67,6 +67,25 @@ cases:
     expect: [approval-denied-then-executed]
     note: The guardrail-bypass chain. A human said no and the tool ran later.
 
+  - name: repeated denied tool calls
+    session: attack_repeated_denials.jsonl
+    expect: [rapid-tool-denials]
+    note: >
+      Four denied tool calls involving shell and file tools. The packaged
+      policy aggregates the burst into one finding under the existing rule ID (#1).
+
+  - name: denied retries below the burst threshold
+    session: benign_denied_retries_below_threshold.jsonl
+    expect: []
+    benign: true
+    note: >
+      The paired benign case. Three denials while an agent retries a gated
+      write its operator has not yet approved, then it goes back to reading.
+      A reasonable person might expect a denial-counting rule to fire on any
+      cluster of refusals; three is ordinary friction — a stale permission,
+      an operator who has not answered yet — and the burst bar is four
+      precisely so this session stays silent.
+
   - name: recon burst then collection
     session: attack_discovery_then_collect.jsonl
     expect: [discovery-then-collect]

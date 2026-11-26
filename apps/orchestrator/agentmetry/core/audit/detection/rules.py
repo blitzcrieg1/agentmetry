@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from .models import Detection
+from .yaml_config import manifest_is_default
 from .yaml_config import threshold as _threshold
 
 # Command-classification regexes live in traits.py, shared with the hook client:
@@ -638,6 +639,48 @@ def rule_approval_denied_then_executed(events: list[dict[str, Any]]) -> list[Det
                 break
 
     return detections
+
+
+#: How many denied tool calls in one session make a burst worth reporting.
+#: The packaged rule reports four or more denied calls in a session (#1).
+REPEATED_DENIALS_MIN = 4
+
+
+def rule_repeated_denials(events: list[dict[str, Any]]) -> list[Detection]:
+    """Aggregate denied tool calls for the packaged policy.
+
+    A replacement manifest controls whether and how to report denial bursts.
+    Approval responses belong to the separate approval-flow rules.
+    """
+    denied = [
+        event
+        for event in events
+        if _action_type(event) == "tool_called" and _outcome(event) == "denied"
+    ]
+    if len(denied) < REPEATED_DENIALS_MIN or not manifest_is_default():
+        return []
+
+    tools = sorted({_tool_qualified(e) for e in denied if _tool_qualified(e)})
+    tool_phrase = ", ".join(tools[:3]) if tools else "tool calls"
+    if len(tools) > 3:
+        tool_phrase += f" and {len(tools) - 3} more"
+    return [
+        Detection(
+            rule_id="rapid-tool-denials",
+            title="Repeated denied tool calls",
+            severity="high",
+            summary=(
+                f"{len(denied)} tool calls were denied in this session "
+                f"({tool_phrase}). Review the denials for possible guardrail probing or retries."
+            ),
+            correlation_id=_correlation_id(events),
+            tactic_ids=["TA0005"],
+            technique_ids=["T1562"],
+            event_ids=[_event_id(e) for e in denied],
+            first_seen_utc=_ts(denied[0]),
+            last_seen_utc=_ts(denied[-1]),
+        )
+    ]
 
 
 def rule_encoded_command_download(events: list[dict[str, Any]]) -> list[Detection]:
@@ -1405,6 +1448,7 @@ REGISTRY = [
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
     rule_approval_denied_then_executed,
+    rule_repeated_denials,
     rule_encoded_command_download,
     rule_destructive_delete_burst,
     rule_off_hours_activity,
@@ -1454,6 +1498,7 @@ BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "hf-token-exposed-in-command",
     "discovery-then-collect",
     "approval-denied-then-executed",
+    "rapid-tool-denials",
     "encoded-command-download",
     "destructive-delete-burst",
     "off-hours-activity",

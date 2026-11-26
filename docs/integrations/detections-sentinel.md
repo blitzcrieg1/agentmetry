@@ -26,6 +26,7 @@ the benchmark corpus emits, for reference only.
 | `RuleId` | Severity | Technique(s) |
 |---|---|---|
 | `approval-denied-then-executed` | critical | (tactic TA0005) |
+| `rapid-tool-denials` | high | T1562 |
 | `credential-exfil` | critical | T1552.004, T1071.001 |
 | `credential-read-then-cloud-api` | critical | T1552.004, T1078 |
 | `dotfile-read-then-git-push` | critical | T1552.001, T1567.001 |

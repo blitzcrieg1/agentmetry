@@ -118,21 +118,28 @@ def _yaml(rule_id: str, meta: dict, *, split: bool) -> str:
     tags = [f"attack.{t.lower()}" for t in meta["tactics"] + meta["techniques"]]
     tag_lines = "\n".join(f"  - {t}" for t in tags) or "  []"
     note = f"\n  {meta['note']}" if meta.get("note") else ""
-    outcome = f"\n    action.outcome: {severity}" if split else ""
+    pin_outcome = split or rule_id == "rapid-tool-denials"
+    outcome = f"\n    action.outcome: {severity}" if pin_outcome else ""
     variant = (
         f"\n  This rule id emits more than one severity. This is the `{severity}`"
         " variant, pinned on `action.outcome`."
         if split
         else ""
     )
-    description = (
-        "An observed command input contained a literal Hugging Face token. "
-        "The finding also covers requests that never ran."
-        if rule_id == "hf-token-exposed-in-command"
-        else f"""Agentmetry sequence detection `{rule_id}` fired. The individual tool calls are
+    if rule_id == "hf-token-exposed-in-command":
+        description = (
+            "An observed command input contained a literal Hugging Face token. "
+            "The finding also covers requests that never ran."
+        )
+    elif rule_id == "rapid-tool-denials":
+        description = (
+            "The packaged Agentmetry rule counted denied tool calls in one session. "
+            "`detection.event_ids` identifies the calls supporting the finding."
+        )
+    else:
+        description = f"""Agentmetry sequence detection `{rule_id}` fired. The individual tool calls are
   ordinary; the order is the finding, and `detection.event_ids` names the exact
   events that produced it."""
-    )
     return f"""title: Agentmetry - {meta["title"]}
 id: {_stable_uuid(rule_id, severity if split else "")}
 status: experimental

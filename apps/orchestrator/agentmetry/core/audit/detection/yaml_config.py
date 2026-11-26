@@ -10,8 +10,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_ORCH_ROOT = Path(__file__).resolve().parents[4]
-_DEFAULT_MANIFEST = _ORCH_ROOT.parent.parent / "policies" / "detection" / "manifest.yaml"
+_DEFAULT_MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "detection" / "manifest.yaml"
 
 _DEFAULT_THRESHOLDS: dict[str, int] = {
     "discovery_burst": 3,
@@ -49,6 +48,14 @@ def _manifest_path() -> Path:
         # default ones and is never told.
         logger.debug("could not read detection_rules_path from settings: %s", exc)
     return _DEFAULT_MANIFEST
+
+
+def manifest_is_default() -> bool:
+    """Return whether the active manifest is the packaged policy."""
+    try:
+        return _manifest_path().resolve() == _DEFAULT_MANIFEST.resolve()
+    except (OSError, RuntimeError):
+        return False
 
 
 def load_manifest(*, reload: bool = False) -> dict[str, Any]:

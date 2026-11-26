@@ -109,6 +109,16 @@ def test_every_rule_is_valid_sigma():
         ), f"{rule_id}: id is not a UUID"
 
 
+def test_packaged_denial_burst_sigma_matches_high_only():
+    doc = _generated()[("rapid-tool-denials", "high")]
+    assert doc["detection"]["selection"] == {
+        "action.type": "detection",
+        "detection.rule_id": "rapid-tool-denials",
+        "action.outcome": "high",
+    }
+    assert "attack.t1562" in doc["tags"]
+
+
 def test_rule_ids_are_stable_across_regeneration():
     """Regenerating must not churn every UUID.
 

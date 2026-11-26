@@ -303,6 +303,82 @@ def test_approval_denied_then_executed_does_not_fire_on_denied_execution():
     assert "approval-denied-then-executed" not in _rule_ids(events)
 
 
+# --- repeated-denials ---------------------------------------------------------
+
+def test_repeated_denials_fires_on_four_denied_tool_calls():
+    events = [
+        _event("2026-07-13T15:00:00Z", action_type="tool_called", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:05Z", action_type="tool_called", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:09Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
+        _event("2026-07-13T15:00:14Z", action_type="tool_called", outcome="denied", tool="shell.run"),
+    ]
+    dets = [d for d in run_detections(events) if d.rule_id == "rapid-tool-denials"]
+    assert len(dets) == 1
+    assert dets[0].severity == "high"
+    assert dets[0].event_ids == [event["event_id"] for event in events]
+    assert dets[0].technique_ids == ["T1562"]
+
+
+def test_repeated_denials_does_not_fire_on_three():
+    events = [
+        _event("2026-07-13T15:00:00Z", action_type="tool_called", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:05Z", action_type="tool_called", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:09Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
+    ]
+    assert "rapid-tool-denials" not in _rule_ids(events)
+
+
+def test_repeated_denials_ignores_approval_response_denials():
+    # A human answering "no" four times is approval-denied-then-executed's
+    # territory, not this rule's: only tool_called denials count.
+    events = [
+        _event("2026-07-13T15:00:00Z", action_type="approval_response", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:05Z", action_type="approval_response", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:09Z", action_type="approval_response", outcome="denied", tool="shell.run"),
+        _event("2026-07-13T15:00:14Z", action_type="approval_response", outcome="denied", tool="shell.run"),
+    ]
+    assert "rapid-tool-denials" not in _rule_ids(events)
+
+
+# --- one finding per denial burst under the existing ID ---------------------
+
+
+def _denied_tool_calls(n: int) -> list[dict]:
+    return [
+        _event(
+            f"2026-07-13T15:00:{i:02d}Z",
+            action_type="tool_called",
+            outcome="denied",
+            tool="shell.run",
+        )
+        for i in range(n)
+    ]
+
+
+def _denial_findings(events: list[dict]) -> list:
+    return [
+        d
+        for d in run_detections(events)
+        if d.rule_id in {"repeated-denials", "rapid-tool-denials"}
+    ]
+
+
+def test_denial_burst_reports_no_finding_at_three_denials():
+    assert _denial_findings(_denied_tool_calls(3)) == []
+
+
+def test_denial_burst_reports_exactly_one_finding_at_four_denials():
+    dets = _denial_findings(_denied_tool_calls(4))
+    assert len(dets) == 1
+    assert dets[0].rule_id == "rapid-tool-denials"
+
+
+def test_denial_burst_reports_exactly_one_finding_at_five_denials():
+    dets = _denial_findings(_denied_tool_calls(5))
+    assert len(dets) == 1
+    assert dets[0].rule_id == "rapid-tool-denials"
+
+
 def test_inferred_denial_at_session_end_is_not_a_bypass():
     """Ingest marks asks still pending at session_end as `denied` with an
     `inferred:` reason. Nobody said no — treating it as a denial convicted
