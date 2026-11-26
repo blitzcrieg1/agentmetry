@@ -360,6 +360,14 @@ cases:
       the moment a rule stops asking the classifier and starts grepping the text
       a developer merely wrote down.
 
+  - name: previewing a git clean
+    session: benign_git_clean_preview.jsonl
+    expect: []
+    benign: true
+    note: >
+      git clean -nd is a dry run that removes nothing; it is followed by git status --short.
+      A destructive-looking command that only previews changes must stay quiet.
+
   - name: cleaning build artifacts
     session: benign_build_artifact_cleanup.jsonl
     expect: []
