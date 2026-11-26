@@ -1545,6 +1545,51 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if rows else 1
 
 
+def cmd_canary(args: argparse.Namespace) -> int:
+    """Plant, list or remove local decoy credentials.
+
+    Opt-in by construction: nothing exists until this runs, and `remove` puts the
+    file back exactly as it was. The decoys are only useful while the recorder
+    runs, because their whole point is that touching one becomes an event.
+    """
+    sys.path.insert(0, str(_ORCH_ROOT))
+    from agentmetry.core import canary
+
+    command = args.canary_command
+    if command == "list":
+        planted = canary.list_planted()
+        if not planted:
+            print("no decoys planted (run `agentmetry canary plant`)")
+            return 0
+        for d in planted:
+            print(f"{d['name']:<28} {d['kind']:<4} {d['where']}")
+            print(f"{'':<28} rule {d['rule_id']}  planted {d['created_at']}")
+        return 0
+
+    if command in ("remove", "forget"):
+        name = (args.name or "").strip()
+        if not name:
+            print(f"{command} needs the decoy name (see `agentmetry canary list`)")
+            return 1
+        record = canary.remove(name) if command == "remove" else canary.forget(name)
+        verb = "removed" if command == "remove" else "forgot"
+        print(f"{verb} {record['name']} ({record['where']})")
+        return 0
+
+    project = Path(args.project) if args.project else None
+    record = canary.plant(
+        kind=args.kind, scope=args.scope, project=project, name=args.decoy_name
+    )
+    print(f"planted {record['name']}")
+    print(f"  where   {record['where']}")
+    print(f"  rule    {record['rule_id']} (merged into the DLP ruleset)")
+    print(f"  remove  agentmetry canary remove {record['name']}")
+    print()
+    print("The value is a decoy: never a real credential, and it is never sent anywhere.")
+    print("Reading it while the recorder runs becomes a critical DLP finding.")
+    return 0
+
+
 def cmd_dogfood(args: argparse.Namespace) -> int:
     """Score the dogfood period, or start the clock.
 
@@ -1947,6 +1992,37 @@ def main(argv: list[str] | None = None) -> int:
     replay = sub.add_parser("replay", help="ASCII timeline of audit events for one run")
     replay.add_argument("thread_id", help="correlation_id / session id to replay from audit trail")
     replay.add_argument("--trail", default="", help="trail to read (default: the configured trail)")
+    canary = sub.add_parser(
+        "canary",
+        help="plant local decoy credentials whose use is a finding (opt-in, reversible)",
+    )
+    canary.add_argument(
+        "canary_command",
+        choices=("plant", "list", "remove", "forget"),
+        help="plant a decoy, list what is planted, remove one (restores the file), or "
+             "forget one whose file was edited by hand",
+    )
+    canary.add_argument(
+        "name", nargs="?", default="", help="decoy name, for remove / forget"
+    )
+    canary.add_argument(
+        "--kind",
+        choices=("aws", "env"),
+        default="aws",
+        help="aws: a fake profile in ~/.aws/credentials; env: a canary line in a project .env",
+    )
+    canary.add_argument(
+        "--scope",
+        choices=("home", "project"),
+        default="home",
+        help="where to plant it (an aws decoy is always home; an env decoy needs project)",
+    )
+    canary.add_argument(
+        "--project", type=Path, default=None, help="project directory for an env decoy"
+    )
+    canary.add_argument(
+        "--name", dest="decoy_name", default="", help="name this decoy instead of the default"
+    )
 
     args = parser.parse_args(argv)
     _apply_dir_flags(args)
@@ -1983,5 +2059,6 @@ def main(argv: list[str] | None = None) -> int:
         "benchmark": cmd_benchmark,
         "dogfood": cmd_dogfood,
         "replay": cmd_replay,
+        "canary": cmd_canary,
     }
     return handlers[args.command](args)
