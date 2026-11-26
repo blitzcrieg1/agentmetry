@@ -339,6 +339,50 @@ def test_repeated_denials_ignores_approval_response_denials():
     assert "repeated-denials" not in _rule_ids(events)
 
 
+# --- one finding per denial burst (PR #486 review) ---------------------------
+#
+# `repeated-denials` (built-in, ≥4) and the YAML count rule
+# `rapid-tool-denials` (≥5) count the same denied `tool_called` events, so
+# five denials used to report two findings for one burst. The default engine
+# now reports exactly one: the built-in finding, under its own id.
+
+
+def _denied_tool_calls(n: int) -> list[dict]:
+    return [
+        _event(
+            f"2026-07-13T15:00:{i:02d}Z",
+            action_type="tool_called",
+            outcome="denied",
+            tool="shell.run",
+        )
+        for i in range(n)
+    ]
+
+
+def _denial_findings(events: list[dict]) -> list:
+    return [
+        d
+        for d in run_detections(events)
+        if d.rule_id in {"repeated-denials", "rapid-tool-denials"}
+    ]
+
+
+def test_denial_burst_reports_no_finding_at_three_denials():
+    assert _denial_findings(_denied_tool_calls(3)) == []
+
+
+def test_denial_burst_reports_exactly_one_finding_at_four_denials():
+    dets = _denial_findings(_denied_tool_calls(4))
+    assert len(dets) == 1
+    assert dets[0].rule_id == "repeated-denials"
+
+
+def test_denial_burst_reports_exactly_one_finding_at_five_denials():
+    dets = _denial_findings(_denied_tool_calls(5))
+    assert len(dets) == 1
+    assert dets[0].rule_id == "repeated-denials"
+
+
 def test_inferred_denial_at_session_end_is_not_a_bypass():
     """Ingest marks asks still pending at session_end as `denied` with an
     `inferred:` reason. Nobody said no — treating it as a denial convicted

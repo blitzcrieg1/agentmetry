@@ -26,13 +26,22 @@ def test_threshold_reads_manifest():
 
 
 def test_rapid_tool_denials_yaml_rule_fires():
+    # The YAML rule itself still fires at five denials — it stays registered
+    # under its own id — but the default engine reports the burst once, as
+    # `repeated-denials`, instead of double-reporting it (PR #486 review).
+    from agentmetry.core.audit.detection.yaml_rules import build_yaml_rules
+
     clear_manifest_cache()
     events = [
         _ev(event_id=f"d{i}", action={"type": "tool_called", "outcome": "denied", "reason": "x"})
         for i in range(5)
     ]
-    rule_ids = {d.rule_id for d in run_detections(events)}
-    assert "rapid-tool-denials" in rule_ids
+    yaml_rules = {rule.__name__: rule for rule in build_yaml_rules()}
+    fired = yaml_rules["yaml_rapid_tool_denials"](events)
+    assert [d.rule_id for d in fired] == ["rapid-tool-denials"]
+
+    dets = [d for d in run_detections(events) if d.rule_id in {"repeated-denials", "rapid-tool-denials"}]
+    assert [d.rule_id for d in dets] == ["repeated-denials"]
 
 
 def test_rapid_dlp_blocks_yaml_rule_fires():
