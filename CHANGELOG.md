@@ -9,12 +9,22 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-26
+
+This release raises repeated tool denials to high severity in the bundled
+policy and updates data loss prevention (DLP) rules for OpenAI and Google
+Cloud credentials. The detection benchmark covers 107 cases with zero
+misses and zero false positives.
+
 ### Added
 
 - **DLP rule for OpenAI project, service-account and admin keys.** `openai_project_api_key`
   matches `sk-proj-…`, `sk-svcacct-…` and `sk-admin-…`, which broke the generic `sk-`
   rule's alphanumeric run at the first hyphen, so those leaks produced no finding
-  (#478, #482).
+  (#478, #482, #483, @bewfordq).
+- **Git cleanup preview benchmark case.** A session that previews cleanup
+  with `git clean -nd` and checks status should produce no detection
+  (#490, @bewfordq).
 
 ### Changed
 
@@ -27,7 +37,7 @@ separately (currently `1.2.0`) and changes additively.
 
 - **Google Cloud service-account examples stay quiet.** The DLP pack uses the
   existing `private_key` rule for the PEM marker in Google Cloud key JSON. A
-  service-account type and key ID alone no longer trigger a critical match.
+  service-account type and key ID alone no longer trigger a critical match (#485).
 
 ### Removed
 
@@ -3177,7 +3187,10 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.12.2...v0.13.0
 [0.9.9]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/blitzcrieg1/agentmetry/compare/v0.9.7...v0.9.8
