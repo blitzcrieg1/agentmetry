@@ -65,6 +65,10 @@ must stay silent.
 bounty issue [#1]: repeated tool-denial detection with regression tests, a
 benign case below the threshold, and a Sigma export.
 
+**[@valeriikupinwork](https://github.com/valeriikupinwork)** submitted a benign
+`git clean -nd` preview followed by `git status --short` in [#487]. The
+equivalent benchmark scenario later landed in [#490].
+
 That list is short, and it is listed by name rather than summarised, because
 outside contributions on a single-maintainer project are easier to lose than to
 add.
@@ -178,6 +182,8 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#478]: https://github.com/blitzcrieg1/agentmetry/issues/478
 [#483]: https://github.com/blitzcrieg1/agentmetry/pull/483
 [#486]: https://github.com/blitzcrieg1/agentmetry/pull/486
+[#487]: https://github.com/blitzcrieg1/agentmetry/pull/487
+[#490]: https://github.com/blitzcrieg1/agentmetry/pull/490
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
 [#139]: https://github.com/blitzcrieg1/agentmetry/pull/139
 [#140]: https://github.com/blitzcrieg1/agentmetry/pull/140
