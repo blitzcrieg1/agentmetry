@@ -212,7 +212,7 @@ def test_readme_rule_count_matches_the_registry():
     text = _readme().lower()
     words = {
         12: "twelve", 13: "thirteen", 14: "fourteen",
-        15: "fifteen", 16: "sixteen", 17: "seventeen",
+        15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen",
     }
     published = len(BUILTIN_RULE_IDS)
     correct = words[published]

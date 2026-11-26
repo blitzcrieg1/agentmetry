@@ -9,6 +9,10 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Heredoc and script-write-then-execute classification, rebased from #361.** `bash <<EOF` and `python <<PY` heredocs now classify as cradles, and a script body written by the agent is classified before hashing so `rule_script_write_then_execute` can fire on write-then-run (#345, #347). Corpus: 112 cases, 61 expected firings, 0 missed / 0 false positives.
+
 ## [0.17.0] - 2026-11-26
 
 Second community release in two days: five more provider key DLP rules and the
@@ -528,6 +532,32 @@ fingerprint is unchanged.
   by clients other than the hook. Default hashed capture was never affected,
   and argument fingerprints do not change. Pattern scrubbing remains best
   effort. Found by an outside audit.
+### Fixed
+
+- **A heredoc executed by a shell is classified**
+  ([#345](https://github.com/blitzcrieg1/agentmetry/issues/345)).
+  `classify_command` blanked every heredoc body so a commit message could not
+  page. That also blanked `bash <<EOF`, `python - <<PY` and `node - <<JS`,
+  where the body is the program. Those bodies are classified. `cat > file`
+  and `git commit -F -` stay blanked.
+- **A decoder piped into a shell is classified**
+  ([#346](https://github.com/blitzcrieg1/agentmetry/issues/346)).
+  `echo <blob> | base64 -d | sh`, and the same shape for `xxd -r`, `openssl
+  enc -d` and `openssl base64 -d`, now raises `decode_pipe`, `encoded_cmd`
+  and `risky_exec`. An inline blob up to 8 KiB is decoded and classified, so
+  the payload can still raise `credential-exfil`. The rule is
+  `decode-pipe-to-shell` (high). PowerShell `-EncodedCommand` is unchanged.
+- **A script written and then run no longer hides its body**
+  ([#347](https://github.com/blitzcrieg1/agentmetry/issues/347)).
+  A write of a script (suffix or shebang) is classified while the body is
+  still in the hook. The body is hashed with the arguments. The event keeps
+  the traits and the basename (`scripts_written` / `scripts_executed`).
+  `script-write-then-execute` (high) ties a payload write to a later run of
+  that file in the session. A harmless script, a different file, and prose
+  do not fire.
+
+The ruleset fingerprint moves from `15846a0915769d4a` to `ecccbe61f732071d`.
+The dogfood clock restarts when this lands. Not a release.
 
 ## [0.10.4] - 2026-10-31
 
