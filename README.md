@@ -161,7 +161,7 @@ These are the numbers from commands, not from a slide.
 
 Run `agentmetry benchmark` to check these expectations. The 15 rule IDs in the corpus include 14 published rules and the experimental rule. The Sigma generator also covers `host-subagent-swarm-burst` and `off-hours-activity`.
 
-2986 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
+2987 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). The
 [detection pass CI run](https://github.com/blitzcrieg1/agentmetry/actions/runs/44312544675)
 reported 2885 passed and 19 skipped on Linux, 2898 passed and 6 skipped on Windows,
 and 84% line coverage on Linux
@@ -285,7 +285,7 @@ Report vulnerabilities via [private vulnerability reporting](https://github.com/
 
 ## Sponsor
 
-Agentmetry is built and maintained solo, in the open, with no vendor cloud and no telemetry. If it earns a place in your workflow, [sponsor it on GitHub](https://github.com/sponsors/blitzcrieg1) (one-time or monthly). Suggested tiers: $5 keeps the releases coming, $25 gets your name in `CONTRIBUTORS.md`, $100 gets priority triage on the issue you care about, and anything above funds the detection-rule bounties tagged `bounty`. Sponsorship never changes the license: the core stays Apache-2.0, and Enterprise stays a separate written agreement. Grants (NLnet NGI and similar) are also welcome and are announced in [Discussions](https://github.com/blitzcrieg1/agentmetry/discussions). See the pinned announcement: [Support Agentmetry: GitHub Sponsors is live](https://github.com/blitzcrieg1/agentmetry/discussions/460).
+Agentmetry is maintained solo, in the open, with no vendor cloud and no telemetry. [GitHub Sponsors](https://github.com/sponsors/blitzcrieg1) offers one-time and monthly support. The published monthly tiers are $5 for Coffee and $25 for a name or logo in the project README. See the [Sponsors announcement](https://github.com/blitzcrieg1/agentmetry/discussions/460) and the [detection and DLP bounty guidelines](CONTRIBUTING.md#detection-and-dlp-bounty-program). Paid bounty rounds are announced separately in [Discussions](https://github.com/blitzcrieg1/agentmetry/discussions). The core is Apache-2.0. Enterprise operates under a separate written agreement.
 
 ## License
 
