@@ -9,6 +9,13 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **DLP rules for five more provider key formats.** `openrouter_api_key`
+  (`sk-or-v1-…`), `groq_api_key`, `replicate_api_token` (`r8_…`),
+  `perplexity_api_key` (`pplx-…`) and `xai_api_key` (`xai-…`), each with a
+  near-miss test that must stay silent (#488, #489).
+
 ## [0.16.0] - 2026-11-26
 
 This release raises repeated tool denials to high severity in the bundled
