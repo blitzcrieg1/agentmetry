@@ -16,6 +16,13 @@ separately (currently `1.2.0`) and changes additively.
   rule's alphanumeric run at the first hyphen, so those leaks produced no finding
   (#478, #482).
 
+### Changed
+
+- **Repeated tool denials.** The packaged policy reports one high-severity
+  `rapid-tool-denials` finding at four denied tool calls in a session and
+  includes the supporting event IDs. A replacement detection manifest
+  controls its own denial rules. Contributed by @rumangsanya (#1, #486).
+
 ### Fixed
 
 - **Google Cloud service-account examples stay quiet.** The DLP pack uses the

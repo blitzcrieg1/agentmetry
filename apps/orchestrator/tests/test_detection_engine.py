@@ -312,10 +312,11 @@ def test_repeated_denials_fires_on_four_denied_tool_calls():
         _event("2026-07-13T15:00:09Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
         _event("2026-07-13T15:00:14Z", action_type="tool_called", outcome="denied", tool="shell.run"),
     ]
-    dets = [d for d in run_detections(events) if d.rule_id == "repeated-denials"]
+    dets = [d for d in run_detections(events) if d.rule_id == "rapid-tool-denials"]
     assert len(dets) == 1
     assert dets[0].severity == "high"
-    assert len(dets[0].event_ids) == 4
+    assert dets[0].event_ids == [event["event_id"] for event in events]
+    assert dets[0].technique_ids == ["T1562"]
 
 
 def test_repeated_denials_does_not_fire_on_three():
@@ -324,7 +325,7 @@ def test_repeated_denials_does_not_fire_on_three():
         _event("2026-07-13T15:00:05Z", action_type="tool_called", outcome="denied", tool="shell.run"),
         _event("2026-07-13T15:00:09Z", action_type="tool_called", outcome="denied", tool="vault_fs.write_file"),
     ]
-    assert "repeated-denials" not in _rule_ids(events)
+    assert "rapid-tool-denials" not in _rule_ids(events)
 
 
 def test_repeated_denials_ignores_approval_response_denials():
@@ -336,15 +337,10 @@ def test_repeated_denials_ignores_approval_response_denials():
         _event("2026-07-13T15:00:09Z", action_type="approval_response", outcome="denied", tool="shell.run"),
         _event("2026-07-13T15:00:14Z", action_type="approval_response", outcome="denied", tool="shell.run"),
     ]
-    assert "repeated-denials" not in _rule_ids(events)
+    assert "rapid-tool-denials" not in _rule_ids(events)
 
 
-# --- one finding per denial burst (PR #486 review) ---------------------------
-#
-# `repeated-denials` (built-in, ≥4) and the YAML count rule
-# `rapid-tool-denials` (≥5) count the same denied `tool_called` events, so
-# five denials used to report two findings for one burst. The default engine
-# now reports exactly one: the built-in finding, under its own id.
+# --- one finding per denial burst under the existing ID ---------------------
 
 
 def _denied_tool_calls(n: int) -> list[dict]:
@@ -374,13 +370,13 @@ def test_denial_burst_reports_no_finding_at_three_denials():
 def test_denial_burst_reports_exactly_one_finding_at_four_denials():
     dets = _denial_findings(_denied_tool_calls(4))
     assert len(dets) == 1
-    assert dets[0].rule_id == "repeated-denials"
+    assert dets[0].rule_id == "rapid-tool-denials"
 
 
 def test_denial_burst_reports_exactly_one_finding_at_five_denials():
     dets = _denial_findings(_denied_tool_calls(5))
     assert len(dets) == 1
-    assert dets[0].rule_id == "repeated-denials"
+    assert dets[0].rule_id == "rapid-tool-denials"
 
 
 def test_inferred_denial_at_session_end_is_not_a_bypass():

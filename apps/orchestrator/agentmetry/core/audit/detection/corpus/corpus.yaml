@@ -69,17 +69,10 @@ cases:
 
   - name: repeated denied tool calls
     session: attack_repeated_denials.jsonl
-    expect: [repeated-denials]
+    expect: [rapid-tool-denials]
     note: >
-      Four tool calls denied in under a minute, the ask varying between
-      shell and file tools. Nothing executed, so no sequence rule has
-      anything to see; the burst itself is the finding (#1). One denial is
-      noise, four is an agent probing the guardrail for a way through.
-      Four is also deliberate: the YAML count rule `rapid-tool-denials`
-      fires at five, so this case pins the built-in's lower bar on its own
-      — at five denials the default engine still reports one finding, the
-      built-in `repeated-denials`, and suppresses the YAML twin for the
-      same burst (PR #486 review).
+      Four denied tool calls involving shell and file tools. The packaged
+      policy aggregates the burst into one finding under the existing rule ID (#1).
 
   - name: denied retries below the burst threshold
     session: benign_denied_retries_below_threshold.jsonl

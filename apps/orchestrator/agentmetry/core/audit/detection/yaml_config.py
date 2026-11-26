@@ -10,16 +10,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_ORCH_ROOT = Path(__file__).resolve().parents[4]
-# The packaged manifest lives inside the package
-# (`agentmetry/policies/detection/manifest.yaml`), not at the repo root —
-# `config._policy` says so, and the old path here pointed at a file that
-# does not exist. It only ever served as the fallback when settings could
-# not be read, so nothing loaded through it, but `manifest_is_default`
-# compares against it and needs the real anchor.
-_DEFAULT_MANIFEST = (
-    Path(__file__).resolve().parents[3] / "policies" / "detection" / "manifest.yaml"
-)
+_DEFAULT_MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "detection" / "manifest.yaml"
 
 _DEFAULT_THRESHOLDS: dict[str, int] = {
     "discovery_burst": 3,
@@ -60,19 +51,11 @@ def _manifest_path() -> Path:
 
 
 def manifest_is_default() -> bool:
-    """True when the active manifest is the packaged one.
-
-    A custom manifest (`settings.detection_rules_path` pointing elsewhere)
-    replaces the whole file, so any rule id it defines is the operator's
-    own — even one that collides with a shipped id. Code that special-cases
-    a shipped rule (for example the engine deduplicating a denial burst)
-    must check this first, so it never drops a finding that belongs to an
-    operator-authored rule.
-    """
+    """Return whether the active manifest is the packaged policy."""
     try:
         return _manifest_path().resolve() == _DEFAULT_MANIFEST.resolve()
-    except Exception:
-        return True
+    except (OSError, RuntimeError):
+        return False
 
 
 def load_manifest(*, reload: bool = False) -> dict[str, Any]:

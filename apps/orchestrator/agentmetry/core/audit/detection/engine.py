@@ -7,7 +7,6 @@ from typing import Any
 
 from .models import SEVERITY_RANK, Detection
 from .rules import HOST_REGISTRY, REGISTRY
-from .yaml_config import manifest_is_default
 from .yaml_rules import build_yaml_rules
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
@@ -60,32 +59,11 @@ def run_detections(events: list[dict[str, Any]]) -> list[Detection]:
 
     `events` should be the events for a single correlation_id; ordering is
     handled here so callers can pass them straight from the trail.
-
-    One finding per denial burst: the built-in `repeated-denials` rule and
-    the analyst-authored YAML count rule `rapid-tool-denials` both count
-    denied `tool_called` events, so five denials used to match both. The
-    default engine keeps only the built-in finding — high severity, one
-    detection aggregating the whole burst, with the `repeated-denials` id
-    the generated Sigma rule already keys on. `rapid-tool-denials` stays
-    registered in the manifest (and in `known_rule_ids`), so an analyst
-    rule or a downstream match on that id keeps working; it simply does
-    not double-report a burst the built-in rule already covered. It has
-    no generated Sigma file of its own, so nothing in the Sigma pack is
-    orphaned by the suppression.
-
-    Scoped to the shipped manifest only: a custom manifest replaces the
-    whole file, so a rule id in it is the operator's own even when it
-    collides with a shipped id. If the active manifest is custom, a
-    `rapid-tool-denials` finding from it is that operator's rule firing
-    and is reported as-is, alongside the built-in finding — the engine
-    never silently drops someone else's detection. (PR #486 review, round 2.)
     """
     ordered = _sorted(events)
     detections: list[Detection] = []
     for rule in _session_rules():
         detections.extend(rule(ordered))
-    if any(d.rule_id == "repeated-denials" for d in detections) and manifest_is_default():
-        detections = [d for d in detections if d.rule_id != "rapid-tool-denials"]
     detections.sort(key=lambda d: (SEVERITY_RANK.get(d.severity, 99), d.first_seen_utc))
     return detections
 

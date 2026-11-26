@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from agentmetry.core.audit.detection.engine import run_detections
-from agentmetry.core.audit.detection.yaml_config import clear_manifest_cache, threshold
+from agentmetry.core.audit.detection.yaml_config import clear_manifest_cache, count_rules, threshold
 from agentmetry.core.config import settings
 
 
@@ -26,33 +26,12 @@ def test_threshold_reads_manifest():
     assert threshold("subagent_burst") == 5
 
 
-def test_rapid_tool_denials_yaml_rule_fires():
-    # The YAML rule itself still fires at five denials — it stays registered
-    # under its own id — but the default engine reports the burst once, as
-    # `repeated-denials`, instead of double-reporting it (PR #486 review).
-    from agentmetry.core.audit.detection.yaml_rules import build_yaml_rules
-
+def test_packaged_manifest_has_no_duplicate_denial_rule():
     clear_manifest_cache()
-    events = [
-        _ev(event_id=f"d{i}", action={"type": "tool_called", "outcome": "denied", "reason": "x"})
-        for i in range(5)
-    ]
-    yaml_rules = {rule.__name__: rule for rule in build_yaml_rules()}
-    fired = yaml_rules["yaml_rapid_tool_denials"](events)
-    assert [d.rule_id for d in fired] == ["rapid-tool-denials"]
-
-    dets = [d for d in run_detections(events) if d.rule_id in {"repeated-denials", "rapid-tool-denials"}]
-    assert [d.rule_id for d in dets] == ["repeated-denials"]
+    assert "rapid-tool-denials" not in {rule["id"] for rule in count_rules()}
 
 
-def test_custom_manifest_rule_with_shipped_id_is_not_suppressed(tmp_path, monkeypatch):
-    # A custom manifest replaces the whole file, so a rule id in it is the
-    # operator's own even when it collides with a shipped id. The denial
-    # burst deduplication must only ever drop the *shipped*
-    # `rapid-tool-denials` finding — a custom-manifest rule with the same id
-    # keeps firing alongside the built-in `repeated-denials` finding
-    # (PR #486 review, round 2). The custom rule is recognisable by its own
-    # title and severity, proving the surviving finding came from it.
+def test_custom_manifest_controls_the_denial_rule(tmp_path, monkeypatch):
     manifest = tmp_path / "manifest.yaml"
     manifest.write_text(
         "count_rules:\n"
@@ -73,11 +52,24 @@ def test_custom_manifest_rule_with_shipped_id_is_not_suppressed(tmp_path, monkey
             _ev(event_id=f"d{i}", action={"type": "tool_called", "outcome": "denied", "reason": "x"})
             for i in range(5)
         ]
-        dets = [d for d in run_detections(events) if d.rule_id in {"repeated-denials", "rapid-tool-denials"}]
-        assert [d.rule_id for d in dets] == ["repeated-denials", "rapid-tool-denials"]
-        custom = [d for d in dets if d.rule_id == "rapid-tool-denials"][0]
-        assert custom.title == "Operator rapid tool denials"
-        assert custom.severity == "low"
+        assert not any(d.rule_id == "rapid-tool-denials" for d in run_detections(events[:1]))
+        for sample in (events[:2], events):
+            dets = [d for d in run_detections(sample) if d.rule_id in {"repeated-denials", "rapid-tool-denials"}]
+            assert [d.rule_id for d in dets] == ["rapid-tool-denials"]
+            assert dets[0].title == "Operator rapid tool denials"
+            assert dets[0].severity == "low"
+    finally:
+        clear_manifest_cache()
+
+
+def test_custom_manifest_can_omit_the_denial_rule(tmp_path, monkeypatch):
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text("count_rules: []\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "detection_rules_path", manifest)
+    clear_manifest_cache()
+    try:
+        events = [_ev(event_id=f"d{i}") for i in range(5)]
+        assert not any(d.rule_id in {"repeated-denials", "rapid-tool-denials"} for d in run_detections(events))
     finally:
         clear_manifest_cache()
 

@@ -28,17 +28,6 @@ thresholds:
 # Analyst-authored count rules — no Python PR required. Fires when ≥ min_count
 # events in one session match all filters in `match`.
 count_rules:
-  - id: rapid-tool-denials
-    title: Rapid tool denials in one session
-    severity: medium
-    summary: "{count} denied tool calls — possible policy probing or injection retries"
-    tactic_ids: ["TA0005"]
-    technique_ids: ["T1562"]
-    min_count: 5
-    match:
-      action_type: tool_called
-      outcome: denied
-
   - id: rapid-dlp-blocks
     title: Repeated DLP blocks in one session
     severity: high
