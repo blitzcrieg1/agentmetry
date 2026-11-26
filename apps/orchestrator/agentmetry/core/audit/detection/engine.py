@@ -7,6 +7,7 @@ from typing import Any
 
 from .models import SEVERITY_RANK, Detection
 from .rules import HOST_REGISTRY, REGISTRY
+from .yaml_config import manifest_is_default
 from .yaml_rules import build_yaml_rules
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
@@ -71,12 +72,19 @@ def run_detections(events: list[dict[str, Any]]) -> list[Detection]:
     not double-report a burst the built-in rule already covered. It has
     no generated Sigma file of its own, so nothing in the Sigma pack is
     orphaned by the suppression.
+
+    Scoped to the shipped manifest only: a custom manifest replaces the
+    whole file, so a rule id in it is the operator's own even when it
+    collides with a shipped id. If the active manifest is custom, a
+    `rapid-tool-denials` finding from it is that operator's rule firing
+    and is reported as-is, alongside the built-in finding — the engine
+    never silently drops someone else's detection. (PR #486 review, round 2.)
     """
     ordered = _sorted(events)
     detections: list[Detection] = []
     for rule in _session_rules():
         detections.extend(rule(ordered))
-    if any(d.rule_id == "repeated-denials" for d in detections):
+    if any(d.rule_id == "repeated-denials" for d in detections) and manifest_is_default():
         detections = [d for d in detections if d.rule_id != "rapid-tool-denials"]
     detections.sort(key=lambda d: (SEVERITY_RANK.get(d.severity, 99), d.first_seen_utc))
     return detections
