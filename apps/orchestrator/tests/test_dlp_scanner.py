@@ -175,6 +175,52 @@ def test_dlp_scan_openai_project_key_too_short_is_near_miss():
     assert verdict.matched is False
 
 
+def test_dlp_scan_openrouter_api_key():
+    key = "sk-or-v1-" + "a1b2c3d4e5f6g7h8i9j0k1l2"  # gitleaks:allow fake fixture, not a real OpenRouter key
+    args = {"command": f"export OPENROUTER_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "openrouter_api_key"
+
+
+def test_dlp_scan_openrouter_key_does_not_fire_as_generic():
+    # Same bug class as the OpenAI project key: the hyphen after "sk" breaks
+    # the generic rule's alnum-only run at 0 characters, so sk-or-v1-... never
+    # matched anything before this rule existed.
+    key = "sk-or-v1-" + "a1b2c3d4e5f6g7h8i9j0k1l2"  # gitleaks:allow fake fixture, not a real OpenRouter key
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "openrouter_api_key"
+    assert all(m.rule_id != "generic_provider_api_key" for m in verdict.matches)
+
+
+def test_dlp_scan_openrouter_key_too_short_is_near_miss():
+    # Right prefix, but the token body is well under the 16-char floor — must
+    # not fire, or every "sk-or-v1-" mention in a comment/docstring would.
+    key = "sk-or-v1-abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_groq_api_key():
+    key = "gsk_" + "a1B2c3D4e5F6g7H8i9J0k1L2"  # gitleaks:allow fake fixture, not a real Groq key
+    args = {"command": f"export GROQ_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "groq_api_key"
+
+
+def test_dlp_scan_groq_key_too_short_is_near_miss():
+    # Right prefix, but the token body is well under the 20-char floor — must
+    # not fire, or every "gsk_" mention in a comment/docstring would.
+    key = "gsk_abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
 def test_dlp_scan_generic_provider_api_key():
     key = "sk-" + "a1B2c3D4e5F6g7H8i9J0k1L2"  # gitleaks:allow fake fixture, not a real OpenAI key
     args = {"command": f"export OPENAI_API_KEY={key}"}
@@ -187,6 +233,51 @@ def test_dlp_scan_generic_key_short_word_is_near_miss():
     # "sk-" followed by a short ordinary word, not a 20+ char token — must not
     # fire, or any mention of e.g. "sk-test" in a log line becomes a critical finding.
     args = {"command": "echo sk-test"}  # gitleaks:allow fake fixture, deliberately too short
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_replicate_api_token():
+    key = "r8_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6"  # gitleaks:allow fake fixture, not a real Replicate token
+    args = {"command": f"export REPLICATE_API_TOKEN={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "replicate_api_token"
+
+
+def test_dlp_scan_replicate_token_too_short_is_near_miss():
+    key = "r8_abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_perplexity_api_key():
+    key = "pplx-" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6"  # gitleaks:allow fake fixture, not a real Perplexity key
+    args = {"command": f"export PERPLEXITY_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "perplexity_api_key"
+
+
+def test_dlp_scan_perplexity_key_too_short_is_near_miss():
+    key = "pplx-abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_xai_api_key():
+    key = "xai-" + "a1B2c3D4e5F6g7H8i9J0"  # gitleaks:allow fake fixture, not a real xAI key
+    args = {"command": f"export XAI_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "xai_api_key"
+
+
+def test_dlp_scan_xai_key_too_short_is_near_miss():
+    key = "xai-abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
     verdict = scan("run_command", args)
     assert verdict.matched is False
 
