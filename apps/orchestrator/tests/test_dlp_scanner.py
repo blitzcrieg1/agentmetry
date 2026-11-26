@@ -237,6 +237,51 @@ def test_dlp_scan_generic_key_short_word_is_near_miss():
     assert verdict.matched is False
 
 
+def test_dlp_scan_replicate_api_token():
+    key = "r8_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6"  # gitleaks:allow fake fixture, not a real Replicate token
+    args = {"command": f"export REPLICATE_API_TOKEN={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "replicate_api_token"
+
+
+def test_dlp_scan_replicate_token_too_short_is_near_miss():
+    key = "r8_abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_perplexity_api_key():
+    key = "pplx-" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6"  # gitleaks:allow fake fixture, not a real Perplexity key
+    args = {"command": f"export PERPLEXITY_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "perplexity_api_key"
+
+
+def test_dlp_scan_perplexity_key_too_short_is_near_miss():
+    key = "pplx-abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
+def test_dlp_scan_xai_api_key():
+    key = "xai-" + "a1B2c3D4e5F6g7H8i9J0"  # gitleaks:allow fake fixture, not a real xAI key
+    args = {"command": f"export XAI_API_KEY={key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is True
+    assert verdict.match.rule_id == "xai_api_key"
+
+
+def test_dlp_scan_xai_key_too_short_is_near_miss():
+    key = "xai-abc123"  # gitleaks:allow fake fixture, deliberately too short
+    args = {"command": f"echo {key}"}
+    verdict = scan("run_command", args)
+    assert verdict.matched is False
+
+
 def test_dlp_scan_safe_args():
     args = {"command": "ls -la"}
     verdict = scan("run_command", args)
