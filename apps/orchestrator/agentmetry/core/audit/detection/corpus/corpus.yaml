@@ -77,7 +77,9 @@ cases:
       noise, four is an agent probing the guardrail for a way through.
       Four is also deliberate: the YAML count rule `rapid-tool-denials`
       fires at five, so this case pins the built-in's lower bar on its own
-      — at five denials both fire, which the PR description states openly.
+      — at five denials the default engine still reports one finding, the
+      built-in `repeated-denials`, and suppresses the YAML twin for the
+      same burst (PR #486 review).
 
   - name: denied retries below the burst threshold
     session: benign_denied_retries_below_threshold.jsonl
