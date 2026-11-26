@@ -65,6 +65,14 @@ must stay silent.
 bounty issue [#1]: repeated tool-denial detection with regression tests, a
 benign case below the threshold, and a Sigma export.
 
+**[@bewfordq](https://github.com/bewfordq)** ([#495]), merged 2026-11-26:
+five more provider key DLP rules (OpenRouter, Groq, Replicate, Perplexity,
+xAI), each with a near-miss test that must stay silent.
+
+**[@im02-crypto](https://github.com/im02-crypto)** ([#496]), merged 2026-11-26,
+bounty issue [#293]: the opt-in `agentmetry canary` command for local
+honeytoken decoys, with the value never entering the trail.
+
 **[@valeriikupinwork](https://github.com/valeriikupinwork)** submitted a benign
 `git clean -nd` preview followed by `git status --short` in [#487]. The
 equivalent benchmark scenario later landed in [#490].
@@ -181,6 +189,9 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
 [#478]: https://github.com/blitzcrieg1/agentmetry/issues/478
 [#483]: https://github.com/blitzcrieg1/agentmetry/pull/483
+[#495]: https://github.com/blitzcrieg1/agentmetry/pull/495
+[#496]: https://github.com/blitzcrieg1/agentmetry/pull/496
+[#293]: https://github.com/blitzcrieg1/agentmetry/issues/293
 [#486]: https://github.com/blitzcrieg1/agentmetry/pull/486
 [#487]: https://github.com/blitzcrieg1/agentmetry/pull/487
 [#490]: https://github.com/blitzcrieg1/agentmetry/pull/490
