@@ -61,6 +61,10 @@ bounty issue [#478]: the `openai_project_api_key` DLP rule covering
 `sk-proj-…`, `sk-svcacct-…` and `sk-admin-…` keys, with a near-miss test that
 must stay silent.
 
+**[@rumangsanya](https://github.com/rumangsanya)** ([#486]), merged 2026-11-26,
+bounty issue [#1]: repeated tool-denial detection with regression tests, a
+benign case below the threshold, and a Sigma export.
+
 That list is short, and it is listed by name rather than summarised, because
 outside contributions on a single-maintainer project are easier to lose than to
 add.
@@ -78,9 +82,9 @@ history of who helped.
 **[@hossainzarif23](https://github.com/hossainzarif23)** has [#139] open, a
 `detections` command for triage.
 
-Thank you to all four. If you are reading this and wondering whether a small
-patch is worth sending: it is, and the list above is short enough that yours
-would be visible.
+Thank you to everyone who contributed. If you are reading this and wondering
+whether a small patch is worth sending: it is, and the list above is short
+enough that yours would be visible.
 
 ## Automation
 
@@ -162,6 +166,7 @@ those seven are closed and shipped, in 0.6.0 and 0.7.0. The other five are open,
 and they stay open with the original critique attached, because an issue that
 records why the first design was wrong is worth more than a tidy tracker.
 
+[#1]: https://github.com/blitzcrieg1/agentmetry/issues/1
 [#30]: https://github.com/blitzcrieg1/agentmetry/pull/30
 [#465]: https://github.com/blitzcrieg1/agentmetry/pull/465
 [#468]: https://github.com/blitzcrieg1/agentmetry/pull/468
@@ -172,6 +177,7 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
 [#478]: https://github.com/blitzcrieg1/agentmetry/issues/478
 [#483]: https://github.com/blitzcrieg1/agentmetry/pull/483
+[#486]: https://github.com/blitzcrieg1/agentmetry/pull/486
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
 [#139]: https://github.com/blitzcrieg1/agentmetry/pull/139
 [#140]: https://github.com/blitzcrieg1/agentmetry/pull/140
