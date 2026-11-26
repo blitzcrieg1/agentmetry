@@ -260,6 +260,7 @@ From a clone, `python scripts/demo_dashboard.py` seeds a local dashboard. Build 
 | `agentmetry import-agt` | Ingest a Microsoft Agent Governance Toolkit audit file. |
 | `agentmetry backup` / `agentmetry restore` | Zip the data stores, or restore one with the server stopped. |
 | `agentmetry dogfood` | Score the beta gate, or `--start` its clock. |
+| `agentmetry canary` | Opt-in local honeytokens. Plant a decoy credential — a fake profile in `~/.aws/credentials`, or a canary line in a project `.env` — and its value becomes a critical DLP rule, so touching it is a finding at the tool boundary. `canary list` shows what is planted; `canary remove` puts the file back and drops the rule. It refuses to touch a profile or key that already exists, and nothing it plants ever leaves the machine. See [docs/canary.md](docs/canary.md). |
 
 Clone installers, not part of the wheel: `scripts/install.ps1` (Windows) and `scripts/install.sh` (Linux and macOS). `scripts/otel_receiver.py` is a shim for `agentmetry otel`.
 
