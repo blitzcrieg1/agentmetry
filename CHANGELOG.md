@@ -9,6 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-26
+
+Second community release in two days: five more provider key DLP rules and the
+opt-in canary honeytoken command, both from bounty contributors. Benchmark:
+107 cases, 0 missed, 0 false positives; 3013 tests.
+
 ### Added
 
 - **Opt-in local honeytokens (`agentmetry canary`).** Plant a decoy credential (a fake
