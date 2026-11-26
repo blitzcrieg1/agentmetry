@@ -11,6 +11,11 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
+- **Opt-in local honeytokens (`agentmetry canary`).** Plant a decoy credential (a fake
+  AWS profile or a canary line in a project `.env`); its value becomes a critical DLP
+  rule, so reading it is a finding at the tool boundary. Local only, never overwrites a
+  real credential, values never enter the trail, and `remove` restores the file exactly
+  (#293, #491, @im02-crypto).
 - **DLP rules for five more provider key formats.** `openrouter_api_key`
   (`sk-or-v1-…`), `groq_api_key`, `replicate_api_token` (`r8_…`),
   `perplexity_api_key` (`pplx-…`) and `xai_api_key` (`xai-…`), each with a
