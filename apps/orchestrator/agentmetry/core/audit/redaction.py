@@ -59,6 +59,12 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}"), "<redacted-postman-key>"),
     (re.compile(r"\bpul-[a-f0-9]{40}"), "<redacted-pulumi-token>"),
     (re.compile(r"\bdapi[a-f0-9]{32}(?:-\d)?"), "<redacted-databricks-token>"),
+    # Keep these provider shapes in sync with the DLP manifest.
+    (re.compile(r"(?i)\bsk-or-v1-[a-zA-Z0-9]{16,}"), "<redacted-openrouter-key>"),
+    (re.compile(r"(?i)\bgsk_[a-zA-Z0-9]{20,}"), "<redacted-groq-key>"),
+    (re.compile(r"(?i)\br8_[a-zA-Z0-9]{32,}"), "<redacted-replicate-token>"),
+    (re.compile(r"(?i)\bpplx-[a-zA-Z0-9]{32,}"), "<redacted-perplexity-key>"),
+    (re.compile(r"(?i)\bxai-[a-zA-Z0-9]{20,}"), "<redacted-xai-key>"),
 ]
 
 

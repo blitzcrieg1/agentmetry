@@ -930,6 +930,12 @@ _SECRET_PATTERNS = [
     (re.compile(r"\bPMAK-[a-fA-F0-9]{24}-[a-fA-F0-9]{34}"), "<redacted-postman-key>"),
     (re.compile(r"\bpul-[a-f0-9]{40}"), "<redacted-pulumi-token>"),
     (re.compile(r"\bdapi[a-f0-9]{32}(?:-\d)?"), "<redacted-databricks-token>"),
+    # Keep these provider shapes in sync with the DLP manifest.
+    (re.compile(r"(?i)\bsk-or-v1-[a-zA-Z0-9]{16,}"), "<redacted-openrouter-key>"),
+    (re.compile(r"(?i)\bgsk_[a-zA-Z0-9]{20,}"), "<redacted-groq-key>"),
+    (re.compile(r"(?i)\br8_[a-zA-Z0-9]{32,}"), "<redacted-replicate-token>"),
+    (re.compile(r"(?i)\bpplx-[a-zA-Z0-9]{32,}"), "<redacted-perplexity-key>"),
+    (re.compile(r"(?i)\bxai-[a-zA-Z0-9]{20,}"), "<redacted-xai-key>"),
 ]
 
 
@@ -1013,7 +1019,6 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
                 tool["input_hash_alg"] = "hmac-sha256"
 
         full, structured_partial = extract_command_detail(args, qualified)
-        cmd = full[:COMMAND_MAX_LEN] if full else None
         analysed, partial = _classification_text(full) if full else (None, False)
         # A structured input past its bounds was read in part (#433).
         partial = partial or structured_partial
@@ -1023,8 +1028,8 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
         # command text. Without these, the default hashed-only config left
         # every command-based sequence rule (credential-exfil, the HF chains,
         # download cradles) blind on real traffic: the demo injected `command`,
-        # production events had nothing to match. They read `analysed`, not
-        # the stored `cmd`: see CLASSIFY_MAX_LEN.
+        # production events had nothing to match. Classification uses `analysed`
+        # with its own budget (see CLASSIFY_MAX_LEN).
         # By tool kind: a Write's path or an apply_patch body is not a command
         # (#329, shapes 4 and 5). See traits.classify_tool_call.
         traits: list[str] = []
@@ -1089,8 +1094,9 @@ def _hash_tool_args(payload: dict[str, Any] | None) -> dict[str, Any] | None:
                 redact_arguments(args if isinstance(args, dict) else {"value": args})
             )
 
-        if (_log_full_args_enabled() or _log_commands_enabled()) and cmd:
-            tool["command"] = scrub_command(cmd)
+        if (_log_full_args_enabled() or _log_commands_enabled()) and full:
+            # A token cut at the storage cap may no longer match its format.
+            tool["command"] = scrub_command(full)[:COMMAND_MAX_LEN]
     return payload
 
 
