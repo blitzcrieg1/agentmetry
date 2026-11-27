@@ -72,7 +72,10 @@ must stay silent.
 
 **[@rumangsanya](https://github.com/rumangsanya)** ([#486]), merged 2026-11-26,
 bounty issue [#1]: repeated tool-denial detection with regression tests, a
-benign case below the threshold, and a Sigma export.
+benign case below the threshold, and a Sigma export. Also merged 2026-11-27:
+corpus coverage for `off-hours-activity` with per-case benchmark settings and an
+attack/benign pair ([#504]), and the `edits_self_config` trait for agent writes
+to its own settings/hooks files ([#505], slice of #317).
 
 **[@bewfordq](https://github.com/bewfordq)** added the benign Git cleanup preview
 fixture ([#490]) and five more provider key DLP rules ([#495]) for OpenRouter,
@@ -191,6 +194,8 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#496]: https://github.com/blitzcrieg1/agentmetry/pull/496
 [#293]: https://github.com/blitzcrieg1/agentmetry/issues/293
 [#486]: https://github.com/blitzcrieg1/agentmetry/pull/486
+[#504]: https://github.com/blitzcrieg1/agentmetry/pull/504
+[#505]: https://github.com/blitzcrieg1/agentmetry/pull/505
 [#487]: https://github.com/blitzcrieg1/agentmetry/pull/487
 [#490]: https://github.com/blitzcrieg1/agentmetry/pull/490
 [#126]: https://github.com/blitzcrieg1/agentmetry/pull/126
