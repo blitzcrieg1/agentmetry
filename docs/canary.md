@@ -1,106 +1,66 @@
-# `agentmetry canary`: local honeytokens
+# `agentmetry canary`
 
-An opt-in command that plants decoy credentials on the machine and turns a read
-of one into a finding at the tool boundary. Nothing it plants ever leaves the
-machine.
+Canaries are opt-in local decoy credentials. An observed tool input containing a
+literal decoy value can produce a critical DLP match. A read whose input contains
+only a path does not trigger a canary match. A match identifies the observed
+value and does not establish how it was obtained or where it went.
 
-## Why this exists
+## Plant a decoy
 
-Every other credential rule guesses. A regex sees something shaped like an AWS
-key and reports it, and the operator has to decide whether it was real. A canary
-inverts that: the value was planted by the operator, it cannot be a working
-credential, so touching it is not a guess. It is evidence that an agent reached
-for credentials it had no reason to want.
-
-The cost is that it only catches the agent that touches *your* decoy. That is a
-narrower net than a general credential rule, and it is the point — the finding
-should be close to certain, not merely suspicious.
-
-## Turning it on
-
-Nothing is planted until you run the command. There is no default decoy, no
-background timer, and no ruleset entry in the shipped manifest.
+Use an unmanaged Agentmetry installation with the bundled DLP manifest and
+DLP enabled. An AWS decoy adds a profile to `~/.aws/credentials`. An env decoy
+adds a variable to `.env` in an existing project. Choose a project whose
+credential file you control.
 
 ```console
-$ agentmetry canary plant --kind aws
-planted aws-home-1
-  where   C:\Users\you\.aws\credentials [agentmetry-canary-1]
-  rule    canary_aws-home-1 (merged into the DLP ruleset)
-  remove  agentmetry canary remove aws-home-1
+agentmetry canary plant --kind aws
+agentmetry canary plant --kind env --project C:\work\my-project
 ```
 
-That appended a profile to `~/.aws/credentials` and wrote a rule whose pattern is
-the two values it just planted. If an agent later reads that profile, or copies
-its contents into an argument, the DLP scanner matches on the next tool call.
+The command refuses existing keys or profiles with the same generated name,
+linked paths, and nonregular files. No callback is configured. The canary
+producer never sends the value to a remote service. A tool that handles the
+value is still subject to its own behavior and the configured DLP mode.
 
-A project-local decoy is the same shape, anchored to a `.env` instead:
+## List, remove, and recover
 
 ```console
-$ agentmetry canary plant --kind env --project C:\work\my-project
+agentmetry canary list
+agentmetry canary remove aws-home-1
 ```
 
-## Managing what is planted
+The command saves a recovery record before modifying a target. If an append
+is interrupted, `list` shows the pending record. Run `remove` with its name
+to roll back the full or partial block. If a removal is interrupted after
+the file was restored, run it again to finish updating the inventory.
 
-```console
-$ agentmetry canary list
-aws-home-1    aws  C:\Users\you\.aws\credentials [agentmetry-canary-1]
-              rule canary_aws-home-1  planted 2026-11-26T05:31:04+00:00
+Removal preserves original bytes, including line endings, and keeps the
+original file in place. A nonempty file created solely for a decoy can be
+removed once the decoy is identified. Remove multiple decoys in the same
+file in reverse order. If the file changed separately or a legacy entry has
+a relative path, remove the decoy block by hand before running
+`agentmetry canary forget <name>` to drop the inventory entry.
 
-$ agentmetry canary remove aws-home-1
-removed aws-home-1 (C:\Users\you\.aws\credentials [agentmetry-canary-1])
-```
+Canary commands coordinate through a local lock. Other programs editing the
+same credential file do not take that lock. Avoid concurrent editing during
+plant or removal.
 
-`remove` deletes exactly what `plant` appended and drops the matching DLP rule.
-If the file does not end with the exact block that was appended — because
-somebody edited it by hand — it refuses rather than truncating work it cannot
-attribute:
+## Detection and capture limits
 
-```console
-$ agentmetry canary remove aws-home-1
-refusing: ... no longer ends with what canary planted (someone edited it since).
-Remove the block by hand, then run `agentmetry canary forget aws-home-1`
-```
+The optional rules are derived from the validated literal values in
+`~/.agentmetry/canary/state.json`. The inventory contains the values and
+local paths. Treat it as private. If it cannot be read or fails validation,
+the recorder skips the optional canary rules and retains the bundled DLP
+rules. An administrator's DLP lock or a custom DLP manifest excludes the
+local canary inventory.
 
-`forget` exists for that case: drop the bookkeeping and the DLP rule, leave the
-file alone.
+An upgrade from 0.17.0 can read the generated inventory entries. The sibling
+`rules.yaml` from 0.17.0 is ignored. If the older version left a block without
+a matching inventory entry, inspect the chosen target privately and remove that
+block manually.
 
-## What it guarantees
-
-| Guarantee | How |
-| --- | --- |
-| **Local only.** | Detection is a DLP regex over what the agent already submitted. There is no callback, no beacon, and no network call anywhere in the path. |
-| **The trail records the rule id, never the value.** | The rule is anchored on the planted value, so the scanner reports `canary_aws-home-1`; the value itself is redacted by the same code that redacts a real token. |
-| **Never overwrites a real credential.** | `plant` refuses when the profile or key already exists in that file. It appends, it never rewrites. |
-| **Reversible.** | `remove` removes the exact block and the exact rule. The file did not exist before planting, it is deleted; if it did, it is restored to what it held. |
-| **Off by default.** | Nothing exists until you run `plant`, and the packaged DLP manifest contains no canary rule. |
-
-## Where the pieces live
-
-```
-~/.agentmetry/canary/state.json   what is planted, enough to undo it
-~/.agentmetry/canary/rules.yaml   the generated DLP rules
-```
-
-`load_dlp_rules` merges that directory after the built-in manifest, and only
-when it exists. The hook reads the DLP manifest on every tool call, which is why
-this is a directory check rather than a second unconditional parse.
-
-## Limits worth knowing
-
-- **It only works while the recorder runs.** The decoy is a value in a file; a
-  read becomes an event because the hook sees the tool call, not because the file
-  watches itself.
-- **A canary is not a tripwire on the filesystem.** It catches a read that goes
-  through a tool the hook sees. An agent that opens the file out of process is
-  outside what the tool boundary can observe — the same limit as every hook-based
-  rule.
-- **The values are recognisably fake on purpose.** `AGENTMETRY-CANARY` in an
-  `.env` is a reminder to a human reader, and it also means an attacker who reads
-  the file knows it is a decoy. That is the honest trade: a near-certain finding
-  beats a subtle one you cannot explain.
-
-## Related
-
-- [DLP manifest](../apps/orchestrator/agentmetry/policies/dlp/manifest.yaml) — the rules canary appends to at runtime
-- [Detection rules](detection-rules.md) — the sequence rules, and why they are frozen
-- [Scanner](scanner.md) — the other half of the DLP path
+The DLP match contains rule metadata. Raw argument and command capture is a
+separate path whose scrubbers may not recognize the exact canary value.
+Keep full argument and command capture disabled when using canaries unless you
+have verified the settings and scrubbers on synthetic data. A process that
+opens the file outside the observed tool boundary may leave no matching event.

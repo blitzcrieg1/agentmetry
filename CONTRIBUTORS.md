@@ -37,13 +37,22 @@ thing this project cares most about in a detection contribution.
 [`e9a1b9c`](https://github.com/blitzcrieg1/agentmetry/commit/e9a1b9c), a neutral
 Windows path in an ingest client test fixture.
 
+**[@hossainzarif23](https://github.com/hossainzarif23)** ([#139]) added the
+`detections` command for triage. Merged 2026-09-03.
+
+**[@kkkhs](https://github.com/kkkhs)** added the detection disposition command
+([#140], merged 2026-09-04) and benign detection corpus coverage ([#145], merged
+2026-10-16). [#140] was first closed on 2026-09-02 over the contributor licence
+agreement and reopened on 2026-09-04.
+
 **[@surendraSinghKamboj](https://github.com/surendraSinghKamboj)** ([#465],
-[#468], [#472], [#474]), merged 2026-11-25: two DLP rules for Google Cloud
+[#468], [#472], [#474], [#477]), merged 2026-11-25: two DLP rules for Google Cloud
 credentials (the `AIza…` API key shape and the service-account key marker),
 each with a near-miss test that must stay silent; three benign corpus sessions
 (a CI deploy sourcing `.env`, operator `kubectl get secrets`, a bulk `git mv`
 rename); host-scoped benchmark coverage that gave `host-subagent-swarm-burst`
 its corpus case; and the `dashboard --dev-server` localhost sign-in link fix.
+They also removed unused dashboard state from the retired email runtime.
 
 **[@rmanm19](https://github.com/rmanm19)** ([#469]), merged 2026-11-25: three
 classifier-bypass fixes, shell-quoted downloaders (`c'u'rl … | sh`), decode-pipes
@@ -65,9 +74,10 @@ must stay silent.
 bounty issue [#1]: repeated tool-denial detection with regression tests, a
 benign case below the threshold, and a Sigma export.
 
-**[@bewfordq](https://github.com/bewfordq)** ([#495]), merged 2026-11-26:
-five more provider key DLP rules (OpenRouter, Groq, Replicate, Perplexity,
-xAI), each with a near-miss test that must stay silent.
+**[@bewfordq](https://github.com/bewfordq)** added the benign Git cleanup preview
+fixture ([#490]) and five more provider key DLP rules ([#495]) for OpenRouter,
+Groq, Replicate, Perplexity, and xAI, each with a near-miss test that must stay
+silent. Both merged 2026-11-26.
 
 **[@im02-crypto](https://github.com/im02-crypto)** ([#496]), merged 2026-11-26,
 bounty issue [#293]: the opt-in `agentmetry canary` command for local
@@ -80,19 +90,6 @@ equivalent benchmark scenario later landed in [#490].
 That list is short, and it is listed by name rather than summarised, because
 outside contributions on a single-maintainer project are easier to lose than to
 add.
-
-### In flight
-
-**[@kkkhs](https://github.com/kkkhs)** has sent two pull requests. [#145] adds
-benign corpus coverage and is open. [#140] added a detection disposition command
-and was finished before it was closed unmerged on 2026-09-02, with the
-contributor licence agreement as the blocker. That is a cost this project's
-process imposes on the contributor, not a shortcoming of the contribution, and
-it is recorded here because a finished piece of work should not vanish from the
-history of who helped.
-
-**[@hossainzarif23](https://github.com/hossainzarif23)** has [#139] open, a
-`detections` command for triage.
 
 Thank you to everyone who contributed. If you are reading this and wondering
 whether a small patch is worth sending: it is, and the list above is short
@@ -186,6 +183,7 @@ records why the first design was wrong is worth more than a tidy tracker.
 [#470]: https://github.com/blitzcrieg1/agentmetry/pull/470
 [#472]: https://github.com/blitzcrieg1/agentmetry/pull/472
 [#474]: https://github.com/blitzcrieg1/agentmetry/pull/474
+[#477]: https://github.com/blitzcrieg1/agentmetry/pull/477
 [#433]: https://github.com/blitzcrieg1/agentmetry/issues/433
 [#478]: https://github.com/blitzcrieg1/agentmetry/issues/478
 [#483]: https://github.com/blitzcrieg1/agentmetry/pull/483
