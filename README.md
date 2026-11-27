@@ -152,17 +152,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            115 (59 attack, 56 benign)
-  rules covered    20
-  expected firings 63
-  detected         63
+  cases            117 (60 attack, 57 benign)
+  rules covered    21
+  expected firings 64
+  detected         64
   missed           0
   false positives  0
 ```
 
-Run `agentmetry benchmark` to check these expectations. The 20 rule IDs in the corpus are the published rules; the Sigma pack ships 30 rules including the experimental ones (`host-subagent-swarm-burst`, `off-hours-activity`).
+Run `agentmetry benchmark` to check these expectations. The 21 rule IDs in the corpus are the published rules; the Sigma pack ships 30 rules including the experimental ones (`host-subagent-swarm-burst`, `off-hours-activity`).
 
-3052 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
+3055 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
