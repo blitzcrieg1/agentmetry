@@ -44,6 +44,10 @@ _ACTION_MAP = {
     # hooks. That changes this machine's configuration; it is not a tool call.
     # Unmapped it was stored as `tool_called`, which tool-sequence rules count.
     "hook_remediation": ("config_change", "success"),
+    # The agentmetry-guard sidecar reports intercepted egress here. It is not
+    # a tool call either; unmapped it would be counted by tool-sequence rules
+    # as one. Outcome carries the verdict: success (tunneled) or denied.
+    "network_egress": ("network_egress", "success"),
 }
 
 #: The only payload fields a remediation notice keeps. Anything session- or

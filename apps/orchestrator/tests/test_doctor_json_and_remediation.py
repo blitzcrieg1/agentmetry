@@ -152,3 +152,60 @@ def test_a_daily_remediation_run_raises_no_detection():
 def test_an_unknown_event_type_is_still_a_tool_call():
     """The fallback the remediation used to hit, unchanged for everything else."""
     assert build_external_canonical({"event_type": "whatever", "tool_name": "Bash"})["action"]["type"] == "tool_called"
+
+
+# ----------------------------------------------------------------------
+# network_egress (agentmetry-guard sidecar)
+# ----------------------------------------------------------------------
+
+
+def _egress(**extra) -> dict:
+    payload = {
+        "event_type": "network_egress",
+        "source_app": "agentmetry",
+        "adapter": "guard",
+        "correlation_id": "tool-call-1",
+        "session_id": "sess-1",
+        "outcome": "success",
+        "tool": {
+            "qualified": "guard.egress",
+            "server": "guard",
+            "command": "CONNECT example.com:443",
+            "arguments": {"scheme": "https", "method": "CONNECT",
+                          "host": "example.com", "port": 443, "path": ""},
+        },
+    }
+    payload.update(extra)
+    return build_external_canonical(payload)
+
+
+def test_an_egress_event_is_not_a_tool_call():
+    """Unmapped it would be stored as `tool_called` and counted by every
+    tool-sequence rule; the guard's own traffic would then feed the rules it
+    is meant to be observed by."""
+    event = _egress()
+    assert event["action"]["type"] == "network_egress"
+    assert event["action"]["outcome"] == "success"
+    assert event["source_topic"] == "external/agentmetry/network_egress"
+    assert event["source"]["adapter"] == "guard"
+
+
+def test_an_egress_event_joins_the_session_by_correlation_id():
+    event = _egress()
+    assert event["correlation_id"] == "tool-call-1"
+    assert event["session_id"] == "sess-1"
+    assert event["tool"]["command"] == "CONNECT example.com:443"
+    assert event["tool"]["arguments"]["host"] == "example.com"
+
+
+def test_a_denied_egress_keeps_its_verdict():
+    event = _egress(outcome="denied")
+    assert event["action"]["type"] == "network_egress"
+    assert event["action"]["outcome"] == "denied"
+
+
+def test_egress_events_do_not_fire_tool_sequence_rules():
+    events = [
+        _egress(timestamp_utc=f"2026-11-27T09:00:{i:02d}+00:00") for i in range(50)
+    ]
+    assert run_detections(events) == []
