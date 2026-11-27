@@ -143,6 +143,10 @@ def test_no_developer_content_reaches_the_beat(home, monkeypatch):
         "mcp_schema_servers", "interval_seconds",
         # Managed policy: key names, and refused locations an admin chose.
         "policy_locked", "policy_rejected",
+        # #318: whether the newest records still chain-verify. Anchor facts
+        # appear only when an operator configured an external anchor log, and
+        # the path they carry is one the admin chose, like policy_rejected.
+        "chain_verified", "chain_verify_message",
     }
     # The coverage fields name agents, never paths. A beat that carried
     # `C:/Users/jane/.cursor` would be disclosing who is running what and where.
@@ -253,3 +257,162 @@ def test_trail_root_never_raises(monkeypatch):
         lambda *a, **k: (_ for _ in ()).throw(OSError("gone")),
     )
     assert hb.trail_root() == ("", 0)
+
+
+# ----------------------------------------------------------------------
+# Chain verification and anchor staleness (#318)
+# ----------------------------------------------------------------------
+
+
+def _append_records(trail_path, count):
+    from agentmetry.core.audit.trail_chain import append_chained_line
+
+    for i in range(count):
+        append_chained_line(
+            trail_path,
+            {"event_type": "tool_called", "outcome": "success", "stamp": f"synthetic-{i}"},
+        )
+
+
+def _checkpoint_line(trail_path, tree_size, timestamp):
+    from agentmetry.core.audit.trail_anchor import Checkpoint
+
+    cp = Checkpoint(
+        tree_size=tree_size,
+        root_sha256="b" * 64,
+        head_seq=tree_size,
+        head_sha256="c" * 64,
+        timestamp=timestamp,
+        host_id="test-host",
+        trail_name=trail_path.name,
+    )
+    return json.dumps(cp.to_dict(), separators=(",", ":"), sort_keys=True)
+
+
+def _stamp(minutes_ago):
+    """An anchor timestamp this many minutes in the past, same format the
+    recorder writes (`_now` in trail_anchor)."""
+    from datetime import datetime, timedelta, timezone
+
+    moment = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+def test_a_healthy_chain_attests_verified(home, monkeypatch):
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 3)
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "success"
+    assert event["heartbeat"]["chain_verified"] is True
+    # A healthy chain carries the boolean, not prose: the message is the
+    # failure detail, empty when there is nothing to explain.
+    assert event["heartbeat"]["chain_verify_message"] == ""
+
+
+def test_a_broken_chain_degrades_the_beat(home, monkeypatch):
+    """A record edited without recomputing its hash is the failure the beat
+    exists to notice: green here would hide exactly the tampering the
+    trail claims to make visible."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 4)
+    lines = trail.read_text(encoding="utf-8").splitlines()
+    record = json.loads(lines[1])
+    record["event"]["stamp"] = "tampered-without-rehash"
+    lines[1] = json.dumps(record, separators=(",", ":"), sort_keys=True)
+    trail.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    event = hb.build_heartbeat_event("t")
+
+    assert event["action"]["outcome"] == "degraded"
+    assert event["heartbeat"]["chain_verified"] is False
+    assert "LOCAL CHAIN FAILED TO VERIFY" in event["action"]["reason"]
+    assert "record_sha256 mismatch" in event["action"]["reason"]
+
+
+def test_no_trail_yet_is_not_a_tamper_alarm(home, monkeypatch):
+    """A fresh machine and a tampered one must not read identically: nothing to
+    verify is `None`, not a degrade."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    event = hb.build_heartbeat_event("t")
+    assert event["heartbeat"]["chain_verified"] is None
+    assert event["action"]["outcome"] == "success"
+
+
+def test_a_fresh_configured_anchor_stays_success(home, monkeypatch):
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 3)
+    anchor_log = home / "external.anchors.jsonl"
+    anchor_log.write_text(_checkpoint_line(trail, 3, _stamp(0)) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "anchor_log_path", str(anchor_log))
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "success"
+    assert event["heartbeat"]["anchor_age_minutes"] < 60
+    assert event["heartbeat"]["anchor_tree_size"] == 3
+
+
+def test_a_stale_configured_anchor_degrades_the_beat(home, monkeypatch):
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 3)
+    anchor_log = home / "external.anchors.jsonl"
+    anchor_log.write_text(_checkpoint_line(trail, 3, _stamp(48 * 60)) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "anchor_log_path", str(anchor_log))
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "degraded"
+    assert "configured anchor is stale" in event["action"]["reason"]
+    assert event["heartbeat"]["anchor_age_minutes"] >= 48 * 60
+
+
+def test_a_configured_but_silent_anchor_log_degrades(home, monkeypatch):
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    anchor_log = home / "external.anchors.jsonl"  # never written
+    monkeypatch.setattr(settings, "anchor_log_path", str(anchor_log))
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "degraded"
+    assert "no readable checkpoint" in event["action"]["reason"]
+    assert event["heartbeat"]["anchor_age_minutes"] == -1
+
+
+def test_a_shared_anchor_log_for_another_trail_is_not_scored(home, monkeypatch):
+    """A log holding checkpoints for another trail must not read as a stale
+    anchor for this one: scoring it made `verify` cry wolf (#318's sibling
+    trap, module docstring of trail_anchor)."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    anchor_log = home / "external.anchors.jsonl"
+    other = home / "some-other-trail.jsonl"
+    anchor_log.write_text(_checkpoint_line(other, 9, _stamp(48 * 60)) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "anchor_log_path", str(anchor_log))
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "degraded"
+    # Silent for THIS trail, and the reason says which log to look at.
+    assert "no readable checkpoint" in event["action"]["reason"]
+    assert event["heartbeat"]["anchor_age_minutes"] == -1
+
+
+def test_the_sibling_default_anchor_is_not_the_beats_business(home, monkeypatch):
+    """No AGENTMETRY_ANCHOR_LOG configured: the sibling default sits on the
+    same disk an attacker would rewrite, so its age says nothing and a machine
+    that never anchored must not degrade forever."""
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    monkeypatch.setattr(settings, "anchor_log_path", "")
+    event = hb.build_heartbeat_event("t")
+    assert "anchor_age_minutes" not in event["heartbeat"]
+    assert event["action"]["outcome"] == "success"
+
+
+def test_the_anchor_staleness_limit_is_configurable(home, monkeypatch):
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 3)
+    anchor_log = home / "external.anchors.jsonl"
+    anchor_log.write_text(_checkpoint_line(trail, 3, _stamp(90)) + "\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "anchor_log_path", str(anchor_log))
+    # 90 minutes old: fine at the 24h default, stale at a 60-minute limit,
+    # and age is not scored at all when the check is disabled with 0.
+    assert hb.build_heartbeat_event("t")["action"]["outcome"] == "success"
+    monkeypatch.setenv("AGENTMETRY_ANCHOR_STALE_MINUTES", "60")
+    assert hb.build_heartbeat_event("t")["action"]["outcome"] == "degraded"
+    monkeypatch.setenv("AGENTMETRY_ANCHOR_STALE_MINUTES", "0")
+    assert hb.build_heartbeat_event("t")["action"]["outcome"] == "success"

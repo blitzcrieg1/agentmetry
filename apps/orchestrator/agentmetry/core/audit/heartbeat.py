@@ -29,8 +29,10 @@ would hide.
 
 The heartbeat is an attestation of what the recorder is wired to: which hooks are
 installed, the MCP configuration digest, the MCP schema digest, how deep the
-spool is, where the trail head sits. Each is a fact a SIEM can alert on changing,
-and none of them discloses what the developer is working on.
+spool is, where the trail head sits, whether the newest records still
+chain-verify, and how old the configured anchor's last checkpoint is. Each is a
+fact a SIEM can alert on changing, and none of them discloses what the
+developer is working on.
 
 There are two MCP digests because they catch different lies. `mcp_config_digest`
 commits to the configured command line, so a fleet can detect "somebody added an
@@ -81,6 +83,110 @@ def interval_seconds() -> int:
         return DEFAULT_INTERVAL_SECONDS
     # A zero or negative interval disables the beat rather than busy-looping.
     return value if value > 0 else 0
+
+
+#: How many of the newest records each beat chain-verifies (#318). A full walk
+#: from genesis is `agentmetry verify`'s job and costs minutes on a months-old
+#: trail; the beat checks the tail, where appends, crashed writes and tail
+#: deletions actually land, at a cost bounded by this window and not by trail
+#: age. An edit older than the window is the anchors' problem, not the beat's.
+CHAIN_TAIL_RECORDS = 200
+
+#: A configured anchor log whose newest applicable checkpoint is older than
+#: this many minutes degrades the beat (#318). Zero disables the age check.
+DEFAULT_ANCHOR_STALE_MINUTES = 24 * 60
+
+
+def anchor_stale_minutes() -> int:
+    raw = os.environ.get("AGENTMETRY_ANCHOR_STALE_MINUTES", "").strip()
+    if not raw:
+        return DEFAULT_ANCHOR_STALE_MINUTES
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_ANCHOR_STALE_MINUTES
+    return max(0, value)
+
+
+def _chain_facts() -> dict[str, Any]:
+    """Tail verification of the hash chain (#318).
+
+    `verify_trail_tail` checks that the newest records link to each other,
+    that each hash recomputes, and that the file still ends where the sidecar
+    says the writer stopped. A broken chain is a definite fact, so it degrades
+    the beat. A machine with no trail yet has nothing to verify and gets
+    `None`, not a degrade: a fresh install and a tampered one must not read
+    identically. An unreadable trail also reports `None`: the beat attests
+    what it can read, and the investigation reads the machine.
+    """
+    try:
+        from agentmetry.core.audit.trail_chain import verify_trail_tail
+        from agentmetry.core.config import settings
+
+        trail_path = Path(settings.audit_export_path)
+    except Exception:  # noqa: BLE001 - the beat must go out regardless
+        return {"chain_verified": None, "chain_verify_message": "unreadable"}
+    if not trail_path.is_file():
+        return {"chain_verified": None, "chain_verify_message": "no trail yet"}
+    try:
+        result = verify_trail_tail(trail_path, CHAIN_TAIL_RECORDS)
+    except Exception:  # noqa: BLE001
+        return {"chain_verified": None, "chain_verify_message": "unreadable"}
+    if result.lines_total == 0:
+        return {"chain_verified": None, "chain_verify_message": "no trail yet"}
+    return {
+        "chain_verified": result.ok,
+        "chain_verify_message": "" if result.ok else result.message,
+    }
+
+
+def _checkpoint_age_minutes(timestamp: str) -> int:
+    """Minutes since a checkpoint was stamped; -1 when it cannot be read."""
+    try:
+        stamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return -1
+    if stamp.tzinfo is None:
+        return -1
+    return max(0, int((datetime.now(timezone.utc) - stamp).total_seconds() // 60))
+
+
+def _anchor_facts() -> dict[str, Any]:
+    """Age of the newest checkpoint in a *configured* anchor log (#318).
+
+    Only a log configured through AGENTMETRY_ANCHOR_LOG is checked. The
+    sibling default sits on the same disk an attacker would rewrite and a
+    machine that never anchored should not degrade forever; an operator who
+    configured an external anchor has said the commitment matters, and the
+    beat holds them to it. Checkpoints naming a different trail are skipped,
+    because scoring them made `verify` cry wolf on logs that simply shared a
+    file. Configured but without an applicable checkpoint is a definite
+    failure of that pipeline and reports age -1.
+    """
+    try:
+        from agentmetry.core.audit.trail_anchor import read_checkpoints, resolve_anchor_log
+        from agentmetry.core.config import settings
+
+        trail_path = Path(settings.audit_export_path)
+        log_path, source = resolve_anchor_log(trail_path)
+    except Exception:  # noqa: BLE001 - the beat must go out regardless
+        return {}
+    if source != "config":
+        return {}
+    facts: dict[str, Any] = {"anchor_log": str(log_path)}
+    applicable = [
+        cp
+        for cp in read_checkpoints(log_path)
+        if not cp.trail_name or cp.trail_name == trail_path.name
+    ]
+    if not applicable:
+        facts["anchor_age_minutes"] = -1
+        facts["anchor_tree_size"] = 0
+        return facts
+    latest = applicable[-1]
+    facts["anchor_age_minutes"] = _checkpoint_age_minutes(latest.timestamp)
+    facts["anchor_tree_size"] = latest.tree_size
+    return facts
 
 
 def _hook_facts() -> dict[str, Any]:
@@ -244,6 +350,8 @@ def attestation(root: tuple[str, int] | None = None) -> dict[str, Any]:
     return {
         **_hook_facts(),
         **_policy_facts(),
+        **_chain_facts(),
+        **_anchor_facts(),
         "spool_depth": _spool_depth(),
         "trail_head_seq": _trail_head(),
         "trail_merkle_root": merkle,
@@ -273,10 +381,34 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
     # A service profile does set it: from there no developer's configuration is
     # visible at all, so a confident green would be the worst of the answers.
     rejected = facts["policy_rejected"]
-    degraded = bool(uncovered) or facts["spool_depth"] > 0 or service_profile or bool(rejected)
+    # #318: the newest records failed to chain-verify (corruption or naive
+    # tampering), or an operator-configured anchor log has gone silent.
+    chain_bad = facts.get("chain_verified") is False
+    anchor_age = facts.get("anchor_age_minutes")
+    stale_after = anchor_stale_minutes()
+    anchor_silent = facts.get("anchor_log") is not None and anchor_age == -1
+    anchor_stale = (
+        stale_after > 0 and anchor_age is not None and anchor_age >= stale_after
+    )
+    degraded = (
+        chain_bad
+        or bool(uncovered)
+        or facts["spool_depth"] > 0
+        or service_profile
+        or bool(rejected)
+        or anchor_silent
+        or anchor_stale
+    )
 
     reason = "recorder attesting"
-    if service_profile:
+    if chain_bad:
+        # Loudest on purpose: everything else says capture is impaired, this
+        # says the record of it may not be trustworthy.
+        reason = (
+            "recorder attesting; LOCAL CHAIN FAILED TO VERIFY: "
+            f"{facts.get('chain_verify_message') or 'unknown failure'}"
+        )
+    elif service_profile:
         reason = (
             "recorder attesting from a service profile; no developer hook "
             "configuration is visible from here, so coverage is unknown"
@@ -287,6 +419,16 @@ def build_heartbeat_event(now_utc: str, root: tuple[str, int] | None = None) -> 
         reason = f"recorder attesting; agents present but NOT recorded: {', '.join(uncovered)}"
     elif facts["spool_depth"] > 0:
         reason = f"recorder attesting; {facts['spool_depth']} event(s) buffered in the spool"
+    elif anchor_silent:
+        reason = (
+            "recorder attesting; configured anchor log has no readable "
+            f"checkpoint for this trail: {facts.get('anchor_log')}"
+        )
+    elif anchor_stale:
+        reason = (
+            f"recorder attesting; configured anchor is stale: newest checkpoint "
+            f"is {anchor_age} minute(s) old, limit {stale_after}"
+        )
     if facts["hooks_unverified"] and not service_profile:
         # Never coverage, never silent. Codex went missing from the attestation
         # for exactly as long as nothing said its name.
