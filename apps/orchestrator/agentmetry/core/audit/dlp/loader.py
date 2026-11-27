@@ -1,6 +1,9 @@
-import yaml
+import logging
+import re
 from pathlib import Path
 from typing import List
+
+import yaml
 
 from .models import RuleMeta
 
@@ -10,12 +13,44 @@ from .models import RuleMeta
 #: so the same Python objects, which `test_hook_import_cost.py` checks.
 SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-#: Rules planted by `agentmetry canary` live here, one file per plant, and are
-#: merged after the built-in manifest. They are kept out of the packaged
-#: manifest so an opt-in feature never ships in the default ruleset, and the
-#: directory is read only when it exists: the hook loads this on every tool call
-#: and #171 is the reason that path is kept short.
-CANARY_RULES_DIR = Path.home() / ".agentmetry" / "canary"
+_BUNDLED_MANIFEST = Path(__file__).resolve().parents[3] / "policies" / "dlp" / "manifest.yaml"
+logger = logging.getLogger(__name__)
+
+
+def supports_canaries(path: Path) -> bool:
+    """Operator-owned canaries only augment the bundled, unmanaged policy."""
+    if path.absolute() != _BUNDLED_MANIFEST:
+        return False
+    from agentmetry.core.managed_policy import load_policy
+
+    locked = load_policy().locked
+    return not ({"dlp_mode", "dlp_rules_path"} & locked.keys())
+
+
+def _canary_rules(path: Path) -> list[RuleMeta]:
+    # Load the optional inventory only if it exists. It stores generated values
+    # rather than arbitrary patterns, and a bad inventory cannot disable DLP.
+    if path.absolute() != _BUNDLED_MANIFEST:
+        return []
+    try:
+        from agentmetry.core import canary
+
+        if not canary.STATE_FILE.exists() or not supports_canaries(path):
+            return []
+        return [
+            RuleMeta(
+                id=record["rule_id"],
+                name="Agentmetry canary",
+                description="A planted decoy value was observed in DLP input.",
+                pattern="|".join(re.escape(value) for value in record["values"]),
+                category="canary",
+                severity="critical",
+            )
+            for record in canary.read_records(canary.STATE_FILE)
+        ]
+    except (OSError, ValueError, RuntimeError):
+        logger.warning("Skipped unreadable canary state. Bundled DLP remains enabled.")
+        return []
 
 
 def _load_file(path: Path) -> List[RuleMeta]:
@@ -47,8 +82,4 @@ def load_dlp_rules(manifest_path: Path | str) -> List[RuleMeta]:
     if not path.exists():
         return []
 
-    rules = _load_file(path)
-    if CANARY_RULES_DIR.is_dir():
-        for extra in sorted(CANARY_RULES_DIR.glob("*.yaml")):
-            rules.extend(_load_file(extra))
-    return rules
+    return [*_load_file(path), *_canary_rules(path)]

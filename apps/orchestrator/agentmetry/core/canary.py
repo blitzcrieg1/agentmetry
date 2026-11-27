@@ -1,296 +1,386 @@
-"""Local honeytokens: decoy credentials whose use is a near-certain finding.
-
-An opt-in `agentmetry canary` command plants credentials an agent should never
-touch, each one unique and recognisably fake to a human. Every planted value
-also becomes a DLP rule, so a read becomes a match at the tool boundary instead
-of something a human has to notice later.
-
-Design constraints (issue #293):
-
-* **Local only.** Nothing here calls out. A decoy that phoned home would break
-  local-first, so the detection is a DLP regex over what the agent already
-  submitted, exactly like every other rule in the manifest.
-* **The trail records the rule id, never the value.** Decoys are values, and
-  values do not go into the trail; the scanner redacts matches the same way it
-  redacts a real token.
-* **Never overwrites a real credential.** If the target profile or key already
-  exists, planting refuses rather than merging into it.
-* **Off by default.** Nothing is planted until the operator runs the command,
-  and `remove` puts every file back the way it was.
-* **Removable.** Each plant records what it appended; removal deletes exactly
-  that, and refuses if the file changed underneath it.
-
-The rules live under ``~/.agentmetry/canary/rules.yaml`` and are picked up by
-``load_dlp_rules`` the same way the built-in manifest is. Nothing in the frozen
-detection files is touched.
-"""
+"""Plant local DLP decoys with a rollback record written before the target."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import secrets
+import stat
 import string
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-#: Everything this feature owns. `rules.yaml` is loaded by `load_dlp_rules`
-#: as an extra manifest; `state.json` is the inventory `list` and `remove` read.
-#: `HOME` is a module attribute rather than a `Path.home()` call at each use so
-#: tests can point the whole feature at a temporary directory.
 HOME = Path.home()
-STATE_DIR = HOME / ".agentmetry" / "canary"
-STATE_FILE = STATE_DIR / "state.json"
-RULES_FILE = STATE_DIR / "rules.yaml"
-
-#: Prefixed so a human reading the value knows immediately what it is. The
-#: prefix is also what makes the DLP pattern specific enough to be useful.
+STATE_FILE = HOME / ".agentmetry" / "canary" / "state.json"
 MARK = "AGENTMETRY-CANARY"
-
 _ALNUM = string.ascii_letters + string.digits
+_MAX_STATE_BYTES = 1024 * 1024
+_VALUE_PATTERNS = {
+    "env": (re.compile(r"AGENTMETRY-CANARY-[a-zA-Z0-9]{24}"),),
+    "aws": (re.compile(r"AKIA[A-Z0-9]{16}"), re.compile(r"[a-zA-Z0-9]{40}")),
+}
+_HASH = re.compile(r"[a-f0-9]{64}")
+_OPEN_FLAGS = (
+    getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+)
 
 
-def _random_value(length: int = 32) -> str:
-    return "".join(secrets.choice(_ALNUM) for _ in range(length))
+def _random_value(length: int, alphabet: str = _ALNUM) -> str:
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _is_link(info: os.stat_result) -> bool:
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
 
 
-# --------------------------------------------------------------------------
-# state
-# --------------------------------------------------------------------------
-
-
-def _load_state() -> dict[str, Any]:
-    if not STATE_FILE.exists():
-        return {"decoys": []}
+def _check_path(path: Path) -> os.stat_result | None:
+    """Refuse links, nonregular files, and alternate paths to the same file."""
+    for parent in path.parents:
+        try:
+            info = parent.lstat()
+        except FileNotFoundError:
+            continue
+        if _is_link(info):
+            raise ValueError("Refusing a linked canary path.")
     try:
-        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"decoys": []}
-    if not isinstance(data, dict) or not isinstance(data.get("decoys"), list):
-        return {"decoys": []}
-    return data
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if _is_link(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError("Canary files must be regular files with one link.")
+    return info
 
 
-def _save_state(state: dict[str, Any]) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+@contextmanager
+def _open_file(path: Path, *, writing: bool = False, create: bool = False, append: bool = False):
+    info = _check_path(path)
+    flags = os.O_RDWR if writing else os.O_RDONLY
+    if create:
+        flags |= os.O_CREAT | os.O_EXCL
+    if append:
+        flags |= os.O_APPEND
+    fd = os.open(path, flags | _OPEN_FLAGS, 0o600)
+    with os.fdopen(fd, "r+b" if writing else "rb") as handle:
+        current = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or _is_link(current)
+            or (not create and (info is None or not os.path.samestat(info, current)))
+        ):
+            raise ValueError("Canary file changed while opening it.")
+        yield handle
 
 
-def _load_rules() -> dict[str, Any]:
-    if not RULES_FILE.exists():
-        return {"version": "1.0", "rules": []}
-    import yaml  # local import: only `canary` needs it at runtime
-
-    from agentmetry.core.audit.dlp.loader import SAFE_LOADER
-
-    data = yaml.load(RULES_FILE.read_text(encoding="utf-8"), Loader=SAFE_LOADER) or {}  # noqa: S506 - a safe loader, same as loader.py
-    if not isinstance(data, dict) or not isinstance(data.get("rules"), list):
-        return {"version": "1.0", "rules": []}
-    return data
+def _block(kind: str, slot: int, values: list[str]) -> str:
+    if kind == "aws":
+        return (
+            f"\n[agentmetry-canary-{slot}]\n"
+            f"aws_access_key_id = {values[0]}\n"
+            f"aws_secret_access_key = {values[1]}\n"
+        )
+    return f"\n# {MARK}: decoy, never a real credential\nAGENTMETRY_CANARY_{slot}={values[0]}\n"
 
 
-def _save_rules(data: dict[str, Any]) -> None:
-    import yaml
-
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    RULES_FILE.write_text(
-        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8"
+def _record_slot(record: dict[str, Any]) -> int:
+    """Validate serialized fields before using them as a pattern or edit plan."""
+    name = record["name"]
+    if not isinstance(name, str) or not name.isprintable() or record["rule_id"] != f"canary_{name}":
+        raise ValueError("Invalid canary name or rule ID.")
+    kind, values = record["kind"], record["values"]
+    patterns = _VALUE_PATTERNS[kind]
+    if not isinstance(values, list) or len(values) != len(patterns) or not all(
+        pattern.fullmatch(value) for pattern, value in zip(patterns, values, strict=True)
+    ):
+        raise ValueError("Invalid canary value shape.")
+    appended = record["appended"].replace("\r\n", "\n")
+    slot_pattern = (
+        r"\n\[agentmetry-canary-(\d{1,9})\]\n" if kind == "aws" else r"\nAGENTMETRY_CANARY_(\d{1,9})="
     )
+    match = re.search(slot_pattern, appended, re.ASCII)
+    if match is None or appended != _block(kind, int(match[1]), values):
+        raise ValueError("Invalid canary block.")
+    slot = int(match[1])
+    key = f"agentmetry-canary-{slot}" if kind == "aws" else f"AGENTMETRY_CANARY_{slot}"
+    if (
+        type(record["existed_before"]) is not bool
+        or not record["path"].isprintable()
+        or record["where"] != f"{record['path']} [{key}]"
+    ):
+        raise ValueError("Invalid canary record.")
+    datetime.fromisoformat(record["created_at"])
+    if "previous_sha256" in record and (
+        not _HASH.fullmatch(record["previous_sha256"])
+        or type(record["previous_length"]) is not int
+        or record["previous_length"] < 0
+        or type(record["pending"]) is not bool
+    ):
+        raise ValueError("Invalid canary rollback plan.")
+    return slot
 
 
-def _rule_for(name: str, values: list[str], where: str) -> dict[str, Any]:
-    """One rule per decoy, anchored on the planted values themselves.
-
-    Anchoring on the exact value rather than on the MARK prefix keeps the rule
-    narrow: a sentence that merely mentions "canary" does not match, only the
-    value that was actually planted.
-    """
-    pattern = "|".join(re.escape(v) for v in values)
-    return {
-        "id": f"canary_{name}",
-        "name": f"Agentmetry canary: {where}",
-        "description": (
-            "Decoy credential planted by `agentmetry canary`. Touching this value "
-            "is close to certain proof an agent reached for credentials it should "
-            "not have. Planted locally; the value never leaves this machine."
-        ),
-        "pattern": pattern,
-        "category": "canary",
-        "severity": "critical",
-    }
-
-
-# --------------------------------------------------------------------------
-# targets
-# --------------------------------------------------------------------------
-
-
-def _aws_values() -> list[str]:
-    """Two values in the shapes the built-in AWS rules already know."""
-    return [
-        "AKIA" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(16)),
-        _random_value(40),
-    ]
+def read_records(path: Path) -> list[dict[str, Any]]:
+    """Read generated literal records, including inventory written by 0.17.0."""
+    try:
+        with _open_file(path) as handle:
+            info = os.fstat(handle.fileno())
+            if os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o022):
+                raise ValueError("Canary state is writable by another account.")
+            raw = handle.read(_MAX_STATE_BYTES + 1)
+    except FileNotFoundError:
+        return []
+    if len(raw) > _MAX_STATE_BYTES:
+        raise ValueError("Canary state is too large.")
+    try:
+        records = json.loads(raw)["decoys"]
+        if not isinstance(records, list):
+            raise ValueError("Invalid canary inventory.")
+        names = set()
+        for record in records:
+            _record_slot(record)
+            if record["name"] in names:
+                raise ValueError("Duplicate canary name.")
+            names.add(record["name"])
+    except (KeyError, TypeError, ValueError, AttributeError, RecursionError):
+        raise ValueError("Cannot load canary state. Keep it for recovery.") from None
+    return records
 
 
-def _plant_aws_credentials(path: Path, profile: str, values: list[str]) -> dict[str, Any]:
-    """Append a fake profile, refusing if it or a real one is already there."""
-    existing = ""
-    if path.exists():
-        existing = path.read_text(encoding="utf-8", errors="replace")
-        if f"[{profile}]" in existing:
-            raise SystemExit(
-                f"refusing: profile [{profile}] already exists in {path}. "
-                "Remove it first, or pick a different profile name."
-            )
-    block = (
-        f"\n[{profile}]\n"
-        f"aws_access_key_id = {values[0]}\n"
-        f"aws_secret_access_key = {values[1]}\n"
-    )
-    return {
-        "path": str(path),
-        "appended": block,
-        "existed_before": path.exists(),
-        "previous_length": len(existing),
-    }
+def _sync_directory(path: Path) -> None:
+    if os.name != "nt":
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
 
-def _plant_env(path: Path, key: str, value: str) -> dict[str, Any]:
-    existing = ""
-    if path.exists():
-        existing = path.read_text(encoding="utf-8", errors="replace")
-        if re.search(rf"^\s*{re.escape(key)}\s*=", existing, re.MULTILINE):
-            raise SystemExit(
-                f"refusing: {key} already exists in {path}. "
-                "Remove it first, or pick a different key name."
-            )
-    block = f"\n# {MARK}: decoy, never a real credential\n{key}={value}\n"
-    return {
-        "path": str(path),
-        "appended": block,
-        "existed_before": path.exists(),
-        "previous_length": len(existing),
-    }
+def _save_records(records: list[dict[str, Any]]) -> None:
+    payload = (json.dumps({"decoys": records}, indent=2) + "\n").encode("utf-8")
+    if len(payload) > _MAX_STATE_BYTES:
+        raise ValueError("Canary state is too large.")
+    _check_path(STATE_FILE)
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=STATE_FILE.parent, delete=False) as stream:
+            temp = Path(stream.name)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, STATE_FILE)
+        _sync_directory(STATE_FILE.parent)
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
-def _write_append(meta: dict[str, Any]) -> None:
-    path = Path(meta["path"])
+@contextmanager
+def _edit_records():
+    """Serialize canary commands and refuse changes if the file lock fails."""
+    from agentmetry.core.audit.trail_chain import _acquire, _release
+
+    lock = STATE_FILE.with_suffix(".lock")
+    try:
+        _check_path(lock)
+        lock.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            with _open_file(lock, writing=True, create=True):
+                pass
+        except FileExistsError:
+            pass
+        with _open_file(lock, writing=True) as handle:
+            if not _acquire(handle):
+                raise ValueError("Canary inventory is busy or cannot be locked.")
+            try:
+                yield read_records(STATE_FILE)
+            finally:
+                _release(handle)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    except OSError:
+        raise SystemExit(
+            "Canary operation could not finish. Check the recovery inventory with agentmetry canary list."
+        ) from None
+
+
+def _canonical(path: Path) -> Path:
+    return Path(os.path.abspath(path.expanduser()))
+
+
+def _checked_target(record: dict[str, Any]) -> Path:
+    path = Path(record["path"])
+    if not path.is_absolute() or path != _canonical(path):
+        raise ValueError("Canary target has no canonical absolute path. Recover it manually.")
+    if record["kind"] == "aws" and path != _canonical(HOME / ".aws" / "credentials"):
+        raise ValueError("Canary AWS target is outside the expected profile.")
+    if record["kind"] == "env" and path.name != ".env":
+        raise ValueError("Canary project target must be a .env file.")
+    _check_path(path)
+    return path
+
+
+def _snapshot(path: Path) -> bytes | None:
+    try:
+        with _open_file(path) as handle:
+            return handle.read()
+    except FileNotFoundError:
+        return None
+
+
+def _write_append(path: Path, previous: bytes | None, block: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as handle:
-        handle.write(meta["appended"])
+    with _open_file(path, writing=True, create=previous is None, append=True) as handle:
+        if previous is not None and handle.read() != previous:
+            raise ValueError("Canary target changed before planting.")
+        handle.write(block)
+        handle.flush()
+        os.fsync(handle.fileno())
+    if previous is None:
+        _sync_directory(path.parent)
 
 
-# --------------------------------------------------------------------------
-# public API
-# --------------------------------------------------------------------------
+def _record_prefix(record: dict[str, Any], current: bytes) -> bytes:
+    """Find the original bytes after an interrupted append or removal."""
+    block = record["appended"].encode("ascii")
+    if "previous_sha256" not in record:
+        # 0.17.0 stored logical newlines and translated them when writing.
+        for ending in (block, block.replace(b"\n", b"\r\n")):
+            if current.endswith(ending):
+                return current[:-len(ending)]
+    else:
+        length = record["previous_length"]
+        prefix, suffix = current[:length], current[length:]
+        matches = suffix == block or not suffix or record["pending"] and block.startswith(suffix)
+        if matches and len(prefix) == length and hashlib.sha256(prefix).hexdigest() == record["previous_sha256"]:
+            return prefix
+    raise ValueError("Canary target changed. Leave it intact and remove the decoy block manually.")
+
+
+def _restore(path: Path, record: dict[str, Any]) -> None:
+    current = _snapshot(path)
+    if current is None:
+        return
+    prefix = _record_prefix(record, current)
+    # Without decoy bytes, an empty file could have been created by another writer.
+    delete_created_file = bool(current) and not record["existed_before"] and not prefix
+    if current == prefix and not delete_created_file:
+        return
+    with _open_file(path, writing=True) as handle:
+        checked = os.fstat(handle.fileno())
+        if handle.read() != current or not _same_version(checked, os.fstat(handle.fileno())):
+            raise ValueError("Canary target changed before removal.")
+        if not delete_created_file:
+            handle.truncate(len(prefix))
+            handle.flush()
+            os.fsync(handle.fileno())
+            return
+    # Windows cannot unlink an open file. Confirm that the name still identifies it.
+    latest = _check_path(path)
+    if latest is None or not _same_version(checked, latest):
+        raise ValueError("Canary target changed before removal.")
+    path.unlink()
+    _sync_directory(path.parent)
+
+
+def _same_version(before: os.stat_result, after: os.stat_result) -> bool:
+    return (
+        os.path.samestat(before, after)
+        and before.st_size == after.st_size
+        and before.st_mtime_ns == after.st_mtime_ns
+    )
 
 
 def plant(kind: str, scope: str, project: Path | None = None, name: str = "") -> dict[str, Any]:
-    """Plant one decoy and register its DLP rule.
-
-    ``kind`` is ``aws`` or ``env``; ``scope`` is ``home`` or ``project``.
-    Returns the record written to the state file.
-    """
-    state = _load_state()
-    decoy_name = name or f"{kind}-{scope}-{len(state['decoys']) + 1}"
-    if any(d.get("name") == decoy_name for d in state["decoys"]):
-        raise SystemExit(f"refusing: a decoy named {decoy_name!r} already exists")
-
-    values: list[str]
-    if kind == "aws":
-        if scope != "home":
-            raise SystemExit("refusing: an AWS decoy profile belongs in the home directory")
-        target = HOME / ".aws" / "credentials"
-        profile = f"agentmetry-canary-{len(state['decoys']) + 1}"
-        values = _aws_values()
-        meta = _plant_aws_credentials(target, profile, values)
-        where = f"{target} [{profile}]"
-    elif kind == "env":
-        if project is None:
-            raise SystemExit("refusing: an env decoy needs --project <dir>")
-        target = Path(project) / ".env"
-        key = f"AGENTMETRY_CANARY_{len(state['decoys']) + 1}"
-        values = [f"{MARK}-{_random_value(24)}"]
-        meta = _plant_env(target, key, values[0])
-        where = f"{target} [{key}]"
+    """Persist recovery metadata before modifying the selected credential file."""
+    if kind == "aws" and scope == "home":
+        target = _canonical(HOME / ".aws" / "credentials")
+    elif kind == "env" and project is not None and _canonical(project).is_dir():
+        target = _canonical(project) / ".env"
     else:
-        raise SystemExit(f"unknown decoy kind: {kind!r} (expected aws or env)")
+        raise SystemExit("Choose an AWS home profile or an existing project directory for an env decoy.")
 
-    _write_append(meta)
+    from agentmetry.core.audit.dlp.loader import supports_canaries
+    from agentmetry.core.audit.policy_settings import policy_settings
 
-    rule = _rule_for(decoy_name, values, where)
-    rules = _load_rules()
-    rules["rules"].append(rule)
-    _save_rules(rules)
-
-    record = {
-        "name": decoy_name,
-        "kind": kind,
-        "scope": scope,
-        "where": where,
-        "values": values,
-        "rule_id": rule["id"],
-        "created_at": _now(),
-        **meta,
-    }
-    state["decoys"].append(record)
-    _save_state(state)
-    return record
+    if not supports_canaries(policy_settings().dlp_rules_path):
+        raise SystemExit("Canaries require the bundled DLP manifest and an unmanaged DLP policy.")
+    with _edit_records() as records:
+        used = {_record_slot(record) for record in records}
+        slot = next(index for index in range(1, len(records) + 2) if index not in used)
+        decoy_name = name or f"{kind}-{scope}-{slot}"
+        if not decoy_name.isprintable() or any(r["name"] == decoy_name for r in records):
+            raise ValueError("Canary name must be unique and contain only printable characters.")
+        previous = _snapshot(target)
+        original = previous or b""
+        if kind == "aws":
+            key = f"agentmetry-canary-{slot}"
+            duplicate = rf"^\s*\[\s*{key}\s*\]"
+            values = ["AKIA" + _random_value(16, string.ascii_uppercase + string.digits), _random_value(40)]
+        else:
+            key = f"AGENTMETRY_CANARY_{slot}"
+            duplicate = rf"""^\s*(?:export[ \t]+)?['"]?{key}['"]?\s*="""
+            values = [f"{MARK}-{_random_value(24)}"]
+        if re.search(duplicate.encode("ascii"), original.removeprefix(b"\xef\xbb\xbf"), re.MULTILINE):
+            raise ValueError("A credential with the generated canary name already exists.")
+        text = _block(kind, slot, values)
+        if b"\r\n" in original or not original and os.linesep == "\r\n":
+            text = text.replace("\n", "\r\n")
+        record = {
+            "name": decoy_name,
+            "kind": kind,
+            "scope": scope,
+            "where": f"{target} [{key}]",
+            "path": str(target),
+            "values": values,
+            "rule_id": f"canary_{decoy_name}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "appended": text,
+            "existed_before": previous is not None,
+            "previous_length": len(original),
+            "previous_sha256": hashlib.sha256(original).hexdigest(),
+            "pending": True,
+        }
+        _record_slot(record)
+        records.append(record)
+        _save_records(records)
+        _write_append(target, previous, text.encode("ascii"))
+        record["pending"] = False
+        _save_records(records)
+        return record
 
 
 def list_planted() -> list[dict[str, Any]]:
-    return _load_state()["decoys"]
+    try:
+        return read_records(STATE_FILE)
+    except (OSError, ValueError):
+        raise SystemExit("Cannot read canary inventory. Keep it for recovery.") from None
+
+
+def _pop_record(name: str, *, restore: bool) -> dict[str, Any]:
+    with _edit_records() as records:
+        for index, record in enumerate(records):
+            if record["name"] != name:
+                continue
+            if restore:
+                _restore(_checked_target(record), record)
+            records.pop(index)
+            _save_records(records)
+            return record
+        raise SystemExit(f"no decoy named {name!r}")
 
 
 def remove(name: str) -> dict[str, Any]:
-    """Undo exactly what `plant` appended, refusing if the file moved on."""
-    state = _load_state()
-    record = next((d for d in state["decoys"] if d["name"] == name), None)
-    if record is None:
-        raise SystemExit(f"no decoy named {name!r}")
-
-    path = Path(record["path"])
-    if not path.exists():
-        # Already gone; drop the bookkeeping rather than failing.
-        pass
-    else:
-        current = path.read_text(encoding="utf-8", errors="replace")
-        if not current.endswith(record["appended"]):
-            raise SystemExit(
-                f"refusing: {path} no longer ends with what canary planted "
-                "(someone edited it since). Remove the block by hand, then run "
-                f"`agentmetry canary forget {name}` to drop the bookkeeping."
-            )
-        trimmed = current[: -len(record["appended"])]
-        if not record["existed_before"] and trimmed.strip() == "":
-            path.unlink()
-        else:
-            path.write_text(trimmed, encoding="utf-8")
-
-    rules = _load_rules()
-    rules["rules"] = [r for r in rules["rules"] if r.get("id") != record["rule_id"]]
-    _save_rules(rules)
-
-    state["decoys"] = [d for d in state["decoys"] if d["name"] != name]
-    _save_state(state)
-    return record
+    """Remove the planted bytes while preserving any original data."""
+    return _pop_record(name, restore=True)
 
 
 def forget(name: str) -> dict[str, Any]:
-    """Drop bookkeeping only. For the case where the file was edited by hand."""
-    state = _load_state()
-    record = next((d for d in state["decoys"] if d["name"] == name), None)
-    if record is None:
-        raise SystemExit(f"no decoy named {name!r}")
-    rules = _load_rules()
-    rules["rules"] = [r for r in rules["rules"] if r.get("id") != record["rule_id"]]
-    _save_rules(rules)
-    state["decoys"] = [d for d in state["decoys"] if d["name"] != name]
-    _save_state(state)
-    return record
+    """Drop bookkeeping only after an operator has handled the target."""
+    return _pop_record(name, restore=False)

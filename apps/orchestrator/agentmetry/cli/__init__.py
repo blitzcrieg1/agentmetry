@@ -1546,12 +1546,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_canary(args: argparse.Namespace) -> int:
-    """Plant, list or remove local decoy credentials.
-
-    Opt-in by construction: nothing exists until this runs, and `remove` puts the
-    file back exactly as it was. The decoys are only useful while the recorder
-    runs, because their whole point is that touching one becomes an event.
-    """
+    """Plant, list or remove local decoy credentials."""
     sys.path.insert(0, str(_ORCH_ROOT))
     from agentmetry.core import canary
 
@@ -1563,7 +1558,8 @@ def cmd_canary(args: argparse.Namespace) -> int:
             return 0
         for d in planted:
             print(f"{d['name']:<28} {d['kind']:<4} {d['where']}")
-            print(f"{'':<28} rule {d['rule_id']}  planted {d['created_at']}")
+            status = "pending recovery since" if d.get("pending") else "planted"
+            print(f"{'':<28} rule {d['rule_id']}  {status} {d['created_at']}")
         return 0
 
     if command in ("remove", "forget"):
@@ -1585,8 +1581,7 @@ def cmd_canary(args: argparse.Namespace) -> int:
     print(f"  rule    {record['rule_id']} (merged into the DLP ruleset)")
     print(f"  remove  agentmetry canary remove {record['name']}")
     print()
-    print("The value is a decoy: never a real credential, and it is never sent anywhere.")
-    print("Reading it while the recorder runs becomes a critical DLP finding.")
+    print("A critical DLP finding requires the literal decoy value in observed input.")
     return 0
 
 
