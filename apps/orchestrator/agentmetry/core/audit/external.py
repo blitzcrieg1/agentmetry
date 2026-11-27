@@ -46,8 +46,8 @@ _ACTION_MAP = {
     "hook_remediation": ("config_change", "success"),
     # The agentmetry-guard sidecar reports intercepted egress here. It is not
     # a tool call either; unmapped it would be counted by tool-sequence rules
-    # as one. Outcome carries the verdict: success (tunneled) or denied.
-    "network_egress": ("network_egress", "success"),
+    # as one. Missing verdicts carry no evidence of a connection.
+    "network_egress": ("network_egress", "error"),
 }
 
 #: The only payload fields a remediation notice keeps. Anything session- or
@@ -111,6 +111,28 @@ def _script_names(raw: Any) -> list[str]:
     from agentmetry.core.audit.detection.traits import clean_script_names
 
     return clean_script_names([str(item) for item in raw if item])
+
+
+def _guard_destination(raw: Any, outcome: str) -> tuple[str, dict[str, Any]]:
+    """Keep destination metadata even when an older Guard sent a request target."""
+    if not isinstance(raw, dict):
+        return "", {}
+    host, port, method, scheme = (raw.get(key) for key in ("host", "port", "method", "scheme"))
+    if (
+        not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9_.:%-]{1,253}", host)
+        or type(port) is not int or not (1 <= port <= 65535)
+        or not isinstance(method, str) or not re.fullmatch(r"[A-Z-]{1,24}", method)
+        or scheme not in ("http", "https")
+    ):
+        return "", {}
+    arguments = {"host": host, "port": port, "method": method, "scheme": scheme}
+    if raw.get("policy") in ("allowlist", "denylist"):
+        arguments["policy"] = raw["policy"]
+    established = raw.get("connection_established")
+    if isinstance(established, bool):
+        arguments["connection_established"] = established and outcome == "success"
+    authority = f"[{host}]" if ":" in host else host
+    return f"{method} {authority}:{port}", arguments
 
 
 def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
@@ -220,6 +242,9 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
     if tool_qualified:
         server = str(tool_block.get("server") or driver_name or source_app)
         command = str(tool_block.get("command") or "").strip()
+        tool_arguments = tool_block.get("arguments")
+        if action_type == "network_egress" and source_app == "agentmetry" and adapter == "guard":
+            command, tool_arguments = _guard_destination(tool_arguments, outcome)
         redaction = f"{hash_kind}+command" if command else hash_kind
         event["tool"] = {
             "name": tool_name or tool_qualified,
@@ -227,14 +252,14 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             "server": server,
             "input_redaction": redaction,
             "input_hash": input_hash,
-            "parameters_redacted": not bool(command) and not isinstance(tool_block.get("arguments"), dict),
+            "parameters_redacted": not bool(command) and not isinstance(tool_arguments, dict),
         }
         if source_app == "claude" and adapter == "claude_hook":
             event["tool"].update(normalize_claude_tool_metadata(tool_block))
         if command:
             event["tool"]["command"] = scrub_secrets(command)[:4096]
-        if isinstance(tool_block.get("arguments"), dict):
-            event["tool"]["arguments"] = scrub_arg_values(tool_block.get("arguments"))
+        if isinstance(tool_arguments, dict):
+            event["tool"]["arguments"] = scrub_arg_values(tool_arguments)
 
         # Hook-side command classification labels. In the default hashed-only
         # config these are the ONLY detection signal the command leaves behind.
@@ -252,6 +277,13 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             names = _script_names(tool_block.get(key))
             if names:
                 event["tool"][key] = names
+        body_traits = tool_block.get("script_body_traits")
+        if isinstance(body_traits, list) and "scripts_written" in event["tool"]:
+            from agentmetry.core.audit.detection.traits import SCRIPT_PAYLOAD_TRAITS
+
+            event["tool"]["script_body_traits"] = sorted(
+                SCRIPT_PAYLOAD_TRAITS.intersection(str(trait) for trait in body_traits)
+            )
 
         # Prefer the hook's MITRE mapping: it saw the plaintext command before
         # hashing, so its content upgrade (e.g. a key-file read → T1552) is
@@ -266,7 +298,7 @@ def build_external_canonical(payload: dict[str, Any]) -> dict[str, Any]:
             from agentmetry.core.audit.canonical import get_mitre_mapping
             # Pass command/args as evidence so a read of a key/secret upgrades to
             # Credential Access (T1552) instead of generic Collection.
-            evidence = command or tool_block.get("arguments")
+            evidence = command or tool_arguments
             mitre = get_mitre_mapping(tool_qualified, evidence)
             if mitre:
                 event["tool"]["mitre"] = mitre

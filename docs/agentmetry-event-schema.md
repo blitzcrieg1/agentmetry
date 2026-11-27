@@ -98,6 +98,21 @@ IDs remain absent; old events are not retrospectively linked. Do not join on
 tool name, argument hash or nearest timestamp. See the [field contract,
 source coverage and exact-join limits](claude-invocation-evidence.md).
 
+### Script and Guard observations (optional, additive)
+
+`tool.scripts_written` and `tool.scripts_executed` contain basenames. A script
+write can also carry `tool.script_body_traits` with labels from the bytes
+written. Execution-based findings use observed actions. The write/run finding
+uses the body labels and a basename match, which cannot establish file identity.
+
+Guard observations use `action.type: network_egress` and `source.adapter: guard`.
+The recorder keeps destination metadata in `tool.arguments`. Guard reports
+`connection_established: true` after opening the upstream connection and
+starting the tunnel or request forwarding. A denied request or a connection
+failure has outcome `denied` or `error`. Older Guard successes without the
+marker remain unconfirmed as connection evidence. Guard records neither
+application completion nor transferred content.
+
 ### v1.1 additions (additive)
 
 | Field | When present | Purpose |

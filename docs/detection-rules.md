@@ -68,8 +68,8 @@ sequenceDiagram
 | Rule ID | Severity | Pattern |
 | ------- | -------- | ------- |
 | `credential-exfil` | critical | Credential access (T1552) → network egress (TA0011) |
-| `credential-read-then-egress` | critical | Credential access (T1552) by a tool call → a `network_egress` event from the agentmetry-guard sidecar: a wrapped child process opened a connection. Catches scripts that read `~/.ssh` and phone home without any single tool call looking like exfiltration. T1552 → T1071 |
-| `guard-egress-denied` | high | A `network_egress` event with outcome `denied`: the agentmetry-guard sidecar refused a connection to a denylisted destination (T1071) |
+| `credential-read-then-egress` | critical | Reported credential access (T1552), followed in the session by a successful Guard connection report with `connection_established: true` (T1071). Session order gives a lead for triage. Data transfer and process attribution remain unverified. |
+| `guard-egress-denied` | high | A Guard `network_egress` event with outcome `denied`. The destination policy refused the proxy request (T1071). |
 | `hf-token-exposed-in-command` | high | A Hugging Face token-shaped literal was visible in an observed command input (T1552) |
 | `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
 | `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |

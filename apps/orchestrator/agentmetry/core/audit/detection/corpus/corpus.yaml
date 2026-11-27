@@ -1001,11 +1001,19 @@ cases:
 
   - name: script written then executed
     session: attack_script_write_then_execute.jsonl
-    expect: [credential-exfil, script-write-then-execute]
+    expect: [script-write-then-execute]
     note: >
-      Issue #347. The write stores the basename and the traits of the body.
-      The body itself is not in the event. A later `bash run.sh` is the same
-      file. credential-exfil is the body. script-write-then-execute is the pair.
+      Issue #347. The write stores the basename and separate body traits.
+      A later execution with the same basename supports a correlated finding.
+      The contents of the written script alone provide no exfiltration evidence.
+
+  - name: script containing credential access saved without execution
+    session: benign_script_write_without_execution.jsonl
+    expect: []
+    benign: true
+    note: >
+      A tool wrote a script with a classified body. A write alone does not
+      demonstrate runtime access to credentials or transfer of data.
 
   - name: encoding is not a decode pipe
     session: benign_base64_encode.jsonl
@@ -1029,9 +1037,16 @@ cases:
     session: attack_credential_read_then_child_egress.jsonl
     expect: [credential-read-then-egress]
     note: >
-      A private key read as a tool call, then a network_egress event from the
-      agentmetry-guard sidecar: the child process ./exfil.sh opened a CONNECT
-      tunnel. No single tool call is exfiltration; the pair is.
+      A private key read, followed by a Guard event confirming an established
+      connection. The finding correlates the two observations by session.
+
+  - name: credential read then legacy unconfirmed proxy attempt
+    session: benign_guard_egress_unverified.jsonl
+    expect: []
+    benign: true
+    note: >
+      A legacy Guard success can precede the upstream dial. Without the
+      connection_established marker, it is insufficient for a critical finding.
 
   - name: guard denies a denylisted destination
     session: attack_guard_egress_denied.jsonl
