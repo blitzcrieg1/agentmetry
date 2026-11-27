@@ -1024,3 +1024,26 @@ cases:
       Writing build.sh that echoes a line, then running it, is an ordinary
       edit. The write has no payload traits, so the later execution is not
       script-write-then-execute.
+
+  - name: credential read then child-process egress (guard)
+    session: attack_credential_read_then_child_egress.jsonl
+    expect: [credential-read-then-egress]
+    note: >
+      A private key read as a tool call, then a network_egress event from the
+      agentmetry-guard sidecar: the child process ./exfil.sh opened a CONNECT
+      tunnel. No single tool call is exfiltration; the pair is.
+
+  - name: guard denies a denylisted destination
+    session: attack_guard_egress_denied.jsonl
+    expect: [guard-egress-denied]
+    note: >
+      A wrapped process tried CONNECT blocked.example.com:443 and the guard
+      answered 403. The trail records the block as outcome=denied.
+
+  - name: ordinary guard egress without credential access
+    session: benign_guard_egress.jsonl
+    expect: []
+    benign: true
+    note: >
+      npm install phoning the registry is normal egress. No credential read
+      precedes it, so credential-read-then-egress must stay silent.
