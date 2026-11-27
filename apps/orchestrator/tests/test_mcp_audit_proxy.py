@@ -225,3 +225,48 @@ async def test_initialize_handshake_is_attached_to_the_next_tools_list(monkeypat
     assert len(sent) == 1
     assert sent[0]["server_version"] == "15.0.0"
     assert sent[0]["list_changed"] is True
+
+
+# ----------------------------------------------------------------------
+# agentmetry-guard wrapping (AGENTMETRY_GUARD=1)
+# ----------------------------------------------------------------------
+
+
+def test_guard_wrap_is_off_by_default(monkeypatch):
+    from agentmetry.hooks import mcp_proxy
+
+    monkeypatch.delenv("AGENTMETRY_GUARD", raising=False)
+    monkeypatch.delenv("AGENTMETRY_GUARD_BIN", raising=False)
+    assert mcp_proxy._guard_wrap(["npx", "-y", "server-x"]) is None
+
+
+def test_guard_wrap_builds_the_wrap_argv(monkeypatch):
+    from agentmetry.hooks import mcp_proxy
+
+    monkeypatch.setenv("AGENTMETRY_GUARD", "1")
+    monkeypatch.setenv("AGENTMETRY_GUARD_BIN", "/opt/agentmetry-guard")
+    monkeypatch.setenv("AGENTMETRY_GUARD_DENY", "evil.example.com,10.9.9.9")
+    argv = mcp_proxy._guard_wrap(["npx", "-y", "server-x"])
+    assert argv == [
+        "/opt/agentmetry-guard", "wrap",
+        "--deny", "evil.example.com,10.9.9.9",
+        "--", "npx", "-y", "server-x",
+    ]
+
+
+def test_guard_wrap_without_a_binary_falls_back_to_the_raw_command(monkeypatch):
+    from agentmetry.hooks import mcp_proxy
+
+    monkeypatch.setenv("AGENTMETRY_GUARD", "1")
+    monkeypatch.setenv("AGENTMETRY_GUARD_BIN", "")
+    monkeypatch.setattr(mcp_proxy.shutil, "which", lambda _name: None)
+    assert mcp_proxy._guard_wrap(["python", "server.py"]) is None
+
+
+def test_child_env_carries_the_proxy_correlation(monkeypatch):
+    from agentmetry.hooks import mcp_proxy
+
+    monkeypatch.setenv("AGENTMETRY_CORRELATION_ID", "call-42")
+    env = mcp_proxy._child_env()
+    assert env["AGENTMETRY_CORRELATION_ID"] == "call-42"
+    assert env["AGENTMETRY_SESSION_ID"] == mcp_proxy._SESSION_ID

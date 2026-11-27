@@ -1554,8 +1554,94 @@ def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detecti
     ]
 
 
+def _is_guard_egress(event: dict[str, Any]) -> bool:
+    """A `network_egress` event the guard sidecar reported as tunneled."""
+    return _action_type(event) == "network_egress" and _outcome(event) == "success"
+
+
+def rule_guard_egress_denied(events: list[dict[str, Any]]) -> list[Detection]:
+    """The guard sidecar refused a connection to a denylisted destination.
+
+    The denylist lives in agentmetry-guard (`--deny`), so this is the trail's
+    record of a block, not just an observation: a wrapped child process tried
+    to leave and the sidecar said no.
+    """
+    for event in events:
+        if _action_type(event) == "network_egress" and _outcome(event) == "denied":
+            tool = event.get("tool") if isinstance(event.get("tool"), dict) else {}
+            dest = str(tool.get("command") or "")
+            return [
+                Detection(
+                    rule_id="guard-egress-denied",
+                    title="Blocked egress to a denylisted destination",
+                    severity="high",
+                    summary=(
+                        "The agentmetry-guard sidecar refused an outbound connection "
+                        f"({dest or 'unknown destination'}) from a wrapped process."
+                    ),
+                    correlation_id=_correlation_id(events),
+                    tactic_ids=["TA0011"],
+                    technique_ids=["T1071"],
+                    event_ids=[_event_id(event)],
+                    first_seen_utc=_ts(event),
+                    last_seen_utc=_ts(event),
+                )
+            ]
+    return []
+
+
+def rule_credential_read_then_egress(events: list[dict[str, Any]]) -> list[Detection]:
+    """Credential read by a tool call, then a child process opened a connection.
+
+    The hook sees the tool call; only the guard sidecar sees what a child
+    process did next. Pairing the two closes the child-process escape: a
+    script the agent ran can read ~/.ssh and phone home without any single
+    tool call looking like exfiltration. Same window discipline as
+    `_first_pair`, but the second step is a `network_egress` event, which is
+    not a reported tool call and so needs its own loop.
+    """
+    window = _sequence_window()
+    starts: list[tuple[dict[str, Any], datetime | None]] = []
+    lo = 0
+    for event in events:
+        if _is_guard_egress(event):
+            at = _parse_ts(_ts(event))
+            while lo < len(starts):
+                began = starts[lo][1]
+                if window is None or at is None or began is None or at - began <= window:
+                    break
+                lo += 1
+            if lo < len(starts):
+                cred, _ = starts[lo]
+                tool = event.get("tool") if isinstance(event.get("tool"), dict) else {}
+                dest = str(tool.get("command") or "")
+                return [
+                    Detection(
+                        rule_id="credential-read-then-egress",
+                        title="Credential access followed by child-process egress",
+                        severity="critical",
+                        summary=(
+                            f"{_tool_qualified(cred) or 'A tool'} accessed credentials, then a "
+                            f"wrapped child process opened a connection "
+                            f"({dest or 'unknown destination'}) in the same session."
+                        ),
+                        correlation_id=_correlation_id(events),
+                        tactic_ids=["TA0006", "TA0011"],
+                        technique_ids=[_technique_id(cred) or "T1552.001", "T1071.001"],
+                        event_ids=[_event_id(cred), _event_id(event)],
+                        first_seen_utc=_ts(cred),
+                        last_seen_utc=_ts(event),
+                    )
+                ]
+        if _is_reported_success(event) and _is_credential_access(event):
+            starts.append((event, _parse_ts(_ts(event))))
+    return []
+
+
 REGISTRY = [
     rule_credential_exfil,
+    rule_guard_egress_denied,
+    rule_credential_read_then_egress,
     rule_hf_token_exposed_in_command,
     rule_autonomous_unapproved_write,
     rule_discovery_then_collect,
@@ -1609,6 +1695,8 @@ EXPERIMENTAL_RULE_IDS: frozenset[str] = frozenset({
 
 BUILTIN_RULE_IDS: frozenset[str] = frozenset({
     "credential-exfil",
+    "guard-egress-denied",
+    "credential-read-then-egress",
     "hf-token-exposed-in-command",
     "discovery-then-collect",
     "approval-denied-then-executed",

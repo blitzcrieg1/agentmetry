@@ -27,7 +27,9 @@ the benchmark corpus emits, for reference only.
 |---|---|---|
 | `approval-denied-then-executed` | critical | (tactic TA0005) |
 | `rapid-tool-denials` | high | T1562 |
+| `guard-egress-denied` | high | T1071 |
 | `credential-exfil` | critical | T1552.004, T1071.001 |
+| `credential-read-then-egress` | critical | T1552.004, T1071.001 |
 | `credential-read-then-cloud-api` | critical | T1552.004, T1078 |
 | `dotfile-read-then-git-push` | critical | T1552.001, T1567.001 |
 | `encoded-command-download` | critical | T1105, T1059.001 |

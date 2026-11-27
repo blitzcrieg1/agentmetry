@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -292,12 +293,44 @@ async def _relay_stdout(
             post_ingest(err_payload, quiet=True)
 
 
+def _guard_wrap(command: list[str]) -> list[str] | None:
+    """Wrap the MCP server command in `agentmetry-guard wrap` when enabled.
+
+    Off by default: set AGENTMETRY_GUARD=1 to route the server's child-process
+    egress through the guard's loopback proxy (logged as `network_egress`
+    events), optionally with AGENTMETRY_GUARD_DENY="host1,host2" and
+    AGENTMETRY_GUARD_BIN=/path/to/agentmetry-guard. When the binary is not
+    found the raw command runs, so a stale env var never breaks a server.
+    """
+    if os.environ.get("AGENTMETRY_GUARD", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return None
+    guard = os.environ.get("AGENTMETRY_GUARD_BIN", "").strip() or shutil.which("agentmetry-guard")
+    if not guard:
+        return None
+    argv = [guard, "wrap"]
+    deny = os.environ.get("AGENTMETRY_GUARD_DENY", "").strip()
+    if deny:
+        argv += ["--deny", deny]
+    argv += ["--", *command]
+    return argv
+
+
+def _child_env() -> dict[str, str]:
+    """The child sees the proxy session id, so guard events join the same
+    correlation_id as this proxy's tool_call events in the trail."""
+    env = dict(os.environ)
+    env["AGENTMETRY_CORRELATION_ID"] = _correlation_id()
+    env["AGENTMETRY_SESSION_ID"] = _SESSION_ID
+    return env
+
+
 async def run_proxy(command: list[str], server_name: str) -> int:
     proc = await asyncio.create_subprocess_exec(
-        *command,
+        *(_guard_wrap(command) or command),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_child_env(),
     )
     # noqa S101: narrowing for the type checker, not a runtime check.
     # create_subprocess_exec with PIPE on all three always sets them, and
