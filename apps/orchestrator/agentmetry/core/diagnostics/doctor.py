@@ -662,15 +662,16 @@ def _check_guard(report: DoctorReport) -> None:
         return
     try:
         out = subprocess.run(
-            [binary, "--version"], capture_output=True, text=True, timeout=5
+            [binary, "--version"], capture_output=True, text=True, timeout=5, check=True
         )
         version = (out.stdout or out.stderr).strip() or "unknown"
     except Exception as exc:
         report.warn("guard", f"agentmetry-guard at {binary} did not run: {exc}")
         return
-    cfg = data_dir() / "guard.json"
+    explicit_config = os.environ.get("AGENTMETRY_GUARD_CONFIG")
+    cfg = Path(explicit_config) if explicit_config else data_dir() / "guard.json"
     policy = ""
-    if cfg.is_file():
+    if explicit_config or cfg.exists():
         try:
             import json
 
@@ -679,9 +680,11 @@ def _check_guard(report: DoctorReport) -> None:
                 f", {len(doc.get('deny') or [])} deny / {len(doc.get('allow') or [])} allow "
                 f"entries in {cfg.name}"
             )
-        except Exception:
-            policy = f", {cfg.name} present but unreadable (guard will reject it)"
-    report.ok("guard", f"{version} at {binary}{policy}")
+        except (OSError, ValueError, AttributeError, TypeError):
+            report.warn("guard", "Guard configuration could not be read as a JSON policy object.")
+            return
+    wrapping = "wrapping enabled" if enabled else "wrapping disabled"
+    report.ok("guard", f"{version} at {binary}{policy} ({wrapping})")
 
 
 def _check_triage(report: DoctorReport) -> None:

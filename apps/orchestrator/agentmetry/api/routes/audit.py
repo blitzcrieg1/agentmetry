@@ -59,6 +59,9 @@ class IngestToolBody(BaseModel):
     # Without these fields pydantic silently drops them and default-config
     # (hashed-only) events are invisible to every command-based sequence rule.
     traits: list[str] = Field(default_factory=list)
+    scripts_written: list[str] = Field(default_factory=list)
+    scripts_executed: list[str] = Field(default_factory=list)
+    script_body_traits: list[str] | None = None
     mitre: dict[str, str] | None = None
     # "partial" when the hook classified only the two ends of an oversized
     # command (#348), so an empty trait list is not read as a clean command.

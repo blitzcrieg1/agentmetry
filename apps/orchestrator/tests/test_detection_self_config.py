@@ -9,6 +9,8 @@ not (reads, other tools' settings files, prose about the path).
 
 from __future__ import annotations
 
+import pytest
+
 from agentmetry.core.audit.detection.traits import (
     KNOWN_TRAITS,
     classify_command,
@@ -48,12 +50,39 @@ def test_patch_body_naming_the_path_fires():
     assert classify_tool_call("apply_patch", body) == ["edits_self_config"]
 
 
+@pytest.mark.parametrize("key", ["command", "patch", "input", "value"])
+def test_patch_header_counts_as_destination_in_both_classifiers(key):
+    patch = "*** Begin Patch\n*** Add File: .claude/hooks/check.py\n+pass\n*** End Patch"
+    evidence = {key: patch}
+    assert classify_tool_call("codex.apply_patch", evidence) == ["edits_self_config"]
+    assert get_mitre_mapping("codex.apply_patch", evidence)["technique_id"] == "T1562"
+
+
+def test_patch_prose_naming_a_config_path_stays_quiet():
+    patch = (
+        "*** Begin Patch\n*** Update File: docs/setup.md\n@@\n"
+        "+*** Update File: .claude/settings.json\n*** End Patch"
+    )
+    assert classify_tool_call("apply_patch", patch) == []
+    mapping = get_mitre_mapping("apply_patch", {"command": patch})
+    assert mapping is None or mapping["technique_id"] != "T1562"
+
+
+def test_structured_write_classifies_the_destination_only():
+    evidence = {"target_file": ".claude/hooks/check.py", "content": "print('synthetic')"}
+    assert classify_tool_call("Write", evidence) == ["edits_self_config"]
+    assert get_mitre_mapping("Write", evidence)["technique_id"] == "T1562"
+    assert classify_tool_call("Write", {"path": "docs/setup.md", "content": evidence["target_file"]}) == []
+
+
 def test_write_to_other_settings_stays_quiet():
     assert classify_tool_call("Write", "/srv/repo/.vscode/settings.json") == []
     assert classify_tool_call("Write", "/srv/repo/src/settings.json") == []
     assert classify_tool_call("Write", "~/.config/myapp/settings.json") == []
     assert classify_tool_call("Write", "~/.claude/projects/session-notes.md") == []
     assert classify_tool_call("Write", "~/.claude/settings.json.bak") == []
+    assert classify_tool_call("Write", "~/.claude/settings.json/notes") == []
+    assert classify_tool_call("Write", "src/demo.claude/settings.json") == []
 
 
 def test_reading_the_config_is_not_editing_it():
@@ -85,6 +114,18 @@ def test_reading_the_config_by_command_stays_quiet():
 def test_prose_about_the_path_stays_quiet():
     """Single-quoted text is something written, not a file being written."""
     assert "edits_self_config" not in classify_command("echo 'edit ~/.claude/settings.json by hand'")
+
+
+def test_quoted_shell_destination_and_quoted_prose():
+    command = "cp settings.json '/tmp/example project/.claude/settings.json' # local copy"
+    assert "edits_self_config" in classify_command(command)
+    assert get_mitre_mapping("Bash", {"command": command})["technique_id"] == "T1562"
+    for prose in (
+        'printf "%s" "redirect > ~/.claude/settings.json"',
+        "printf data # comment; redirect > ~/.claude/settings.json",
+    ):
+        assert "edits_self_config" not in classify_command(prose)
+        assert get_mitre_mapping("Bash", prose)["technique_id"] != "T1562"
 
 
 # --- the MITRE mapper agrees -----------------------------------------------------

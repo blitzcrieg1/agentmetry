@@ -287,6 +287,13 @@ def executed_script_names(command: str) -> set[str]:
 
 _SCRIPT_NAME = re.compile(r"^[A-Za-z0-9._-]{1,255}$")
 
+# Labels from the contents of a written script. Only the write/run rule uses
+# them. A script's contents do not describe actions performed by the write.
+SCRIPT_PAYLOAD_TRAITS = frozenset({
+    "credential_access", "private_key", "pipe_to_shell", "encoded_cmd",
+    "decode_pipe", "raw_ip_fetch",
+})
+
 
 def clean_script_names(names: list[str] | set[str]) -> list[str]:
     """Basenames safe to store on an event. Content never is.
@@ -606,48 +613,99 @@ CREDENTIAL_PATH = re.compile(
 # copies count — Claude Code reads `.claude/settings.json` from the project
 # too, and a hook planted there runs with the same authority. The filename
 # must end the path: writing `settings.json.bak` is not rewriting the config.
-SELF_CONFIG_PATH = re.compile(
-    r"\.claude[/\\]settings(?:\.local)?\.json(?![\w.-])|"
-    r"\.claude[/\\]hooks[/\\]|"
-    r"\.claude\.json(?![\w.-])|"
-    r"\.cursor[/\\]hooks\.json(?![\w.-])|"
-    r"\.codex[/\\]hooks\.json(?![\w.-])|"
-    r"\.codex[/\\]config\.toml(?![\w.-])",
+_SELF_CONFIG_PATH = re.compile(
+    r"(?:^|[/\\])(?:\.claude[/\\]settings(?:\.local)?\.json|"
+    r"\.claude[/\\]hooks[/\\][^\r\n]+|"
+    r"\.claude\.json|\.cursor[/\\]hooks\.json|"
+    r"\.codex[/\\](?:hooks\.json|config\.toml))\Z",
     re.IGNORECASE,
 )
+_SELF_CONFIG_DIR = re.compile(r"\.(?:claude|cursor|codex)", re.IGNORECASE)
+_WRITE_PATH_KEYS = frozenset({
+    "path", "filepath", "file", "absolutepath", "targetfile", "targetpath",
+    "destination", "dest", "target", "uri",
+})
+_PATCH_PATH_HEADERS = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: ")
+_REDIRECTION = re.compile(r"(?<![<>])[<>]{1,2}(?![<>])")
+_SHELL_COMMENT = re.compile(r"(?<![^\s;&|])#[^\r\n]*")
 
 
-def _writes_self_config(literal: str) -> bool:
-    """A shell command that writes the agent's own configuration (#317).
+def _is_self_config_path(path: str) -> bool:
+    return bool(_SELF_CONFIG_PATH.search(path.strip().strip("'\"")))
 
-    The path alone is not enough — `grep claude ~/.claude/settings.json`
-    reads it, and reading your own config is ordinary. The command must aim
-    a write at the path: a redirect into it, `tee`, `dd`'s `of=`, an
-    in-place `sed`, or the destination slot of `cp`/`mv`/`install`. Runs on
-    the `literal` view, so a path inside single quotes (prose somebody is
-    writing, not a file being written) cannot fire it.
-    """
-    for segment in re.split(r"[|;&\n]", literal):
-        match = SELF_CONFIG_PATH.search(segment)
-        if not match:
-            continue
-        # What precedes the match is the path's own directory prefix
-        # (`~/`, `/home/operator/`, `$HOME/`); strip it before asking what
-        # operator the write went through.
-        before = re.sub(r"[\w.~$/\\:-]+$", "", segment[: match.start()]).rstrip(" '\"")
-        if before.endswith(">") or before.endswith("of=") or re.search(r"\btee(?:\s+-\w+)?$", before):
-            return True
-        tokens = segment.split()
-        if len(tokens) >= 2:
-            head = tokens[0].strip("'\"").lower()
-            last = tokens[-1].strip("'\"")
-            if head in ("cp", "mv", "install") and SELF_CONFIG_PATH.search(last):
+
+def _patch_writes_self_config(patch: str) -> bool:
+    """Inspect Codex patch headers and ignore text in the patch body."""
+    lines = iter(patch.strip().splitlines())
+    if next(lines, "") != "*** Begin Patch":
+        return False
+    for line in lines:
+        if line == "*** End Patch":
+            break
+        for header in _PATCH_PATH_HEADERS:
+            if line.startswith(header) and _is_self_config_path(line[len(header):]):
                 return True
-            if (
-                head == "sed"
-                and any(t.startswith("-i") for t in tokens[1:-1])
-                and SELF_CONFIG_PATH.search(last)
-            ):
+    return False
+
+
+def write_targets_self_config(qualified: str, evidence: object) -> bool:
+    """Check destinations carried by a write tool, without scanning its content."""
+    if _norm_method(qualified) == "applypatch":
+        if isinstance(evidence, dict):
+            return any(
+                isinstance(patch, str) and _patch_writes_self_config(patch)
+                for patch in (evidence.get(key) for key in ("command", "patch", "input", "value", "diff"))
+            )
+        return isinstance(evidence, str) and _patch_writes_self_config(evidence)
+    if isinstance(evidence, dict):
+        return any(
+            isinstance(path, str)
+            and key.lower().replace("_", "") in _WRITE_PATH_KEYS
+            and _is_self_config_path(path)
+            for key, path in evidence.items()
+            if isinstance(key, str)
+        )
+    return isinstance(evidence, str) and _is_self_config_path(evidence)
+
+
+def shell_writes_self_config(command: str, written: str) -> bool:
+    """Check known shell write operands using unquoted operators and raw paths."""
+    if not _SELF_CONFIG_DIR.search(command):
+        return False
+    # A quote-masked space may belong to the preceding word. Only treat '#'
+    # as a comment when the original text also puts it at a word boundary.
+    comments = [
+        match.span() for match in _SHELL_COMMENT.finditer(written)
+        if match.start() == 0 or command[match.start() - 1] in " \t\r\n;&|"
+    ]
+    if comments:
+        raw_chars, masked_chars = list(command), list(written)
+        for left, right in comments:
+            raw_chars[left:right] = masked_chars[left:right] = " " * (right - left)
+        command, written = "".join(raw_chars), "".join(masked_chars)
+    for pipeline in _pipelines(written):
+        for start, end in pipeline:
+            redirects = list(_REDIRECTION.finditer(written, start, end))
+            for index, redirect in enumerate(redirects):
+                if redirect.group().startswith(">"):
+                    stop = redirects[index + 1].start() if index + 1 < len(redirects) else end
+                    paths = _tokens(command, redirect.end(), stop)
+                    if paths and _is_self_config_path(command[paths[0][0]:paths[0][1]]):
+                        return True
+
+            stop = redirects[0].start() if redirects else end
+            tokens = _tokens(command, start, stop)
+            verb, offset = _stage_verb(command, tokens)
+            args = [command[left:right] for left, right in tokens[offset:]]
+            if not args:
+                continue
+            if verb == "tee" and any(_is_self_config_path(arg) for arg in args if not arg.startswith("-")):
+                return True
+            if verb == "dd" and any(arg.startswith("of=") and _is_self_config_path(arg[3:]) for arg in args):
+                return True
+            if verb in ("cp", "mv", "install") and len(args) >= 2 and _is_self_config_path(args[-1]):
+                return True
+            if verb == "sed" and any(arg.startswith("-i") for arg in args[:-1]) and _is_self_config_path(args[-1]):
                 return True
     return False
 
@@ -1833,7 +1891,7 @@ def classify_path(path: str) -> list[str]:
     return traits
 
 
-def classify_tool_call(qualified: str, text: str) -> list[str]:
+def classify_tool_call(qualified: str, evidence: object) -> list[str]:
     """Trait labels for one tool call, judged by what kind of tool it is."""
     kind = tool_kind(qualified)
     if kind == "list":
@@ -1841,12 +1899,12 @@ def classify_tool_call(qualified: str, text: str) -> list[str]:
     if kind == "write":
         # A write's path is not a command (#329), but one destination is a
         # signal in itself: the agent editing its own configuration (#317).
-        # For apply_patch the text is the patch body, whose `Update File:`
-        # lines name the same paths.
-        return ["edits_self_config"] if SELF_CONFIG_PATH.search(text or "") else []
+        return ["edits_self_config"] if write_targets_self_config(qualified, evidence) else []
+    if not isinstance(evidence, str):
+        return []
     if kind == "read":
-        return classify_path(text)
-    return classify_command(text)
+        return classify_path(evidence)
+    return classify_command(evidence)
 
 
 # ----------------------------------------------------------------------
@@ -2853,7 +2911,7 @@ def classify_command(command: str, *, _depth: int = 0) -> list[str]:
             traits.append("credential_env_load")
     if PRIVATE_KEY_PATH.search(path_literal):
         traits.append("private_key")
-    if _writes_self_config(literal):
+    if shell_writes_self_config(command, written):
         traits.append("edits_self_config")
 
     # Egress as a fact about one event. `credential-exfil` needed a *later*

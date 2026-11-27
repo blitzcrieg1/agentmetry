@@ -136,7 +136,7 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 ## What you get
 
 - **Detections.** Twenty published rules and one experimental rule (`autonomous-unapproved-write`). Sequence rules match ordered steps inside a session. A single observed command can flag literal Hugging Face token exposure. The experimental rule requires a signal available outside IDE capture and stays out of the Sigma pack. See [Detection rules](docs/detection-rules.md).
-- **Child-process egress visibility.** With `AGENTMETRY_GUARD=1`, `agentmetry mcp-proxy` runs the MCP server inside [agentmetry-guard](https://github.com/blitzcrieg1/agentmetry-guard): a zero-dependency Rust sidecar that routes the process's traffic through a loopback proxy and, on macOS/Linux, a Seatbelt/Bubblewrap user-space sandbox that hides credential directories. Every destination lands in the same trail as a `network_egress` event, and `credential-read-then-egress` fires when a credential read is followed by a child process opening a connection. No root, no eBPF.
+- **Experimental child-process egress visibility.** With `AGENTMETRY_GUARD=1` and [agentmetry-guard](https://github.com/blitzcrieg1/agentmetry-guard) installed, `agentmetry mcp-proxy` wraps a stdio MCP server. The sidecar reports destinations for HTTP and HTTPS traffic that uses its loopback proxy. `credential-read-then-egress` requires the sidecar to report an established connection after credential access in the same session. See the sidecar's security model for platform coverage and limits.
 - **A check before anything runs.** `agentmetry scan` reads the MCP configs, skills and rules files an agent will load and reports typosquatted package names and text that steers the model: overriding instructions, hiding things from the user, reaching for credential files, exfiltration, shadowing other tools. The MCP proxy runs the same text check on every `tools/list` it relays and records the counts per category on the trail, never the text.
 - **MITRE ATT&CK tags** on tool calls the mapper recognises (`agentmetry/core/audit/mitre.py`). A call it does not recognise carries no tag.
 - **MITRE ATLAS labels** on the subset where ATLAS says something ATT&CK cannot (`agentmetry/core/audit/atlas.py`, content release 2026.07). Five built-in technique and sub-technique IDs are emitted: indirect prompt injection (`AML.T0051.001`), agent-tool credential harvesting (`AML.T0098`), exfiltration via tool invocation (`AML.T0086`), destruction via tool invocation (`AML.T0101`), and MCP supply-chain rug pull (`AML.T0109`). `AML.T0050` and `AML.T0053` are deliberately not emitted.
@@ -152,17 +152,17 @@ CI is `.github/workflows/ci.yml`. The test matrix is `ubuntu-latest`, `windows-l
 These are the numbers from commands, not from a slide.
 
 ```
-  cases            117 (60 attack, 57 benign)
+  cases            119 (60 attack, 59 benign)
   rules covered    21
-  expected firings 64
-  detected         64
+  expected firings 63
+  detected         63
   missed           0
   false positives  0
 ```
 
 Run `agentmetry benchmark` to check these expectations. The 21 rule IDs in the corpus are the published rules; the Sigma pack ships 30 rules including the experimental ones (`host-subagent-swarm-burst`, `off-hours-activity`).
 
-3100 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
+3111 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 

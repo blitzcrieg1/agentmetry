@@ -46,6 +46,7 @@ from .traits import (
     PR_MERGE_COMMAND as _PR_MERGE_COMMAND,
     RAW_IP_URL as _RAW_IP_URL,
     RISKY_EXEC_AFTER_STAGING as _RISKY_EXEC_AFTER_STAGING,
+    SCRIPT_PAYLOAD_TRAITS as _SCRIPT_PAYLOAD_TRAITS,
     stages_artifact as _stages_artifact,
     STAGING_FETCH as _STAGING_FETCH,
     STAGING_HOST as _STAGING_HOST,
@@ -321,7 +322,12 @@ def _traits(event: dict[str, Any]) -> frozenset[str]:
     if isinstance(tool, dict):
         raw = tool.get("traits")
         if isinstance(raw, list):
-            return frozenset(str(t) for t in raw if t)
+            traits = frozenset(str(t) for t in raw if t)
+            if _tool_kind(_tool_qualified(event)) == "write":
+                # Older writers mixed script contents into this field. The
+                # destination is the only file-write trait the hook emits.
+                return traits & {"edits_self_config"}
+            return traits
     return frozenset()
 
 
@@ -343,6 +349,8 @@ def _is_credential_access(event: dict[str, Any]) -> bool:
     whatever evidence survived redaction; an event that kept only one of them is
     normal rather than suspicious.
     """
+    if _tool_kind(_tool_qualified(event)) == "write":
+        return False
     if _has_trait(event, "credential_env_load") and not _has_trait(event, "private_key"):
         # Loading `.env` into the shell sends no secret anywhere. A later command
         # that sends one names it (`$SECRET`, a dump, `@.env`) and is caught in
@@ -1213,7 +1221,7 @@ def rule_decode_pipe_to_shell(events: list[dict[str, Any]]) -> list[Detection]:
     rule is the shape itself, including when the payload cannot be decoded.
     """
     for event in events:
-        if _action_type(event) != "tool_called" or _outcome(event) != "success":
+        if not _is_reported_success(event) or _tool_kind(_tool_qualified(event)) != "command":
             continue
         cmd = _command(event)
         if cmd:
@@ -1242,35 +1250,24 @@ def rule_decode_pipe_to_shell(events: list[dict[str, Any]]) -> list[Detection]:
     return []
 
 
-# Traits that mean the bytes written into a script are themselves an attack
-# step. `net_egress` alone is not enough: a deploy script that curls a registry
-# is a normal working day, and this rule would then fire every time it was run.
-_SCRIPT_PAYLOAD_TRAITS = frozenset({
-    "credential_access",
-    "private_key",
-    "pipe_to_shell",
-    "encoded_cmd",
-    "decode_pipe",
-    "raw_ip_fetch",
-})
-
-
 def rule_script_write_then_execute(events: list[dict[str, Any]]) -> list[Detection]:
-    """A script whose body was classified is later executed in the same session.
+    """Correlate a script write with a later execution sharing its basename.
 
-    The write carries traits from the body and `scripts_written` (basenames
-    only; the body is hashed with the rest of the arguments). A later command
-    that runs that basename closes the chain (#347). A script with no payload
-    traits, or a different file, does not.
+    Use body traits only here. Earlier versions stored them in `tool.traits`.
+    Basenames correlate across capture modes but cannot establish file identity.
     """
     for index, write in enumerate(events):
-        if _action_type(write) != "tool_called" or _outcome(write) != "success":
+        if not _is_reported_success(write) or _tool_kind(_tool_qualified(write)) != "write":
             continue
         written = _name_list(write, "scripts_written")
-        if not written or not (_traits(write) & _SCRIPT_PAYLOAD_TRAITS):
+        if not written:
+            continue
+        tool = write["tool"]
+        body_field = "script_body_traits" if "script_body_traits" in tool else "traits"
+        if not (_name_list(write, body_field) & _SCRIPT_PAYLOAD_TRAITS):
             continue
         for later in events[index + 1:]:
-            if _action_type(later) != "tool_called" or _outcome(later) != "success":
+            if not _is_reported_success(later) or _tool_kind(_tool_qualified(later)) != "command":
                 continue
             executed = _name_list(later, "scripts_executed")
             cmd = _command(later)
@@ -1283,12 +1280,13 @@ def rule_script_write_then_execute(events: list[dict[str, Any]]) -> list[Detecti
             return [
                 Detection(
                     rule_id="script-write-then-execute",
-                    title="Written script executed in the same session",
+                    title="Script write and execution share a basename",
                     severity="high",
                     summary=(
                         f"{_tool_qualified(write) or 'A tool'} wrote `{name}` with "
                         "a classified payload, then "
-                        f"{_tool_qualified(later) or 'a tool'} executed that file "
+                        f"{_tool_qualified(later) or 'a tool'} reported running a script "
+                        "with the same basename "
                         "in the same session."
                     ),
                     correlation_id=_correlation_id(events),
@@ -1554,26 +1552,38 @@ def rule_host_subagent_swarm_burst(events: list[dict[str, Any]]) -> list[Detecti
     ]
 
 
+def _is_guard_event(event: dict[str, Any]) -> bool:
+    source = event.get("source")
+    return (
+        _action_type(event) == "network_egress"
+        and isinstance(source, dict)
+        and source.get("app") == "agentmetry"
+        and source.get("adapter") == "guard"
+        and _tool_qualified(event) == "guard.egress"
+    )
+
+
 def _is_guard_egress(event: dict[str, Any]) -> bool:
-    """A `network_egress` event the guard sidecar reported as tunneled."""
-    return _action_type(event) == "network_egress" and _outcome(event) == "success"
+    """Guard reported an established connection, beyond an allowed attempt."""
+    if not _is_guard_event(event) or _outcome(event) != "success":
+        return False
+    arguments = event["tool"].get("arguments")
+    return isinstance(arguments, dict) and arguments.get("connection_established") is True
 
 
 def rule_guard_egress_denied(events: list[dict[str, Any]]) -> list[Detection]:
-    """The guard sidecar refused a connection to a denylisted destination.
+    """The guard sidecar refused a connection under its destination policy.
 
-    The denylist lives in agentmetry-guard (`--deny`), so this is the trail's
-    record of a block, not just an observation: a wrapped child process tried
-    to leave and the sidecar said no.
+    The policy lives in agentmetry-guard. This records a refusal from the proxy.
     """
     for event in events:
-        if _action_type(event) == "network_egress" and _outcome(event) == "denied":
+        if _is_guard_event(event) and _outcome(event) == "denied":
             tool = event.get("tool") if isinstance(event.get("tool"), dict) else {}
             dest = str(tool.get("command") or "")
             return [
                 Detection(
                     rule_id="guard-egress-denied",
-                    title="Blocked egress to a denylisted destination",
+                    title="Egress blocked by destination policy",
                     severity="high",
                     summary=(
                         "The agentmetry-guard sidecar refused an outbound connection "
@@ -1593,12 +1603,9 @@ def rule_guard_egress_denied(events: list[dict[str, Any]]) -> list[Detection]:
 def rule_credential_read_then_egress(events: list[dict[str, Any]]) -> list[Detection]:
     """Credential read by a tool call, then a child process opened a connection.
 
-    The hook sees the tool call; only the guard sidecar sees what a child
-    process did next. Pairing the two closes the child-process escape: a
-    script the agent ran can read ~/.ssh and phone home without any single
-    tool call looking like exfiltration. Same window discipline as
-    `_first_pair`, but the second step is a `network_egress` event, which is
-    not a reported tool call and so needs its own loop.
+    The second step requires a Guard event with an established connection.
+    The pair shows session order. It does not measure transferred bytes or
+    attribute the connection to the tool that reported the credential access.
     """
     window = _sequence_window()
     starts: list[tuple[dict[str, Any], datetime | None]] = []
@@ -1621,8 +1628,8 @@ def rule_credential_read_then_egress(events: list[dict[str, Any]]) -> list[Detec
                         title="Credential access followed by child-process egress",
                         severity="critical",
                         summary=(
-                            f"{_tool_qualified(cred) or 'A tool'} accessed credentials, then a "
-                            f"wrapped child process opened a connection "
+                            f"{_tool_qualified(cred) or 'A tool'} reported credential access, then "
+                            "Guard reported an established connection "
                             f"({dest or 'unknown destination'}) in the same session."
                         ),
                         correlation_id=_correlation_id(events),

@@ -211,6 +211,37 @@ def test_egress_events_do_not_fire_tool_sequence_rules():
     assert run_detections(events) == []
 
 
+def test_guard_ingest_removes_legacy_request_target():
+    marker = "synthetic-private-query"
+    event = _egress(tool={
+        "qualified": "guard.egress", "command": f"GET example.com/private?value={marker}",
+        "arguments": {"scheme": "http", "method": "GET", "host": "example.com",
+                      "port": 80, "path": f"/private?value={marker}", "connection_established": True},
+    })
+    assert event["tool"]["command"] == "GET example.com:80"
+    assert "path" not in event["tool"]["arguments"]
+    assert event["tool"]["arguments"]["connection_established"] is True
+    assert marker not in str(event)
+
+
+def test_guard_rule_requires_a_connection_established_by_the_sidecar():
+    cred = {
+        "action": {"type": "tool_called", "outcome": "success"},
+        "event_id": "read-credential-metadata",
+        "correlation_id": "tool-call-1",
+        "timestamp_utc": "2026-11-27T09:00:00+00:00",
+        "tool": {"qualified": "claude.Read", "traits": ["credential_access"]},
+    }
+    egress = _egress(timestamp_utc="2026-11-27T09:00:01+00:00")
+    assert run_detections([cred, egress]) == []
+    egress["tool"]["arguments"]["connection_established"] = "true"
+    assert run_detections([cred, egress]) == []
+    egress["tool"]["arguments"]["connection_established"] = True
+    assert [finding.rule_id for finding in run_detections([cred, egress])] == ["credential-read-then-egress"]
+    egress["action"]["outcome"] = "error"
+    assert run_detections([cred, egress]) == []
+
+
 # ----------------------------------------------------------------------
 # doctor: agentmetry-guard sidecar
 # ----------------------------------------------------------------------
@@ -260,3 +291,14 @@ def test_doctor_guard_ok_with_version_and_config(monkeypatch, tmp_path):
     assert report.findings[0].severity == "ok"
     assert report.findings[0].code == "guard"
     assert "1 deny / 1 allow" in report.findings[0].message
+
+
+def test_doctor_guard_warns_about_an_invalid_explicit_policy(monkeypatch, tmp_path):
+    import sys
+
+    config = tmp_path / "bad-guard.json"
+    config.write_text("invalid", encoding="utf-8")
+    monkeypatch.setenv("AGENTMETRY_GUARD_CONFIG", str(config))
+    report = _guard_report(monkeypatch, tmp_path, enabled="1", bin_path=sys.executable)
+    assert report.findings[0].severity == "warn"
+    assert "configuration could not be read" in report.findings[0].message

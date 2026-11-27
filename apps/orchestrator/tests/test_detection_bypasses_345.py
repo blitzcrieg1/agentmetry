@@ -12,6 +12,7 @@ import base64
 import json
 
 from agentmetry.core.audit.detection.engine import run_detections
+from agentmetry.api.routes.audit import ExternalIngestBody
 from agentmetry.core.audit.detection.traits import classify_command
 from agentmetry.core.audit.external import build_external_canonical
 from agentmetry.core.audit.mitre import get_mitre_mapping
@@ -32,7 +33,7 @@ def _hook_event(hook: str, data: dict, *, when: str) -> dict:
     payload = ingest.map_hook(hook, data)
     assert payload is not None
     payload["timestamp_utc"] = when
-    return build_external_canonical(payload)
+    return build_external_canonical(ExternalIngestBody.model_validate(payload).model_dump(exclude_none=True))
 
 
 def _rules(events: list[dict]) -> set[str]:
@@ -168,6 +169,21 @@ def test_decode_pipe_fires_through_the_hook():
     assert _EXFIL not in json.dumps(event)
 
 
+def test_decode_pipe_needs_a_result_when_invocation_metadata_exists():
+    event = {
+        "action": {"type": "tool_called", "outcome": "success"},
+        "event_id": "decode-request",
+        "correlation_id": "decode-example",
+        "timestamp_utc": "2026-10-31T12:01:00+00:00",
+        "tool": {"qualified": "claude.Bash", "traits": ["decode_pipe"],
+                 "invocation": {"phase": "request"}},
+    }
+    assert "decode-pipe-to-shell" not in _rules([event])
+    event["tool"]["invocation"] = {"phase": "result"}
+    event["tool"]["result"] = {"status": "reported_success"}
+    assert "decode-pipe-to-shell" in _rules([event])
+
+
 # ----------------------------------------------------------------------
 # #347 write a script, then run it
 # ----------------------------------------------------------------------
@@ -184,12 +200,13 @@ def test_a_script_write_classifies_the_body_and_keeps_only_the_basename():
         when="2026-10-31T12:02:00+00:00",
     )
     tool = event["tool"]
-    assert set(tool["traits"]) >= {"credential_access", "net_egress"}
+    assert "credential_access" in tool["script_body_traits"]
+    assert set(tool.get("traits", ())).isdisjoint({"credential_access", "net_egress"})
     assert tool["scripts_written"] == ["run.sh"]
     assert "scripts_executed" not in tool
     assert _EXFIL not in json.dumps(event)
-    # The write event itself stays T1565 (a write is not a read, #329); the
-    # credential_access trait from the classified body is what feeds the rule.
+    assert "credential-exfil" not in _rules([event])
+    # The write itself stays T1565. Only the write/run rule reads body traits.
     assert tool["mitre"]["technique_id"].startswith("T1565")
 
 
@@ -208,8 +225,13 @@ def test_write_then_exec_correlates_the_basename():
         {"conversation_id": "h347", "command": "bash scripts/run.sh", "exit_code": 0},
         when="2026-10-31T12:02:05+00:00",
     )
-    assert "script-write-then-execute" in _rules([write, run])
+    assert _rules([write, run]) == {"script-write-then-execute"}
     assert run["tool"]["scripts_executed"] == ["run.sh"]
+    legacy = dict(write, tool=dict(write["tool"], traits=["credential_access", "net_egress", "decode_pipe"]))
+    legacy["tool"].pop("script_body_traits")
+    assert _rules([legacy, run]) == {"script-write-then-execute"}
+    request = dict(run, tool=dict(run["tool"], invocation={"phase": "request"}))
+    assert "script-write-then-execute" not in _rules([write, request])
 
 
 def test_a_direct_invocation_counts_as_execution():
@@ -241,7 +263,7 @@ def test_a_shebang_file_without_a_script_suffix_is_still_a_script():
         when="2026-10-31T12:04:00+00:00",
     )
     assert event["tool"]["scripts_written"] == ["run"]
-    assert "credential_access" in event["tool"]["traits"]
+    assert "credential_access" in event["tool"]["script_body_traits"]
 
 
 def test_writing_prose_or_a_harmless_script_does_not_correlate():
@@ -320,6 +342,6 @@ def test_an_oversized_script_is_partial_and_the_tail_is_still_classified():
         when="2026-10-31T12:09:00+00:00",
     )
     assert event["tool"]["classification"] == "partial"
-    assert "credential_access" in event["tool"]["traits"]
-    assert "credential-exfil" in _rules([event])
+    assert "credential_access" in event["tool"]["script_body_traits"]
+    assert "credential-exfil" not in _rules([event])
     assert _EXFIL not in json.dumps(event)

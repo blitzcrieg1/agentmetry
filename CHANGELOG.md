@@ -9,8 +9,22 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+### Added
+
+- **Off-hours benchmark cases** exercise an autonomous action and a human
+  maintenance control with a fixed business-hours policy (#504).
+- **Agent self-configuration writes** carry the `edits_self_config` trait and
+  ATT&CK T1562 when the destination is a supported settings or hooks path (#505).
+- **Guard diagnostics** report whether the optional sidecar is available (#514).
+
 ### Fixed
 
+- **Script contents and execution evidence stay separate.** Saving a script
+  records body traits separately from observed actions. The write/run rule
+  correlates reported successes by script basename and describes that limit.
+- **Guard records destination metadata only.** The egress correlation requires
+  an explicit established-connection report. New ingest removes paths and
+  queries from older Guard payloads and keeps their connection status unverified.
 - **Interrupted canary operations are recoverable.** Planting records the
   recovery state before changing the target. Removal checks the target bytes
   before restoring it. Unreadable optional canary state leaves the bundled
