@@ -46,6 +46,11 @@ class Case:
     note: str = ""
     #: Benign cases exist to measure false positives; `expect` is normally empty.
     benign: bool = False
+    #: Operator settings this case replays under, restored afterwards. An
+    #: opt-in rule (off-hours-activity) can never fire in the benchmark until
+    #: a case can turn it on, and a time-of-day case is only reproducible
+    #: everywhere if it pins the business timezone it is judged against.
+    settings: dict[str, Any] = field(default_factory=dict)
 
     @property
     def events(self) -> list[dict[str, Any]]:
@@ -143,6 +148,7 @@ def load_corpus(corpus_dir: Path | None = None) -> list[Case]:
                 expect=set(raw.get("expect") or []),
                 note=str(raw.get("note") or ""),
                 benign=bool(raw.get("benign", False)),
+                settings=dict(raw.get("settings") or {}),
             )
         )
     if not cases:
@@ -150,13 +156,22 @@ def load_corpus(corpus_dir: Path | None = None) -> list[Case]:
     return cases
 
 
-def _fired_rules(events: list[dict[str, Any]]) -> set[str]:
+#: Settings a corpus case may pin for its own replay. Deliberately the three
+#: an opt-in, time-of-day rule needs; a manifest that could poke arbitrary
+#: settings would let a case quietly disable the rule it claims to exercise.
+_CASE_SETTINGS = frozenset({"detect_off_hours", "business_tz", "business_hours"})
+
+
+def _fired_rules(events: list[dict[str, Any]], settings_overrides: dict[str, Any] | None = None) -> set[str]:
     """Rule ids the engine raises on a recorded case, scoped as the live pipeline scopes them.
 
     Session rules see one `correlation_id` at a time and host rules see one
     `host_id` at a time, exactly as `detection.live` feeds them. Handing the
     whole file to the session rules alone meant a host-scoped rule could never
     fire in the benchmark, and a case spanning several sessions was read as one.
+
+    A case may pin operator settings (see `Case.settings`); they are applied
+    for that case's replay only and restored afterwards, even on error.
     """
     from agentmetry.core.audit.detection.engine import run_detections, run_host_detections
 
@@ -166,11 +181,32 @@ def _fired_rules(events: list[dict[str, Any]]) -> set[str]:
         sessions.setdefault(str(event.get("correlation_id") or ""), []).append(event)
         hosts.setdefault(str(event.get("host_id") or ""), []).append(event)
 
+    overrides = dict(settings_overrides or {})
+    unknown = set(overrides) - _CASE_SETTINGS
+    if unknown:
+        raise ValueError(f"corpus case pins unknown settings: {', '.join(sorted(unknown))}")
+
     fired: set[str] = set()
-    for group in sessions.values():
-        fired |= {d.rule_id for d in run_detections(group)}
-    for group in hosts.values():
-        fired |= {d.rule_id for d in run_host_detections(group)}
+    if not overrides:
+        for group in sessions.values():
+            fired |= {d.rule_id for d in run_detections(group)}
+        for group in hosts.values():
+            fired |= {d.rule_id for d in run_host_detections(group)}
+        return fired
+
+    from agentmetry.core.config import settings as operator_settings
+
+    saved = {key: getattr(operator_settings, key) for key in overrides}
+    try:
+        for key, value in overrides.items():
+            setattr(operator_settings, key, value)
+        for group in sessions.values():
+            fired |= {d.rule_id for d in run_detections(group)}
+        for group in hosts.values():
+            fired |= {d.rule_id for d in run_host_detections(group)}
+    finally:
+        for key, value in saved.items():
+            setattr(operator_settings, key, value)
     return fired
 
 
@@ -178,7 +214,7 @@ def run_benchmark(corpus_dir: Path | None = None) -> BenchmarkReport:
     """Replay every case through the real rule engine."""
     report = BenchmarkReport()
     for case in load_corpus(corpus_dir):
-        report.results.append(CaseResult(case=case, fired=_fired_rules(case.events)))
+        report.results.append(CaseResult(case=case, fired=_fired_rules(case.events, case.settings)))
     return report
 
 
