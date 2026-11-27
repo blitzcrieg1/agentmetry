@@ -7,6 +7,8 @@ alpha. While in **public alpha**, minor versions may carry breaking changes to
 APIs and integration surfaces. The canonical event schema is versioned
 separately (currently `1.2.0`) and changes additively.
 
+## [Unreleased]
+
 ## [0.18.0] - 2026-11-27
 
 Child-process egress visibility: the new agentmetry-guard sidecar
@@ -3270,7 +3272,8 @@ tamper-evident JSONL trail you own.
 - Agentmetry records the agents you wire in. It is not a CASB and does not see
   unmanaged ChatGPT or an IDE with hooks disabled.
 
-[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.17.0...v0.18.0
 [0.16.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.13.0...v0.14.0
