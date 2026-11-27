@@ -100,6 +100,11 @@ def infer_approval_payloads(canonical: dict[str, Any]) -> list[dict[str, Any]]:
     source_app = str((canonical.get("source") or {}).get("app") or "cursor")
 
     if atype == "approval_request" and outcome == "pending":
+        # A Claude Code permission prompt arrives as a Notification, which
+        # names no tool. No call can answer it, so tracking it only produced
+        # an inferred denial at the session end that no person made.
+        if "hook:Notification" in str(action.get("reason") or "").split(";"):
+            return []
         qualified, server, input_hash = _tool_ident(canonical)
         bucket = _pending_approvals.setdefault(corr, [])
         if len(bucket) < _MAX_PENDING_PER_CORR:

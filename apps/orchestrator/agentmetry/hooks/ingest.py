@@ -1536,15 +1536,53 @@ def map_claude_hook(
     if hook_name == "SubagentStop":
         return _subagent_stop_payload("claude", "claude_hook", "claude", data)
 
-    if hook_name in ("PreToolUse", "Notification"):
-        decision = str(_pick(data, "permissionDecision", default="ask"))
-        outcome = "pending" if decision == "ask" else ("denied" if decision == "deny" else "success")
+    # Only a Notification of type `permission_prompt` says that Claude Code
+    # asked the person. The others, such as `idle_prompt` or `auth_success`,
+    # ask nothing and are not recorded. A prompt names no tool, so ingest does
+    # not infer an answer for it (see `infer_approval_payloads`).
+    if hook_name == "Notification":
+        notification_type = str(_pick(data, "notification_type", default=""))
+        if notification_type != "permission_prompt":
+            return None
+        return {
+            "source_app": "claude",
+            "adapter": "claude_hook",
+            "event_type": "approval_request",
+            "outcome": "pending",
+            "reason": f"hook:{hook_name};notification_type:{notification_type}",
+            "correlation_id": correlation,
+            "session_id": session_id,
+            "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
+            "tool": tool,
+        }
+
+    if hook_name == "PreToolUse":
+        # Claude Code sends no decision to PreToolUse: `permissionDecision` is
+        # a field of the hook's output. Defaulting it to `ask` recorded every
+        # call as a decision nobody made, so record the permission mode the
+        # hook does receive, as the Codex adapter does. A harness that sends
+        # no mode gets none, and a mode that is not a plain identifier, such
+        # as one carrying the `;` or `:` of the reason, becomes `unknown`. A
+        # caller that does pass a decision keeps it.
+        decision = _pick(data, "permissionDecision", default=None)
+        if decision is None:
+            outcome = "pending"
+            reason = f"hook:{hook_name}"
+            permission_mode = str(_pick(data, "permission_mode", default="")).strip()
+            if permission_mode:
+                if not re.fullmatch(r"[A-Za-z_]{1,40}", permission_mode):
+                    permission_mode = "unknown"
+                reason += f";permission_mode:{permission_mode}"
+        else:
+            decision = str(decision)
+            outcome = "pending" if decision == "ask" else ("denied" if decision == "deny" else "success")
+            reason = f"decision:{decision};hook:{hook_name}"
         return {
             "source_app": "claude",
             "adapter": "claude_hook",
             "event_type": "approval_request",
             "outcome": outcome,
-            "reason": f"decision:{decision};hook:{hook_name}",
+            "reason": reason,
             "correlation_id": correlation,
             "session_id": session_id,
             "initiator": {"actor_type": initiator, "trigger": "manual", "operator_id": ""},
@@ -1557,8 +1595,9 @@ def map_claude_hook(
         # SubagentStart, so without this the swarm rule was blind on the most
         # widely used agent CLI in the fleet. Tag a successful Task as a subagent
         # start so subagent-swarm-burst can count it (the rule keys on the reason
-        # marker, so the tool name stays honest).
-        if tool_name == "Task" and outcome == "success":
+        # marker, so the tool name stays honest). Current Claude Code names the
+        # tool Agent.
+        if tool_name in ("Task", "Agent") and outcome == "success":
             subagent_type = str(
                 _pick(tin, "subagent_type", "agent_type", default="subagent")
                 if isinstance(tin, dict) else "subagent"
