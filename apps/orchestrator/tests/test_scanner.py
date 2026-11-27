@@ -399,7 +399,7 @@ def test_files_the_scanner_cannot_read_are_named_not_swallowed(tmp_path):
     (skill / "logo.png").write_bytes(b"\x89PNG not really a png")
     (skill / "payload.bin").write_bytes(b"\x00\x01")
     report = run(str(skill))
-    assert report.not_read == ["logo.png", "payload.bin"]
+    assert sorted(report.not_read) == ["logo.png", "payload.bin"]
     assert any("2 files not readable as text" in note for note in report.unobserved), report.unobserved
     text = "\n".join(report.lines())
     assert "logo.png" in text
