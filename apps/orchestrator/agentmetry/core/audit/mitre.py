@@ -112,6 +112,7 @@ _EXFIL_CLOUD = _m("TA0010", "Exfiltration", "T1567.002", "Exfiltration to Cloud 
 _SCHEDULED = _m("TA0003", "Persistence", "T1053.005", "Scheduled Task")
 _CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
 _DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
+_SELF_CONFIG = _m("TA0005", "Defense Evasion", "T1562", "Impair Defenses")
 _ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
 _ARCHIVE_LIBRARY = _m("TA0009", "Collection", "T1560.002", "Archive via Library")
 _NETWORK_SCAN = _m("TA0007", "Discovery", "T1046", "Network Service Discovery")
@@ -151,6 +152,7 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     CREDENTIAL_ENV,
     CREDENTIAL_ENV_DUMP,
     CREDENTIAL_PATH,
+    SELF_CONFIG_PATH,
     ENV_FILE,
     ENV_FILE_SENT,
     INTERPRETER_NETWORK,
@@ -280,6 +282,14 @@ def get_mitre_mapping(
     # and writing `.env` is not reading it (#329, shapes 4 and 5). A read earns
     # the credential upgrades from its path, never C2.
     kind = tool_kind(tool_qualified)
+    if kind == "write" and text and SELF_CONFIG_PATH.search(_path_evidence_text(evidence, text)):
+        # The one write that earns an upgrade. Blanketing writes out above
+        # exists so a write is not upgraded to a *read* technique — writing
+        # `.env` is not reading it. This is not a read technique: the write
+        # itself is the act, an agent rewriting the files that govern it
+        # (#317). The same judgement traits.classify_tool_call makes with
+        # its `edits_self_config` trait, so the two cannot disagree (#40).
+        return _SELF_CONFIG
     if kind in ("write", "list"):
         text = ""
 
