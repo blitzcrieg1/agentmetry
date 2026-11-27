@@ -15,6 +15,9 @@ separately (currently `1.2.0`) and changes additively.
   recovery state before changing the target. Removal checks the target bytes
   before restoring it. Unreadable optional canary state leaves the bundled
   DLP rules available.
+- **Claude Code tool calls no longer look like approval prompts.** Claude Code runs its `PreToolUse` hook before every tool call. Agentmetry recorded each call there with the reason `decision:ask`, as if the user had been asked to approve it, but Claude Code never sends a decision to this hook. The reason now holds only what Claude Code sends: `hook:PreToolUse`, plus the permission mode, such as `permission_mode:acceptEdits`, when Claude Code reports one. An integration that sends its own `permissionDecision` still gets `decision:<value>`.
+- **Claude Code notifications no longer turn into denials.** Agentmetry recorded every Claude Code notification as an approval request. A notification names no tool, so no tool call could ever answer that request, and when the session ended Agentmetry recorded it as denied. Agentmetry now records only the notifications that are permission prompts (`notification_type: permission_prompt`) and no longer infers an answer for them. Notifications that ask nothing, for example "Claude is waiting for your input", are not recorded.
+- **Subagents started in current Claude Code are counted again.** Claude Code renamed the tool that starts a subagent from `Task` to `Agent`. Agentmetry only recognized `Task`, so it recorded no subagent starts, and the `subagent-swarm-burst` rule could not fire. Both names count now.
 
 ## [0.18.0] - 2026-11-27
 

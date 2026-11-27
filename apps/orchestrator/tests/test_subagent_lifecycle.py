@@ -74,6 +74,8 @@ def test_every_installed_claude_event_has_a_mapping():
             "session_id": "s1",
             "tool_name": "Read",
             "tool_input": {"file_path": "README.md"},
+            # Only a permission prompt is recorded from Notification.
+            "notification_type": "permission_prompt",
         })
         assert payload is not None, event
 

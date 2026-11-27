@@ -271,8 +271,12 @@ def test_adapter_override_and_shape_autodetection_are_not_claude_coverage(monkey
 
 
 def test_notification_is_not_an_invocation_or_human_decision():
-    payload = _payload("Notification")
-    assert "invocation" not in payload["tool"]
+    assert ingest.map_hook("Notification", {
+        "hook_event_name": "Notification",
+        "session_id": "synthetic-claude-session",
+        "message": "Claude is waiting for your input",
+        "notification_type": "idle_prompt",
+    }) is None
     assert ingest.map_hook("PermissionRequest", {"session_id": "synthetic"}) is None
 
 
