@@ -597,6 +597,61 @@ CREDENTIAL_PATH = re.compile(
     re.IGNORECASE,
 )
 
+# The agent's own configuration: the files that decide what the agent itself
+# does next — which hooks run before a tool call, which tools are allowed,
+# which model answers. An agent that writes these is not editing a project;
+# it is editing its own guardrails (T1562, #317). Anchored to the agent
+# directories for the same reason as Codex's `auth.json` above: a bare
+# `settings.json` is a common project file that steers nothing. Project-local
+# copies count — Claude Code reads `.claude/settings.json` from the project
+# too, and a hook planted there runs with the same authority. The filename
+# must end the path: writing `settings.json.bak` is not rewriting the config.
+SELF_CONFIG_PATH = re.compile(
+    r"\.claude[/\\]settings(?:\.local)?\.json(?![\w.-])|"
+    r"\.claude[/\\]hooks[/\\]|"
+    r"\.claude\.json(?![\w.-])|"
+    r"\.cursor[/\\]hooks\.json(?![\w.-])|"
+    r"\.codex[/\\]hooks\.json(?![\w.-])|"
+    r"\.codex[/\\]config\.toml(?![\w.-])",
+    re.IGNORECASE,
+)
+
+
+def _writes_self_config(literal: str) -> bool:
+    """A shell command that writes the agent's own configuration (#317).
+
+    The path alone is not enough — `grep claude ~/.claude/settings.json`
+    reads it, and reading your own config is ordinary. The command must aim
+    a write at the path: a redirect into it, `tee`, `dd`'s `of=`, an
+    in-place `sed`, or the destination slot of `cp`/`mv`/`install`. Runs on
+    the `literal` view, so a path inside single quotes (prose somebody is
+    writing, not a file being written) cannot fire it.
+    """
+    for segment in re.split(r"[|;&\n]", literal):
+        match = SELF_CONFIG_PATH.search(segment)
+        if not match:
+            continue
+        # What precedes the match is the path's own directory prefix
+        # (`~/`, `/home/operator/`, `$HOME/`); strip it before asking what
+        # operator the write went through.
+        before = re.sub(r"[\w.~$/\\:-]+$", "", segment[: match.start()]).rstrip(" '\"")
+        if before.endswith(">") or before.endswith("of=") or re.search(r"\btee(?:\s+-\w+)?$", before):
+            return True
+        tokens = segment.split()
+        if len(tokens) >= 2:
+            head = tokens[0].strip("'\"").lower()
+            last = tokens[-1].strip("'\"")
+            if head in ("cp", "mv", "install") and SELF_CONFIG_PATH.search(last):
+                return True
+            if (
+                head == "sed"
+                and any(t.startswith("-i") for t in tokens[1:-1])
+                and SELF_CONFIG_PATH.search(last)
+            ):
+                return True
+    return False
+
+
 # `.env` needs its own rule because it is four characters long and reads like
 # prose. Anchoring it as a filename was not enough: `git commit -m "docs:
 # explain .env handling"` still matched, and a commit message is the single
@@ -1781,8 +1836,14 @@ def classify_path(path: str) -> list[str]:
 def classify_tool_call(qualified: str, text: str) -> list[str]:
     """Trait labels for one tool call, judged by what kind of tool it is."""
     kind = tool_kind(qualified)
-    if kind in ("write", "list"):
+    if kind == "list":
         return []
+    if kind == "write":
+        # A write's path is not a command (#329), but one destination is a
+        # signal in itself: the agent editing its own configuration (#317).
+        # For apply_patch the text is the patch body, whose `Update File:`
+        # lines name the same paths.
+        return ["edits_self_config"] if SELF_CONFIG_PATH.search(text or "") else []
     if kind == "read":
         return classify_path(text)
     return classify_command(text)
@@ -2009,6 +2070,7 @@ KNOWN_TRAITS = frozenset({
     "fetch_to_file",
     "credential_env_load",
     "decode_pipe",
+    "edits_self_config",
 })
 
 
@@ -2791,6 +2853,8 @@ def classify_command(command: str, *, _depth: int = 0) -> list[str]:
             traits.append("credential_env_load")
     if PRIVATE_KEY_PATH.search(path_literal):
         traits.append("private_key")
+    if _writes_self_config(literal):
+        traits.append("edits_self_config")
 
     # Egress as a fact about one event. `credential-exfil` needed a *later*
     # event tagged TA0011, so a command that both read a secret and sent it --
