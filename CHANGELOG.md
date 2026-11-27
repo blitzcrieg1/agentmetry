@@ -7,11 +7,46 @@ alpha. While in **public alpha**, minor versions may carry breaking changes to
 APIs and integration surfaces. The canonical event schema is versioned
 separately (currently `1.2.0`) and changes additively.
 
-## [Unreleased]
+## [0.18.0] - 2026-11-27
+
+Child-process egress visibility: the new agentmetry-guard sidecar
+(github.com/blitzcrieg1/agentmetry-guard, experimental, zero-dependency Rust)
+plus the ingest and detection support for it. Benchmark: 115 cases, 63
+expected firings, 0 missed / 0 false positives; 3052 tests; Sigma pack 30 rules.
 
 ### Added
 
-- **Heredoc and script-write-then-execute classification, rebased from #361.** `bash <<EOF` and `python <<PY` heredocs now classify as cradles, and a script body written by the agent is classified before hashing so `rule_script_write_then_execute` can fire on write-then-run (#345, #347). Corpus: 112 cases, 61 expected firings, 0 missed / 0 false positives.
+- **`network_egress` ingest (#508).** External adapters can report
+  `event_type=network_egress`; it canonicalizes to its own action type
+  (never `tool_called`, so tool-sequence rules do not count it) and keeps
+  `correlation_id`, so egress events join the agent session in the trail,
+  the dashboard and the SIEM forwarders.
+- **Two guard detection rules (#509).** `credential-read-then-egress`
+  (critical): a credential-access tool call followed by a `network_egress`
+  event in the same session window, closing the child-process escape where a
+  script reads `~/.ssh` and phones home without any single tool call looking
+  like exfiltration. `guard-egress-denied` (high): the sidecar refused a
+  denylisted destination. Corpus gains 3 cases including a benign npm-egress
+  false-positive guard.
+- **`agentmetry mcp-proxy` wraps the server in agentmetry-guard when
+  `AGENTMETRY_GUARD=1`** (#509). `AGENTMETRY_GUARD_BIN` locates the binary,
+  `AGENTMETRY_GUARD_DENY` sets the denylist; the proxy passes its session id
+  so guard events share the tool calls' correlation. Missing binary or the
+  flag unset falls back to the raw command.
+
+### Fixed
+
+- **Provider key shapes are scrubbed in both capture paths (#507).** The
+  five provider keys from #495 (OpenRouter, Groq, Replicate, Perplexity, xAI)
+  were caught by DLP but not by the capture scrubbers, so a key in a captured
+  command or nested argument was stored as sent. Both scrub lists now know
+  the shapes (mirror test keeps them in sync), and the hook scrubs the full
+  command before truncating, so a token cut at the storage cap cannot survive
+  half masked.
+- **Heredoc and script-write-then-execute classification, rebased from #361
+  (#502).** `bash <<EOF` and `python <<PY` heredocs now classify as cradles,
+  and a script body written by the agent is classified before hashing so
+  `script-write-then-execute` fires on write-then-run (#345, #347).
 
 ## [0.17.0] - 2026-11-26
 
