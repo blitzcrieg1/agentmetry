@@ -63,10 +63,15 @@ def test_the_corpus_has_both_attack_and_benign_sides(report):
 
 def test_the_corpus_exercises_a_meaningful_share_of_the_rules(report):
     """Not every rule, but enough that the number means something."""
-    from agentmetry.core.audit.detection.rules import REGISTRY
+    from agentmetry.core.audit.detection.rules import BUILTIN_RULE_IDS, EXPERIMENTAL_RULE_IDS
 
     assert len(report.rules_covered) >= 8, sorted(report.rules_covered)
-    assert len(report.rules_covered) <= len(REGISTRY)
+    # Covered ids come from session and host rules alike, so the bound is the
+    # canonical id sets, not the session REGISTRY: the two counts happened to
+    # agree at 18 until off-hours-activity became the 19th covered rule. The
+    # experimental set counts too — autonomous-unapproved-write is registered
+    # and corpus-covered, just not published.
+    assert report.rules_covered <= BUILTIN_RULE_IDS | EXPERIMENTAL_RULE_IDS
 
 
 def test_every_case_carries_a_real_session():
@@ -112,3 +117,73 @@ def test_a_case_spanning_sessions_is_scoped_per_session(report):
     by_name = {result.case.name: result for result in report.results}
     case = by_name["subagent swarm that restarts sessions between bursts"]
     assert "subagent-swarm-burst" not in case.fired
+
+
+def test_case_settings_are_parsed_and_pinned_to_the_opt_in_rule():
+    """The off-hours cases must carry their pin, or they silently stop firing."""
+    by_name = {case.name: case for case in load_corpus()}
+    attack = by_name["autonomous impact action outside business hours"]
+    assert attack.settings == {
+        "detect_off_hours": True,
+        "business_tz": "UTC",
+        "business_hours": "09-18",
+    }
+    benign = by_name["human-driven maintenance at the same hour"]
+    assert benign.settings == attack.settings, "the benign pair must replay under the same pin"
+
+
+def test_a_case_settings_pin_is_what_turns_an_opt_in_rule_on(tmp_path):
+    """Same session, two manifests: only the pinned one may fire off-hours."""
+    import shutil
+
+    from agentmetry.core.audit.detection.benchmark import DEFAULT_CORPUS_DIR
+
+    session = tmp_path / "attack_off_hours_impact.jsonl"
+    shutil.copy(DEFAULT_CORPUS_DIR / "attack_off_hours_impact.jsonl", session)
+
+    def manifest(settings_line: str) -> str:
+        return (
+            "cases:\n"
+            "  - name: off-hours probe\n"
+            "    session: attack_off_hours_impact.jsonl\n"
+            "    expect: [off-hours-activity]\n"
+            f"{settings_line}"
+        )
+
+    pinned = tmp_path / "pinned"
+    pinned.mkdir()
+    shutil.copy(session, pinned / session.name)
+    (pinned / "corpus.yaml").write_text(
+        manifest('    settings: {detect_off_hours: true, business_tz: "UTC", business_hours: "09-18"}\n'),
+        encoding="utf-8",
+    )
+    assert run_benchmark(pinned).passed, "pinned case should fire off-hours-activity"
+
+    unpinned = tmp_path / "unpinned"
+    unpinned.mkdir()
+    shutil.copy(session, unpinned / session.name)
+    (unpinned / "corpus.yaml").write_text(manifest(""), encoding="utf-8")
+    result = run_benchmark(unpinned).results[0]
+    assert result.missed == {"off-hours-activity"}, "without the pin the opt-in rule stays off"
+
+
+def test_a_case_cannot_pin_arbitrary_settings(tmp_path):
+    """A manifest must not be able to reach settings beyond the allowlist."""
+    import shutil
+
+    from agentmetry.core.audit.detection.benchmark import DEFAULT_CORPUS_DIR
+
+    shutil.copy(
+        DEFAULT_CORPUS_DIR / "attack_off_hours_impact.jsonl",
+        tmp_path / "attack_off_hours_impact.jsonl",
+    )
+    (tmp_path / "corpus.yaml").write_text(
+        "cases:\n"
+        "  - name: hostile manifest\n"
+        "    session: attack_off_hours_impact.jsonl\n"
+        "    expect: [off-hours-activity]\n"
+        "    settings: {detect_off_hours: true, live_db_path: '/tmp/elsewhere'}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unknown settings"):
+        run_benchmark(tmp_path)
