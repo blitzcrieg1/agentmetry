@@ -209,3 +209,54 @@ def test_egress_events_do_not_fire_tool_sequence_rules():
         _egress(timestamp_utc=f"2026-11-27T09:00:{i:02d}+00:00") for i in range(50)
     ]
     assert run_detections(events) == []
+
+
+# ----------------------------------------------------------------------
+# doctor: agentmetry-guard sidecar
+# ----------------------------------------------------------------------
+
+
+def _guard_report(monkeypatch, tmp_path, *, enabled=None, bin_path=None, which=None, cfg=None):
+    from agentmetry.core.diagnostics import doctor
+    from agentmetry.core.diagnostics.doctor import DoctorReport
+
+    if enabled is None:
+        monkeypatch.delenv("AGENTMETRY_GUARD", raising=False)
+    else:
+        monkeypatch.setenv("AGENTMETRY_GUARD", enabled)
+    monkeypatch.setenv("AGENTMETRY_GUARD_BIN", bin_path or "")
+    monkeypatch.setattr("shutil.which", lambda _n: which)
+    monkeypatch.setattr(
+        "agentmetry.core.paths.data_dir", lambda: tmp_path
+    )
+    if cfg is not None:
+        (tmp_path / "guard.json").write_text(cfg, encoding="utf-8")
+    report = DoctorReport()
+    doctor._check_guard(report)
+    return report
+
+
+def test_doctor_guard_is_silent_when_not_used(monkeypatch, tmp_path):
+    report = _guard_report(monkeypatch, tmp_path, enabled=None, which=None)
+    assert report.findings == []
+
+
+def test_doctor_guard_warns_when_enabled_without_binary(monkeypatch, tmp_path):
+    report = _guard_report(monkeypatch, tmp_path, enabled="1", which=None)
+    assert len(report.findings) == 1
+    assert report.findings[0].severity == "warn"
+    assert report.findings[0].code == "guard"
+    assert "AGENTMETRY_GUARD_BIN" in report.findings[0].message
+
+
+def test_doctor_guard_ok_with_version_and_config(monkeypatch, tmp_path):
+    import sys as _sys
+
+    report = _guard_report(
+        monkeypatch, tmp_path, enabled="1", bin_path=_sys.executable,
+        cfg='{"deny": ["a.invalid"], "allow": ["api.example.com"]}',
+    )
+    assert len(report.findings) == 1
+    assert report.findings[0].severity == "ok"
+    assert report.findings[0].code == "guard"
+    assert "1 deny / 1 allow" in report.findings[0].message

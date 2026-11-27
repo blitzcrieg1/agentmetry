@@ -633,6 +633,57 @@ def _check_mcp(report: DoctorReport) -> None:
         )
 
 
+def _check_guard(report: DoctorReport) -> None:
+    """Is the agentmetry-guard egress sidecar available and configured?
+
+    Only reports when guard wrapping is on (AGENTMETRY_GUARD=1) or the binary
+    is installed: guard is opt-in, so silence means "not used", not "broken".
+    A flag set without a binary is a WARN: the operator asked for egress
+    visibility and will silently not get it.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    from agentmetry.core.paths import data_dir
+
+    enabled = os.environ.get("AGENTMETRY_GUARD", "").strip().lower() in ("1", "true", "yes", "on")
+    binary = os.environ.get("AGENTMETRY_GUARD_BIN", "").strip() or shutil.which("agentmetry-guard")
+    if not enabled and not binary:
+        return
+    if not binary:
+        report.warn(
+            "guard",
+            "AGENTMETRY_GUARD=1 but no agentmetry-guard binary found "
+            "(set AGENTMETRY_GUARD_BIN or install from "
+            "github.com/blitzcrieg1/agentmetry-guard/releases). mcp-proxy falls "
+            "back to the raw command, so no egress events will be recorded.",
+        )
+        return
+    try:
+        out = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, timeout=5
+        )
+        version = (out.stdout or out.stderr).strip() or "unknown"
+    except Exception as exc:
+        report.warn("guard", f"agentmetry-guard at {binary} did not run: {exc}")
+        return
+    cfg = data_dir() / "guard.json"
+    policy = ""
+    if cfg.is_file():
+        try:
+            import json
+
+            doc = json.loads(cfg.read_text(encoding="utf-8"))
+            policy = (
+                f", {len(doc.get('deny') or [])} deny / {len(doc.get('allow') or [])} allow "
+                f"entries in {cfg.name}"
+            )
+        except Exception:
+            policy = f", {cfg.name} present but unreadable (guard will reject it)"
+    report.ok("guard", f"{version} at {binary}{policy}")
+
+
 def _check_triage(report: DoctorReport) -> None:
     """Surface the triage backlog without making the operator open the UI.
 
@@ -1104,6 +1155,7 @@ def run_doctor(
     _check_observed(report)
     _check_codex_sandbox(report)
     _check_mcp(report)
+    _check_guard(report)
     _check_extensions(report)
 
     # --- Optional governed runtime (demo vault) ------------------------------
