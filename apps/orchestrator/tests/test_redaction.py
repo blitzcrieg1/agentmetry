@@ -260,6 +260,61 @@ def test_hook_mirror_carries_the_same_patterns():
 
 
 @pytest.mark.parametrize(
+    "prefix, length",
+    [
+        pytest.param("sk-or-v1-", 16, id="openrouter"),
+        pytest.param("gsk_", 20, id="groq"),
+        pytest.param("r8_", 32, id="replicate"),
+        pytest.param("pplx-", 32, id="perplexity"),
+        pytest.param("xai-", 20, id="xai"),
+    ],
+)
+@pytest.mark.parametrize("capture", ["hook", "recorder"])
+def test_provider_dlp_matches_do_not_leave_values_in_capture(monkeypatch, prefix, length, capture):
+    """Check each boundary independently so one scrubber cannot hide a missing one."""
+    from agentmetry.api.routes.audit import ExternalIngestBody
+
+    body = (_A * 2)[:length]
+    token = prefix + body
+    mixed_case_token = prefix.upper() + body
+    near_miss = prefix + body[:-1]
+    command = f"echo {token} {near_miss}"
+    payload = {
+        "source_app": "claude",
+        "event_type": "tool_called",
+        "tool": {
+            "qualified": "Bash",
+            "server": "claude",
+            "arguments": {"command": command, "items": [{"note": mixed_case_token}]},
+        },
+    }
+
+    if capture == "hook":
+        monkeypatch.setattr(ingest, "_read_repo_env", lambda _key: "")
+        monkeypatch.setenv("AGENTMETRY_LOG_FULL_ARGS", "1")
+        tool = ingest._hash_tool_args(payload)["tool"]
+    else:
+        payload["tool"]["command"] = command
+        wire = ExternalIngestBody.model_validate(payload).model_dump(exclude_none=True)
+        tool = build_external_canonical(wire)["tool"]
+
+    command_masked = token not in tool["command"] and "<redacted" in tool["command"]
+    arguments_masked = token not in tool["arguments"]["command"]
+    nested = tool["arguments"]["items"][0]["note"]
+    nested_masked = mixed_case_token not in nested and nested.startswith("<redacted")
+    assert command_masked and arguments_masked and nested_masked
+    assert tool["command"].endswith(near_miss)
+
+    if capture == "hook":
+        padding = "echo " + "a" * (ingest.COMMAND_MAX_LEN - len(prefix) - 6) + " "
+        payload["tool"]["arguments"] = {"command": padding + token}
+        bounded = ingest._hash_tool_args(payload)["tool"]["command"]
+        bounded_masked = bounded[len(padding):].startswith("<")
+        assert len(bounded) == ingest.COMMAND_MAX_LEN
+        assert bounded_masked
+
+
+@pytest.mark.parametrize(
     "command",
     [
         "git log --oneline -3 && pytest -q",
