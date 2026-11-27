@@ -179,7 +179,7 @@ class ExternalIngestBody(BaseModel):
     )
     event_type: str = Field(
         ...,
-        description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response | mcp_schema | hook_remediation",
+        description="session_start | session_end | tool_called | tool_denied | tool_failed | approval_request | approval_response | mcp_schema | hook_remediation | network_egress",
     )
     correlation_id: str = ""
     session_id: str = ""
