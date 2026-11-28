@@ -277,16 +277,17 @@ def _scan_tools_file(path: Path, tools: list[dict[str, Any]], report: ScanReport
                 )
 
 
-def _candidate_files(root: Path) -> tuple[list[Path], list[str], int]:
+def _candidate_files(root: Path) -> tuple[list[Path], list[str], int, bool]:
     """Files the scanner reads, and the ones it must admit it cannot.
 
     A folder target holds whatever it holds; text, JSON and script types are
     read. Everything else is returned by name and count so the report can say
     what was not checked, instead of implying a folder was covered because it
-    was walked (#360). The names are a capped sample; the count is total.
+    was walked (#360). The names are a capped sample of the skipped files
+    encountered. The last value says whether an eligible file exceeded the cap.
     """
     if root.is_file():
-        return [root], [], 0
+        return [root], [], 0, False
     found: list[Path] = []
     skipped: list[str] = []
     skipped_total = 0
@@ -296,9 +297,9 @@ def _candidate_files(root: Path) -> tuple[list[Path], list[str], int]:
             if name in TEXT_NAMES or name.lower().endswith(
                 TEXT_SUFFIXES + (".json",) + SCRIPT_SUFFIXES
             ):
-                found.append(Path(dirpath) / name)
                 if len(found) >= MAX_FILES:
-                    return found, skipped, skipped_total
+                    return found, skipped, skipped_total, True
+                found.append(Path(dirpath) / name)
             else:
                 skipped_total += 1
                 if len(skipped) < NOT_READ_LISTED:
@@ -306,7 +307,7 @@ def _candidate_files(root: Path) -> tuple[list[Path], list[str], int]:
                         skipped.append(str((Path(dirpath) / name).relative_to(root)))
                     except ValueError:
                         skipped.append(name)
-    return found, skipped, skipped_total
+    return found, skipped, skipped_total, False
 
 
 def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> ScanReport:
@@ -314,7 +315,9 @@ def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> S
     if not target.exists():
         report.errors.append(f"{target}: no such file or folder")
         return report
-    files, not_read, not_read_total = _candidate_files(target)
+    files, not_read, not_read_total, limit_reached = _candidate_files(target)
+    if limit_reached:
+        report.unobserved.append(f"Scan stopped at the {MAX_FILES:,}-file limit. Additional files were not checked.")
     if not_read:
         report.not_read = not_read
         report.unobserved.append(

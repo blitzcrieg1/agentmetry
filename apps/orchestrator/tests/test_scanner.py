@@ -392,6 +392,20 @@ def test_a_script_alone_does_not_get_the_autoload_checks(tmp_path):
     assert [f for f in report.findings if f.check == "instruction_file"] == []
 
 
+def test_scan_reports_when_the_file_limit_leaves_scripts_unchecked(tmp_path, monkeypatch):
+    monkeypatch.setattr("agentmetry.core.scanner.scan.MAX_FILES", 2)
+    for number in range(2):
+        (tmp_path / f"script-{number}.py").write_text("print('synthetic')\n", encoding="utf-8")
+    assert run(str(tmp_path)).unobserved == []
+
+    (tmp_path / "one-more.py").write_text("print('synthetic')\n", encoding="utf-8")
+    report = run(str(tmp_path))
+    note = "Scan stopped at the 2-file limit. Additional files were not checked."
+    assert report.scripts_scanned == 2
+    assert note in report.to_json()["unobserved"]
+    assert note in "\n".join(report.lines())
+
+
 def test_files_the_scanner_cannot_read_are_named_not_swallowed(tmp_path):
     """The other half of #360: anything not readable as text is reported as
     not checked, so `no findings` cannot read as `everything was checked`."""
