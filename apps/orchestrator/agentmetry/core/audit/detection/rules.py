@@ -325,8 +325,9 @@ def _traits(event: dict[str, Any]) -> frozenset[str]:
             traits = frozenset(str(t) for t in raw if t)
             if _tool_kind(_tool_qualified(event)) == "write":
                 # Older writers mixed script contents into this field. The
-                # destination is the only file-write trait the hook emits.
-                return traits & {"edits_self_config"}
+                # destination traits are the only file-write traits the hook
+                # emits (#317).
+                return traits & {"edits_self_config", "edits_ci_config"}
             return traits
     return frozenset()
 

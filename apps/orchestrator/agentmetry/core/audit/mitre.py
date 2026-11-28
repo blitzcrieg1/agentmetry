@@ -113,6 +113,10 @@ _SCHEDULED = _m("TA0003", "Persistence", "T1053.005", "Scheduled Task")
 _CRON = _m("TA0003", "Persistence", "T1053.003", "Cron")
 _DECODE = _m("TA0005", "Defense Evasion", "T1140", "Deobfuscate/Decode Files or Information")
 _SELF_CONFIG = _m("TA0005", "Defense Evasion", "T1562", "Impair Defenses")
+# Same technique as _SELF_CONFIG today: the write itself is the act. #317
+# also names T1098 for the push that follows a CI edit; the push is a
+# separate event with its own mapping, so the write keeps T1562.
+_CI_CONFIG = _m("TA0005", "Defense Evasion", "T1562", "Impair Defenses")
 _ARCHIVE = _m("TA0009", "Collection", "T1560.001", "Archive via Utility")
 _ARCHIVE_LIBRARY = _m("TA0009", "Collection", "T1560.002", "Archive via Library")
 _NETWORK_SCAN = _m("TA0007", "Discovery", "T1046", "Network Service Discovery")
@@ -168,8 +172,10 @@ from agentmetry.core.audit.detection.traits import (  # noqa: E402
     mask_prose_flags,
     env_dump_view,
     mask_literals,
+    shell_writes_ci_config,
     shell_writes_self_config,
     tool_kind,
+    write_targets_ci_config,
     write_targets_self_config,
 )
 
@@ -285,6 +291,13 @@ def get_mitre_mapping(
     kind = tool_kind(tool_qualified)
     if kind == "write" and write_targets_self_config(tool_qualified, evidence):
         return _SELF_CONFIG
+    if kind == "write" and write_targets_ci_config(tool_qualified, evidence):
+        # The other write that earns an upgrade, on the same reasoning as
+        # self-config above: the write itself is the act, an agent
+        # reprogramming the pipeline its next push will run through (#317).
+        # The same judgement traits.classify_tool_call makes with its
+        # `edits_ci_config` trait, so the two cannot disagree (#40).
+        return _CI_CONFIG
     if kind in ("write", "list"):
         text = ""
 
@@ -301,6 +314,8 @@ def get_mitre_mapping(
             shell_words = mask_literals(shell)
             if kind == "command" and shell_writes_self_config(shell, shell_words):
                 return _SELF_CONFIG
+            if kind == "command" and shell_writes_ci_config(shell, shell_words):
+                return _CI_CONFIG
             literal = mask_literals(shell, include_double=False).lower()
             written = shell_words.lower()
             # A python/node heredoc is masked above (it is not shell). Its body
@@ -320,6 +335,8 @@ def get_mitre_mapping(
                 payload_words = mask_literals(payload)
                 if kind == "command" and shell_writes_self_config(payload, payload_words):
                     return _SELF_CONFIG
+                if kind == "command" and shell_writes_ci_config(payload, payload_words):
+                    return _CI_CONFIG
                 literal += "\n" + mask_literals(payload, include_double=False).lower()
                 written += "\n" + payload_words.lower()
                 text += "\n" + payload.lower()
