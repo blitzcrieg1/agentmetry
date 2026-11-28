@@ -330,6 +330,26 @@ def test_a_broken_chain_degrades_the_beat(home, monkeypatch):
     assert "record_sha256 mismatch" in event["action"]["reason"]
 
 
+@pytest.mark.parametrize("sequence", ["invalid", True, 0, None])
+def test_invalid_chain_sequence_degrades_heartbeat(home, monkeypatch, sequence):
+    from agentmetry.core.audit.trail_chain import verify_trail_file
+
+    monkeypatch.setattr(hb, "_spool_depth", lambda: 0)
+    trail = home / "audit-forward.jsonl"
+    _append_records(trail, 1)
+    record = json.loads(trail.read_text(encoding="utf-8"))
+    record["trail"]["seq"] = sequence
+    trail.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    event = hb.build_heartbeat_event("t")
+    assert event["action"]["outcome"] == "degraded"
+    assert event["heartbeat"]["chain_verified"] is False
+    assert "invalid sequence number" in event["action"]["reason"]
+    verification = verify_trail_file(trail)
+    assert not verification.ok
+    assert "invalid sequence number" in verification.message
+
+
 def test_no_trail_yet_is_not_a_tamper_alarm(home, monkeypatch):
     """A fresh machine and a tampered one must not read identically: nothing to
     verify is `None`, not a degrade."""
