@@ -11,8 +11,9 @@ id: 3d9a41c7-6e28-4b15-9c07-52f8ab1d7e60
 status: experimental
 description: >
   The orchestrator is running and attesting on its interval, and the attestation
-  says capture is impaired: an IDE hook is missing, or events are buffering in
-  the spool instead of reaching the trail.
+  says capture is impaired: an IDE hook is missing, events are buffering in
+  the spool instead of reaching the trail, the newest trail records failed to
+  chain-verify, or an operator-configured anchor log has gone stale or silent.
 
   This is the state a liveness check cannot see. The process is up, the port
   answers, a health dashboard is green, and the agents on that machine are no
@@ -55,6 +56,14 @@ fields:
   - heartbeat.hooks.cursor
   - heartbeat.hooks.claude
   - heartbeat.spool_depth
+  # #318: false means the newest records failed to chain-verify (corruption or
+  # naive tampering); the message names the first bad record. anchor_age_minutes
+  # appears only when an operator configured an external anchor log, -1 meaning
+  # that log has no readable checkpoint for this trail.
+  - heartbeat.chain_verified
+  - heartbeat.chain_verify_message
+  - heartbeat.anchor_age_minutes
+  - heartbeat.anchor_tree_size
 falsepositives:
   - A machine mid-upgrade, or an IDE genuinely being uninstalled
   - A transient spool backlog while the orchestrator catches up after a restart

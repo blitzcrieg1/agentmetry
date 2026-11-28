@@ -395,7 +395,11 @@ def verify_trail_file(trail_path: Path) -> TrailVerifyResult:
 
             trail = record["trail"]
             event = record["event"]
-            seq = int(trail.get("seq", -1))
+            seq = trail.get("seq")
+            if not isinstance(seq, int) or isinstance(seq, bool) or seq < 1:
+                return TrailVerifyResult(
+                    False, f"invalid sequence number at {where}", total, chained, legacy, line_no
+                )
             prev_sha = str(trail.get("prev_sha256", ""))
             record_sha = str(trail.get("record_sha256", ""))
 
@@ -549,7 +553,11 @@ def verify_trail_tail(trail_path: Path, records: int) -> TrailVerifyResult:
             legacy += 1
             continue
         trail = record["trail"]
-        seq = int(trail.get("seq", -1))
+        seq = trail.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool) or seq < 1:
+            return TrailVerifyResult(
+                False, f"invalid sequence number at {where}", len(lines), chained, legacy
+            )
         prev_sha = str(trail.get("prev_sha256", ""))
         if prev is None:
             first_seq = seq
