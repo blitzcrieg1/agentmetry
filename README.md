@@ -162,7 +162,7 @@ These are the numbers from commands, not from a slide.
 
 Run `agentmetry benchmark` to check these expectations. The corpus covers all 20 published rules and one experimental rule. The Sigma pack ships 30 rules.
 
-3135 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
+3144 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 

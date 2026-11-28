@@ -12,6 +12,8 @@ from itertools import islice
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterator
 
+from agentmetry.core.scanner import script_inspect
+
 MAX_ENTRIES = 12_000
 MAX_DEPTH = 32
 MAX_MANIFESTS = 512
@@ -44,6 +46,8 @@ class Reference:
     status: str
     path: str | None = None
     size_bytes: int | None = None
+    content_sha256: str | None = None
+    observations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,14 +86,22 @@ class PreflightReport:
                f"  {status}: {len(self.surfaces)} declarations in {self.manifests_read} supported manifests"]
         for surface in self.surfaces:
             ref = surface.reference
-            suffix = f" {json.dumps(ref.path)} ({ref.size_bytes} bytes)" if ref.path is not None else ""
+            suffix = ""
+            if ref.path is not None:
+                suffix = f" {json.dumps(ref.path)} ({ref.size_bytes} bytes"
+                if ref.content_sha256 is not None:
+                    suffix += f", sha256:{ref.content_sha256[:12]}"
+                suffix += ")"
+                if ref.observations:
+                    suffix += f" observations={','.join(ref.observations)}"
             out.append(f"  {surface.trigger} | {surface.mechanism} | "
                        f"{json.dumps(surface.manifest)}:{surface.location} | {ref.status}{suffix}")
         for issue in self.unobserved:
             out.append(f"  Unobserved: {json.dumps(issue['path'])} | {issue['reason']}")
         if self.omitted_notices:
             out.append(f"  {self.omitted_notices} additional notices omitted")
-        out.append("  Declarations describe possible execution. Script contents and runtime behavior are unobserved.")
+        out.append("  Declarations describe possible execution. Referenced scripts are hashed and")
+        out.append("  pattern-checked as data; contents stay out of the report and runtime behavior stays unobserved.")
         return out
 
 
@@ -155,6 +167,8 @@ def _manifest_type(relative: Path) -> str | None:
         return "npm"
     if len(parts) == 3 and parts[0] == ".devcontainer" and parts[-1] == "devcontainer.json":
         return "devcontainer"
+    if name in ("conftest.py", "tests/conftest.py"):
+        return "pytest"
     return MANIFEST_TYPES.get(name)
 
 
@@ -215,22 +229,24 @@ def _words(command: object) -> list[str] | None:
         return None
 
 
-def _reference(
-    root: Path, cwd: Path | None, command: object, root_markers: tuple[str, ...],
-) -> Reference:
-    """Check the path of a simple declared script without reading it."""
+def _script_path(
+    command: object, cwd: Path | None, root_markers: tuple[str, ...],
+) -> tuple[str, PurePosixPath | None]:
+    """Parse a simple declared script path. Returns (status, repo-relative path)."""
+    if cwd is not None:
+        cwd = Path(str(cwd))
     words = _words(command)
     if not words:
-        return Reference("not_resolved")
+        return "not_resolved", None
     first = words[0].replace("\\", "/")
     if first.lower().removesuffix(".exe") in INTERPRETERS and len(words) > 1:
         path = words[1].replace("\\", "/")
         if path.startswith("-"):
-            return Reference("not_resolved")
+            return "not_resolved", None
     elif "/" in first or PurePosixPath(first).suffix.lower() in SCRIPT_SUFFIXES:
         path = first
     else:
-        return Reference("not_identified")
+        return "not_identified", None
     # Recognize documented root markers only as a prefix. No arbitrary
     # variable expansion, and a shell string with single quotes stays opaque.
     if not isinstance(command, str) or "'" not in command:
@@ -240,13 +256,23 @@ def _reference(
                 cwd = Path(".")
                 break
     if not SCRIPT_PATH.fullmatch(path) or path.startswith("-"):
-        return Reference("not_resolved")
+        return "not_resolved", None
     candidate = PurePosixPath(path)
     if candidate.is_absolute() or PureWindowsPath(path).drive or ".." in candidate.parts:
-        return Reference("outside_or_parent_path")
+        return "outside_or_parent_path", None
     if not candidate.parts or cwd is None or ":" in path:
-        return Reference("not_resolved")
+        return "not_resolved", None
     relative = cwd / Path(*candidate.parts)
+    return "ok", PurePosixPath(relative.as_posix())
+
+
+def _reference(
+    root: Path, cwd: Path | None, command: object, root_markers: tuple[str, ...],
+) -> Reference:
+    """Check the path of a simple declared script on the local filesystem."""
+    status, relative = _script_path(command, cwd, root_markers)
+    if relative is None:
+        return Reference(status)
     current = root
     try:
         for part in relative.parts:
@@ -336,6 +362,10 @@ def _entries(
                 if not isinstance(command, str):
                     raise ValueError("npm lifecycle script is not a string")
                 yield f"scripts.{event}", "npm_install", "shell", command, relative.parent
+    elif kind == "pytest":
+        # pytest imports conftest.py at collection time; the file itself is
+        # the referenced script.
+        yield "file", "pytest_conftest", "import_time", [relative.name], relative.parent
     else:
         for event in CONTAINER_EVENTS:
             if event in doc:
@@ -344,6 +374,37 @@ def _entries(
                 yield event, "devcontainer_lifecycle", (
                     "host" if event == "initializeCommand" else "container"
                 ), doc[event], None
+
+
+def _inspect_reference(read, reference: Reference, report: PreflightReport) -> Reference:
+    """Follow one execution step: hash and pattern-check a resolved script.
+
+    `read` maps a repo-relative PurePosixPath to bytes (or None past the size
+    limit) and is the only place file content is loaded; it is read as data,
+    never executed. Contents never leave this function: the report carries
+    the sha256 and observation names alone.
+    """
+    if reference.status != "present_uninspected" or reference.path is None:
+        return reference
+    relative = PurePosixPath(reference.path)
+    try:
+        raw = read(relative)
+    except OSError:
+        report.note(relative, "script_unreadable")
+        return reference
+    if raw is None:
+        report.note(relative, "script_size_limit")
+        return reference
+    digest, observations = script_inspect.inspect_bytes(raw, relative.suffix.lower())
+    return Reference("present_inspected", reference.path, reference.size_bytes, digest, observations)
+
+
+def _inspect_local(root: Path, reference: Reference, report: PreflightReport) -> Reference:
+    """Local-filesystem reader for _inspect_reference: O_NOFOLLOW, bounded."""
+    def read(relative: PurePosixPath) -> bytes | None:
+        return _read_manifest(root / Path(*relative.parts), MAX_FILE_BYTES)
+
+    return _inspect_reference(read, reference, report)
 
 
 def _read_manifest(path: Path, limit: int) -> bytes | None:
@@ -383,6 +444,16 @@ def inspect_repository(target: Path) -> PreflightReport:
                     return report
                 continue
             remaining -= len(raw)
+            if kind == "pytest":
+                if len(report.surfaces) == MAX_SURFACES:
+                    report.note(relative, "surface_limit_reached")
+                    return report
+                reference = _inspect_local(
+                    target, _reference(target, relative.parent, [relative.name], ()), report)
+                report.surfaces.append(
+                    Surface(relative.as_posix(), "file", "pytest_conftest", "import_time", reference))
+                report.manifests_read += 1
+                continue
             text = raw.decode("utf-8-sig")
             if kind in ("tasks", "vscode_mcp", "devcontainer"):
                 text = _jsonc(text)
@@ -395,7 +466,7 @@ def inspect_repository(target: Path) -> PreflightReport:
                     report.note(relative, "surface_limit_reached")
                     return report
                 reference = (Reference("remote_uninspected") if mechanism == "remote"
-                             else _reference(target, cwd, command, markers))
+                             else _inspect_local(target, _reference(target, cwd, command, markers), report))
                 report.surfaces.append(Surface(relative.as_posix(), location, trigger, mechanism, reference))
             report.manifests_read += 1
         except OSError:

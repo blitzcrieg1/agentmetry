@@ -11,6 +11,7 @@ a server and never fetches a package.
 agentmetry scan                      # MCP servers, and instruction files in Downloads, Desktop and ~
 agentmetry scan ./skills             # a file or folder: skills, rules, a saved tools/list
 agentmetry scan --preflight ./repo   # inventory declarations that can start execution
+agentmetry scan --github OWNER/REPO@SHA  # same inventory for a GitHub repo at a pinned commit, read-only via the API
 agentmetry scan --wheel ./example-1.0-py3-none-any.whl  # inspect Python startup declarations
 agentmetry scan pypi:request         # one package name
 agentmetry scan --json               # the report as JSON
@@ -41,6 +42,7 @@ malware verdict or severity.
 | `.vscode/tasks.json` | Tasks with `runOptions.runOn: folderOpen`. A dependency entry signals that further tasks need review. [VS Code tasks](https://code.visualstudio.com/docs/debugtest/tasks#_run-behavior) |
 | `package.json` in the checkout | npm install lifecycle entries. Scripts such as `test` are outside this inventory. [npm lifecycle order](https://docs.npmjs.com/cli/v11/using-npm/scripts/#life-cycle-operation-order) |
 | `.devcontainer.json`, `.devcontainer/devcontainer.json`, `.devcontainer/*/devcontainer.json` | Host initialization and container creation, start and attach lifecycle fields. [Dev Container specification](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainer-reference.md) |
+| `conftest.py`, `tests/conftest.py` | pytest imports these at collection time, before any test runs. Reported as `pytest_conftest` with mechanism `import_time` |
 
 The report keeps manifest paths, entry locations and reference status. Commands,
 arguments, environment fields, server names, endpoint URLs and script contents
@@ -49,8 +51,18 @@ package. For simple startup hooks and default editor tasks, relative paths
 are checked from the repository root. That assumes you open this directory as
 the project. Supported project-root placeholders can also locate a candidate
 script in the checkout. Other shell syntax, client-dependent working directories,
-task dependencies and container paths remain unresolved. A present script is
-uninspected. The preflight does not resolve agent trust, policy or enablement.
+task dependencies and container paths remain unresolved. The preflight does not
+resolve agent trust, policy or enablement.
+
+A resolved script is followed one step: the file is read as data (never
+executed, never followed through a link), hashed with SHA-256, and checked
+against a small set of conservative observation patterns, for example
+`download_pipe_to_shell` (a `curl` or `wget` piped into a shell) or
+`module_level_subprocess_call` (a module-level `subprocess` call in Python,
+which runs on import). The report carries the reference status
+`present_inspected`, the file size, the content hash prefix and the
+observation names only. Contents stay on the machine. Observations name a
+shape; they are not a malware verdict or a severity.
 
 The scan skips symbolic links and Windows junctions, dependency and build
 directories, and manifests outside the supported paths. It caps directory
@@ -61,6 +73,15 @@ Preflight exits **0** when it reads the supported manifests in scope or finds
 none, and **2** on an incomplete inventory. Script reference statuses describe
 what could be located and do not change manifest coverage. This inventory cannot
 see hooks from an installed plugin, downloaded dependencies or child processes.
+
+`agentmetry scan --github OWNER/REPO@SHA` runs the same inventory against a
+GitHub repository **at a pinned commit**, read-only through the GitHub API
+(no clone, no checkout, nothing executed). Omit `@SHA` to resolve the default
+branch HEAD first; pin the SHA in CI to scan exactly what you reviewed. File
+contents are fetched as blobs and reduced to a SHA-256 plus observation names;
+contents are never stored or printed. The same caps apply, plus a truncated
+git tree is reported as partial coverage. Set `GITHUB_TOKEN` for the higher
+rate limit; unauthenticated lookups work for public repositories.
 
 ## Python wheel startup check
 
@@ -193,6 +214,8 @@ package is malicious.
 
 - It does not resolve what a package contains. `npx -y foo` runs whatever the
   registry serves at that moment; the unpinned-launch finding says exactly that.
+- Preflight observations are static and shallow: a script can hide behavior
+  behind encoding, build steps or a downloaded second stage.
 - An instruction phrased unlike any category above is invisible to it.
 - Writing *about* these attacks resembles them. This page produces five
   findings when scanned, which is the check working, not failing. Point it at
