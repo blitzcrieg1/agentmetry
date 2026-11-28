@@ -160,9 +160,9 @@ These are the numbers from commands, not from a slide.
   false positives  0
 ```
 
-Run `agentmetry benchmark` to check these expectations. The 21 rule IDs in the corpus are the published rules; the Sigma pack ships 30 rules including the experimental ones (`host-subagent-swarm-burst`, `off-hours-activity`).
+Run `agentmetry benchmark` to check these expectations. The corpus covers all 20 published rules and one experimental rule. The Sigma pack ships 30 rules.
 
-3116 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
+3132 tests collected (`pytest --collect-only -q` from `apps/orchestrator`). CI fails the coverage job under 78%.
 
 The corpus and the expectations live in [`apps/orchestrator/agentmetry/core/audit/detection/corpus/`](apps/orchestrator/agentmetry/core/audit/detection/corpus/).
 
