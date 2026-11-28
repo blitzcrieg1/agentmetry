@@ -1246,6 +1246,17 @@ def cmd_scan(args: argparse.Namespace) -> int:
         from agentmetry.core.scanner.preflight import inspect_repository
 
         report = inspect_repository(_Path(args.preflight))
+    elif args.github is not None:
+        if args.target is not None or args.project is not None or args.known is not None:
+            print("--github OWNER/REPO[@REF] cannot be combined with a target, --project or --known", file=sys.stderr)
+            return 2
+        from agentmetry.core.scanner.github_preflight import FetchError, inspect_github
+
+        try:
+            report = inspect_github(args.github)
+        except (FetchError, ValueError) as exc:
+            print(f"--github failed: {exc}", file=sys.stderr)
+            return 2
     else:
         from agentmetry.core.scanner.scan import run
 
@@ -1894,6 +1905,7 @@ def main(argv: list[str] | None = None) -> int:
     scan.add_argument("--known", default=None, help="file of extra known package names, one per line (npm:/pypi: or bare)")
     scan_mode = scan.add_mutually_exclusive_group()
     scan_mode.add_argument("--preflight", metavar="PATH", help="inventory repository execution declarations")
+    scan_mode.add_argument("--github", metavar="OWNER/REPO[@REF]", help="inventory execution declarations of a GitHub repo at a pinned commit, read-only via the API")
     scan_mode.add_argument("--wheel", metavar="PATH", help="inspect Python startup declarations in a local wheel")
     scan.add_argument("--expected-sha256", metavar="HEX", help="compare a local wheel with a SHA-256 you supply")
     scan.add_argument("--json", action="store_true", help="print the report as JSON")

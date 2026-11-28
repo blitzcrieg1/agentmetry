@@ -11,6 +11,7 @@ a server and never fetches a package.
 agentmetry scan                      # MCP servers, and instruction files in Downloads, Desktop and ~
 agentmetry scan ./skills             # a file or folder: skills, rules, a saved tools/list
 agentmetry scan --preflight ./repo   # inventory declarations that can start execution
+agentmetry scan --github OWNER/REPO@SHA  # same inventory for a GitHub repo at a pinned commit, read-only via the API
 agentmetry scan --wheel ./example-1.0-py3-none-any.whl  # inspect Python startup declarations
 agentmetry scan pypi:request         # one package name
 agentmetry scan --json               # the report as JSON
@@ -72,6 +73,15 @@ Preflight exits **0** when it reads the supported manifests in scope or finds
 none, and **2** on an incomplete inventory. Script reference statuses describe
 what could be located and do not change manifest coverage. This inventory cannot
 see hooks from an installed plugin, downloaded dependencies or child processes.
+
+`agentmetry scan --github OWNER/REPO@SHA` runs the same inventory against a
+GitHub repository **at a pinned commit**, read-only through the GitHub API
+(no clone, no checkout, nothing executed). Omit `@SHA` to resolve the default
+branch HEAD first; pin the SHA in CI to scan exactly what you reviewed. File
+contents are fetched as blobs and reduced to a SHA-256 plus observation names;
+contents are never stored or printed. The same caps apply, plus a truncated
+git tree is reported as partial coverage. Set `GITHUB_TOKEN` for the higher
+rate limit; unauthenticated lookups work for public repositories.
 
 ## Python wheel startup check
 

@@ -229,22 +229,24 @@ def _words(command: object) -> list[str] | None:
         return None
 
 
-def _reference(
-    root: Path, cwd: Path | None, command: object, root_markers: tuple[str, ...],
-) -> Reference:
-    """Check the path of a simple declared script without reading it."""
+def _script_path(
+    command: object, cwd: Path | None, root_markers: tuple[str, ...],
+) -> tuple[str, PurePosixPath | None]:
+    """Parse a simple declared script path. Returns (status, repo-relative path)."""
+    if cwd is not None:
+        cwd = Path(str(cwd))
     words = _words(command)
     if not words:
-        return Reference("not_resolved")
+        return "not_resolved", None
     first = words[0].replace("\\", "/")
     if first.lower().removesuffix(".exe") in INTERPRETERS and len(words) > 1:
         path = words[1].replace("\\", "/")
         if path.startswith("-"):
-            return Reference("not_resolved")
+            return "not_resolved", None
     elif "/" in first or PurePosixPath(first).suffix.lower() in SCRIPT_SUFFIXES:
         path = first
     else:
-        return Reference("not_identified")
+        return "not_identified", None
     # Recognize documented root markers only as a prefix. No arbitrary
     # variable expansion, and a shell string with single quotes stays opaque.
     if not isinstance(command, str) or "'" not in command:
@@ -254,13 +256,23 @@ def _reference(
                 cwd = Path(".")
                 break
     if not SCRIPT_PATH.fullmatch(path) or path.startswith("-"):
-        return Reference("not_resolved")
+        return "not_resolved", None
     candidate = PurePosixPath(path)
     if candidate.is_absolute() or PureWindowsPath(path).drive or ".." in candidate.parts:
-        return Reference("outside_or_parent_path")
+        return "outside_or_parent_path", None
     if not candidate.parts or cwd is None or ":" in path:
-        return Reference("not_resolved")
+        return "not_resolved", None
     relative = cwd / Path(*candidate.parts)
+    return "ok", PurePosixPath(relative.as_posix())
+
+
+def _reference(
+    root: Path, cwd: Path | None, command: object, root_markers: tuple[str, ...],
+) -> Reference:
+    """Check the path of a simple declared script on the local filesystem."""
+    status, relative = _script_path(command, cwd, root_markers)
+    if relative is None:
+        return Reference(status)
     current = root
     try:
         for part in relative.parts:
@@ -364,19 +376,19 @@ def _entries(
                 ), doc[event], None
 
 
-def _inspect_reference(root: Path, reference: Reference, report: PreflightReport) -> Reference:
+def _inspect_reference(read, reference: Reference, report: PreflightReport) -> Reference:
     """Follow one execution step: hash and pattern-check a resolved script.
 
-    The file is opened with O_NOFOLLOW and read as data only; it is never
-    executed. Contents never leave this function: the report carries the
-    sha256 and observation names alone.
+    `read` maps a repo-relative PurePosixPath to bytes (or None past the size
+    limit) and is the only place file content is loaded; it is read as data,
+    never executed. Contents never leave this function: the report carries
+    the sha256 and observation names alone.
     """
     if reference.status != "present_uninspected" or reference.path is None:
         return reference
     relative = PurePosixPath(reference.path)
-    path = root / Path(*relative.parts)
     try:
-        raw = _read_manifest(path, MAX_FILE_BYTES)
+        raw = read(relative)
     except OSError:
         report.note(relative, "script_unreadable")
         return reference
@@ -385,6 +397,14 @@ def _inspect_reference(root: Path, reference: Reference, report: PreflightReport
         return reference
     digest, observations = script_inspect.inspect_bytes(raw, relative.suffix.lower())
     return Reference("present_inspected", reference.path, reference.size_bytes, digest, observations)
+
+
+def _inspect_local(root: Path, reference: Reference, report: PreflightReport) -> Reference:
+    """Local-filesystem reader for _inspect_reference: O_NOFOLLOW, bounded."""
+    def read(relative: PurePosixPath) -> bytes | None:
+        return _read_manifest(root / Path(*relative.parts), MAX_FILE_BYTES)
+
+    return _inspect_reference(read, reference, report)
 
 
 def _read_manifest(path: Path, limit: int) -> bytes | None:
@@ -428,7 +448,7 @@ def inspect_repository(target: Path) -> PreflightReport:
                 if len(report.surfaces) == MAX_SURFACES:
                     report.note(relative, "surface_limit_reached")
                     return report
-                reference = _inspect_reference(
+                reference = _inspect_local(
                     target, _reference(target, relative.parent, [relative.name], ()), report)
                 report.surfaces.append(
                     Surface(relative.as_posix(), "file", "pytest_conftest", "import_time", reference))
@@ -446,7 +466,7 @@ def inspect_repository(target: Path) -> PreflightReport:
                     report.note(relative, "surface_limit_reached")
                     return report
                 reference = (Reference("remote_uninspected") if mechanism == "remote"
-                             else _inspect_reference(target, _reference(target, cwd, command, markers), report))
+                             else _inspect_local(target, _reference(target, cwd, command, markers), report))
                 report.surfaces.append(Surface(relative.as_posix(), location, trigger, mechanism, reference))
             report.manifests_read += 1
         except OSError:
