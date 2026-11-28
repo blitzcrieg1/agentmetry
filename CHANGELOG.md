@@ -9,6 +9,12 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-28
+
+This release updates the recorder for [Agentmetry Guard v0.3.0](https://github.com/blitzcrieg1/agentmetry-guard/releases/tag/v0.3.0)
+and corrects Claude Code approval evidence. The canonical schema remains 1.2.0.
+Thanks to [Philip](https://github.com/zedoraps) for the Claude Code fixes (#513, #515).
+
 ### Added
 
 - **Off-hours benchmark cases** exercise an autonomous action and a human
@@ -24,8 +30,10 @@ separately (currently `1.2.0`) and changes additively.
   correlates reported successes by script basename and describes that limit.
 - **Guard records destination metadata only.** The egress correlation requires
   an explicit established-connection report. New ingest removes paths and
-  queries from older Guard payloads and keeps their connection status unverified.
-- **Interrupted canary operations are recoverable.** Planting records the
+  queries from older Guard payloads and keeps their connection status unverified
+  (#516). The recorder preserves the `ssrf-guard` reason when Guard refuses a
+  destination (#517).
+- **Interrupted canary operations are recoverable (#506).** Planting records the
   recovery state before changing the target. Removal checks the target bytes
   before restoring it. Unreadable optional canary state leaves the bundled
   DLP rules available.
