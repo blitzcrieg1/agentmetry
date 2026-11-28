@@ -9,6 +9,23 @@ separately (currently `1.2.0`) and changes additively.
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-28
+
+### Added
+
+- **Skill scanning includes executable scripts.** `agentmetry scan` inspects
+  script files in supported skill bundles and reports when scan limits leave
+  files unexamined (#519).
+
+### Fixed
+
+- **Heartbeat verification spans recorder restarts.** Heartbeats reconcile with
+  the audit trail anchor, and verification rejects malformed sequence values in
+  both full and tail checks (#518).
+- **Changing execute permissions no longer triggers the staging sequence.**
+  A download followed by a reported run with the same basename is still a
+  finding. The alert describes the name match and leaves file identity unverified.
+
 ## [0.18.1] - 2026-11-28
 
 This release updates the recorder for [Agentmetry Guard v0.3.0](https://github.com/blitzcrieg1/agentmetry-guard/releases/tag/v0.3.0)
@@ -3305,6 +3322,7 @@ tamper-evident JSONL trail you own.
   unmanaged ChatGPT or an IDE with hooks disabled.
 
 [Unreleased]: https://github.com/blitzcrieg1/agentmetry/compare/v0.18.0...HEAD
+[0.18.2]: https://github.com/blitzcrieg1/agentmetry/compare/v0.18.1...v0.18.2
 [0.18.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.17.0...v0.18.0
 [0.16.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/blitzcrieg1/agentmetry/compare/v0.14.0...v0.15.0

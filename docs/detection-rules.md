@@ -73,7 +73,7 @@ sequenceDiagram
 | `hf-token-exposed-in-command` | high | A Hugging Face token-shaped literal was visible in an observed command input (T1552) |
 | `credential-read-then-cloud-api` | critical | Credential access (T1552) → kubectl / aws / gcloud / az / HF CLI |
 | `dotfile-read-then-git-push` | critical | Credential access (T1552) → `git push` or `gh repo create` |
-| `remote-staging-then-execute` | critical | Fetch from public staging host (gist, HF raw, GitHub raw) → execute in a later step |
+| `remote-staging-then-execute` | critical | A reported download and later reported execution share a basename, or a recognized staging host's download to disk is followed by a risky execution. A basename match leaves file identity unverified. A permission change alone does not count as execution. |
 | `subagent-swarm-burst` | high | ≥5 subagent starts in one session (Kimi AgentSwarm, Qwen Agent Teams) |
 | `approval-denied-then-executed` | critical | Human denied a gated tool → same tool executed successfully later |
 | `rapid-tool-denials` | high | Packaged policy: at least four denied `tool_called` events in one session, grouped into one finding for review. A replacement manifest defines its own denial rules. T1562 |
