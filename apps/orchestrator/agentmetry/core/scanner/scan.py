@@ -13,8 +13,11 @@ Targets, in the order people reach for them:
   folder, where a browser can leave one (`instruction_files.py`).
 - **a file or folder**: skills, rules files, CLAUDE.md and AGENTS.md, and any
   saved `tools/list` result (`{"tools": [...]}` or a list of tool objects),
-  checked for model-steering text. Instruction files an agent loads by itself
-  are also checked for install directives and for where they sit.
+  checked for model-steering text. The scripts a skill or rules folder carries
+  are read as text and checked for the same steering text (#360); files that
+  are not readable as text are named in the report as not read rather than
+  passed over in silence. Instruction files an agent loads by itself are also
+  checked for install directives and for where they sit.
 - **`npm:NAME` or `pypi:NAME`**: one package name, checked for typosquatting.
 
 Output never contains the word "safe". "No findings" means these checks found
@@ -34,6 +37,14 @@ from agentmetry.core.scanner import injection, instruction_files, typosquat
 
 #: Files read as model-visible text when a folder is scanned.
 TEXT_SUFFIXES = (".md", ".mdc", ".txt")
+#: Script types a skill or rules folder may carry. Read as text and checked
+#: for the same steering patterns as the markdown beside them (#360): a skill
+#: is opted into and its job is to carry commands, so no install-directive
+#: check applies, but "run this script" is exactly how a skill acts.
+SCRIPT_SUFFIXES = (".sh", ".bash", ".py", ".ps1", ".js", ".ts", ".rb")
+#: How many not-read file names the report lists before it starts counting
+#: instead (#360). The count is always honest; the list is a sample.
+NOT_READ_LISTED = 20
 TEXT_NAMES = (".cursorrules", ".windsurfrules", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md")
 SKIP_DIRS = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next"})
 MAX_FILE_BYTES = 1_000_000
@@ -68,6 +79,11 @@ class ScanReport:
     target: str
     findings: list[Finding] = field(default_factory=list)
     scanned: int = 0
+    #: How many of the scanned items were scripts inside the target (#360).
+    scripts_scanned: int = 0
+    #: Files in the target the scanner cannot read as text. The report names
+    #: them so "no findings" cannot read as "everything was checked" (#360).
+    not_read: list[str] = field(default_factory=list)
     unobserved: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -93,14 +109,18 @@ class ScanReport:
             "target": self.target,
             "verdict": self.verdict,
             "scanned": self.scanned,
+            "scripts_scanned": self.scripts_scanned,
             "findings": [asdict(f) for f in self.findings],
             "supply_chain": [asdict(f) for f in self.findings if f.check == "typosquat"],
+            "not_read": self.not_read,
             "unobserved": self.unobserved,
             "errors": self.errors,
         }
 
     def lines(self) -> list[str]:
         out = [f"agentmetry scan: {self.target}", f"  {self.verdict} in {self.scanned} item{'s' if self.scanned != 1 else ''} scanned"]
+        if self.scripts_scanned:
+            out.append(f"  scripts read as text and checked: {self.scripts_scanned}")
         order = {"high": 0, "medium": 1, "low": 2}
         for f in sorted(self.findings, key=lambda f: (order.get(f.severity, 3), f.where)):
             out.append(f"  [{f.severity}] {f.check}/{f.category}  {f.where}")
@@ -257,18 +277,37 @@ def _scan_tools_file(path: Path, tools: list[dict[str, Any]], report: ScanReport
                 )
 
 
-def _candidate_files(root: Path) -> list[Path]:
+def _candidate_files(root: Path) -> tuple[list[Path], list[str], int, bool]:
+    """Files the scanner reads, and the ones it must admit it cannot.
+
+    A folder target holds whatever it holds; text, JSON and script types are
+    read. Everything else is returned by name and count so the report can say
+    what was not checked, instead of implying a folder was covered because it
+    was walked (#360). The names are a capped sample of the skipped files
+    encountered. The last value says whether an eligible file exceeded the cap.
+    """
     if root.is_file():
-        return [root]
+        return [root], [], 0, False
     found: list[Path] = []
+    skipped: list[str] = []
+    skipped_total = 0
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            if name in TEXT_NAMES or name.lower().endswith(TEXT_SUFFIXES + (".json",)):
-                found.append(Path(dirpath) / name)
+            if name in TEXT_NAMES or name.lower().endswith(
+                TEXT_SUFFIXES + (".json",) + SCRIPT_SUFFIXES
+            ):
                 if len(found) >= MAX_FILES:
-                    return found
-    return found
+                    return found, skipped, skipped_total, True
+                found.append(Path(dirpath) / name)
+            else:
+                skipped_total += 1
+                if len(skipped) < NOT_READ_LISTED:
+                    try:
+                        skipped.append(str((Path(dirpath) / name).relative_to(root)))
+                    except ValueError:
+                        skipped.append(name)
+    return found, skipped, skipped_total, False
 
 
 def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> ScanReport:
@@ -276,7 +315,16 @@ def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> S
     if not target.exists():
         report.errors.append(f"{target}: no such file or folder")
         return report
-    for path in _candidate_files(target):
+    files, not_read, not_read_total, limit_reached = _candidate_files(target)
+    if limit_reached:
+        report.unobserved.append(f"Scan stopped at the {MAX_FILES:,}-file limit. Additional files were not checked.")
+    if not_read:
+        report.not_read = not_read
+        report.unobserved.append(
+            f"{not_read_total} file{'s' if not_read_total != 1 else ''} not readable as text "
+            f"were not checked (e.g. {', '.join(not_read[:3])})"
+        )
+    for path in files:
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
                 report.errors.append(f"{path}: larger than {MAX_FILE_BYTES:,} bytes, skipped")
@@ -293,6 +341,8 @@ def scan_path(target: Path, known: dict[str, frozenset[str]] | None = None) -> S
                 _scan_tools_file(path, tools, report)
             else:
                 report.scanned += 1
+                if path.suffix.lower() in SCRIPT_SUFFIXES:
+                    report.scripts_scanned += 1
                 _scan_text_file(path, report, known)
         except OSError as exc:
             report.errors.append(f"{path}: {exc.strerror or exc}")
