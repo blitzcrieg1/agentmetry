@@ -1120,24 +1120,14 @@ def rule_dotfile_read_then_git_push(events: list[dict[str, Any]]) -> list[Detect
 
 
 def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detection]:
-    """Fetch from a public staging host, then execute in a separate step.
+    """Correlate a remote fetch with a later reported execution.
 
     Agent C2 in the HF July 2026 disclosure staged payloads on public services.
     A one-liner `curl … | bash` is already caught by encoded-command-download;
     this rule covers the two-step variant: download to disk, then run.
     """
-    # Any remote host, when the file fetched is the file run.
-    #
-    # STAGING_HOST is a list of seven services, and registering a domain costs a
-    # few euros, so the list described where payloads were staged in the
-    # incidents we read about rather than where they can be staged (#43).
-    #
-    # Widening it to "any remote host" on its own would fire on
-    # `curl -sO https://api.example.com/schema.json && python generate.py`,
-    # which is a normal working day. Requiring the fetched basename to be the
-    # executed basename is what makes host-agnostic safe: it is not "you
-    # downloaded something and later ran something", it is "you ran the thing
-    # you just downloaded".
+    # An arbitrary host qualifies when the two commands name the same basename
+    # (#43). The trail cannot establish file identity from that name alone.
     for i, fetch in enumerate(events):
         if not _is_reported_success(fetch):
             continue
@@ -1149,18 +1139,19 @@ def rule_remote_staging_then_execute(events: list[dict[str, Any]]) -> list[Detec
                 continue
             if not _in_sequence_window(fetch, event):
                 continue
-            if not downloaded & _executed_files(_command(event)):
+            shared_names = downloaded & _executed_files(_command(event))
+            if not shared_names:
                 continue
-            shared = sorted(downloaded & _executed_files(_command(event)))[0]
+            shared = min(shared_names)
             return [
                 Detection(
                     rule_id="remote-staging-then-execute",
-                    title="Downloaded file executed in the same session",
+                    title="Download and execution share a filename",
                     severity="critical",
                     summary=(
-                        f"{_tool_qualified(fetch) or 'A tool'} downloaded `{shared}` from "
-                        f"a remote host, then {_tool_qualified(event) or 'a tool'} executed "
-                        "that same file in the same session."
+                        f"{_tool_qualified(fetch) or 'A tool'} reported a remote download to "
+                        f"`{shared}`. Later in the session, {_tool_qualified(event) or 'a tool'} "
+                        "reported running a file with the same basename."
                     ),
                     correlation_id=_correlation_id(events),
                     tactic_ids=["TA0011", "TA0002"],
