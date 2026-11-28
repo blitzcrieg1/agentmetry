@@ -126,7 +126,12 @@ def _guard_destination(raw: Any, outcome: str) -> tuple[str, dict[str, Any]]:
     ):
         return "", {}
     arguments = {"host": host, "port": port, "method": method, "scheme": scheme}
-    if raw.get("policy") in ("allowlist", "denylist"):
+    # "ssrf-guard" is the post-resolution egress guardrail in agentmetry-guard
+    # (a resolved link-local or, under strict mode, loopback/private dial);
+    # keeping it lets the trail say why a connection was refused, not just that
+    # it was. Anything else stays dropped so a client cannot stamp arbitrary
+    # text into the canonical arguments.
+    if raw.get("policy") in ("allowlist", "denylist", "ssrf-guard"):
         arguments["policy"] = raw["policy"]
     established = raw.get("connection_established")
     if isinstance(established, bool):

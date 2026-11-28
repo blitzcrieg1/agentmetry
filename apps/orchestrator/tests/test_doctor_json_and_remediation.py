@@ -204,6 +204,40 @@ def test_a_denied_egress_keeps_its_verdict():
     assert event["action"]["outcome"] == "denied"
 
 
+def test_a_guardrail_denial_keeps_its_reason():
+    """agentmetry-guard denies post-DNS guardrail hits with policy=ssrf-guard;
+    the canonical arguments must carry that, or the trail records a refusal
+    with no why."""
+    event = _egress(
+        outcome="denied",
+        tool={
+            "qualified": "guard.egress", "server": "guard",
+            "command": "CONNECT 169.254.169.254:80",
+            "arguments": {"scheme": "https", "method": "CONNECT",
+                          "host": "169.254.169.254", "port": 80,
+                          "policy": "ssrf-guard", "connection_established": False},
+        },
+    )
+    assert event["tool"]["arguments"]["policy"] == "ssrf-guard"
+    assert event["tool"]["arguments"]["connection_established"] is False
+
+
+def test_unknown_guard_policy_values_stay_dropped():
+    """A client cannot stamp arbitrary text into the canonical arguments by
+    claiming a policy verdict."""
+    event = _egress(
+        outcome="denied",
+        tool={
+            "qualified": "guard.egress", "server": "guard",
+            "command": "CONNECT example.com:443",
+            "arguments": {"scheme": "https", "method": "CONNECT",
+                          "host": "example.com", "port": 443,
+                          "policy": "trust-me", "connection_established": False},
+        },
+    )
+    assert "policy" not in event["tool"]["arguments"]
+
+
 def test_egress_events_do_not_fire_tool_sequence_rules():
     events = [
         _egress(timestamp_utc=f"2026-11-27T09:00:{i:02d}+00:00") for i in range(50)
