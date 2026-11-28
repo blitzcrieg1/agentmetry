@@ -21,7 +21,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 from urllib.parse import urlsplit
 
 # A raw-IP URL and a download/execute verb in the same command is a classic
@@ -634,7 +634,7 @@ def _is_self_config_path(path: str) -> bool:
     return bool(_SELF_CONFIG_PATH.search(path.strip().strip("'\"")))
 
 
-def _patch_writes_self_config(patch: str) -> bool:
+def _patch_writes_path(patch: str, is_target_path: Callable[[str], bool]) -> bool:
     """Inspect Codex patch headers and ignore text in the patch body."""
     lines = iter(patch.strip().splitlines())
     if next(lines, "") != "*** Begin Patch":
@@ -643,34 +643,48 @@ def _patch_writes_self_config(patch: str) -> bool:
         if line == "*** End Patch":
             break
         for header in _PATCH_PATH_HEADERS:
-            if line.startswith(header) and _is_self_config_path(line[len(header):]):
+            if line.startswith(header) and is_target_path(line[len(header):]):
                 return True
     return False
 
 
-def write_targets_self_config(qualified: str, evidence: object) -> bool:
-    """Check destinations carried by a write tool, without scanning its content."""
+def _patch_writes_self_config(patch: str) -> bool:
+    return _patch_writes_path(patch, _is_self_config_path)
+
+
+def _write_targets_path(
+    qualified: str,
+    evidence: object,
+    is_target_path: Callable[[str], bool],
+    patch_writes: Callable[[str], bool],
+) -> bool:
     if _norm_method(qualified) == "applypatch":
         if isinstance(evidence, dict):
             return any(
-                isinstance(patch, str) and _patch_writes_self_config(patch)
+                isinstance(patch, str) and patch_writes(patch)
                 for patch in (evidence.get(key) for key in ("command", "patch", "input", "value", "diff"))
             )
-        return isinstance(evidence, str) and _patch_writes_self_config(evidence)
+        return isinstance(evidence, str) and patch_writes(evidence)
     if isinstance(evidence, dict):
         return any(
             isinstance(path, str)
             and key.lower().replace("_", "") in _WRITE_PATH_KEYS
-            and _is_self_config_path(path)
+            and is_target_path(path)
             for key, path in evidence.items()
             if isinstance(key, str)
         )
-    return isinstance(evidence, str) and _is_self_config_path(evidence)
+    return isinstance(evidence, str) and is_target_path(evidence)
 
 
-def shell_writes_self_config(command: str, written: str) -> bool:
-    """Check known shell write operands using unquoted operators and raw paths."""
-    if not _SELF_CONFIG_DIR.search(command):
+def write_targets_self_config(qualified: str, evidence: object) -> bool:
+    """Check destinations carried by a write tool, without scanning its content."""
+    return _write_targets_path(qualified, evidence, _is_self_config_path, _patch_writes_self_config)
+
+
+def _shell_writes_path(
+    command: str, written: str, hint: re.Pattern[str], is_target_path: Callable[[str], bool]
+) -> bool:
+    if not hint.search(command):
         return False
     # A quote-masked space may belong to the preceding word. Only treat '#'
     # as a comment when the original text also puts it at a word boundary.
@@ -690,7 +704,7 @@ def shell_writes_self_config(command: str, written: str) -> bool:
                 if redirect.group().startswith(">"):
                     stop = redirects[index + 1].start() if index + 1 < len(redirects) else end
                     paths = _tokens(command, redirect.end(), stop)
-                    if paths and _is_self_config_path(command[paths[0][0]:paths[0][1]]):
+                    if paths and is_target_path(command[paths[0][0]:paths[0][1]]):
                         return True
 
             stop = redirects[0].start() if redirects else end
@@ -699,15 +713,69 @@ def shell_writes_self_config(command: str, written: str) -> bool:
             args = [command[left:right] for left, right in tokens[offset:]]
             if not args:
                 continue
-            if verb == "tee" and any(_is_self_config_path(arg) for arg in args if not arg.startswith("-")):
+            if verb == "tee" and any(is_target_path(arg) for arg in args if not arg.startswith("-")):
                 return True
-            if verb == "dd" and any(arg.startswith("of=") and _is_self_config_path(arg[3:]) for arg in args):
+            if verb == "dd" and any(arg.startswith("of=") and is_target_path(arg[3:]) for arg in args):
                 return True
-            if verb in ("cp", "mv", "install") and len(args) >= 2 and _is_self_config_path(args[-1]):
+            if verb in ("cp", "mv", "install") and len(args) >= 2 and is_target_path(args[-1]):
                 return True
-            if verb == "sed" and any(arg.startswith("-i") for arg in args[:-1]) and _is_self_config_path(args[-1]):
+            if verb == "sed" and any(arg.startswith("-i") for arg in args[:-1]) and is_target_path(args[-1]):
                 return True
     return False
+
+
+def shell_writes_self_config(command: str, written: str) -> bool:
+    """Check known shell write operands using unquoted operators and raw paths."""
+    return _shell_writes_path(command, written, _SELF_CONFIG_DIR, _is_self_config_path)
+
+
+# CI/CD configuration: the files that decide what runs when code lands —
+# which commands execute, with which secrets, on whose machines. An agent
+# that writes one is programming the pipeline every later push runs through,
+# which is why #317 names the write together with the push that follows it
+# (T1562 / T1098). The trait is the write itself, the same shape as
+# edits_self_config: the push half already carries its own signal (GIT_EXFIL,
+# the `git_exfil` trait), and pairing two events is a rule's job, not a
+# trait's. Anchored like _SELF_CONFIG_PATH: the name must end the path (a
+# `ci.yml.bak` steers nothing), and a workflow file must sit under
+# `.github/workflows` — a bare `workflows/` directory is anybody's folder.
+# Project-local copies count, for the same reason as self-config: that is
+# where the pipeline reads them from. The `.yaml` spellings count wherever
+# the platform accepts them, because the pipeline reads those too.
+_CI_CONFIG_PATH = re.compile(
+    r"(?:^|[/\\])(?:\.github[/\\]workflows[/\\][^/\\]+\.ya?ml|"
+    r"\.gitlab-ci\.ya?ml|"
+    r"\.circleci[/\\]config\.ya?ml|"
+    r"Jenkinsfile|"
+    r"azure-pipelines\.ya?ml|"
+    r"bitbucket-pipelines\.ya?ml|"
+    r"\.travis\.ya?ml|"
+    r"\.drone\.ya?ml)\Z",
+    re.IGNORECASE,
+)
+_CI_CONFIG_HINT = re.compile(
+    r"\.github[/\\]workflows|gitlab-ci|circleci|jenkinsfile|"
+    r"azure-pipelines|bitbucket-pipelines|\.travis\.|\.drone\.",
+    re.IGNORECASE,
+)
+
+
+def _is_ci_config_path(path: str) -> bool:
+    return bool(_CI_CONFIG_PATH.search(path.strip().strip("'\"")))
+
+
+def _patch_writes_ci_config(patch: str) -> bool:
+    return _patch_writes_path(patch, _is_ci_config_path)
+
+
+def write_targets_ci_config(qualified: str, evidence: object) -> bool:
+    """Check destinations carried by a write tool, without scanning its content."""
+    return _write_targets_path(qualified, evidence, _is_ci_config_path, _patch_writes_ci_config)
+
+
+def shell_writes_ci_config(command: str, written: str) -> bool:
+    """Check known shell write operands using unquoted operators and raw paths."""
+    return _shell_writes_path(command, written, _CI_CONFIG_HINT, _is_ci_config_path)
 
 
 # `.env` needs its own rule because it is four characters long and reads like
@@ -1897,9 +1965,15 @@ def classify_tool_call(qualified: str, evidence: object) -> list[str]:
     if kind == "list":
         return []
     if kind == "write":
-        # A write's path is not a command (#329), but one destination is a
-        # signal in itself: the agent editing its own configuration (#317).
-        return ["edits_self_config"] if write_targets_self_config(qualified, evidence) else []
+        # A write's path is not a command (#329), but some destinations are
+        # signals in themselves: the agent editing its own configuration,
+        # or the CI/CD configuration that decides what a push runs (#317).
+        traits = []
+        if write_targets_self_config(qualified, evidence):
+            traits.append("edits_self_config")
+        if write_targets_ci_config(qualified, evidence):
+            traits.append("edits_ci_config")
+        return traits
     if not isinstance(evidence, str):
         return []
     if kind == "read":
@@ -2129,6 +2203,7 @@ KNOWN_TRAITS = frozenset({
     "credential_env_load",
     "decode_pipe",
     "edits_self_config",
+    "edits_ci_config",
 })
 
 
@@ -2913,6 +2988,8 @@ def classify_command(command: str, *, _depth: int = 0) -> list[str]:
         traits.append("private_key")
     if shell_writes_self_config(command, written):
         traits.append("edits_self_config")
+    if shell_writes_ci_config(command, written):
+        traits.append("edits_ci_config")
 
     # Egress as a fact about one event. `credential-exfil` needed a *later*
     # event tagged TA0011, so a command that both read a secret and sent it --
