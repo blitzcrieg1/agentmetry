@@ -13,15 +13,16 @@ separately (currently `1.2.0`) and changes additively.
 
 ### Added
 
-- **Skill scanning includes executable scripts.** `agentmetry scan` inspects
+- **Skill scanning includes script files.** `agentmetry scan` inspects
   script files in supported skill bundles and reports when scan limits leave
   files unexamined (#519).
 
 ### Fixed
 
-- **Heartbeat verification spans recorder restarts.** Heartbeats reconcile with
-  the audit trail anchor, and verification rejects malformed sequence values in
-  both full and tail checks (#518).
+- **Heartbeats flag audit trail integrity and anchor freshness problems.**
+  The heartbeat checks the latest 200 trail records and flags a broken tail or a
+  configured anchor log with a stale or missing checkpoint. Full and tail
+  verification both reject malformed sequence values (#518).
 - **Changing execute permissions no longer triggers the staging sequence.**
   A download followed by a reported run with the same basename is still a
   finding. The alert describes the name match and leaves file identity unverified.
